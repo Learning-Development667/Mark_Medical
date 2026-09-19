@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Care Log</title>
+  <meta name="description" content="Private shared health tracker">
+  <meta name="theme-color" content="#1E5F74">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Care Log">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css?v=4">
+</head>
+<body>
+
+  <!-- Sign in -->
+  <section id="signin" class="signin" hidden>
+    <div class="signin-card">
+      <img class="signin-logo" src="icons/icon-192.png" alt="" width="72" height="72">
+      <h1 class="brand">Care Log</h1>
+      <p class="muted">Private. Only Mark and Shelley can sign in.</p>
+      <form id="signin-form" autocomplete="on">
+        <label class="field">
+          <span>Email</span>
+          <input id="signin-email" type="email" inputmode="email" autocomplete="username" required>
+        </label>
+        <label class="field">
+          <span>Password</span>
+          <input id="signin-password" type="password" autocomplete="current-password" required>
+        </label>
+        <p id="signin-error" class="error" role="alert" hidden></p>
+        <button id="signin-button" class="btn btn-primary btn-block" type="submit">Sign in</button>
+      </form>
+    </div>
+  </section>
+
+  <!-- Config missing -->
+  <section id="noconfig" class="signin" hidden>
+    <div class="signin-card">
+      <h1 class="brand">Care Log</h1>
+      <p><strong>config.js is missing.</strong></p>
+      <p class="muted">Copy <code>config.example.js</code> to <code>config.js</code>, paste in the Firebase web config and the two permitted email addresses, then commit it.</p>
+    </div>
+  </section>
+
+  <!-- App -->
+  <div id="app" class="app" hidden>
+    <header class="topbar">
+      <h1 class="brand">Care Log</h1>
+      <div class="topbar-right">
+        <span id="offline-pill" class="pill pill-amber" hidden>Offline</span>
+        <span id="user-chip" class="chip"></span>
+      </div>
+    </header>
+
+    <main id="main" class="main">
+
+      <!-- TODAY -->
+      <section id="view-today" class="view" data-view="today">
+        <div class="daynav">
+          <button id="day-prev" class="iconbtn" type="button" aria-label="Previous day">&#8249;</button>
+          <button id="day-label" class="daylabel" type="button" aria-label="Go to today"></button>
+          <button id="day-next" class="iconbtn" type="button" aria-label="Next day">&#8250;</button>
+        </div>
+
+        <div class="tiles">
+          <div class="tile" id="tile-temp">
+            <span class="tile-label">Latest temp</span>
+            <span class="tile-value mono" id="tile-temp-value">--</span>
+            <span class="tile-sub" id="tile-temp-sub"></span>
+          </div>
+          <div class="tile" id="tile-drink">
+            <span class="tile-label">Drinks</span>
+            <span class="tile-value mono" id="tile-drink-value">0 ml</span>
+            <span class="tile-sub" id="tile-drink-sub"></span>
+          </div>
+          <div class="tile" id="tile-meds">
+            <span class="tile-label">Scheduled meds</span>
+            <span class="tile-value mono" id="tile-meds-value">0 of 0</span>
+            <span class="tile-sub" id="tile-meds-sub"></span>
+          </div>
+        </div>
+
+        <div class="quickadd">
+          <button class="qa" type="button" data-add="temp"><span class="qa-icon">&#127777;</span>Temperature</button>
+          <button class="qa" type="button" data-add="drink"><span class="qa-icon">&#129380;</span>Drink</button>
+          <button class="qa" type="button" data-add="food"><span class="qa-icon">&#127869;</span>Food</button>
+          <button class="qa" type="button" data-add="weight"><span class="qa-icon">&#9878;</span>Weight</button>
+          <button class="qa" type="button" data-add="note"><span class="qa-icon">&#128221;</span>Note</button>
+        </div>
+
+        <h2 class="section-title">Timeline</h2>
+        <ul id="timeline" class="timeline" aria-live="polite"></ul>
+        <p id="timeline-empty" class="empty" hidden>Nothing logged yet for this day.</p>
+      </section>
+
+      <!-- MEDICINES -->
+      <section id="view-meds" class="view" data-view="meds" hidden>
+        <h2 class="section-title">Scheduled</h2>
+        <div id="meds-scheduled" class="cards"></div>
+        <h2 class="section-title">When needed</h2>
+        <div id="meds-prn" class="cards"></div>
+        <button id="meds-manage" class="btn btn-secondary btn-block" type="button">Manage medicines</button>
+      </section>
+
+      <!-- TRENDS -->
+      <section id="view-trends" class="view" data-view="trends" hidden>
+        <div class="segmented" role="group" aria-label="Range">
+          <button class="seg is-active" type="button" data-range="7">7 days</button>
+          <button class="seg" type="button" data-range="14">14 days</button>
+          <button class="seg" type="button" data-range="30">30 days</button>
+        </div>
+        <div class="card chart-card">
+          <h2 class="section-title">Temperature</h2>
+          <div class="chart-wrap"><canvas id="chart-temp"></canvas></div>
+          <p class="legend-note">Amber band 37.5 to 37.9. Red line 38.0 and above.</p>
+        </div>
+        <div class="card chart-card">
+          <h2 class="section-title">Drinks per day</h2>
+          <div class="chart-wrap"><canvas id="chart-drink"></canvas></div>
+        </div>
+        <div class="card chart-card">
+          <h2 class="section-title">Weight</h2>
+          <div class="chart-wrap"><canvas id="chart-weight"></canvas></div>
+        </div>
+      </section>
+
+      <!-- DOCUMENTS -->
+      <section id="view-docs" class="view" data-view="docs" hidden>
+        <div id="docs-list-wrap">
+          <button id="doc-add" class="btn btn-primary btn-block" type="button">Add a document</button>
+          <ul id="docs-list" class="doclist"></ul>
+          <p id="docs-empty" class="empty" hidden>No documents yet. Add letters, results or photos of paperwork here.</p>
+        </div>
+        <div id="doc-detail" hidden>
+          <button id="doc-back" class="btn btn-link" type="button">&#8249; All documents</button>
+          <h2 id="doc-title" class="doc-title"></h2>
+          <p id="doc-meta" class="muted mono"></p>
+          <div class="btnrow">
+            <button id="doc-share" class="btn btn-primary" type="button">Send to Claude</button>
+            <button id="doc-copy" class="btn btn-secondary" type="button">Copy for Claude</button>
+          </div>
+          <p class="hint">Send opens the share sheet. Choose the Claude app, ask for an explanation, then paste the reply below.</p>
+          <h3 class="section-title">Explanation</h3>
+          <textarea id="doc-explanation" rows="6" placeholder="Paste Claude's explanation here"></textarea>
+          <button id="doc-save-explanation" class="btn btn-primary btn-block" type="button">Save explanation</button>
+          <h3 class="section-title">Document</h3>
+          <div id="doc-pages" class="pages"></div>
+          <pre id="doc-text" class="doctext" hidden></pre>
+          <button id="doc-delete" class="btn btn-danger btn-block" type="button">Delete this document</button>
+        </div>
+      </section>
+
+      <!-- MORE -->
+      <section id="view-more" class="view" data-view="more" hidden>
+        <div class="card">
+          <p class="muted">Signed in as</p>
+          <p id="more-user" class="big"></p>
+        </div>
+        <h2 class="section-title">Who to call</h2>
+        <div id="calls" class="cards"></div>
+        <button id="calls-edit" class="btn btn-secondary btn-block" type="button">Edit numbers</button>
+        <h2 class="section-title">App</h2>
+        <div class="card">
+          <p>Add Care Log to the Home Screen from the Share menu in Safari to use it like an app.</p>
+          <p class="muted mono" id="app-version"></p>
+        </div>
+        <button id="signout" class="btn btn-danger btn-block" type="button">Sign out</button>
+      </section>
+
+    </main>
+
+    <nav class="tabs" aria-label="Sections">
+      <button class="tab is-active" type="button" data-tab="today"><span class="tab-icon">&#9788;</span>Today</button>
+      <button class="tab" type="button" data-tab="meds"><span class="tab-icon">&#128138;</span>Medicines</button>
+      <button class="tab" type="button" data-tab="trends"><span class="tab-icon">&#128200;</span>Trends</button>
+      <button class="tab" type="button" data-tab="docs"><span class="tab-icon">&#128196;</span>Documents</button>
+      <button class="tab" type="button" data-tab="more"><span class="tab-icon">&#8943;</span>More</button>
+    </nav>
+  </div>
+
+  <!-- Bottom sheet -->
+  <div id="sheet" class="sheet" hidden>
+    <div class="sheet-backdrop" data-close></div>
+    <div class="sheet-panel" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+      <div class="sheet-handle"></div>
+      <h2 id="sheet-title" class="sheet-title"></h2>
+      <div id="sheet-body" class="sheet-body"></div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="toast" hidden>
+    <span id="toast-text"></span>
+    <button id="toast-action" class="toast-btn" type="button" hidden></button>
+  </div>
+
+  <script src="config.js"></script>
+  <script type="module" src="scripts.js?v=4"></script>
+</body>
+</html>

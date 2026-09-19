@@ -1,0 +1,3 @@
+# Local tooling only. config.js is intentionally committed by Mark, so it is NOT ignored.
+.DS_Store
+node_modules/

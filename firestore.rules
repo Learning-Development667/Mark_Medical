@@ -1,0 +1,50 @@
+rules_version = '2';
+
+// Care Log: only the two named accounts may read or write anything.
+// Replace MARK_EMAIL with Mark's sign-in email before publishing these rules
+// in the Firebase console (Firestore Database > Rules).
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isFamily() {
+      return request.auth != null
+        && request.auth.token.email != null
+        && request.auth.token.email.lower() in [
+          "MARK_EMAIL",
+          "shelleybrown23@gmail.com"
+        ];
+    }
+
+    // Each document page is kept well under the 1 MiB Firestore limit by the app;
+    // this guard stops anything oversized being written by mistake.
+    function pageSizeOk() {
+      return request.resource.data.data is string
+        && request.resource.data.data.size() < 950000;
+    }
+
+    match /entries/{entryId} {
+      allow read, write: if isFamily();
+    }
+
+    match /medicines/{medId} {
+      allow read, write: if isFamily();
+    }
+
+    match /documents/{docId} {
+      allow read, write: if isFamily();
+
+      match /pages/{pageNo} {
+        allow read, delete: if isFamily();
+        allow create, update: if isFamily() && pageSizeOk();
+      }
+    }
+
+    match /profile/{profileId} {
+      allow read, write: if isFamily();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
