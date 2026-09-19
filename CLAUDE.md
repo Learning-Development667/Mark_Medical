@@ -22,7 +22,7 @@ Live: https://learning-development667.github.io/Mark_Medical/
 
 ## Files
 - `index.html`, `styles.css`, `scripts.js`, `sw.js`, `manifest.json`, `config.example.js`, `icons/`, `firestore.rules`, `CLAUDE.md`.
-- `config.js` is created and committed by Mark only. Never create, edit or regenerate it. `index.html` loads `config.js` before `scripts.js`.
+- `config.js` is created and committed by Mark only. Never create, edit or regenerate it. `index.html` loads `config.js` before `scripts.js`. It was created once, by explicit one-off authorisation from Mark on 2026-09-19, with the real Firebase config and the two permitted email addresses. That authorisation does not repeat: this rule reapplies immediately afterwards, standing, with no further exceptions.
 
 ## Standards
 - Body text minimum 17px. Tap targets minimum 48px. The user may be tired or drowsy: clarity beats density.

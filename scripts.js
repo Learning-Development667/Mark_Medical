@@ -13,7 +13,7 @@ import {
   query, where, orderBy, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '4';
+const APP_VERSION = '5';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
 const TEXT_LIMIT_BYTES = 800 * 1024;
 const PAGE_MAX_DIM = 1600;
