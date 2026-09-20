@@ -83,8 +83,10 @@ different, new shortcut. Back out without adding anything, reopen
    older iOS). This is the bpm number.
 5. **Get Numbers from Input**, fed the result of step 4 — a safety net
    so a stray unit like "bpm" never ends up in the value.
-6. **Format Date** — Current Date, Date Format: ISO 8601. This is today's
-   timestamp for `at` and `createdAt`.
+6. **Format Date** — leave the date field as it is, Date Format: ISO
+   8601, and turn **on** "Include ISO 8601 Time" underneath it (off by
+   default; without it, every reading on the same day gets an identical,
+   time-free stamp). This is today's timestamp for `at` and `createdAt`.
 7. **Format Date** — Current Date, Date Format: Custom, Custom Format
    `yyyy-MM-dd`. This is `day`.
 8. **Get Contents of URL** (sign in):
