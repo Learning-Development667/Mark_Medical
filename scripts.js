@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '9';
+const APP_VERSION = '10';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
 const TEXT_LIMIT_BYTES = 800 * 1024;
 const PAGE_MAX_DIM = 1600;
@@ -272,7 +272,9 @@ const state = {
   cheers: [],
   exercise: {},
   exerciseDay: todayStr(),
-  chemoMonth: todayStr().slice(0, 7)
+  chemoMonth: todayStr().slice(0, 7),
+  demo: false,
+  demoPages: {}
 };
 
 /* ------------------------------------------------------------------ */
@@ -325,15 +327,19 @@ onAuthStateChanged(auth, async (user) => {
   if (user) {
     state.user = user;
     state.name = nameFor(user.email);
+    state.demo = state.name === 'Guest';
     $('signin').hidden = true;
     $('app').hidden = false;
     $('user-chip').textContent = state.name;
     $('more-user').textContent = `${state.name} (${user.email})`;
+    $('guest-pill').hidden = !state.demo;
     $('signin-password').value = '';
-    await startData();
+    if (state.demo) startDemoData(); else await startData();
   } else {
     stopData();
     state.user = null;
+    state.demo = false;
+    $('guest-pill').hidden = true;
     $('app').hidden = true;
     $('signin').hidden = false;
   }
@@ -362,6 +368,117 @@ async function startData() {
 function stopData() {
   for (const k of Object.keys(state.unsub)) { try { state.unsub[k](); } catch (e) { /* ignore */ } }
   state.unsub = {};
+}
+
+/* ------------------------------------------------------------------ */
+/* Guest preview mode                                                    */
+/* A signed-in user whose display name (mapped in config.js) is exactly  */
+/* "Guest" never touches Firestore. Everything is realistic made-up data,*/
+/* held only in memory, and every quick add, edit and delete above       */
+/* writes into that same in-memory state instead of the real database,  */
+/* so the whole app is fully explorable without ever exposing Mark's or  */
+/* Shelley's real health information.                                   */
+/* ------------------------------------------------------------------ */
+
+function demoTs(d) { return { toDate: () => d }; }
+let demoIdSeq = 1;
+function fakeId(prefix) { return prefix + '-demo-' + (demoIdSeq++); }
+
+function buildDemoFixture() {
+  const day = (offset) => addDays(todayStr(), offset);
+  const at = (offset, hhmm) => { const [hh, mm] = hhmm.split(':').map(Number); const d = parseDay(day(offset)); d.setHours(hh, mm, 0, 0); return d; };
+  const e = (offset, hhmm, who, fields) => ({
+    id: fakeId('entry'), day: day(offset), at: demoTs(at(offset, hhmm)), addedBy: who, createdAt: demoTs(at(offset, hhmm)), note: '', ...fields
+  });
+
+  const entries = [
+    e(-9, '08:00', 'Shelley', { type: 'temp', value: 36.9 }),
+    e(-9, '09:00', 'Mark', { type: 'vitals', heartRate: 76 }),
+    e(-9, '07:30', 'Mark', { type: 'weight', value: 78.8 }),
+    e(-8, '10:00', 'Shelley', { type: 'drink', value: 300, note: 'Water' }),
+    e(-8, '08:00', 'Mark', { type: 'food', note: 'Porridge', amount: 'All of it' }),
+    e(-7, '15:00', 'Mark', { type: 'temp', value: 37.7 }),
+    e(-7, '15:05', 'Mark', { type: 'vitals', heartRate: 88, systolic: 128, diastolic: 82, oxygen: 95 }),
+    e(-7, '15:10', 'Mark', { type: 'note', note: 'A bit more tired after today’s session.' }),
+    e(-6, '08:00', 'Shelley', { type: 'temp', value: 37.0 }),
+    e(-6, '07:30', 'Mark', { type: 'weight', value: 78.5 }),
+    e(-6, '09:00', 'Mark', { type: 'drink', value: 200, note: 'Tea' }),
+    e(-5, '08:30', 'Shelley', { type: 'vitals', heartRate: 72, systolic: 116, diastolic: 74, oxygen: 98 }),
+    e(-5, '13:00', 'Mark', { type: 'food', note: 'Soup', amount: 'Most of it' }),
+    e(-4, '08:00', 'Mark', { type: 'temp', value: 36.8 }),
+    e(-4, '11:00', 'Shelley', { type: 'drink', value: 250, note: 'Water' }),
+    e(-3, '09:00', 'Mark', { type: 'vitals', heartRate: 80, systolic: 122, diastolic: 79, oxygen: 96 }),
+    e(-3, '07:30', 'Shelley', { type: 'weight', value: 78.6 }),
+    e(-3, '14:00', 'Mark', { type: 'note', note: 'Rested and read a book in the garden.' }),
+    e(-2, '08:00', 'Shelley', { type: 'temp', value: 36.9 }),
+    e(-2, '08:15', 'Mark', { type: 'food', note: 'Scrambled egg on toast', amount: 'Most of it' }),
+    e(-1, '14:00', 'Mark', { type: 'temp', value: 37.6 }),
+    e(-1, '14:05', 'Mark', { type: 'vitals', heartRate: 84, systolic: 124, diastolic: 80, oxygen: 95 }),
+    e(-1, '16:00', 'Shelley', { type: 'drink', value: 200, note: 'Squash' }),
+    e(0, '08:00', 'Mark', { type: 'med', medId: 'dalteparin', medName: 'Dalteparin injection', dose: '7,500 units' }),
+    e(0, '08:10', 'Mark', { type: 'temp', value: 36.8 }),
+    e(0, '08:12', 'Mark', { type: 'vitals', heartRate: 74, systolic: 118, diastolic: 76, oxygen: 97 }),
+    e(0, '08:15', 'Mark', { type: 'med', medId: 'creon', medName: 'Creon 25000', dose: '2 capsules' }),
+    e(0, '08:20', 'Mark', { type: 'food', note: 'Toast and scrambled egg', amount: 'Most of it' }),
+    e(0, '08:25', 'Mark', { type: 'note', note: 'Slept well, a little tired by afternoon.' }),
+    e(0, '09:00', 'Shelley', { type: 'drink', value: 250, note: 'Water' })
+  ];
+
+  const documents = [{
+    id: fakeId('doc'), category: 'general', kind: 'text',
+    title: 'Oncology clinic letter (example)', docDate: day(-6),
+    text: 'Dear Dr Example,\n\nThank you for reviewing this patient in clinic today. The recent CT scan shows stable disease with no new areas of concern. Bloods are within an acceptable range. We will continue the current treatment plan and review again after the next cycle.\n\nKind regards,\nDr Example',
+    explanation: 'This is a sample explanation, showing what a pasted reply from Claude might look like.\n\nIn plain English, this letter says the recent scan looked the same as before, which is good news, it means things have not got worse since the last check. Bloods were fine too. Nothing needs to change with treatment right now, and the next check-in will be after the next round.\n\nWorth asking the team: what would a change on the next scan actually mean for the plan.',
+    addedBy: 'Shelley', addedAt: demoTs(at(-6, '11:00')), updatedAt: demoTs(at(-6, '11:20'))
+  }];
+
+  const days = {};
+  days[day(-10)] = { chemo: true, chemoDone: true, mood: 4, good: 'Watched a film with Shelley', updatedBy: 'Mark', updatedAt: demoTs(at(-10, '18:00')) };
+  days[day(-3)] = { chemo: true, chemoDone: true, mood: 3, good: 'Short walk in the garden', updatedBy: 'Mark', updatedAt: demoTs(at(-3, '18:00')) };
+  days[day(4)] = { chemo: true, chemoDone: false, updatedBy: 'Mark', updatedAt: demoTs(at(-1, '09:00')) };
+  days[day(0)] = { mood: 4, good: 'Cup of tea in the sun with Shelley', updatedBy: 'Mark', updatedAt: demoTs(at(0, '08:30')) };
+
+  const cheers = [
+    { id: fakeId('cheer'), text: 'Proud of you for today, ice cream later?', addedBy: 'Shelley', createdAt: demoTs(at(0, '09:15')) },
+    { id: fakeId('cheer'), text: 'Feeling good today, thank you for the company yesterday x', addedBy: 'Mark', createdAt: demoTs(at(-1, '19:00')) },
+    { id: fakeId('cheer'), text: 'That walk in the garden was lovely. Same again tomorrow?', addedBy: 'Shelley', createdAt: demoTs(at(-3, '17:30')) }
+  ];
+
+  const doneAll = { pressups: true, situps: true, plank: true, squats: true };
+  const exercise = {};
+  exercise[day(-2)] = { day: day(-2), steps: 2100, done: doneAll };
+  exercise[day(-1)] = { day: day(-1), steps: 2800, done: doneAll };
+  exercise[day(0)] = { day: day(0), steps: 1200, done: { pressups: true, situps: true, plank: false, squats: false } };
+  exercise[day(-4)] = { day: day(-4), steps: 1600, done: { pressups: true, situps: false, plank: false, squats: true } };
+  exercise[day(-6)] = { day: day(-6), steps: 900, done: {} };
+
+  const profile = { calls: [{ label: 'Oncology ward (example)', number: '01234 567890' }, { label: 'Hospice at home (example)', number: '01234 567891' }] };
+
+  return { entries, documents, days, cheers, exercise, profile };
+}
+
+function startDemoData() {
+  const fixture = buildDemoFixture();
+  state.medicines = SEED_MEDICINES.map((m, i) => ({ ...m, active: true, order: i + 1 }));
+  state.recentFrom = addDays(todayStr(), -40);
+  state.recentEntries = fixture.entries;
+  sortEntries(state.recentEntries);
+  state.dayEntries = state.recentEntries.filter((x) => x.day === state.selectedDay);
+  state.documents = fixture.documents;
+  state.demoPages = {};
+  state.days = fixture.days;
+  state.cheers = fixture.cheers;
+  state.exercise = fixture.exercise;
+  state.profile = fixture.profile;
+
+  renderMeds();
+  renderDayLabel();
+  renderToday();
+  renderDocsList();
+  renderChemo();
+  renderExercise();
+  toast('Preview mode: made-up example data, nothing you do here is saved.');
+  renderCalls();
 }
 
 async function seedMedicinesIfEmpty() {
@@ -475,16 +592,33 @@ async function addEntry(data) {
   const entry = {
     ...data,
     day: dayStr(at),
-    at: Timestamp.fromDate(at),
+    at: state.demo ? demoTs(at) : Timestamp.fromDate(at),
     addedBy: state.name,
-    createdAt: serverTimestamp()
+    createdAt: state.demo ? demoTs(new Date()) : serverTimestamp()
   };
+  if (state.demo) {
+    const id = fakeId('entry');
+    state.recentEntries.push({ id, ...entry });
+    sortEntries(state.recentEntries);
+    state.dayEntries = state.recentEntries.filter((e) => e.day === state.selectedDay);
+    renderToday();
+    renderMeds();
+    if (!$('view-vitals').hidden) renderVitals();
+    return id;
+  }
   const ref = doc(collection(db, 'entries'));
   setDoc(ref, entry).catch((e) => { console.error(e); toast('Could not save. It will retry when online.'); });
   return ref.id;
 }
 
 function deleteEntry(id) {
+  if (state.demo) {
+    state.recentEntries = state.recentEntries.filter((e) => e.id !== id);
+    state.dayEntries = state.dayEntries.filter((e) => e.id !== id);
+    renderToday();
+    renderMeds();
+    return Promise.resolve();
+  }
   return deleteDoc(doc(db, 'entries', id));
 }
 
@@ -519,12 +653,23 @@ $('sheet').addEventListener('click', (ev) => { if (ev.target.hasAttribute('data-
 /* Today                                                                */
 /* ------------------------------------------------------------------ */
 
-$('day-prev').addEventListener('click', () => { state.selectedDay = addDays(state.selectedDay, -1); watchDay(); });
+$('day-prev').addEventListener('click', () => { state.selectedDay = addDays(state.selectedDay, -1); refreshDay(); });
 $('day-next').addEventListener('click', () => {
   if (state.selectedDay >= todayStr()) return;
-  state.selectedDay = addDays(state.selectedDay, 1); watchDay();
+  state.selectedDay = addDays(state.selectedDay, 1); refreshDay();
 });
-$('day-label').addEventListener('click', () => { state.selectedDay = todayStr(); watchDay(); });
+$('day-label').addEventListener('click', () => { state.selectedDay = todayStr(); refreshDay(); });
+
+/* Switching day: a live Firestore listener normally, or a local recompute in guest preview mode. */
+function refreshDay() {
+  if (state.demo) {
+    renderDayLabel();
+    state.dayEntries = state.recentEntries.filter((e) => e.day === state.selectedDay);
+    renderToday();
+    return;
+  }
+  watchDay();
+}
 
 function renderDayLabel() {
   const today = todayStr();
@@ -968,8 +1113,15 @@ function openEditMed(m) {
         data.maxPerDay = parseInt(maxPerDay.value, 10) || null;
         data.perDay = null; data.courseEnd = null;
       }
-      const ref = isNew ? doc(collection(db, 'medicines')) : doc(db, 'medicines', m.id);
       closeSheet();
+      if (state.demo) {
+        if (isNew) state.medicines.push({ id: fakeId('med'), ...data });
+        else Object.assign(state.medicines.find((x) => x.id === m.id) || {}, data);
+        renderMeds();
+        toast(isNew ? 'Medicine added' : 'Medicine updated');
+        return;
+      }
+      const ref = isNew ? doc(collection(db, 'medicines')) : doc(db, 'medicines', m.id);
       try {
         await setDoc(ref, data, { merge: true });
         toast(isNew ? 'Medicine added' : 'Medicine updated');
@@ -1026,10 +1178,14 @@ function cssVar(name) { return getComputedStyle(document.documentElement).getPro
 async function renderVitals() {
   const from = addDays(todayStr(), -(state.trendRange - 1));
   let entries;
-  try {
-    const snap = await getDocs(query(collection(db, 'entries'), where('day', '>=', from)));
-    entries = snap.docs.map((d) => d.data());
-  } catch (e) { console.error(e); return; }
+  if (state.demo) {
+    entries = state.recentEntries.filter((e) => e.day >= from);
+  } else {
+    try {
+      const snap = await getDocs(query(collection(db, 'entries'), where('day', '>=', from)));
+      entries = snap.docs.map((d) => d.data());
+    } catch (e) { console.error(e); return; }
+  }
   entries.sort((a, b) => entryDate(a) - entryDate(b));
   renderVitalsLatest(entries);
   /* Latest readings are shown above regardless; only the charts need the library. */
@@ -1393,13 +1549,20 @@ async function compressCanvas(canvas) {
 /* Writes the document record and every page of its pages subcollection in a
    single Firestore batch, so the two never end up out of step. */
 async function saveDocumentBatch({ category, title, docDate, explanation, kind, pages, text }) {
-  const ref = doc(collection(db, 'documents'));
-  const batch = writeBatch(db);
   const data = {
     title, docDate, kind: kind || 'images', category: category || 'general', pageCount: pages.length,
-    explanation: explanation || '', addedBy: state.name, addedAt: serverTimestamp(), updatedAt: serverTimestamp()
+    explanation: explanation || '', addedBy: state.name, addedAt: state.demo ? demoTs(new Date()) : serverTimestamp(), updatedAt: state.demo ? demoTs(new Date()) : serverTimestamp()
   };
   if (kind === 'text' && text) data.text = text;
+  if (state.demo) {
+    const id = fakeId('doc');
+    state.documents.unshift({ id, ...data });
+    state.demoPages[id] = pages;
+    renderDocsList();
+    return id;
+  }
+  const ref = doc(collection(db, 'documents'));
+  const batch = writeBatch(db);
   batch.set(ref, data);
   pages.forEach((p, i) => {
     batch.set(doc(db, 'documents', ref.id, 'pages', String(i + 1)), { n: i + 1, data: p.data, width: p.width, height: p.height });
@@ -1427,6 +1590,12 @@ async function openDocument(id) {
     return;
   }
   pagesEl.append(h('p', { class: 'muted', text: 'Loading pages' }));
+  if (state.demo) {
+    state.currentDoc.pages = state.demoPages[id] || [];
+    pagesEl.replaceChildren(...state.currentDoc.pages.map((p, i) => h('img', { src: 'data:image/jpeg;base64,' + p.data, alt: `Page ${i + 1}`, width: p.width, height: p.height, loading: 'lazy' })));
+    if (!state.currentDoc.pages.length) pagesEl.append(h('p', { class: 'empty', text: 'No pages found.' }));
+    return;
+  }
   try {
     const snap = await getDocs(query(collection(db, 'documents', id, 'pages'), orderBy('n')));
     if (!state.currentDoc || state.currentDoc.id !== id) return;
@@ -1505,8 +1674,10 @@ $('doc-save-explanation').addEventListener('click', async () => {
   if (!d) return;
   const btn = $('doc-save-explanation');
   btn.disabled = true;
+  const text = $('doc-explanation').value.trim();
+  if (state.demo) { d.explanation = text; renderDocsList(); toast('Explanation saved'); btn.disabled = false; return; }
   try {
-    await updateDoc(doc(db, 'documents', d.id), { explanation: $('doc-explanation').value.trim(), updatedAt: serverTimestamp() });
+    await updateDoc(doc(db, 'documents', d.id), { explanation: text, updatedAt: serverTimestamp() });
     toast('Explanation saved');
   } catch (e) { console.error(e); toast('Could not save'); }
   btn.disabled = false;
@@ -1516,6 +1687,13 @@ $('doc-delete').addEventListener('click', async () => {
   const d = currentDocRecord();
   if (!d) return;
   if (!(await confirmSheet('Delete document', `Delete "${d.title}" and its explanation? This cannot be undone.`, 'Delete', true))) return;
+  if (state.demo) {
+    delete state.demoPages[d.id];
+    state.documents = state.documents.filter((x) => x.id !== d.id);
+    showDocsList();
+    toast('Document deleted');
+    return;
+  }
   try {
     const snap = await getDocs(collection(db, 'documents', d.id, 'pages'));
     for (const p of snap.docs) await deleteDoc(p.ref);
@@ -1624,6 +1802,13 @@ function openDaySheet(key) {
         updatedAt: serverTimestamp()
       };
       closeSheet();
+      if (state.demo) {
+        state.days[key] = { ...state.days[key], ...data };
+        renderChemo(); renderTodayMood();
+        if (data.chemoDone && !wasDone) { confetti(); toast('One more session done. Well done.'); }
+        else toast('Saved');
+        return;
+      }
       try {
         await setDoc(doc(db, 'days', key), data, { merge: true });
         if (data.chemoDone && !wasDone) { confetti(); toast('One more session done. Well done.'); }
@@ -1632,6 +1817,7 @@ function openDaySheet(key) {
     } }, 'Save'),
     (info.chemo || info.mood || info.good) ? h('button', { class: 'btn btn-danger btn-block', type: 'button', onclick: async () => {
       closeSheet();
+      if (state.demo) { delete state.days[key]; renderChemo(); renderTodayMood(); toast('Day cleared'); return; }
       try { await deleteDoc(doc(db, 'days', key)); toast('Day cleared'); } catch (e) { console.error(e); toast('Could not clear'); }
     } }, 'Clear this day') : null,
     h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Cancel')
@@ -1648,6 +1834,11 @@ async function postCheer() {
   const text = input.value.trim();
   if (!text) return;
   input.value = '';
+  if (state.demo) {
+    state.cheers.unshift({ id: fakeId('cheer'), text, addedBy: state.name, createdAt: demoTs(new Date()) });
+    renderCheers();
+    return;
+  }
   try {
     await setDoc(doc(collection(db, 'cheers')), { text, addedBy: state.name, createdAt: serverTimestamp() });
   } catch (e) { console.error(e); toast('Could not post'); }
@@ -1753,6 +1944,12 @@ async function toggleGoal(day, key) {
   done[key] = !done[key];
   const nowAll = GOAL_ROWS.every((g) => done[g.key]);
   const wasAll = allGoalsDone(day);
+  if (state.demo) {
+    state.exercise[day] = { ...rec, day, done };
+    renderExercise();
+    if (nowAll && !wasAll) toast('All four done. Nice work.');
+    return;
+  }
   try {
     await setDoc(doc(db, 'exercise', day), { day, done, addedBy: state.name, updatedAt: serverTimestamp() }, { merge: true });
     if (nowAll && !wasAll) toast('All four done. Nice work.');
@@ -1770,6 +1967,7 @@ $('ex-steps-edit').addEventListener('click', () => {
       const v = parseInt(input.value, 10);
       if (isNaN(v) || v < 0) { toast('Please check the number'); return; }
       closeSheet();
+      if (state.demo) { state.exercise[day] = { ...rec, day, steps: v }; renderExercise(); toast('Steps saved'); return; }
       try { await setDoc(doc(db, 'exercise', day), { day, steps: v, addedBy: state.name, updatedAt: serverTimestamp() }, { merge: true }); toast('Steps saved'); }
       catch (e) { console.error(e); toast('Could not save'); }
     } }, 'Save'),
@@ -1795,6 +1993,7 @@ $('ex-goals-edit').addEventListener('click', () => {
         squats: Math.max(0, parseInt(squats.value, 10) || 0)
       };
       closeSheet();
+      if (state.demo) { state.profile = { ...state.profile, exerciseGoals }; renderExercise(); toast('Goals saved'); return; }
       try { await setDoc(doc(db, 'profile', 'main'), { exerciseGoals }, { merge: true }); toast('Goals saved'); }
       catch (e) { console.error(e); toast('Could not save'); }
     } }, 'Save'),
@@ -1857,6 +2056,7 @@ $('calls-edit').addEventListener('click', () => {
         if (l.value.trim() && n.value.trim()) calls.push({ label: l.value.trim(), number: n.value.trim() });
       });
       closeSheet();
+      if (state.demo) { state.profile = { ...state.profile, calls }; renderCalls(); toast('Numbers saved'); return; }
       try { await setDoc(doc(db, 'profile', 'main'), { calls }, { merge: true }); toast('Numbers saved'); }
       catch (e) { console.error(e); toast('Could not save'); }
     } }, 'Save'),
@@ -1878,7 +2078,7 @@ updateOnline();
 
 /* Roll over at midnight or when the app comes back to the foreground */
 function checkDayRollover() {
-  if (!state.user) return;
+  if (!state.user || state.demo) return;
   const today = todayStr();
   const expectedFrom = addDays(today, -1);
   if (state.recentFrom && state.recentFrom !== expectedFrom) {
