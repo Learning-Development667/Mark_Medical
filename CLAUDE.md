@@ -36,6 +36,7 @@ Live: https://learning-development667.github.io/Mark_Medical/
 ## Data model (Firestore)
 - `entries/{autoId}`: { day "YYYY-MM-DD", at Timestamp, type "med"|"temp"|"drink"|"food"|"weight"|"vitals"|"note", medId?, medName?, dose?, value? (number), heartRate? (number, bpm), systolic? (number, mmHg), diastolic? (number, mmHg), oxygen? (number, %), note?, amount? (food: "A few mouthfuls"|"About half"|"Most of it"|"All of it"), detail? (food: what went with it), addedBy, createdAt }
   - Food entries: `note` is the meal name, `detail` the optional "what is in it" text. The Food diary (More > Food diary) lists food entries day by day with each day's drinks total, over 7 to 90 days, and has a Print button (print stylesheet in `styles.css`).
+  - Notes for the team (More > Notes for the team): collates every `type: "note"` entry plus notes attached to temp, weight, vitals and med entries, by day, with the day's mood and "one good thing", a readings summary and when-needed doses. A "Worth mentioning" list comes from `vitalsFlags()`: plain threshold checks (temp 37.5/38.0, heart rate 100/120 or 50 and under, BP 140/90 and 160/100 or systolic 90 and under, oxygen 93/90 and under, weight down 2 kg (red at 4 kg), days under 1 L of drinks, days with nothing eaten, when-needed medicine use, low-mood days). Not medical advice, and the UI says so. Send/Copy/Download prefix the text with `NOTES_PROMPT`, asking Claude for questions for the oncologist or nurse. Print uses the same print stylesheet as the Food diary.
 - `meals/{autoId}`: { name, parts (string, what goes with it, may be empty), addedBy, createdAt, updatedAt }. Saved automatically when food is logged with "Remember this meal" ticked (on by default; an existing meal's parts are updated if changed). Offered as quick buttons and datalist autocomplete in the Food sheet, which fills `parts` in. Managed under More > Saved meals.
   - The Vitals sheet logs temperature, heart rate, blood pressure and oxygen together. Temperature is saved as its own `type: "temp"` entry (so the 37.5 / 38.0 colouring, the Today tile and the chart all keep working); the other readings save as one `type: "vitals"` entry. All are optional; at least one is required to save. Manual entry only, no HealthKit or Shortcuts integration.
 - `medicines/{id}`: { name, dose, how, purpose, kind "scheduled"|"prn", perDay?, minGapHours?, maxPerDay?, courseEnd? "YYYY-MM-DD", active, order }
@@ -48,7 +49,7 @@ Live: https://learning-development667.github.io/Mark_Medical/
 - `profile/main`: { calls: [{label, number}], exerciseGoals?: { pressups, situps, plankSeconds, squats } } (goal defaults 20, 20, 60, 2; editable in the app)
 
 ## Navigation
-Six bottom tabs: Today, Meds, Vitals, Chemo, Exercise, More. Documents, the Food diary and Saved meals live under More (and chemo plan documents also under Chemo). All charts live in Vitals.
+Six bottom tabs: Today, Meds, Vitals, Chemo, Exercise, More. Documents, Notes for the team, the Food diary and Saved meals live under More (and chemo plan documents also under Chemo). All charts live in Vitals.
 
 ## Access
 Only two email addresses may access real data, enforced in `firestore.rules` and mirrored in `config.js` (`users` map). Sign-in screen only; accounts are created in the Firebase console.

@@ -395,6 +395,14 @@ textarea { line-height: 1.5; resize: vertical; }
 .diary-title small { font-family: var(--font-body); font-size: 17px; font-weight: 400; color: var(--ink-soft); letter-spacing: 0; }
 .diary-sum { color: var(--ink-soft); margin: 0 0 8px; }
 
+/* Notes for the team: flagged readings */
+.flags { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.flag { display: flex; align-items: flex-start; gap: 10px; background: var(--surface); border-radius: var(--radius-sm); padding: 12px 14px; box-shadow: var(--shadow); border-left: 5px solid var(--teal); }
+.flag.is-amber { border-left-color: var(--amber); }
+.flag.is-red { border-left-color: var(--red); }
+.flag .pill { flex: none; }
+.flag-text { min-width: 0; overflow-wrap: anywhere; }
+
 @media print {
   body { background: #fff; }
   .topbar, .tabs, .btn, .segmented, .toast, .sheet, .quickadd, .confetti, #toast { display: none !important; }
