@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '11';
+const APP_VERSION = '12';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
 const TEXT_LIMIT_BYTES = 800 * 1024;
 const PAGE_MAX_DIM = 1600;
@@ -345,7 +345,7 @@ onAuthStateChanged(auth, async (user) => {
 
 /* Guest preview: no Firebase account, no Firestore access, ever. Everything
    this shows is made-up (see buildDemoFixture); nothing typed here is saved. */
-$('guest-button').addEventListener('click', () => {
+function enterPreview() {
   state.demo = true;
   state.name = 'Guest';
   $('signin').hidden = true;
@@ -354,7 +354,8 @@ $('guest-button').addEventListener('click', () => {
   $('more-user').textContent = 'Guest (preview, nothing saved)';
   $('guest-pill').hidden = false;
   startDemoData();
-});
+}
+$('guest-button').addEventListener('click', enterPreview);
 
 function exitPreview() {
   stopData();
@@ -2120,4 +2121,14 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) chec
 if ('serviceWorker' in navigator) {
   const scope = new URL('./', location.href).pathname;
   navigator.serviceWorker.register('sw.js', { scope }).catch((e) => console.warn('SW registration failed', e));
+}
+
+/* A ?guest link drops straight into the preview, no tap needed, for sharing.
+   The parameter is dropped from the address bar so a later refresh (after
+   leaving the preview) lands on the ordinary sign-in screen instead. This
+   runs last, after every top-level declaration the demo path needs (such
+   as demoIdSeq) has been initialised. */
+if (new URLSearchParams(location.search).has('guest')) {
+  history.replaceState(null, '', location.pathname + location.hash);
+  enterPreview();
 }
