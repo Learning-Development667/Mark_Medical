@@ -69,8 +69,10 @@ the shape below is what matters.
 
 1. **Text** — your email, e.g. `markbrown667@gmail.com`
 2. **Text** — your password
-3. **Find Health Samples** — Type: Heart Rate, Sort by: Newest First,
-   Limit: 1
+3. **Find Health Samples** — Type: Heart Rate, Limit: 1. Leave the
+   Start Date filter as it is. For Sort by, tap it, choose the field
+   **Start Date** from the list that appears, then set the order next
+   to it to descending (newest first, often shown as a down arrow).
 4. **Get Details of Health Samples** — Detail: Quantity (or "Value" on
    older iOS). This is the bpm number.
 5. **Get Numbers from Input**, fed the result of step 4 — a safety net
