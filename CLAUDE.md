@@ -49,4 +49,7 @@ Live: https://learning-development667.github.io/Mark_Medical/
 Six bottom tabs: Today, Meds, Vitals, Chemo, Exercise, More. Documents lives under More (and chemo plan documents also under Chemo). All charts live in Vitals.
 
 ## Access
-Only two email addresses may access data, enforced in `firestore.rules` and mirrored in `config.js` (`users` map). Sign-in screen only; accounts are created in the Firebase console.
+Only two email addresses may access real data, enforced in `firestore.rules` and mirrored in `config.js` (`users` map). Sign-in screen only; accounts are created in the Firebase console.
+
+## Guest preview mode
+Anyone signed in whose `config.js` name is mapped to exactly `"Guest"` gets a fully interactive preview instead of the real app: `startDemoData()` fills `state` from `buildDemoFixture()` (realistic made-up entries, a chemo calendar, cheer notes, exercise history) and every quick add, edit and delete throughout the file branches on `state.demo` to mutate that in-memory state and re-render, instead of calling Firestore. A `Preview · nothing saves` pill shows in the topbar. The guest's Firebase Auth account is deliberately never added to `isFamily()` in `firestore.rules`, so even a bug in the `state.demo` branches cannot leak real data to them. Nothing typed by a guest is ever written anywhere; it is gone on refresh or sign-out.
