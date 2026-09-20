@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '13';
+const APP_VERSION = '14';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
 const TEXT_LIMIT_BYTES = 800 * 1024;
 const PAGE_MAX_DIM = 1600;
@@ -267,6 +267,8 @@ const state = {
   charts: {},
   trendRange: 7,
   foodRange: 14,
+  notesRange: 14,
+  notesText: '',
   meals: [],
   currentDoc: null,
   docsReturn: 'more',
@@ -425,8 +427,9 @@ function buildDemoFixture() {
     e(-8, '10:00', 'Shelley', { type: 'drink', value: 300, note: 'Water' }),
     e(-8, '08:00', 'Mark', { type: 'food', note: 'Porridge', detail: 'honey and banana', amount: 'All of it' }),
     e(-8, '18:30', 'Shelley', { type: 'food', note: 'Homity pie', detail: 'peas, mash, gravy', amount: 'About half' }),
-    e(-7, '15:00', 'Mark', { type: 'temp', value: 37.7 }),
-    e(-7, '15:05', 'Mark', { type: 'vitals', heartRate: 88, systolic: 128, diastolic: 82, oxygen: 95 }),
+    e(-7, '15:00', 'Mark', { type: 'temp', value: 37.7, note: 'Felt shivery after lunch' }),
+    e(-7, '15:05', 'Mark', { type: 'vitals', heartRate: 104, systolic: 128, diastolic: 82, oxygen: 95 }),
+    e(-7, '20:30', 'Shelley', { type: 'med', medId: 'oramorph', medName: 'Oramorph 10mg/5ml', dose: '2.5 ml (5 mg)', note: 'Back pain, worse lying down' }),
     e(-7, '15:10', 'Mark', { type: 'note', note: 'A bit more tired after today’s session.' }),
     e(-6, '08:00', 'Shelley', { type: 'temp', value: 37.0 }),
     e(-6, '07:30', 'Mark', { type: 'weight', value: 78.5 }),
@@ -463,6 +466,7 @@ function buildDemoFixture() {
 
   const days = {};
   days[day(-10)] = { chemo: true, chemoDone: true, mood: 4, good: 'Watched a film with Shelley', updatedBy: 'Mark', updatedAt: demoTs(at(-10, '18:00')) };
+  days[day(-7)] = { mood: 2, good: 'Shelley made soup', updatedBy: 'Mark', updatedAt: demoTs(at(-7, '19:00')) };
   days[day(-3)] = { chemo: true, chemoDone: true, mood: 3, good: 'Short walk in the garden', updatedBy: 'Mark', updatedAt: demoTs(at(-3, '18:00')) };
   days[day(4)] = { chemo: true, chemoDone: false, updatedBy: 'Mark', updatedAt: demoTs(at(-1, '09:00')) };
   days[day(0)] = { mood: 4, good: 'Cup of tea in the sun with Shelley', updatedBy: 'Mark', updatedAt: demoTs(at(0, '08:30')) };
@@ -675,12 +679,13 @@ document.querySelectorAll('.tab').forEach((btn) => {
 });
 
 function showTab(name) {
-  const highlight = name === 'docs' ? (state.docsReturn || 'more') : name === 'food' ? 'more' : name;
+  const highlight = name === 'docs' ? (state.docsReturn || 'more') : (name === 'food' || name === 'notes') ? 'more' : name;
   document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('is-active', b.dataset.tab === highlight));
   document.querySelectorAll('.view').forEach((v) => { v.hidden = v.dataset.view !== name; });
   window.scrollTo(0, 0);
   if (name === 'vitals') renderVitals();
   if (name === 'food') renderFoodDiary();
+  if (name === 'notes') renderNotesReport();
   if (name === 'chemo') renderChemo();
   if (name === 'exercise') renderExercise();
   if (name === 'docs') showDocsList();
@@ -1087,19 +1092,21 @@ function fmtMl(ml) {
   return ml >= 1000 ? (ml / 1000).toFixed(2).replace(/0+$/, '').replace(/\.$/, '') + ' L' : ml + ' ml';
 }
 
+/* Every entry from a day onwards; null if the read failed */
+async function loadEntriesFrom(from) {
+  if (state.demo) return state.recentEntries.filter((e) => e.day >= from);
+  try {
+    const snap = await getDocs(query(collection(db, 'entries'), where('day', '>=', from)));
+    return snap.docs.map((d) => d.data());
+  } catch (e) { console.error(e); return null; }
+}
+
 async function renderFoodDiary() {
   const today = todayStr();
   const from = addDays(today, -(state.foodRange - 1));
   $('food-sub').textContent = `Last ${state.foodRange} days, from ${fmtDayNum(from)}`;
-  let entries;
-  if (state.demo) {
-    entries = state.recentEntries.filter((e) => e.day >= from);
-  } else {
-    try {
-      const snap = await getDocs(query(collection(db, 'entries'), where('day', '>=', from)));
-      entries = snap.docs.map((d) => d.data());
-    } catch (e) { console.error(e); return; }
-  }
+  const entries = await loadEntriesFrom(from);
+  if (!entries) return;
   const byDay = {};
   entries.forEach((e) => {
     if (e.type !== 'food' && e.type !== 'drink') return;
@@ -1137,6 +1144,231 @@ function diaryRow(e) {
       h('div', { class: 'entry-sub', text: [e.amount, e.detail, 'by ' + (e.addedBy || 'unknown')].filter(Boolean).join(' · ') })
     )
   );
+}
+
+/* ------------------------------------------------------------------ */
+/* Notes for the team: every note collated by day, with mood, readings   */
+/* and when-needed doses for context, plus simple checks on the vitals.  */
+/* Sent to Claude to be turned into questions for the oncologist/nurse.  */
+/* ------------------------------------------------------------------ */
+
+const NOTES_PROMPT = 'Please turn these care notes into a short, clear list of questions to ask my oncologist or specialist nurse at the next appointment. ' +
+  'Group them by topic, put the most important first, and keep the wording plain. ' +
+  'If anything here looks like it should be checked before the next appointment, say so clearly at the top. ' +
+  'The "worth mentioning" items are simple threshold checks made by the app, not a diagnosis.';
+
+$('more-notes').addEventListener('click', () => showTab('notes'));
+$('notes-back').addEventListener('click', () => showTab('more'));
+$('notes-print').addEventListener('click', () => window.print());
+document.querySelectorAll('#view-notes .seg').forEach((b) => b.addEventListener('click', () => {
+  state.notesRange = parseInt(b.dataset.range, 10);
+  document.querySelectorAll('#view-notes .seg').forEach((x) => x.classList.toggle('is-active', x === b));
+  renderNotesReport();
+}));
+
+$('notes-share').addEventListener('click', async () => {
+  const text = state.notesText;
+  if (!text) return;
+  if (!navigator.share) {
+    await copyText(text);
+    toast('Sharing is not available here. Copied instead.');
+    return;
+  }
+  try {
+    await navigator.share({ title: 'Care Log notes', text });
+  } catch (e) {
+    if (e && e.name !== 'AbortError') { await copyText(text); toast('Could not share. Copied instead.'); }
+  }
+});
+
+$('notes-copy').addEventListener('click', async () => {
+  if (!state.notesText) return;
+  await copyText(state.notesText);
+  toast('Copied. Paste it into the Claude app.');
+});
+
+$('notes-download').addEventListener('click', () => {
+  if (!state.notesText) return;
+  const blob = new Blob([state.notesText], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = h('a', { href: url, download: 'care-log-notes-' + todayStr() + '.txt' });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+});
+
+function listDays(days) { return days.map(fmtDayShort).join(', '); }
+function plural(n, word) { return n + ' ' + word + (n === 1 ? '' : 's'); }
+
+/* Plain-language threshold checks. Red and amber follow the app's temperature
+   colours; teal is context worth passing on rather than a concern. */
+function vitalsFlags(entries, rangeDays, today) {
+  const flags = [];
+  const when = (e) => fmtDayShort(e.day) + ' at ' + fmtTime(entryDate(e));
+  const sorted = entries.slice().sort((a, b) => entryDate(a) - entryDate(b));
+
+  sorted.forEach((e) => {
+    if (e.type === 'temp') {
+      const v = Number(e.value);
+      if (v >= 38) flags.push({ level: 'red', text: `High temperature ${v.toFixed(1)} °C on ${when(e)}` });
+      else if (v >= 37.5) flags.push({ level: 'amber', text: `Raised temperature ${v.toFixed(1)} °C on ${when(e)}` });
+    }
+    if (e.type === 'vitals') {
+      const hr = Number(e.heartRate) || 0, sys = Number(e.systolic) || 0, dia = Number(e.diastolic) || 0, ox = Number(e.oxygen) || 0;
+      if (hr >= 120) flags.push({ level: 'red', text: `Fast heart rate ${Math.round(hr)} bpm on ${when(e)}` });
+      else if (hr >= 100) flags.push({ level: 'amber', text: `Heart rate on the high side, ${Math.round(hr)} bpm on ${when(e)}` });
+      else if (hr && hr <= 50) flags.push({ level: 'amber', text: `Slow heart rate ${Math.round(hr)} bpm on ${when(e)}` });
+      if (sys && dia) {
+        if (sys >= 160 || dia >= 100) flags.push({ level: 'red', text: `High blood pressure ${Math.round(sys)}/${Math.round(dia)} on ${when(e)}` });
+        else if (sys >= 140 || dia >= 90) flags.push({ level: 'amber', text: `Blood pressure on the high side, ${Math.round(sys)}/${Math.round(dia)} on ${when(e)}` });
+        else if (sys <= 90) flags.push({ level: 'amber', text: `Low blood pressure ${Math.round(sys)}/${Math.round(dia)} on ${when(e)}` });
+      }
+      if (ox && ox <= 90) flags.push({ level: 'red', text: `Low oxygen ${Math.round(ox)}% on ${when(e)}` });
+      else if (ox && ox <= 93) flags.push({ level: 'amber', text: `Oxygen a little low, ${Math.round(ox)}% on ${when(e)}` });
+    }
+  });
+
+  const weights = sorted.filter((e) => e.type === 'weight');
+  if (weights.length >= 2) {
+    const first = Number(weights[0].value), last = Number(weights[weights.length - 1].value);
+    const drop = first - last;
+    if (drop >= 2) flags.push({ level: drop >= 4 ? 'red' : 'amber', text: `Weight down ${drop.toFixed(1)} kg over the period, ${first.toFixed(1)} kg on ${fmtDayShort(weights[0].day)} to ${last.toFixed(1)} kg on ${fmtDayShort(weights[weights.length - 1].day)}` });
+  }
+
+  /* Intake: only days that were actually logged, and not today, which is still going */
+  const byDay = {};
+  entries.forEach((e) => { (byDay[e.day] = byDay[e.day] || []).push(e); });
+  const loggedDays = Object.keys(byDay).filter((d) => d < today).sort();
+  const lowDrink = loggedDays.filter((d) => byDay[d].some((e) => e.type === 'drink') && byDay[d].filter((e) => e.type === 'drink').reduce((s, e) => s + (Number(e.value) || 0), 0) < 1000);
+  const noFood = loggedDays.filter((d) => !byDay[d].some((e) => e.type === 'food'));
+  if (lowDrink.length) flags.push({ level: 'amber', text: `Under 1 litre of drinks logged on ${plural(lowDrink.length, 'day')}: ${listDays(lowDrink)}` });
+  if (noFood.length) flags.push({ level: 'amber', text: `Nothing eaten logged on ${plural(noFood.length, 'day')}: ${listDays(noFood)}` });
+
+  activePrn().forEach((m) => {
+    const perDay = {};
+    entries.filter((e) => e.type === 'med' && e.medId === m.id).forEach((e) => { perDay[e.day] = (perDay[e.day] || 0) + 1; });
+    const days = Object.keys(perDay).sort();
+    if (!days.length) return;
+    const most = days.reduce((a, b) => (perDay[b] > perDay[a] ? b : a));
+    const hitMax = m.maxPerDay && perDay[most] >= m.maxPerDay;
+    flags.push({ level: hitMax ? 'amber' : 'teal', text: `${m.name} needed on ${days.length} of ${rangeDays} days, most on ${fmtDayShort(most)} (${plural(perDay[most], 'dose')}${hitMax ? ', the daily maximum' : ''})` });
+  });
+
+  const lowMood = Object.keys(state.days).filter((d) => d >= addDays(today, -(rangeDays - 1)) && d <= today && state.days[d].mood && state.days[d].mood <= 2).sort();
+  if (lowMood.length) flags.push({ level: 'amber', text: `Felt rough or low on ${plural(lowMood.length, 'day')}: ${listDays(lowMood)}` });
+
+  const rank = { red: 0, amber: 1, teal: 2 };
+  return flags.sort((a, b) => rank[a.level] - rank[b.level]);
+}
+
+function noteContext(e) {
+  switch (e.type) {
+    case 'temp': return 'with temperature ' + Number(e.value).toFixed(1) + ' °C';
+    case 'weight': return 'with weight ' + Number(e.value).toFixed(1) + ' kg';
+    case 'vitals': {
+      const p = [];
+      if (e.heartRate) p.push(Math.round(e.heartRate) + ' bpm');
+      if (e.systolic && e.diastolic) p.push(Math.round(e.systolic) + '/' + Math.round(e.diastolic));
+      if (e.oxygen) p.push(Math.round(e.oxygen) + '% oxygen');
+      return 'with vitals ' + p.join(', ');
+    }
+    case 'med': return 'with ' + (e.medName || 'a medicine');
+    default: return '';
+  }
+}
+
+function dayReadings(list) {
+  const bits = [];
+  const temps = list.filter((e) => e.type === 'temp').map((e) => Number(e.value));
+  if (temps.length) { const lo = Math.min(...temps), hi = Math.max(...temps); bits.push('Temp ' + (lo === hi ? lo.toFixed(1) : lo.toFixed(1) + ' to ' + hi.toFixed(1)) + ' °C'); }
+  const hrs = list.filter((e) => e.type === 'vitals' && e.heartRate).map((e) => Math.round(e.heartRate));
+  if (hrs.length) { const lo = Math.min(...hrs), hi = Math.max(...hrs); bits.push('HR ' + (lo === hi ? lo : lo + ' to ' + hi) + ' bpm'); }
+  const bp = list.filter((e) => e.type === 'vitals' && e.systolic && e.diastolic).pop();
+  if (bp) bits.push('BP ' + Math.round(bp.systolic) + '/' + Math.round(bp.diastolic));
+  const ox = list.filter((e) => e.type === 'vitals' && e.oxygen).map((e) => Math.round(e.oxygen));
+  if (ox.length) bits.push('O2 ' + Math.min(...ox) + '%');
+  const w = list.filter((e) => e.type === 'weight').pop();
+  if (w) bits.push('Weight ' + Number(w.value).toFixed(1) + ' kg');
+  const ml = list.filter((e) => e.type === 'drink').reduce((s, e) => s + (Number(e.value) || 0), 0);
+  if (ml) bits.push('Drinks ' + fmtMl(ml));
+  const food = list.filter((e) => e.type === 'food').length;
+  if (food) bits.push(food === 1 ? '1 food entry' : food + ' food entries');
+  return bits.join(' · ');
+}
+
+function dayPrn(list) {
+  const counts = {};
+  list.filter((e) => e.type === 'med').forEach((e) => {
+    const m = state.medicines.find((x) => x.id === e.medId);
+    if (m && m.kind === 'prn') counts[e.medName || m.name] = (counts[e.medName || m.name] || 0) + 1;
+  });
+  return Object.keys(counts).map((n) => n + ' x' + counts[n]).join(', ');
+}
+
+function buildNotesReport(entries, from, today) {
+  const rangeDays = state.notesRange;
+  const flags = vitalsFlags(entries, rangeDays, today);
+  const byDay = {};
+  entries.forEach((e) => { (byDay[e.day] = byDay[e.day] || []).push(e); });
+  const days = [];
+  for (let day = from; day <= today; day = addDays(day, 1)) {
+    const list = (byDay[day] || []).slice().sort((a, b) => entryDate(a) - entryDate(b));
+    const info = state.days[day] || {};
+    const notes = list.filter((e) => e.type === 'note' || (e.note && ['temp', 'weight', 'vitals', 'med'].includes(e.type)))
+      .map((e) => ({ time: fmtTime(entryDate(e)), who: e.addedBy || 'unknown', text: e.note, context: e.type === 'note' ? '' : noteContext(e) }));
+    const mood = info.mood ? MOODS[info.mood - 1].label : '';
+    const readings = dayReadings(list);
+    const prn = dayPrn(list);
+    if (!notes.length && !mood && !info.good && !readings) continue;
+    days.push({ day, mood, good: info.good || '', readings, prn, notes });
+  }
+
+  const lines = [NOTES_PROMPT, '', `Care Log notes, ${fmtDayNum(from)} to ${fmtDayNum(today)}`, '', 'Worth mentioning from the readings:'];
+  if (flags.length) flags.forEach((f) => lines.push('- ' + f.text));
+  else lines.push('- Nothing out of the ordinary in the readings for this period.');
+  lines.push('', 'Notes by day:');
+  days.forEach((d) => {
+    lines.push('', `${fmtDayLong(d.day)} (${fmtDayNum(d.day)})`);
+    if (d.mood || d.good) lines.push('Feeling: ' + [d.mood, d.good ? 'One good thing: ' + d.good : ''].filter(Boolean).join('. '));
+    if (d.readings) lines.push('Readings: ' + d.readings);
+    if (d.prn) lines.push('When-needed medicines: ' + d.prn);
+    d.notes.forEach((n) => lines.push(`- ${n.time} ${n.who}${n.context ? ' (' + n.context + ')' : ''}: ${n.text}`));
+  });
+  return { flags, days, text: lines.join('\n') };
+}
+
+async function renderNotesReport() {
+  const today = todayStr();
+  const from = addDays(today, -(state.notesRange - 1));
+  $('notes-sub').textContent = `Last ${state.notesRange} days, from ${fmtDayNum(from)}`;
+  const entries = await loadEntriesFrom(from);
+  if (!entries) return;
+  const report = buildNotesReport(entries, from, today);
+  state.notesText = report.text;
+
+  const levelWord = { red: 'Check', amber: 'Mention', teal: 'Context' };
+  $('notes-flags').replaceChildren(...report.flags.map((f) => h('div', { class: 'flag is-' + f.level },
+    h('span', { class: 'pill pill-' + f.level, text: levelWord[f.level] }),
+    h('span', { class: 'flag-text', text: f.text })
+  )));
+  if (!report.flags.length) $('notes-flags').append(h('p', { class: 'muted', text: 'Nothing out of the ordinary in the readings for this period.' }));
+
+  const shown = report.days.slice().reverse();
+  $('notes-days').replaceChildren(...shown.map((d) => h('section', { class: 'diary-day' },
+    h('h3', { class: 'diary-title' }, fmtDayLong(d.day), h('small', { text: d.day === today ? 'Today' : fmtDayNum(d.day) })),
+    (d.mood || d.good) ? h('p', { class: 'diary-sum', text: 'Feeling ' + [d.mood.toLowerCase(), d.good].filter(Boolean).join('. ') }) : null,
+    d.readings ? h('p', { class: 'diary-sum', text: d.readings }) : null,
+    d.prn ? h('p', { class: 'diary-sum', text: 'When needed: ' + d.prn }) : null,
+    d.notes.length ? h('ul', { class: 'timeline' }, ...d.notes.map((n) => h('li', { class: 'entry type-note' },
+      h('span', { class: 'entry-time', text: n.time }),
+      h('div', { class: 'entry-main' },
+        h('div', { class: 'entry-title', text: n.text }),
+        h('div', { class: 'entry-sub', text: [n.context, 'by ' + n.who].filter(Boolean).join(' · ') })
+      )
+    ))) : null
+  )));
+  $('notes-empty').hidden = report.days.length > 0;
 }
 
 /* Today's mood, from the Chemo Party Plan day record, shown as a one-line card */
@@ -1395,15 +1627,8 @@ function cssVar(name) { return getComputedStyle(document.documentElement).getPro
 
 async function renderVitals() {
   const from = addDays(todayStr(), -(state.trendRange - 1));
-  let entries;
-  if (state.demo) {
-    entries = state.recentEntries.filter((e) => e.day >= from);
-  } else {
-    try {
-      const snap = await getDocs(query(collection(db, 'entries'), where('day', '>=', from)));
-      entries = snap.docs.map((d) => d.data());
-    } catch (e) { console.error(e); return; }
-  }
+  const entries = await loadEntriesFrom(from);
+  if (!entries) return;
   entries.sort((a, b) => entryDate(a) - entryDate(b));
   renderVitalsLatest(entries);
   /* Latest readings are shown above regardless; only the charts need the library. */
