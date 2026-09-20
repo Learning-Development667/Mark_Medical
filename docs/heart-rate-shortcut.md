@@ -55,9 +55,17 @@ Open the Shortcuts app. On the Library screen, tap **All Shortcuts** (the
 top row, showing a number), not the + at the very top of Library itself,
 which only creates a folder. On the All Shortcuts screen, tap the **+**
 in the top corner to open a blank new shortcut. Name it **exactly**
-`Care Log Heart Rate`, and add these actions in order, using the Search
-Actions box to find each one. Exact wording can move slightly between
-iOS versions; the shape below is what matters.
+`Care Log Heart Rate` straightaway, before adding anything, so it can't
+get lost under "New Shortcut" if you back out partway through.
+
+Add these actions in order, using the **Search Actions** box that sits
+inside that shortcut's own editor, the screen headed "Add actions from
+below to create a shortcut". Searching from the Library or All Shortcuts
+screen instead turns up other people's ready-made shortcuts with similar
+names (for example "Find Health Samples Where", a sample Apple installs);
+those are not what you want, and tapping one opens it instead of adding
+a step to yours. Exact wording can move slightly between iOS versions;
+the shape below is what matters.
 
 1. **Text** — your email, e.g. `markbrown667@gmail.com`
 2. **Text** — your password
