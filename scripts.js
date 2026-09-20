@@ -13,7 +13,7 @@ import {
   query, where, orderBy, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '6';
+const APP_VERSION = '7';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
 const TEXT_LIMIT_BYTES = 800 * 1024;
 const PAGE_MAX_DIM = 1600;
@@ -25,6 +25,16 @@ const CDN = {
   pdfWorker: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js',
   mammoth: 'https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js'
 };
+
+/* Name of the iOS Shortcut set up on Mark's and Shelley's phones (see
+   docs/heart-rate-shortcut.md). It reads the latest heart rate from Apple
+   Health and writes an entry straight to Firestore, so this is just the
+   handoff: a shortcuts:// link, no HealthKit access from the web page itself. */
+const HEALTH_SHORTCUT_NAME = 'Care Log Heart Rate';
+function heartShortcutUrl() {
+  const success = encodeURIComponent(location.href.split('#')[0]);
+  return 'shortcuts://x-callback-url/run-shortcut?name=' + encodeURIComponent(HEALTH_SHORTCUT_NAME) + '&x-success=' + success;
+}
 
 const SEED_MEDICINES = [
   { id: 'dalteparin', name: 'Dalteparin injection', dose: '7,500 units', how: 'Twice a day, morning and evening', purpose: 'Blood clots in lungs', kind: 'scheduled', perDay: 2 },
@@ -486,6 +496,7 @@ function entryTitle(e) {
     case 'drink': return [h('span', { text: e.note || 'Drink' }), e.value ? h('span', { class: 'val', text: '  ' + e.value + ' ml' }) : null];
     case 'food': return [h('span', { text: e.note || 'Food' })];
     case 'weight': return [h('span', { class: 'val', text: Number(e.value).toFixed(1) + ' kg' })];
+    case 'heart': return [h('span', { class: 'val', text: Math.round(e.value) + ' bpm' })];
     default: return [h('span', { text: e.note || 'Note' })];
   }
 }
@@ -497,6 +508,7 @@ function entrySub(e) {
   if (e.type === 'temp' && e.note) bits.push(e.note);
   if (e.type === 'food' && e.amount) bits.push(e.amount);
   if (e.type === 'weight' && e.note) bits.push(e.note);
+  if (e.type === 'heart' && e.note) bits.push(e.note);
   bits.push('by ' + (e.addedBy || 'unknown'));
   return bits.join(' · ');
 }
@@ -643,7 +655,24 @@ function openAdd(type) {
     };
   }
 
-  const titles = { temp: 'Temperature', drink: 'Drink', food: 'Food', weight: 'Weight', note: 'Note' };
+  if (type === 'heart') {
+    const last = state.recentEntries.find((e) => e.type === 'heart');
+    const input = h('input', { type: 'number', inputmode: 'numeric', min: '30', max: '220', step: '1', value: last ? String(Math.round(last.value)) : '', placeholder: '0', required: true });
+    body.append(
+      h('a', { class: 'btn btn-primary btn-block', href: heartShortcutUrl() }, 'Get from Apple Health'),
+      h('p', { class: 'hint', text: `Opens Shortcuts and runs "${HEALTH_SHORTCUT_NAME}". Set that shortcut up once on this phone; see docs/heart-rate-shortcut.md.` }),
+      h('h3', { class: 'section-title', text: 'Or enter manually' }),
+      h('div', { class: 'bigvalue' }, input, h('span', { class: 'unit', text: 'bpm' })),
+      field('Time', time), field('Note', note)
+    );
+    getData = () => {
+      const v = parseInt(input.value, 10);
+      if (isNaN(v) || v <= 0 || v > 300) return null;
+      return { type: 'heart', value: v, note: note.value.trim() };
+    };
+  }
+
+  const titles = { temp: 'Temperature', drink: 'Drink', food: 'Food', weight: 'Weight', note: 'Note', heart: 'Heart rate' };
   const save = h('button', { class: 'btn btn-primary btn-block', type: 'button' }, 'Save');
   save.addEventListener('click', async () => {
     const data = getData();
@@ -935,6 +964,25 @@ async function renderTrends() {
     options: { responsive: true, maintainAspectRatio: false,
       scales: { x: { grid: { display: false } }, y: { grid: { color: line }, ticks: { callback: (v) => v + ' kg' } } },
       plugins: { legend: { display: false }, tooltip: { callbacks: { label: (i) => Number(i.raw).toFixed(1) + ' kg' } } } }
+  });
+
+  /* Heart rate: points in time across the range, same layout as temperature */
+  const hearts = entries.filter((e) => e.type === 'heart');
+  const hPoints = hearts.map((e) => ({ x: entryDate(e).getTime(), y: Number(e.value) }));
+  makeChart('heart', {
+    type: 'line',
+    data: { datasets: [{ label: 'Heart rate', data: hPoints, borderColor: teal, backgroundColor: teal, pointRadius: 5, pointHoverRadius: 7, tension: 0.25, showLine: hPoints.length > 1 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: {
+        x: { type: 'linear', min: start, max: end, grid: { color: line }, ticks: { maxRotation: 0, autoSkip: true, callback: (v) => { const t = tickDays.indexOf(v); return t >= 0 ? dayLabel(days[t]) : ''; }, stepSize: 864e5 }, afterBuildTicks: (axis) => { axis.ticks = tickDays.map((t) => ({ value: t })); } },
+        y: { beginAtZero: false, grid: { color: line }, ticks: { callback: (v) => v + ' bpm' } }
+      },
+      plugins: { legend: { display: false }, tooltip: { callbacks: {
+        title: (items) => items.length ? new Date(items[0].raw.x).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '',
+        label: (item) => Math.round(item.raw.y) + ' bpm'
+      } } }
+    }
   });
 }
 

@@ -253,7 +253,7 @@ textarea { line-height: 1.5; resize: vertical; }
 .tile.is-amber .tile-value { color: var(--amber); }
 .tile.is-green .tile-value { color: var(--green); }
 
-.quickadd { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin: 16px 0 6px; }
+.quickadd { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 16px 0 6px; }
 .qa {
   min-height: 72px;
   border: 0; border-radius: var(--radius-sm);
@@ -277,6 +277,7 @@ textarea { line-height: 1.5; resize: vertical; }
 .entry.type-drink { border-left-color: #3E7FA6; }
 .entry.type-food { border-left-color: #5F7F3E; }
 .entry.type-weight { border-left-color: #6A5A8E; }
+.entry.type-heart { border-left-color: #A33B5A; }
 .entry.type-note { border-left-color: var(--ink-soft); }
 .entry-time { font-family: var(--font-mono); font-size: 18px; font-weight: 500; }
 .entry-main { min-width: 0; }
