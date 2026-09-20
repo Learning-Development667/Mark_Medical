@@ -67,6 +67,12 @@ those are not what you want, and tapping one opens it instead of adding
 a step to yours. Exact wording can move slightly between iOS versions;
 the shape below is what matters.
 
+**Check before every action you add:** the very top of the screen
+should say `Care Log Heart Rate`. If it says anything else, even the
+name of the action you just searched for, you've drifted into a
+different, new shortcut. Back out without adding anything, reopen
+`Care Log Heart Rate` from All Shortcuts, and try again from there.
+
 1. **Text** — your email, e.g. `markbrown667@gmail.com`
 2. **Text** — your password
 3. **Find Health Samples** — Type: Heart Rate, Limit: 1. Leave the
