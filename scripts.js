@@ -13,7 +13,7 @@ import {
   query, where, orderBy, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '7';
+const APP_VERSION = '8';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
 const TEXT_LIMIT_BYTES = 800 * 1024;
 const PAGE_MAX_DIM = 1600;
@@ -25,16 +25,6 @@ const CDN = {
   pdfWorker: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js',
   mammoth: 'https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js'
 };
-
-/* Name of the iOS Shortcut set up on Mark's and Shelley's phones (see
-   docs/heart-rate-shortcut.md). It reads the latest heart rate from Apple
-   Health and writes an entry straight to Firestore, so this is just the
-   handoff: a shortcuts:// link, no HealthKit access from the web page itself. */
-const HEALTH_SHORTCUT_NAME = 'Care Log Heart Rate';
-function heartShortcutUrl() {
-  const success = encodeURIComponent(location.href.split('#')[0]);
-  return 'shortcuts://x-callback-url/run-shortcut?name=' + encodeURIComponent(HEALTH_SHORTCUT_NAME) + '&x-success=' + success;
-}
 
 const SEED_MEDICINES = [
   { id: 'dalteparin', name: 'Dalteparin injection', dose: '7,500 units', how: 'Twice a day, morning and evening', purpose: 'Blood clots in lungs', kind: 'scheduled', perDay: 2 },
@@ -496,7 +486,13 @@ function entryTitle(e) {
     case 'drink': return [h('span', { text: e.note || 'Drink' }), e.value ? h('span', { class: 'val', text: '  ' + e.value + ' ml' }) : null];
     case 'food': return [h('span', { text: e.note || 'Food' })];
     case 'weight': return [h('span', { class: 'val', text: Number(e.value).toFixed(1) + ' kg' })];
-    case 'heart': return [h('span', { class: 'val', text: Math.round(e.value) + ' bpm' })];
+    case 'vitals': {
+      const parts = [];
+      if (e.heartRate) parts.push(Math.round(e.heartRate) + ' bpm');
+      if (e.systolic && e.diastolic) parts.push(Math.round(e.systolic) + '/' + Math.round(e.diastolic));
+      if (e.oxygen) parts.push(Math.round(e.oxygen) + '% O2');
+      return [h('span', { class: 'val', text: parts.join('  ·  ') || 'Vitals' })];
+    }
     default: return [h('span', { text: e.note || 'Note' })];
   }
 }
@@ -508,7 +504,7 @@ function entrySub(e) {
   if (e.type === 'temp' && e.note) bits.push(e.note);
   if (e.type === 'food' && e.amount) bits.push(e.amount);
   if (e.type === 'weight' && e.note) bits.push(e.note);
-  if (e.type === 'heart' && e.note) bits.push(e.note);
+  if (e.type === 'vitals' && e.note) bits.push(e.note);
   bits.push('by ' + (e.addedBy || 'unknown'));
   return bits.join(' · ');
 }
@@ -655,24 +651,33 @@ function openAdd(type) {
     };
   }
 
-  if (type === 'heart') {
-    const last = state.recentEntries.find((e) => e.type === 'heart');
-    const input = h('input', { type: 'number', inputmode: 'numeric', min: '30', max: '220', step: '1', value: last ? String(Math.round(last.value)) : '', placeholder: '0', required: true });
+  if (type === 'vitals') {
+    const hr = h('input', { type: 'number', inputmode: 'numeric', min: '30', max: '220', step: '1', placeholder: '0' });
+    const sys = h('input', { type: 'number', inputmode: 'numeric', min: '50', max: '250', step: '1', placeholder: '0' });
+    const dia = h('input', { type: 'number', inputmode: 'numeric', min: '30', max: '150', step: '1', placeholder: '0' });
+    const o2 = h('input', { type: 'number', inputmode: 'numeric', min: '50', max: '100', step: '1', placeholder: '0' });
     body.append(
-      h('a', { class: 'btn btn-primary btn-block', href: heartShortcutUrl() }, 'Get from Apple Health'),
-      h('p', { class: 'hint', text: `Opens Shortcuts and runs "${HEALTH_SHORTCUT_NAME}". Set that shortcut up once on this phone; see docs/heart-rate-shortcut.md.` }),
-      h('h3', { class: 'section-title', text: 'Or enter manually' }),
-      h('div', { class: 'bigvalue' }, input, h('span', { class: 'unit', text: 'bpm' })),
+      h('p', { class: 'hint', text: 'Fill in whichever readings you have. At least one is needed to save.' }),
+      field('Heart rate (bpm)', hr),
+      h('div', { class: 'field-row' }, field('Systolic', sys), field('Diastolic', dia)),
+      field('Oxygen (%)', o2),
       field('Time', time), field('Note', note)
     );
     getData = () => {
-      const v = parseInt(input.value, 10);
-      if (isNaN(v) || v <= 0 || v > 300) return null;
-      return { type: 'heart', value: v, note: note.value.trim() };
+      const hrV = parseInt(hr.value, 10);
+      const sysV = parseInt(sys.value, 10);
+      const diaV = parseInt(dia.value, 10);
+      const o2V = parseInt(o2.value, 10);
+      const data = { type: 'vitals', note: note.value.trim() };
+      let has = false;
+      if (!isNaN(hrV) && hrV > 0) { data.heartRate = hrV; has = true; }
+      if (!isNaN(sysV) && sysV > 0 && !isNaN(diaV) && diaV > 0) { data.systolic = sysV; data.diastolic = diaV; has = true; }
+      if (!isNaN(o2V) && o2V > 0) { data.oxygen = o2V; has = true; }
+      return has ? data : null;
     };
   }
 
-  const titles = { temp: 'Temperature', drink: 'Drink', food: 'Food', weight: 'Weight', note: 'Note', heart: 'Heart rate' };
+  const titles = { temp: 'Temperature', drink: 'Drink', food: 'Food', weight: 'Weight', note: 'Note', vitals: 'Vitals' };
   const save = h('button', { class: 'btn btn-primary btn-block', type: 'button' }, 'Save');
   save.addEventListener('click', async () => {
     const data = getData();
@@ -966,22 +971,47 @@ async function renderTrends() {
       plugins: { legend: { display: false }, tooltip: { callbacks: { label: (i) => Number(i.raw).toFixed(1) + ' kg' } } } }
   });
 
-  /* Heart rate: points in time across the range, same layout as temperature */
-  const hearts = entries.filter((e) => e.type === 'heart');
-  const hPoints = hearts.map((e) => ({ x: entryDate(e).getTime(), y: Number(e.value) }));
+  /* Vitals: heart rate, blood pressure and oxygen, all logged together from a
+     manual reading. Each is its own chart, points in time, same layout as temperature. */
+  const vitalsEntries = entries.filter((e) => e.type === 'vitals');
+  const xAxis = () => ({ type: 'linear', min: start, max: end, grid: { color: line }, ticks: { maxRotation: 0, autoSkip: true, callback: (v) => { const t = tickDays.indexOf(v); return t >= 0 ? dayLabel(days[t]) : ''; }, stepSize: 864e5 }, afterBuildTicks: (axis) => { axis.ticks = tickDays.map((t) => ({ value: t })); } });
+  const pointTitle = (items) => items.length ? new Date(items[0].raw.x).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+
+  const hPoints = vitalsEntries.filter((e) => e.heartRate).map((e) => ({ x: entryDate(e).getTime(), y: Number(e.heartRate) }));
   makeChart('heart', {
     type: 'line',
     data: { datasets: [{ label: 'Heart rate', data: hPoints, borderColor: teal, backgroundColor: teal, pointRadius: 5, pointHoverRadius: 7, tension: 0.25, showLine: hPoints.length > 1 }] },
     options: {
       responsive: true, maintainAspectRatio: false,
-      scales: {
-        x: { type: 'linear', min: start, max: end, grid: { color: line }, ticks: { maxRotation: 0, autoSkip: true, callback: (v) => { const t = tickDays.indexOf(v); return t >= 0 ? dayLabel(days[t]) : ''; }, stepSize: 864e5 }, afterBuildTicks: (axis) => { axis.ticks = tickDays.map((t) => ({ value: t })); } },
-        y: { beginAtZero: false, grid: { color: line }, ticks: { callback: (v) => v + ' bpm' } }
-      },
-      plugins: { legend: { display: false }, tooltip: { callbacks: {
-        title: (items) => items.length ? new Date(items[0].raw.x).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '',
-        label: (item) => Math.round(item.raw.y) + ' bpm'
-      } } }
+      scales: { x: xAxis(), y: { beginAtZero: false, grid: { color: line }, ticks: { callback: (v) => v + ' bpm' } } },
+      plugins: { legend: { display: false }, tooltip: { callbacks: { title: pointTitle, label: (item) => Math.round(item.raw.y) + ' bpm' } } }
+    }
+  });
+
+  const bpEntries = vitalsEntries.filter((e) => e.systolic && e.diastolic);
+  const sysPoints = bpEntries.map((e) => ({ x: entryDate(e).getTime(), y: Number(e.systolic) }));
+  const diaPoints = bpEntries.map((e) => ({ x: entryDate(e).getTime(), y: Number(e.diastolic) }));
+  makeChart('bp', {
+    type: 'line',
+    data: { datasets: [
+      { label: 'Systolic', data: sysPoints, borderColor: teal, backgroundColor: teal, pointRadius: 5, pointHoverRadius: 7, tension: 0.25, showLine: sysPoints.length > 1 },
+      { label: 'Diastolic', data: diaPoints, borderColor: amber, backgroundColor: amber, pointRadius: 5, pointHoverRadius: 7, tension: 0.25, showLine: diaPoints.length > 1 }
+    ] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: { x: xAxis(), y: { beginAtZero: false, grid: { color: line }, ticks: { callback: (v) => v + ' mmHg' } } },
+      plugins: { legend: { display: true, position: 'bottom' }, tooltip: { callbacks: { title: pointTitle, label: (item) => item.dataset.label + ': ' + Math.round(item.raw.y) + ' mmHg' } } }
+    }
+  });
+
+  const o2Points = vitalsEntries.filter((e) => e.oxygen).map((e) => ({ x: entryDate(e).getTime(), y: Number(e.oxygen) }));
+  makeChart('oxygen', {
+    type: 'line',
+    data: { datasets: [{ label: 'Oxygen', data: o2Points, borderColor: teal, backgroundColor: teal, pointRadius: 5, pointHoverRadius: 7, tension: 0.25, showLine: o2Points.length > 1 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: { x: xAxis(), y: { min: 80, max: 100, grid: { color: line }, ticks: { callback: (v) => v + '%' } } },
+      plugins: { legend: { display: false }, tooltip: { callbacks: { title: pointTitle, label: (item) => Math.round(item.raw.y) + '%' } } }
     }
   });
 }

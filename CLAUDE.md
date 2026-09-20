@@ -21,7 +21,7 @@ Live: https://learning-development667.github.io/Mark_Medical/
 - Fonts: Bebas Neue (headings), DM Sans (body), DM Mono (times and numbers).
 
 ## Files
-- `index.html`, `styles.css`, `scripts.js`, `sw.js`, `manifest.json`, `config.example.js`, `icons/`, `firestore.rules`, `CLAUDE.md`, `docs/heart-rate-shortcut.md`.
+- `index.html`, `styles.css`, `scripts.js`, `sw.js`, `manifest.json`, `config.example.js`, `icons/`, `firestore.rules`, `CLAUDE.md`.
 - `config.js` is created and committed by Mark only. Never create, edit or regenerate it. `index.html` loads `config.js` before `scripts.js`. It was created once, by explicit one-off authorisation from Mark on 2026-09-19, with the real Firebase config and the two permitted email addresses. That authorisation does not repeat: this rule reapplies immediately afterwards, standing, with no further exceptions.
 
 ## Standards
@@ -34,8 +34,8 @@ Live: https://learning-development667.github.io/Mark_Medical/
 - No health data in the repo, ever. Only code.
 
 ## Data model (Firestore)
-- `entries/{autoId}`: { day "YYYY-MM-DD", at Timestamp, type "med"|"temp"|"drink"|"food"|"weight"|"heart"|"note", medId?, medName?, dose?, value? (number), note?, addedBy, createdAt }
-  - `type: "heart"` holds a heart rate in bpm as `value`. Logged either by hand or via the "Get from Apple Health" button, which hands off to an iOS Shortcut that reads Health and writes the entry directly to Firestore (the web app itself never touches HealthKit). See `docs/heart-rate-shortcut.md`.
+- `entries/{autoId}`: { day "YYYY-MM-DD", at Timestamp, type "med"|"temp"|"drink"|"food"|"weight"|"vitals"|"note", medId?, medName?, dose?, value? (number), heartRate? (number, bpm), systolic? (number, mmHg), diastolic? (number, mmHg), oxygen? (number, %), note?, addedBy, createdAt }
+  - `type: "vitals"` holds heart rate, blood pressure and oxygen from a manual reading (a blood pressure and oxygen monitor). All three field groups are optional; at least one is required to save. No HealthKit or Shortcuts integration; manual entry only.
 - `medicines/{id}`: { name, dose, how, purpose, kind "scheduled"|"prn", perDay?, minGapHours?, maxPerDay?, courseEnd? "YYYY-MM-DD", active, order }
 - `documents/{autoId}`: { title, docDate, kind "images"|"text", pageCount, text?, explanation, addedBy, addedAt, updatedAt }
 - `documents/{autoId}/pages/{pageNumber}`: { data base64 JPEG, width, height }
