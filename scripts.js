@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '14';
+const APP_VERSION = '15';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
 const TEXT_LIMIT_BYTES = 800 * 1024;
 const PAGE_MAX_DIM = 1600;
@@ -1457,12 +1457,19 @@ function medCard(m, today) {
     status.append(h('span', { class: 'pill pill-' + s.level, text: s.text }));
     if (m.maxPerDay) status.append(h('span', { class: 'med-last', text: `${count} of ${m.maxPerDay} today` }));
   }
-  if (last) {
-    const d = entryDate(last);
-    const when = last.day === today ? fmtTime(d) : fmtDayShort(last.day) + ' ' + fmtTime(d);
-    status.append(h('span', { class: 'med-last', text: 'Last ' + when + ' (' + (last.addedBy || '') + ')' }));
-  }
   card.append(status);
+
+  /* Every dose given today, as tappable chips (tap one to see or delete it) */
+  const todays = state.recentEntries.filter((e) => e.type === 'med' && e.medId === m.id && e.day === today).sort((a, b) => entryDate(a) - entryDate(b));
+  if (todays.length) {
+    card.append(h('div', { class: 'med-times' },
+      h('span', { class: 'med-times-label', text: 'Today' }),
+      ...todays.map((e) => h('button', { class: 'med-time', type: 'button', 'aria-label': `Dose at ${fmtTime(entryDate(e))}, tap for options`, onclick: () => entryOptions(e) },
+        fmtTime(entryDate(e)) + ' · ' + (e.addedBy || '')))
+    ));
+  } else if (last) {
+    status.append(h('span', { class: 'med-last', text: 'Last ' + fmtDayShort(last.day) + ' ' + fmtTime(entryDate(last)) + ' (' + (last.addedBy || '') + ')' }));
+  }
 
   card.append(h('div', { class: 'med-actions' },
     h('button', { class: 'btn btn-primary', type: 'button', onclick: () => logMed(m) }, 'Log now'),

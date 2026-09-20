@@ -314,6 +314,12 @@ textarea { line-height: 1.5; resize: vertical; }
 .dot { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--line); background: var(--surface-2); }
 .dot.is-done { background: var(--green); border-color: var(--green); }
 .med-last { font-family: var(--font-mono); color: var(--ink-soft); font-size: 17px; }
+.med-times { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.med-times-label { font-weight: 600; color: var(--ink-soft); }
+.med-time {
+  min-height: var(--tap); padding: 6px 14px; border-radius: 999px; border: 2px solid var(--green-soft);
+  background: var(--green-soft); color: var(--green); font-family: var(--font-mono); font-size: 17px; font-weight: 600; cursor: pointer;
+}
 .med-actions { display: flex; gap: 10px; }
 .med-actions .btn { flex: 1; margin-top: 4px; }
 .med.is-complete { border: 2px solid var(--green-soft); }
