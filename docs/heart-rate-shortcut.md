@@ -87,6 +87,11 @@ different, new shortcut. Back out without adding anything, reopen
    8601, and turn **on** "Include ISO 8601 Time" underneath it (off by
    default; without it, every reading on the same day gets an identical,
    time-free stamp). This is today's timestamp for `at` and `createdAt`.
+   A keyboard often pops up right after adding this action, offering to
+   fill the Date field with the previous action's result; don't tap it,
+   that formats the heart rate number as a date. If the action ends up
+   reading "Format Value" rather than "Format Date", tap that chip and
+   press delete to remove it.
 7. **Format Date** — Current Date, Date Format: Custom, Custom Format
    `yyyy-MM-dd`. This is `day`.
 8. **Get Contents of URL** (sign in):
