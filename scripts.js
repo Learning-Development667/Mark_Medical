@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '10';
+const APP_VERSION = '11';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
 const TEXT_LIMIT_BYTES = 800 * 1024;
 const PAGE_MAX_DIM = 1600;
@@ -327,25 +327,48 @@ onAuthStateChanged(auth, async (user) => {
   if (user) {
     state.user = user;
     state.name = nameFor(user.email);
-    state.demo = state.name === 'Guest';
+    state.demo = false;
     $('signin').hidden = true;
     $('app').hidden = false;
     $('user-chip').textContent = state.name;
     $('more-user').textContent = `${state.name} (${user.email})`;
-    $('guest-pill').hidden = !state.demo;
+    $('guest-pill').hidden = true;
     $('signin-password').value = '';
-    if (state.demo) startDemoData(); else await startData();
-  } else {
+    await startData();
+  } else if (!state.demo) {
     stopData();
     state.user = null;
-    state.demo = false;
-    $('guest-pill').hidden = true;
     $('app').hidden = true;
     $('signin').hidden = false;
   }
 });
 
+/* Guest preview: no Firebase account, no Firestore access, ever. Everything
+   this shows is made-up (see buildDemoFixture); nothing typed here is saved. */
+$('guest-button').addEventListener('click', () => {
+  state.demo = true;
+  state.name = 'Guest';
+  $('signin').hidden = true;
+  $('app').hidden = false;
+  $('user-chip').textContent = 'Guest';
+  $('more-user').textContent = 'Guest (preview, nothing saved)';
+  $('guest-pill').hidden = false;
+  startDemoData();
+});
+
+function exitPreview() {
+  stopData();
+  state.demo = false;
+  $('guest-pill').hidden = true;
+  $('app').hidden = true;
+  $('signin').hidden = false;
+}
+
 $('signout').addEventListener('click', async () => {
+  if (state.demo) {
+    if (await confirmSheet('Leave preview', 'Go back to the sign-in screen?', 'Leave preview', false)) exitPreview();
+    return;
+  }
   if (await confirmSheet('Sign out', 'You will need your password to sign back in.', 'Sign out', true)) signOut(auth);
 });
 
