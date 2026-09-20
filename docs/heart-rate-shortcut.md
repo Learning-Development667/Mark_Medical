@@ -51,9 +51,13 @@ Shelley's phone, each signed in as themselves, so `addedBy` stays correct.
 
 ## Building the shortcut
 
-Open the Shortcuts app, create a new shortcut, name it **exactly**
-`Care Log Heart Rate`, and add these actions in order. Exact action names
-can move slightly between iOS versions; the shape below is what matters.
+Open the Shortcuts app. On the Library screen, tap **All Shortcuts** (the
+top row, showing a number), not the + at the very top of Library itself,
+which only creates a folder. On the All Shortcuts screen, tap the **+**
+in the top corner to open a blank new shortcut. Name it **exactly**
+`Care Log Heart Rate`, and add these actions in order, using the Search
+Actions box to find each one. Exact wording can move slightly between
+iOS versions; the shape below is what matters.
 
 1. **Text** — your email, e.g. `markbrown667@gmail.com`
 2. **Text** — your password
