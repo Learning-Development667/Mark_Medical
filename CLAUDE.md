@@ -34,7 +34,9 @@ Live: https://learning-development667.github.io/Mark_Medical/
 - No health data in the repo, ever. Only code.
 
 ## Data model (Firestore)
-- `entries/{autoId}`: { day "YYYY-MM-DD", at Timestamp, type "med"|"temp"|"drink"|"food"|"weight"|"vitals"|"note", medId?, medName?, dose?, value? (number), heartRate? (number, bpm), systolic? (number, mmHg), diastolic? (number, mmHg), oxygen? (number, %), note?, addedBy, createdAt }
+- `entries/{autoId}`: { day "YYYY-MM-DD", at Timestamp, type "med"|"temp"|"drink"|"food"|"weight"|"vitals"|"note", medId?, medName?, dose?, value? (number), heartRate? (number, bpm), systolic? (number, mmHg), diastolic? (number, mmHg), oxygen? (number, %), note?, amount? (food: "A few mouthfuls"|"About half"|"Most of it"|"All of it"), detail? (food: what went with it), addedBy, createdAt }
+  - Food entries: `note` is the meal name, `detail` the optional "what is in it" text. The Food diary (More > Food diary) lists food entries day by day with each day's drinks total, over 7 to 90 days, and has a Print button (print stylesheet in `styles.css`).
+- `meals/{autoId}`: { name, parts (string, what goes with it, may be empty), addedBy, createdAt, updatedAt }. Saved automatically when food is logged with "Remember this meal" ticked (on by default; an existing meal's parts are updated if changed). Offered as quick buttons and datalist autocomplete in the Food sheet, which fills `parts` in. Managed under More > Saved meals.
   - The Vitals sheet logs temperature, heart rate, blood pressure and oxygen together. Temperature is saved as its own `type: "temp"` entry (so the 37.5 / 38.0 colouring, the Today tile and the chart all keep working); the other readings save as one `type: "vitals"` entry. All are optional; at least one is required to save. Manual entry only, no HealthKit or Shortcuts integration.
 - `medicines/{id}`: { name, dose, how, purpose, kind "scheduled"|"prn", perDay?, minGapHours?, maxPerDay?, courseEnd? "YYYY-MM-DD", active, order }
 - `documents/{autoId}`: { title, docDate, kind "images"|"text", category "general"|"chemo", pageCount, text?, explanation, addedBy, addedAt, updatedAt }
@@ -46,7 +48,7 @@ Live: https://learning-development667.github.io/Mark_Medical/
 - `profile/main`: { calls: [{label, number}], exerciseGoals?: { pressups, situps, plankSeconds, squats } } (goal defaults 20, 20, 60, 2; editable in the app)
 
 ## Navigation
-Six bottom tabs: Today, Meds, Vitals, Chemo, Exercise, More. Documents lives under More (and chemo plan documents also under Chemo). All charts live in Vitals.
+Six bottom tabs: Today, Meds, Vitals, Chemo, Exercise, More. Documents, the Food diary and Saved meals live under More (and chemo plan documents also under Chemo). All charts live in Vitals.
 
 ## Access
 Only two email addresses may access real data, enforced in `firestore.rules` and mirrored in `config.js` (`users` map). Sign-in screen only; accounts are created in the Firebase console.

@@ -385,6 +385,23 @@ textarea { line-height: 1.5; resize: vertical; }
 .medrow { display: flex; align-items: center; gap: 10px; background: var(--surface-2); border-radius: var(--radius-sm); padding: 10px 12px; min-height: 56px; }
 .medrow .medrow-name { flex: 1; font-weight: 600; }
 .medrow.is-inactive .medrow-name { color: var(--ink-soft); text-decoration: line-through; }
+.medrow-sub { display: block; font-size: 17px; font-weight: 400; color: var(--ink-soft); }
+
+/* Food diary */
+.diary-head { display: flex; justify-content: space-between; align-items: center; }
+.diary-head .btn-small { margin-top: 0; }
+.diary-day { margin-top: 20px; }
+.diary-title { font-family: var(--font-head); font-size: 26px; letter-spacing: 0.03em; margin: 0 0 2px; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.diary-title small { font-family: var(--font-body); font-size: 17px; font-weight: 400; color: var(--ink-soft); letter-spacing: 0; }
+.diary-sum { color: var(--ink-soft); margin: 0 0 8px; }
+
+@media print {
+  body { background: #fff; }
+  .topbar, .tabs, .btn, .segmented, .toast, .sheet, .quickadd, .confetti, #toast { display: none !important; }
+  .main { padding: 0; }
+  .entry, .card { box-shadow: none; border: 1px solid #C8D0D3; break-inside: avoid; }
+  .diary-day { break-inside: avoid; }
+}
 .check { display: flex; align-items: center; gap: 12px; min-height: var(--tap); font-weight: 600; margin-bottom: 8px; }
 .check input { width: 26px; height: 26px; accent-color: var(--teal); }
 

@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=12">
+  <link rel="stylesheet" href="styles.css?v=13">
 </head>
 <body>
 
@@ -253,6 +253,24 @@
         </div>
       </section>
 
+      <!-- FOOD DIARY -->
+      <section id="view-food" class="view" data-view="food" hidden>
+        <div class="diary-head">
+          <button id="food-back" class="btn btn-link" type="button">&#8249; Back</button>
+          <button id="food-print" class="btn btn-secondary btn-small" type="button">Print</button>
+        </div>
+        <h2 class="page-title">Food diary</h2>
+        <p id="food-sub" class="muted"></p>
+        <div class="segmented" role="group" aria-label="Range">
+          <button class="seg" type="button" data-range="7">7 days</button>
+          <button class="seg is-active" type="button" data-range="14">14 days</button>
+          <button class="seg" type="button" data-range="30">30 days</button>
+          <button class="seg" type="button" data-range="90">90 days</button>
+        </div>
+        <div id="food-days"></div>
+        <p id="food-empty" class="empty" hidden>No food or drink logged in this period yet.</p>
+      </section>
+
       <!-- MORE -->
       <section id="view-more" class="view" data-view="more" hidden>
         <div class="card">
@@ -261,6 +279,9 @@
         </div>
         <h2 class="section-title">Documents</h2>
         <button id="more-docs" class="btn btn-primary btn-block" type="button">Letters, results and paperwork</button>
+        <h2 class="section-title">Food</h2>
+        <button id="more-food" class="btn btn-primary btn-block" type="button">Food diary</button>
+        <button id="more-meals" class="btn btn-secondary btn-block" type="button">Saved meals</button>
         <h2 class="section-title">Who to call</h2>
         <div id="calls" class="cards"></div>
         <button id="calls-edit" class="btn btn-secondary btn-block" type="button">Edit numbers</button>
@@ -303,6 +324,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=12"></script>
+  <script type="module" src="scripts.js?v=13"></script>
 </body>
 </html>
