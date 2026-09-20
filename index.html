@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=6">
+  <link rel="stylesheet" href="styles.css?v=7">
 </head>
 <body>
 
@@ -93,6 +93,7 @@
           <button class="qa" type="button" data-add="drink"><span class="qa-icon">&#129380;</span>Drink</button>
           <button class="qa" type="button" data-add="food"><span class="qa-icon">&#127869;</span>Food</button>
           <button class="qa" type="button" data-add="weight"><span class="qa-icon">&#9878;</span>Weight</button>
+          <button class="qa" type="button" data-add="heart"><span class="qa-icon">&#128147;</span>Heart rate</button>
           <button class="qa" type="button" data-add="note"><span class="qa-icon">&#128221;</span>Note</button>
         </div>
 
@@ -129,6 +130,10 @@
         <div class="card chart-card">
           <h2 class="section-title">Weight</h2>
           <div class="chart-wrap"><canvas id="chart-weight"></canvas></div>
+        </div>
+        <div class="card chart-card">
+          <h2 class="section-title">Heart rate</h2>
+          <div class="chart-wrap"><canvas id="chart-heart"></canvas></div>
         </div>
       </section>
 
@@ -205,6 +210,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=6"></script>
+  <script type="module" src="scripts.js?v=7"></script>
 </body>
 </html>
