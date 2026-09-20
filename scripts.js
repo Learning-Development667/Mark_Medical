@@ -9,14 +9,15 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
-  collection, doc, addDoc, setDoc, updateDoc, deleteDoc, getDoc, getDocs,
+  collection, doc, setDoc, updateDoc, deleteDoc, getDoc, getDocs,
   query, where, orderBy, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '5';
+const APP_VERSION = '6';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
 const TEXT_LIMIT_BYTES = 800 * 1024;
 const PAGE_MAX_DIM = 1600;
+const MAX_PAGES = 30;
 
 const CDN = {
   chart: 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js',
@@ -38,9 +39,64 @@ const SEED_MEDICINES = [
   { id: 'senna', name: 'Senna', dose: '15 mg', how: 'At night', purpose: 'Constipation', kind: 'scheduled', perDay: 1 }
 ];
 
-const CLAUDE_PROMPT = 'Please explain this medical document in plain English for a patient and their family. ' +
+const CLAUDE_INTRO = 'Please explain this medical document in plain English for a patient and their family. ' +
   'Tell us what it says, what it means for day-to-day care, anything we need to act on, and any questions we might want to ask the medical team. ' +
   'Keep it calm and clear.';
+
+const CLAUDE_FORMAT = 'Reply using exactly this format, so it can be pasted straight back into Care Log:\n\n' +
+  '=== CARE LOG DOCUMENT ===\n' +
+  'Title: <a short title for this document>\n' +
+  'Date: <the date on the document, YYYY-MM-DD>\n' +
+  'Explanation:\n' +
+  '<your explanation, in plain English, as multi-line text>\n' +
+  '=== END ===';
+
+const NOT_MEDICAL_ADVICE = 'This explanation is for context only. It is not medical advice. Always check changes with the medical team.';
+
+const CARE_LOG_BLOCK_RE = /===\s*CARE LOG DOCUMENT\s*===\s*\nTitle:\s*(.*)\nDate:\s*(\d{4}-\d{2}-\d{2})\nExplanation:\s*\n([\s\S]*?)\n===\s*END\s*===/g;
+
+function parseCareLogBlocks(text) {
+  const clean = (text || '').replace(/\r\n/g, '\n');
+  const out = [];
+  let m;
+  CARE_LOG_BLOCK_RE.lastIndex = 0;
+  while ((m = CARE_LOG_BLOCK_RE.exec(clean))) {
+    out.push({ title: m[1].trim(), date: m[2].trim(), explanation: m[3].trim() });
+  }
+  return out;
+}
+
+/* Reads the clipboard into an Explanation textarea, smart-filling title and date
+   when the paste contains a === CARE LOG DOCUMENT === block. Falls back to
+   focusing the textarea (for a manual long-press paste) if clipboard access fails. */
+async function pasteSummaryInto({ titleEl, dateEl, explanationEl, onFilled }) {
+  let text;
+  try {
+    text = await navigator.clipboard.readText();
+  } catch (e) {
+    explanationEl.focus();
+    toast('Could not read the clipboard. Long-press the box below and paste.');
+    return;
+  }
+  if (!text || !text.trim()) {
+    explanationEl.focus();
+    toast('Clipboard is empty. Long-press the box below and paste.');
+    return;
+  }
+  const blocks = parseCareLogBlocks(text);
+  if (blocks.length) {
+    const first = blocks[0];
+    if (titleEl && first.title) titleEl.value = first.title;
+    if (dateEl && first.date) dateEl.value = first.date;
+    explanationEl.value = first.explanation;
+    toast(blocks.length > 1 ? 'Only the first letter was used. Add the others one at a time.' : 'Summary filled in');
+  } else {
+    explanationEl.value = text.trim();
+    toast('Pasted into Explanation');
+  }
+  explanationEl.dispatchEvent(new Event('input'));
+  if (onFilled) onFilled();
+}
 
 /* ------------------------------------------------------------------ */
 /* Helpers                                                              */
@@ -921,39 +977,99 @@ function renderDocsList() {
 
 $('doc-add').addEventListener('click', openAddDocument);
 
+/* One-screen add: choose photos or a PDF, give a title and date, paste Claude's
+   summary (smart-filling title, date and explanation when it is in the Care Log
+   block format), then save the document and its pages together in one batch. */
 function openAddDocument() {
+  let staged = null; // { kind: 'images', pages: [{data,width,height}] } once files are processed
+
+  const fileInput = h('input', { type: 'file', accept: 'image/*,application/pdf,.pdf', multiple: true, style: 'display:none' });
+  const chooseBtn = h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => fileInput.click() }, 'Choose photos or PDF');
+  const fileProgress = h('div', { class: 'progress' }, h('span', { text: '' }), h('div', { class: 'progress-bar' }, h('div')));
+  fileProgress.hidden = true;
+  const setFileProgress = (text, frac) => { fileProgress.hidden = false; fileProgress.firstChild.textContent = text; fileProgress.querySelector('.progress-bar > div').style.width = Math.round((frac || 0) * 100) + '%'; };
+  const thumbs = h('div', { class: 'thumbs' });
+  const pageCountLabel = h('p', { class: 'muted mono' });
+  pageCountLabel.hidden = true;
+
   const title = h('input', { type: 'text', placeholder: 'e.g. Oncology letter', required: true });
   const date = h('input', { type: 'date', value: todayStr() });
-  const file = h('input', { type: 'file', accept: 'image/*,.pdf,application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.txt,text/plain', multiple: true });
-  const progress = h('div', { class: 'progress' }, h('span', { text: '' }), h('div', { class: 'progress-bar' }, h('div')));
-  progress.hidden = true;
-  const save = h('button', { class: 'btn btn-primary btn-block', type: 'button' }, 'Save document');
-  const cancel = h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Cancel');
-  const setProgress = (text, frac) => { progress.hidden = false; progress.firstChild.textContent = text; progress.querySelector('.progress-bar > div').style.width = Math.round((frac || 0) * 100) + '%'; };
 
-  save.addEventListener('click', async () => {
-    if (!title.value.trim()) { toast('Please give it a title'); return; }
-    if (!file.files.length) { toast('Please choose a photo or file'); return; }
-    save.disabled = true; cancel.disabled = true;
+  const explanation = h('textarea', { rows: '8', placeholder: 'Paste Claude’s explanation here, or use Paste summary above' });
+  const pasteBtn = h('button', { class: 'btn btn-secondary btn-block', type: 'button' }, 'Paste summary');
+
+  const save = h('button', { class: 'btn btn-primary btn-block', type: 'button', disabled: true }, 'Save');
+  const cancel = h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Cancel');
+  const saveProgress = h('div', { class: 'progress' }, h('span', { text: '' }), h('div', { class: 'progress-bar' }, h('div')));
+  saveProgress.hidden = true;
+  const setSaveProgress = (text, frac) => { saveProgress.hidden = false; saveProgress.firstChild.textContent = text; saveProgress.querySelector('.progress-bar > div').style.width = Math.round((frac || 0) * 100) + '%'; };
+
+  function renderThumbs() {
+    const pages = (staged && staged.pages) || [];
+    thumbs.replaceChildren(...pages.map((p, i) => h('img', { class: 'thumb', src: 'data:image/jpeg;base64,' + p.data, alt: 'Page ' + (i + 1) })));
+    pageCountLabel.hidden = pages.length === 0;
+    pageCountLabel.textContent = pages.length === 1 ? '1 page ready' : pages.length + ' pages ready';
+  }
+
+  function updateSaveEnabled() {
+    const hasTitle = title.value.trim().length > 0;
+    const hasPages = Boolean(staged && staged.pages && staged.pages.length);
+    const hasExplanation = explanation.value.trim().length > 0;
+    save.disabled = !(hasTitle && (hasPages || hasExplanation));
+  }
+
+  fileInput.addEventListener('change', async () => {
+    if (!fileInput.files.length) return;
+    chooseBtn.disabled = true;
+    setFileProgress('Processing', 0);
     try {
-      const result = await processFiles(Array.from(file.files), setProgress);
-      setProgress('Saving', 0.95);
-      await saveDocument(title.value.trim(), date.value || todayStr(), result);
-      closeSheet();
-      toast('Document saved');
+      staged = await processFiles(Array.from(fileInput.files), setFileProgress);
     } catch (e) {
       console.error(e);
       toast(e.message || 'Could not process that file');
+      staged = null;
+    }
+    chooseBtn.disabled = false;
+    fileProgress.hidden = true;
+    renderThumbs();
+    updateSaveEnabled();
+  });
+
+  title.addEventListener('input', updateSaveEnabled);
+  explanation.addEventListener('input', updateSaveEnabled);
+  pasteBtn.addEventListener('click', () => pasteSummaryInto({ titleEl: title, dateEl: date, explanationEl: explanation, onFilled: updateSaveEnabled }));
+
+  save.addEventListener('click', async () => {
+    if (save.disabled) return;
+    save.disabled = true; cancel.disabled = true;
+    setSaveProgress('Saving', 0.6);
+    try {
+      await saveDocumentBatch({
+        title: title.value.trim(),
+        docDate: date.value || todayStr(),
+        explanation: explanation.value.trim(),
+        kind: (staged && staged.kind) || 'images',
+        pages: (staged && staged.pages) || [],
+        text: (staged && staged.text) || ''
+      });
+      setSaveProgress('Saved', 1);
+      setTimeout(() => { closeSheet(); toast('Document saved'); }, 400);
+    } catch (e) {
+      console.error(e);
+      toast(e.message || 'Could not save');
       save.disabled = false; cancel.disabled = false;
-      progress.hidden = true;
+      saveProgress.hidden = true;
     }
   });
 
   const body = h('div', null,
+    fileInput, chooseBtn, fileProgress, thumbs, pageCountLabel,
+    h('p', { class: 'hint', text: 'Photos or a PDF, up to 30 pages. A document can be saved with no pages if it just has a pasted summary.' }),
     field('Title', title), field('Date on the document', date),
-    field('Photos or file', file),
-    h('p', { class: 'hint', text: 'Photos, PDF, Word (.docx) or text. Photos and PDF pages are shrunk to fit. One document at a time.' }),
-    progress, save, cancel
+    h('h3', { class: 'section-title', text: 'Explanation' }),
+    pasteBtn, explanation,
+    h('p', { class: 'hint', text: NOT_MEDICAL_ADVICE }),
+    save, saveProgress, cancel
   );
   openSheet('Add document', body);
 }
@@ -995,6 +1111,7 @@ async function processFiles(files, onProgress) {
       window.pdfjsLib.GlobalWorkerOptions.workerSrc = CDN.pdfWorker;
       const pdf = await window.pdfjsLib.getDocument({ data: await f.arrayBuffer() }).promise;
       for (let p = 1; p <= pdf.numPages; p++) {
+        if (pages.length >= MAX_PAGES) throw new Error(`Too many pages. The limit is ${MAX_PAGES} pages per document.`);
         onProgress(`PDF page ${p} of ${pdf.numPages}`, (step + (p - 1) / pdf.numPages) / total);
         const page = await pdf.getPage(p);
         const base = page.getViewport({ scale: 1 });
@@ -1008,6 +1125,7 @@ async function processFiles(files, onProgress) {
         pages.push(await compressCanvas(canvas));
       }
     } else if (f.type.startsWith('image/') || /\.(jpe?g|png|heic|heif|webp)$/i.test(f.name)) {
+      if (pages.length >= MAX_PAGES) throw new Error(`Too many pages. The limit is ${MAX_PAGES} pages per document.`);
       onProgress(`Photo ${step + 1} of ${total}`, step / total);
       const canvas = await imageToCanvas(f);
       pages.push(await compressCanvas(canvas));
@@ -1058,17 +1176,22 @@ async function compressCanvas(canvas) {
   throw new Error('Could not shrink a page enough to store it');
 }
 
-async function saveDocument(title, docDate, result) {
+/* Writes the document record and every page of its pages subcollection in a
+   single Firestore batch, so the two never end up out of step. */
+async function saveDocumentBatch({ title, docDate, explanation, kind, pages, text }) {
+  const ref = doc(collection(db, 'documents'));
+  const batch = writeBatch(db);
   const data = {
-    title, docDate, kind: result.kind, pageCount: result.pages.length,
-    explanation: '', addedBy: state.name, addedAt: serverTimestamp(), updatedAt: serverTimestamp()
+    title, docDate, kind: kind || 'images', pageCount: pages.length,
+    explanation: explanation || '', addedBy: state.name, addedAt: serverTimestamp(), updatedAt: serverTimestamp()
   };
-  if (result.kind === 'text') data.text = result.text;
-  const ref = await addDoc(collection(db, 'documents'), data);
-  for (let i = 0; i < result.pages.length; i++) {
-    const p = result.pages[i];
-    await setDoc(doc(db, 'documents', ref.id, 'pages', String(i + 1)), { n: i + 1, data: p.data, width: p.width, height: p.height });
-  }
+  if (kind === 'text' && text) data.text = text;
+  batch.set(ref, data);
+  pages.forEach((p, i) => {
+    batch.set(doc(db, 'documents', ref.id, 'pages', String(i + 1)), { n: i + 1, data: p.data, width: p.width, height: p.height });
+  });
+  await batch.commit();
+  return ref.id;
 }
 
 async function openDocument(id) {
@@ -1114,7 +1237,7 @@ function b64ToBlob(b64, type) {
 }
 
 function promptFor(d) {
-  return `${CLAUDE_PROMPT}\n\nDocument: ${d.title} (dated ${fmtDayNum(d.docDate || '')}).`;
+  return `${CLAUDE_INTRO}\n\nDocument: ${d.title} (dated ${fmtDayNum(d.docDate || '')}).\n\n${CLAUDE_FORMAT}`;
 }
 
 $('doc-share').addEventListener('click', async () => {
@@ -1157,6 +1280,11 @@ async function copyText(text) {
 }
 
 function slug(s) { return (s || 'document').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'document'; }
+
+$('doc-paste-summary').addEventListener('click', () => {
+  if (!currentDocRecord()) return;
+  pasteSummaryInto({ explanationEl: $('doc-explanation') });
+});
 
 $('doc-save-explanation').addEventListener('click', async () => {
   const d = currentDocRecord();

@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=5">
+  <link rel="stylesheet" href="styles.css?v=6">
 </head>
 <body>
 
@@ -149,7 +149,9 @@
           </div>
           <p class="hint">Send opens the share sheet. Choose the Claude app, ask for an explanation, then paste the reply below.</p>
           <h3 class="section-title">Explanation</h3>
-          <textarea id="doc-explanation" rows="6" placeholder="Paste Claude's explanation here"></textarea>
+          <button id="doc-paste-summary" class="btn btn-secondary btn-block" type="button">Paste summary</button>
+          <textarea id="doc-explanation" rows="8" placeholder="Paste Claude's explanation here, or use Paste summary above"></textarea>
+          <p class="hint">This explanation is for context only. It is not medical advice. Always check changes with the medical team.</p>
           <button id="doc-save-explanation" class="btn btn-primary btn-block" type="button">Save explanation</button>
           <h3 class="section-title">Document</h3>
           <div id="doc-pages" class="pages"></div>
@@ -203,6 +205,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=5"></script>
+  <script type="module" src="scripts.js?v=6"></script>
 </body>
 </html>
