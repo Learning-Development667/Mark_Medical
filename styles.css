@@ -336,6 +336,8 @@ textarea { line-height: 1.5; resize: vertical; }
 .doc-title { font-size: 26px; font-weight: 700; line-height: 1.2; margin-top: 4px; }
 .pages { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; }
 .pages img { width: 100%; height: auto; border-radius: var(--radius-sm); box-shadow: var(--shadow); background: #fff; }
+.thumbs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.thumb { width: 76px; height: 100px; object-fit: cover; border-radius: 10px; box-shadow: var(--shadow); background: #fff; }
 .doctext {
   white-space: pre-wrap; overflow-wrap: anywhere;
   background: var(--surface); border-radius: var(--radius-sm); padding: 14px; box-shadow: var(--shadow);
