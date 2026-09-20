@@ -43,6 +43,21 @@ service cloud.firestore {
       allow read, write: if isFamily();
     }
 
+    // Chemo Party Plan: one document per calendar day (chemo session, done, mood, one good thing)
+    match /days/{dayId} {
+      allow read, write: if isFamily();
+    }
+
+    // Cheer board: short notes between the two of them
+    match /cheers/{cheerId} {
+      allow read, write: if isFamily();
+    }
+
+    // Exercise: one document per day (steps, which daily goals were done)
+    match /exercise/{dayId} {
+      allow read, write: if isFamily();
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

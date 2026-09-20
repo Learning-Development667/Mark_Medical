@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=8">
+  <link rel="stylesheet" href="styles.css?v=9">
 </head>
 <body>
 
@@ -89,13 +89,21 @@
         </div>
 
         <div class="quickadd">
-          <button class="qa" type="button" data-add="temp"><span class="qa-icon">&#127777;</span>Temperature</button>
+          <button class="qa" type="button" data-add="vitals"><span class="qa-icon">&#129658;</span>Vitals</button>
           <button class="qa" type="button" data-add="drink"><span class="qa-icon">&#129380;</span>Drink</button>
           <button class="qa" type="button" data-add="food"><span class="qa-icon">&#127869;</span>Food</button>
           <button class="qa" type="button" data-add="weight"><span class="qa-icon">&#9878;</span>Weight</button>
-          <button class="qa" type="button" data-add="vitals"><span class="qa-icon">&#129658;</span>Vitals</button>
           <button class="qa" type="button" data-add="note"><span class="qa-icon">&#128221;</span>Note</button>
         </div>
+
+        <button id="today-mood" class="moodcard" type="button">
+          <span class="moodcard-face" id="today-mood-face">&#128578;</span>
+          <span class="moodcard-main">
+            <span class="moodcard-title" id="today-mood-title">How are you feeling today?</span>
+            <span class="moodcard-sub" id="today-mood-sub">Tap to log your mood</span>
+          </span>
+          <span class="moodcard-chevron">&#8250;</span>
+        </button>
 
         <h2 class="section-title">Timeline</h2>
         <ul id="timeline" class="timeline" aria-live="polite"></ul>
@@ -111,8 +119,17 @@
         <button id="meds-manage" class="btn btn-secondary btn-block" type="button">Manage medicines</button>
       </section>
 
-      <!-- TRENDS -->
-      <section id="view-trends" class="view" data-view="trends" hidden>
+      <!-- VITALS -->
+      <section id="view-vitals" class="view" data-view="vitals" hidden>
+        <button id="vitals-log" class="btn btn-primary btn-block" type="button">Log a reading</button>
+        <h2 class="section-title">Latest</h2>
+        <div class="tiles tiles-2" id="vitals-latest">
+          <div class="tile" id="vt-temp"><span class="tile-label">Temperature</span><span class="tile-value mono" id="vt-temp-value">--</span><span class="tile-sub" id="vt-temp-sub"></span></div>
+          <div class="tile" id="vt-heart"><span class="tile-label">Heart rate</span><span class="tile-value mono" id="vt-heart-value">--</span><span class="tile-sub" id="vt-heart-sub"></span></div>
+          <div class="tile" id="vt-bp"><span class="tile-label">Blood pressure</span><span class="tile-value mono" id="vt-bp-value">--</span><span class="tile-sub" id="vt-bp-sub"></span></div>
+          <div class="tile" id="vt-oxygen"><span class="tile-label">Oxygen</span><span class="tile-value mono" id="vt-oxygen-value">--</span><span class="tile-sub" id="vt-oxygen-sub"></span></div>
+        </div>
+        <h2 class="section-title">Trends</h2>
         <div class="segmented" role="group" aria-label="Range">
           <button class="seg is-active" type="button" data-range="7">7 days</button>
           <button class="seg" type="button" data-range="14">14 days</button>
@@ -122,14 +139,6 @@
           <h2 class="section-title">Temperature</h2>
           <div class="chart-wrap"><canvas id="chart-temp"></canvas></div>
           <p class="legend-note">Amber band 37.5 to 37.9. Red line 38.0 and above.</p>
-        </div>
-        <div class="card chart-card">
-          <h2 class="section-title">Drinks per day</h2>
-          <div class="chart-wrap"><canvas id="chart-drink"></canvas></div>
-        </div>
-        <div class="card chart-card">
-          <h2 class="section-title">Weight</h2>
-          <div class="chart-wrap"><canvas id="chart-weight"></canvas></div>
         </div>
         <div class="card chart-card">
           <h2 class="section-title">Heart rate</h2>
@@ -143,17 +152,85 @@
           <h2 class="section-title">Oxygen</h2>
           <div class="chart-wrap"><canvas id="chart-oxygen"></canvas></div>
         </div>
+        <div class="card chart-card">
+          <h2 class="section-title">Weight</h2>
+          <div class="chart-wrap"><canvas id="chart-weight"></canvas></div>
+        </div>
+        <div class="card chart-card">
+          <h2 class="section-title">Drinks per day</h2>
+          <div class="chart-wrap"><canvas id="chart-drink"></canvas></div>
+        </div>
+      </section>
+
+      <!-- CHEMO PARTY PLAN -->
+      <section id="view-chemo" class="view" data-view="chemo" hidden>
+        <h1 class="page-title">Chemo Party Plan</h1>
+        <div class="card" id="chemo-progress">
+          <div class="progress-head"><span class="tile-label">Sessions</span><span class="mono" id="chemo-count">0 of 0 done</span></div>
+          <div class="progress-bar"><div id="chemo-bar"></div></div>
+          <p class="muted" id="chemo-next">Tap a day on the calendar to mark a chemo session.</p>
+        </div>
+
+        <div class="card cal">
+          <div class="cal-head">
+            <button id="cal-prev" class="iconbtn" type="button" aria-label="Previous month">&#8249;</button>
+            <button id="cal-title" class="cal-title" type="button" aria-label="Go to this month"></button>
+            <button id="cal-next" class="iconbtn" type="button" aria-label="Next month">&#8250;</button>
+          </div>
+          <div class="cal-dow"><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span></div>
+          <div class="cal-grid" id="cal-grid"></div>
+          <p class="cal-key"><span class="key-dot key-chemo"></span> Chemo day <span class="key-dot key-done"></span> Done <span class="key-face">&#128578;</span> Mood logged</p>
+        </div>
+
+        <h2 class="section-title">Cheer board</h2>
+        <p class="hint">Notes to each other. A good line on a rough day goes a long way.</p>
+        <div class="cheer-add">
+          <input id="cheer-text" type="text" placeholder="Leave a note for the board" maxlength="200">
+          <button id="cheer-post" class="btn btn-primary" type="button">Post</button>
+        </div>
+        <ul id="cheers" class="cheers"></ul>
+        <p id="cheers-empty" class="empty" hidden>Nothing on the board yet. Be the first.</p>
+
+        <h2 class="section-title">Plan documents</h2>
+        <button id="chemo-doc-add" class="btn btn-secondary btn-block" type="button">Add the chemo plan</button>
+        <ul id="chemo-docs" class="doclist"></ul>
+        <p id="chemo-docs-empty" class="empty" hidden>No plan uploaded yet. Add it here when you get it, then send it to Claude for a plain English walk-through.</p>
+      </section>
+
+      <!-- EXERCISE -->
+      <section id="view-exercise" class="view" data-view="exercise" hidden>
+        <div class="daynav">
+          <button id="ex-prev" class="iconbtn" type="button" aria-label="Previous day">&#8249;</button>
+          <button id="ex-label" class="daylabel" type="button" aria-label="Go to today"></button>
+          <button id="ex-next" class="iconbtn" type="button" aria-label="Next day">&#8250;</button>
+        </div>
+        <div class="tiles tiles-2">
+          <div class="tile" id="ex-steps-tile"><span class="tile-label">Steps</span><span class="tile-value mono" id="ex-steps-value">--</span><span class="tile-sub" id="ex-steps-sub">not logged</span></div>
+          <div class="tile" id="ex-streak-tile"><span class="tile-label">Streak</span><span class="tile-value mono" id="ex-streak-value">0</span><span class="tile-sub" id="ex-streak-sub">days all done</span></div>
+        </div>
+        <button id="ex-steps-edit" class="btn btn-primary btn-block" type="button">Log steps</button>
+
+        <h2 class="section-title">Daily goals</h2>
+        <p class="hint">Check these with your oncology team before starting, and go gently on low days.</p>
+        <div id="ex-goals" class="goals"></div>
+        <button id="ex-goals-edit" class="btn btn-secondary btn-block" type="button">Edit goals</button>
+
+        <div class="card chart-card">
+          <h2 class="section-title">Steps this week</h2>
+          <div class="chart-wrap"><canvas id="chart-steps"></canvas></div>
+        </div>
       </section>
 
       <!-- DOCUMENTS -->
       <section id="view-docs" class="view" data-view="docs" hidden>
         <div id="docs-list-wrap">
+          <button id="docs-back" class="btn btn-link" type="button">&#8249; Back</button>
           <button id="doc-add" class="btn btn-primary btn-block" type="button">Add a document</button>
           <ul id="docs-list" class="doclist"></ul>
           <p id="docs-empty" class="empty" hidden>No documents yet. Add letters, results or photos of paperwork here.</p>
         </div>
         <div id="doc-detail" hidden>
-          <button id="doc-back" class="btn btn-link" type="button">&#8249; All documents</button>
+          <button id="doc-back" class="btn btn-link" type="button">&#8249; Back</button>
           <h2 id="doc-title" class="doc-title"></h2>
           <p id="doc-meta" class="muted mono"></p>
           <div class="btnrow">
@@ -179,6 +256,8 @@
           <p class="muted">Signed in as</p>
           <p id="more-user" class="big"></p>
         </div>
+        <h2 class="section-title">Documents</h2>
+        <button id="more-docs" class="btn btn-primary btn-block" type="button">Letters, results and paperwork</button>
         <h2 class="section-title">Who to call</h2>
         <div id="calls" class="cards"></div>
         <button id="calls-edit" class="btn btn-secondary btn-block" type="button">Edit numbers</button>
@@ -194,12 +273,15 @@
 
     <nav class="tabs" aria-label="Sections">
       <button class="tab is-active" type="button" data-tab="today"><span class="tab-icon">&#9788;</span>Today</button>
-      <button class="tab" type="button" data-tab="meds"><span class="tab-icon">&#128138;</span>Medicines</button>
-      <button class="tab" type="button" data-tab="trends"><span class="tab-icon">&#128200;</span>Trends</button>
-      <button class="tab" type="button" data-tab="docs"><span class="tab-icon">&#128196;</span>Documents</button>
+      <button class="tab" type="button" data-tab="meds"><span class="tab-icon">&#128138;</span>Meds</button>
+      <button class="tab" type="button" data-tab="vitals"><span class="tab-icon">&#129658;</span>Vitals</button>
+      <button class="tab" type="button" data-tab="chemo"><span class="tab-icon">&#127881;</span>Chemo</button>
+      <button class="tab" type="button" data-tab="exercise"><span class="tab-icon">&#128694;</span>Exercise</button>
       <button class="tab" type="button" data-tab="more"><span class="tab-icon">&#8943;</span>More</button>
     </nav>
   </div>
+
+  <canvas id="confetti" class="confetti" hidden></canvas>
 
   <!-- Bottom sheet -->
   <div id="sheet" class="sheet" hidden>
@@ -218,6 +300,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=8"></script>
+  <script type="module" src="scripts.js?v=9"></script>
 </body>
 </html>

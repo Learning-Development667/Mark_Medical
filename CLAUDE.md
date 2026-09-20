@@ -35,11 +35,18 @@ Live: https://learning-development667.github.io/Mark_Medical/
 
 ## Data model (Firestore)
 - `entries/{autoId}`: { day "YYYY-MM-DD", at Timestamp, type "med"|"temp"|"drink"|"food"|"weight"|"vitals"|"note", medId?, medName?, dose?, value? (number), heartRate? (number, bpm), systolic? (number, mmHg), diastolic? (number, mmHg), oxygen? (number, %), note?, addedBy, createdAt }
-  - `type: "vitals"` holds heart rate, blood pressure and oxygen from a manual reading (a blood pressure and oxygen monitor). All three field groups are optional; at least one is required to save. No HealthKit or Shortcuts integration; manual entry only.
+  - The Vitals sheet logs temperature, heart rate, blood pressure and oxygen together. Temperature is saved as its own `type: "temp"` entry (so the 37.5 / 38.0 colouring, the Today tile and the chart all keep working); the other readings save as one `type: "vitals"` entry. All are optional; at least one is required to save. Manual entry only, no HealthKit or Shortcuts integration.
 - `medicines/{id}`: { name, dose, how, purpose, kind "scheduled"|"prn", perDay?, minGapHours?, maxPerDay?, courseEnd? "YYYY-MM-DD", active, order }
-- `documents/{autoId}`: { title, docDate, kind "images"|"text", pageCount, text?, explanation, addedBy, addedAt, updatedAt }
+- `documents/{autoId}`: { title, docDate, kind "images"|"text", category "general"|"chemo", pageCount, text?, explanation, addedBy, addedAt, updatedAt }
+  - `category: "chemo"` documents are the chemo plan, listed in the Chemo tab as well as in Documents.
 - `documents/{autoId}/pages/{pageNumber}`: { data base64 JPEG, width, height }
-- `profile/main`: { calls: [{label, number}] }
+- `days/{YYYY-MM-DD}`: { chemo (bool, session planned), chemoDone (bool), mood? (1 to 5), good? (string, "one good thing today"), updatedBy, updatedAt }
+- `cheers/{autoId}`: { text, addedBy, createdAt } (the cheer board on the Chemo tab, newest first, last 50 shown)
+- `exercise/{YYYY-MM-DD}`: { day, steps? (number), done: { pressups, situps, plank, squats } (bools), addedBy, updatedAt }
+- `profile/main`: { calls: [{label, number}], exerciseGoals?: { pressups, situps, plankSeconds, squats } } (goal defaults 20, 20, 60, 2; editable in the app)
+
+## Navigation
+Six bottom tabs: Today, Meds, Vitals, Chemo, Exercise, More. Documents lives under More (and chemo plan documents also under Chemo). All charts live in Vitals.
 
 ## Access
 Only two email addresses may access data, enforced in `firestore.rules` and mirrored in `config.js` (`users` map). Sign-in screen only; accounts are created in the Firebase console.

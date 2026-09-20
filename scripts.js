@@ -10,10 +10,10 @@ import {
 import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
   collection, doc, setDoc, updateDoc, deleteDoc, getDoc, getDocs,
-  query, where, orderBy, onSnapshot, serverTimestamp, Timestamp, writeBatch
+  query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '8';
+const APP_VERSION = '9';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
 const TEXT_LIMIT_BYTES = 800 * 1024;
 const PAGE_MAX_DIM = 1600;
@@ -52,6 +52,25 @@ const CLAUDE_FORMAT = 'Reply using exactly this format, so it can be pasted stra
   '=== END ===';
 
 const NOT_MEDICAL_ADVICE = 'This explanation is for context only. It is not medical advice. Always check changes with the medical team.';
+
+/* Mood scale for the Chemo Party Plan, 1 (rough) to 5 (great). */
+const MOODS = [
+  { face: '\u{1F61E}', label: 'Rough' },
+  { face: '\u{1F615}', label: 'Low' },
+  { face: '\u{1F610}', label: 'OK' },
+  { face: '\u{1F642}', label: 'Good' },
+  { face: '\u{1F604}', label: 'Great' }
+];
+
+/* Daily exercise goals. Defaults are what Mark asked for; editable in the app and
+   stored on profile/main.exerciseGoals. Plank is stored in seconds. */
+const GOAL_DEFAULTS = { pressups: 20, situps: 20, plankSeconds: 60, squats: 2 };
+const GOAL_ROWS = [
+  { key: 'pressups', label: 'Press-ups', goal: 'pressups', fmt: (n) => n + ' a day' },
+  { key: 'situps', label: 'Sit-ups', goal: 'situps', fmt: (n) => n + ' a day' },
+  { key: 'plank', label: 'Plank', goal: 'plankSeconds', fmt: (sec) => sec % 60 === 0 ? (sec / 60) + (sec === 60 ? ' minute' : ' minutes') : sec + ' seconds' },
+  { key: 'squats', label: 'Squats', goal: 'squats', fmt: (n) => n + ' a day' }
+];
 
 const CARE_LOG_BLOCK_RE = /===\s*CARE LOG DOCUMENT\s*===\s*\nTitle:\s*(.*)\nDate:\s*(\d{4}-\d{2}-\d{2})\nExplanation:\s*\n([\s\S]*?)\n===\s*END\s*===/g;
 
@@ -247,7 +266,13 @@ const state = {
   unsub: {},
   charts: {},
   trendRange: 7,
-  currentDoc: null
+  currentDoc: null,
+  docsReturn: 'more',
+  days: {},
+  cheers: [],
+  exercise: {},
+  exerciseDay: todayStr(),
+  chemoMonth: todayStr().slice(0, 7)
 };
 
 /* ------------------------------------------------------------------ */
@@ -329,6 +354,9 @@ async function startData() {
   watchDay();
   watchDocuments();
   watchProfile();
+  watchDays();
+  watchCheers();
+  watchExercise();
 }
 
 function stopData() {
@@ -374,6 +402,7 @@ function watchRecent() {
       renderToday();
     }
     renderMeds();
+    if (!$('view-vitals').hidden) renderVitals();
   }, (e) => console.error(e));
 }
 
@@ -411,6 +440,33 @@ function watchProfile() {
   state.unsub.profile = onSnapshot(doc(db, 'profile', 'main'), (snap) => {
     state.profile = snap.exists() ? snap.data() : { calls: [] };
     renderCalls();
+    renderExercise();
+  }, (e) => console.error(e));
+}
+
+function watchDays() {
+  state.unsub.days = onSnapshot(collection(db, 'days'), (snap) => {
+    const days = {};
+    snap.docs.forEach((d) => { days[d.id] = d.data(); });
+    state.days = days;
+    renderChemo();
+    renderTodayMood();
+  }, (e) => console.error(e));
+}
+
+function watchCheers() {
+  state.unsub.cheers = onSnapshot(query(collection(db, 'cheers'), orderBy('createdAt', 'desc'), limit(50)), (snap) => {
+    state.cheers = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    renderCheers();
+  }, (e) => console.error(e));
+}
+
+function watchExercise() {
+  state.unsub.exercise = onSnapshot(collection(db, 'exercise'), (snap) => {
+    const ex = {};
+    snap.docs.forEach((d) => { ex[d.id] = d.data(); });
+    state.exercise = ex;
+    renderExercise();
   }, (e) => console.error(e));
 }
 
@@ -441,11 +497,20 @@ document.querySelectorAll('.tab').forEach((btn) => {
 });
 
 function showTab(name) {
-  document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('is-active', b.dataset.tab === name));
+  const highlight = name === 'docs' ? (state.docsReturn || 'more') : name;
+  document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('is-active', b.dataset.tab === highlight));
   document.querySelectorAll('.view').forEach((v) => { v.hidden = v.dataset.view !== name; });
   window.scrollTo(0, 0);
-  if (name === 'trends') renderTrends();
+  if (name === 'vitals') renderVitals();
+  if (name === 'chemo') renderChemo();
+  if (name === 'exercise') renderExercise();
   if (name === 'docs') showDocsList();
+}
+
+/* Documents is reached from More (and chemo plan documents from Chemo); remember where to go back to. */
+function openDocs(from) {
+  state.docsReturn = from || 'more';
+  showTab('docs');
 }
 
 $('sheet').addEventListener('click', (ev) => { if (ev.target.hasAttribute('data-close')) closeSheet(); });
@@ -474,6 +539,7 @@ function renderDayLabel() {
 
 function renderToday() {
   renderTiles();
+  renderTodayMood();
   const list = $('timeline');
   list.replaceChildren(...state.dayEntries.map(renderEntry));
   $('timeline-empty').hidden = state.dayEntries.length > 0;
@@ -577,30 +643,6 @@ function openAdd(type) {
   const body = h('div', null);
   let getData;
 
-  if (type === 'temp') {
-    const last = state.recentEntries.find((e) => e.type === 'temp');
-    const input = h('input', { type: 'number', step: '0.1', min: '34', max: '42', inputmode: 'decimal', value: last ? Number(last.value).toFixed(1) : '37.0', required: true });
-    const hint = h('p', { class: 'hint' });
-    const update = () => { const v = parseFloat(input.value); hint.textContent = isNaN(v) ? '' : tempWord(v); hint.style.color = v >= 38 ? 'var(--red)' : v >= 37.5 ? 'var(--amber)' : 'var(--green)'; };
-    const step = (n) => { const v = parseFloat(input.value) || 37; input.value = (Math.round((v + n) * 10) / 10).toFixed(1); update(); };
-    input.addEventListener('input', update);
-    update();
-    body.append(
-      h('div', { class: 'bigvalue' },
-        h('button', { class: 'iconbtn', type: 'button', 'aria-label': 'Down', onclick: () => step(-0.1) }, '−'),
-        input, h('span', { class: 'unit', text: '°C' }),
-        h('button', { class: 'iconbtn', type: 'button', 'aria-label': 'Up', onclick: () => step(0.1) }, '+')
-      ),
-      hint,
-      field('Time', time), field('Note', note)
-    );
-    getData = () => {
-      const v = parseFloat(input.value);
-      if (isNaN(v) || v < 30 || v > 45) return null;
-      return { type: 'temp', value: Math.round(v * 10) / 10, note: note.value.trim() };
-    };
-  }
-
   if (type === 'drink') {
     const what = h('input', { type: 'text', placeholder: 'What was it?', value: 'Water' });
     const ml = h('input', { type: 'number', inputmode: 'numeric', min: '0', step: '10', value: '200' });
@@ -652,40 +694,73 @@ function openAdd(type) {
   }
 
   if (type === 'vitals') {
+    const lastT = state.recentEntries.find((e) => e.type === 'temp');
+    const temp = h('input', { type: 'number', step: '0.1', min: '34', max: '42', inputmode: 'decimal', placeholder: lastT ? Number(lastT.value).toFixed(1) : '37.0' });
+    const tHint = h('p', { class: 'hint' });
+    const tUpdate = () => {
+      const v = parseFloat(temp.value);
+      tHint.textContent = isNaN(v) ? 'Leave blank if not taken' : tempWord(v);
+      tHint.style.color = isNaN(v) ? '' : v >= 38 ? 'var(--red)' : v >= 37.5 ? 'var(--amber)' : 'var(--green)';
+    };
+    const tStep = (n) => {
+      const base = parseFloat(temp.value);
+      const v = isNaN(base) ? (lastT ? Number(lastT.value) : 37) : base;
+      temp.value = (Math.round((v + n) * 10) / 10).toFixed(1);
+      tUpdate();
+    };
+    temp.addEventListener('input', tUpdate);
+    tUpdate();
     const hr = h('input', { type: 'number', inputmode: 'numeric', min: '30', max: '220', step: '1', placeholder: '0' });
     const sys = h('input', { type: 'number', inputmode: 'numeric', min: '50', max: '250', step: '1', placeholder: '0' });
     const dia = h('input', { type: 'number', inputmode: 'numeric', min: '30', max: '150', step: '1', placeholder: '0' });
     const o2 = h('input', { type: 'number', inputmode: 'numeric', min: '50', max: '100', step: '1', placeholder: '0' });
     body.append(
       h('p', { class: 'hint', text: 'Fill in whichever readings you have. At least one is needed to save.' }),
+      h('span', { class: 'fieldlabel', text: 'Temperature (\u00B0C)' }),
+      h('div', { class: 'bigvalue' },
+        h('button', { class: 'iconbtn', type: 'button', 'aria-label': 'Down', onclick: () => tStep(-0.1) }, '\u2212'),
+        temp, h('span', { class: 'unit', text: '\u00B0C' }),
+        h('button', { class: 'iconbtn', type: 'button', 'aria-label': 'Up', onclick: () => tStep(0.1) }, '+')
+      ),
+      tHint,
       field('Heart rate (bpm)', hr),
       h('div', { class: 'field-row' }, field('Systolic', sys), field('Diastolic', dia)),
       field('Oxygen (%)', o2),
       field('Time', time), field('Note', note)
     );
     getData = () => {
+      const out = [];
+      const noteV = note.value.trim();
+      const tV = parseFloat(temp.value);
+      if (!isNaN(tV)) {
+        if (tV < 30 || tV > 45) return null;
+        out.push({ type: 'temp', value: Math.round(tV * 10) / 10, note: noteV });
+      }
       const hrV = parseInt(hr.value, 10);
       const sysV = parseInt(sys.value, 10);
       const diaV = parseInt(dia.value, 10);
       const o2V = parseInt(o2.value, 10);
-      const data = { type: 'vitals', note: note.value.trim() };
+      const data = { type: 'vitals', note: noteV };
       let has = false;
       if (!isNaN(hrV) && hrV > 0) { data.heartRate = hrV; has = true; }
       if (!isNaN(sysV) && sysV > 0 && !isNaN(diaV) && diaV > 0) { data.systolic = sysV; data.diastolic = diaV; has = true; }
       if (!isNaN(o2V) && o2V > 0) { data.oxygen = o2V; has = true; }
-      return has ? data : null;
+      if (has) out.push(data);
+      return out.length ? out : null;
     };
   }
 
-  const titles = { temp: 'Temperature', drink: 'Drink', food: 'Food', weight: 'Weight', note: 'Note', vitals: 'Vitals' };
+  const titles = { drink: 'Drink', food: 'Food', weight: 'Weight', note: 'Note', vitals: 'Vitals' };
   const save = h('button', { class: 'btn btn-primary btn-block', type: 'button' }, 'Save');
   save.addEventListener('click', async () => {
     const data = getData();
     if (!data) { toast('Please check the value'); return; }
-    data.at = atFromInputs(day, time.value);
+    const at = atFromInputs(day, time.value);
+    const list = Array.isArray(data) ? data : [data];
     closeSheet();
-    const id = await addEntry(data);
-    toast(titles[type] + ' saved', { label: 'Undo', onClick: () => deleteEntry(id) });
+    const ids = [];
+    for (const d of list) { d.at = at; ids.push(await addEntry(d)); }
+    toast(titles[type] + ' saved', { label: 'Undo', onClick: () => ids.forEach((id) => deleteEntry(id)) });
   });
   body.append(save, h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Cancel'));
   openSheet(titles[type], body);
@@ -700,6 +775,21 @@ function presets(values, input, initial) {
   wrap.append(...buttons);
   return wrap;
 }
+
+/* Today's mood, from the Chemo Party Plan day record, shown as a one-line card */
+function renderTodayMood() {
+  const info = state.days[state.selectedDay] || {};
+  const m = info.mood ? MOODS[info.mood - 1] : null;
+  $('today-mood-face').textContent = m ? m.face : '\u{1F642}';
+  if (m) {
+    $('today-mood-title').textContent = 'Feeling ' + m.label.toLowerCase() + (info.good ? '. ' + info.good : '');
+    $('today-mood-sub').textContent = state.selectedDay === todayStr() ? 'Tap to change' : 'Tap to edit';
+  } else {
+    $('today-mood-title').textContent = state.selectedDay === todayStr() ? 'How are you feeling today?' : 'No mood logged for this day';
+    $('today-mood-sub').textContent = 'Tap to log a mood and one good thing';
+  }
+}
+$('today-mood').addEventListener('click', () => openDaySheet(state.selectedDay));
 
 /* ------------------------------------------------------------------ */
 /* Medicines                                                            */
@@ -891,21 +981,49 @@ function openEditMed(m) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Trends                                                               */
+/* Vitals: latest readings and every trend chart                         */
 /* ------------------------------------------------------------------ */
+
+$('vitals-log').addEventListener('click', () => openAdd('vitals'));
 
 document.querySelectorAll('.seg').forEach((b) => b.addEventListener('click', () => {
   state.trendRange = parseInt(b.dataset.range, 10);
   document.querySelectorAll('.seg').forEach((x) => x.classList.toggle('is-active', x === b));
-  renderTrends();
+  renderVitals();
 }));
+
+function whenLabel(e) {
+  const d = entryDate(e);
+  return (e.day === todayStr() ? 'today' : fmtDayShort(e.day)) + ' ' + fmtTime(d);
+}
+
+function renderVitalsLatest(entries) {
+  const latest = (pred) => { for (let i = entries.length - 1; i >= 0; i--) if (pred(entries[i])) return entries[i]; return null; };
+  const t = latest((e) => e.type === 'temp');
+  const tile = $('vt-temp');
+  tile.classList.remove('is-red', 'is-amber', 'is-green');
+  if (t) {
+    $('vt-temp-value').replaceChildren(Number(t.value).toFixed(1), h('small', { text: '\u00B0C' }));
+    $('vt-temp-sub').textContent = whenLabel(t);
+    tile.classList.add(tempClass(t.value) || 'is-green');
+  } else { $('vt-temp-value').textContent = '--'; $('vt-temp-sub').textContent = 'none yet'; }
+
+  const hr = latest((e) => e.type === 'vitals' && e.heartRate);
+  if (hr) { $('vt-heart-value').replaceChildren(String(Math.round(hr.heartRate)), h('small', { text: 'bpm' })); $('vt-heart-sub').textContent = whenLabel(hr); }
+  else { $('vt-heart-value').textContent = '--'; $('vt-heart-sub').textContent = 'none yet'; }
+
+  const bp = latest((e) => e.type === 'vitals' && e.systolic && e.diastolic);
+  if (bp) { $('vt-bp-value').textContent = Math.round(bp.systolic) + '/' + Math.round(bp.diastolic); $('vt-bp-sub').textContent = whenLabel(bp); }
+  else { $('vt-bp-value').textContent = '--'; $('vt-bp-sub').textContent = 'none yet'; }
+
+  const ox = latest((e) => e.type === 'vitals' && e.oxygen);
+  if (ox) { $('vt-oxygen-value').replaceChildren(String(Math.round(ox.oxygen)), h('small', { text: '%' })); $('vt-oxygen-sub').textContent = whenLabel(ox); }
+  else { $('vt-oxygen-value').textContent = '--'; $('vt-oxygen-sub').textContent = 'none yet'; }
+}
 
 function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
 
-async function renderTrends() {
-  try {
-    await loadScript(CDN.chart);
-  } catch (e) { toast('Charts need a connection'); return; }
+async function renderVitals() {
   const from = addDays(todayStr(), -(state.trendRange - 1));
   let entries;
   try {
@@ -913,6 +1031,11 @@ async function renderTrends() {
     entries = snap.docs.map((d) => d.data());
   } catch (e) { console.error(e); return; }
   entries.sort((a, b) => entryDate(a) - entryDate(b));
+  renderVitalsLatest(entries);
+  /* Latest readings are shown above regardless; only the charts need the library. */
+  try {
+    await loadScript(CDN.chart);
+  } catch (e) { toast('Charts need a connection'); return; }
 
   const ink = cssVar('--ink-soft'), line = cssVar('--line'), teal = cssVar('--teal'), red = cssVar('--red'), amber = cssVar('--amber');
   const Chart = window.Chart;
@@ -1033,19 +1156,31 @@ function showDocsList() {
 }
 
 $('doc-back').addEventListener('click', showDocsList);
+$('docs-back').addEventListener('click', () => showTab(state.docsReturn || 'more'));
+$('more-docs').addEventListener('click', () => openDocs('more'));
+$('chemo-doc-add').addEventListener('click', () => openAddDocument('chemo'));
+
+function docItem(d) {
+  return h('button', { class: 'docitem', type: 'button', onclick: () => { if ($('view-docs').hidden) openDocs(d.category === 'chemo' ? 'chemo' : 'more'); openDocument(d.id); } },
+    h('span', { class: 'docitem-icon', text: d.kind === 'text' ? '\u{1F4C4}' : '\u{1F5BC}' }),
+    h('div', { class: 'docitem-main' },
+      h('div', { class: 'docitem-title', text: d.title }),
+      h('div', { class: 'docitem-sub', text: [fmtDayNum(d.docDate || ''), d.category === 'chemo' ? 'Chemo plan' : null, d.kind === 'text' ? 'Text' : (d.pageCount === 1 ? '1 page' : d.pageCount + ' pages'), d.explanation ? 'Explained' : 'No explanation yet'].filter(Boolean).join(' \u00B7 ') })
+    ),
+    h('span', { class: 'pill ' + (d.explanation ? 'pill-green' : 'pill-amber'), text: d.explanation ? '\u2713' : '?' })
+  );
+}
+
+function renderChemoDocs() {
+  const docs = state.documents.filter((d) => d.category === 'chemo');
+  $('chemo-docs').replaceChildren(...docs.map((d) => h('li', null, docItem(d))));
+  $('chemo-docs-empty').hidden = docs.length > 0;
+}
 
 function renderDocsList() {
   const list = $('docs-list');
-  list.replaceChildren(...state.documents.map((d) => h('li', null,
-    h('button', { class: 'docitem', type: 'button', onclick: () => openDocument(d.id) },
-      h('span', { class: 'docitem-icon', text: d.kind === 'text' ? '📄' : '🖼' }),
-      h('div', { class: 'docitem-main' },
-        h('div', { class: 'docitem-title', text: d.title }),
-        h('div', { class: 'docitem-sub', text: [fmtDayNum(d.docDate || ''), d.kind === 'text' ? 'Text' : (d.pageCount === 1 ? '1 page' : d.pageCount + ' pages'), d.explanation ? 'Explained' : 'No explanation yet'].join(' · ') })
-      ),
-      h('span', { class: 'pill ' + (d.explanation ? 'pill-green' : 'pill-amber'), text: d.explanation ? '✓' : '?' })
-    )
-  )));
+  list.replaceChildren(...state.documents.map((d) => h('li', null, docItem(d))));
+  renderChemoDocs();
   $('docs-empty').hidden = state.documents.length > 0;
   if (state.currentDoc) {
     const d = state.documents.find((x) => x.id === state.currentDoc.id);
@@ -1053,12 +1188,12 @@ function renderDocsList() {
   }
 }
 
-$('doc-add').addEventListener('click', openAddDocument);
+$('doc-add').addEventListener('click', () => openAddDocument('general'));
 
 /* One-screen add: choose photos or a PDF, give a title and date, paste Claude's
    summary (smart-filling title, date and explanation when it is in the Care Log
    block format), then save the document and its pages together in one batch. */
-function openAddDocument() {
+function openAddDocument(category) {
   let staged = null; // { kind: 'images', pages: [{data,width,height}] } once files are processed
 
   const fileInput = h('input', { type: 'file', accept: 'image/*,application/pdf,.pdf', multiple: true, style: 'display:none' });
@@ -1091,7 +1226,7 @@ function openAddDocument() {
 
   function updateSaveEnabled() {
     const hasTitle = title.value.trim().length > 0;
-    const hasPages = Boolean(staged && staged.pages && staged.pages.length);
+    const hasPages = Boolean(staged && ((staged.pages && staged.pages.length) || (staged.kind === 'text' && staged.text)));
     const hasExplanation = explanation.value.trim().length > 0;
     save.disabled = !(hasTitle && (hasPages || hasExplanation));
   }
@@ -1123,6 +1258,7 @@ function openAddDocument() {
     setSaveProgress('Saving', 0.6);
     try {
       await saveDocumentBatch({
+        category: category === 'chemo' ? 'chemo' : 'general',
         title: title.value.trim(),
         docDate: date.value || todayStr(),
         explanation: explanation.value.trim(),
@@ -1149,7 +1285,7 @@ function openAddDocument() {
     h('p', { class: 'hint', text: NOT_MEDICAL_ADVICE }),
     save, saveProgress, cancel
   );
-  openSheet('Add document', body);
+  openSheet(category === 'chemo' ? 'Add the chemo plan' : 'Add document', body);
 }
 
 async function processFiles(files, onProgress) {
@@ -1256,11 +1392,11 @@ async function compressCanvas(canvas) {
 
 /* Writes the document record and every page of its pages subcollection in a
    single Firestore batch, so the two never end up out of step. */
-async function saveDocumentBatch({ title, docDate, explanation, kind, pages, text }) {
+async function saveDocumentBatch({ category, title, docDate, explanation, kind, pages, text }) {
   const ref = doc(collection(db, 'documents'));
   const batch = writeBatch(db);
   const data = {
-    title, docDate, kind: kind || 'images', pageCount: pages.length,
+    title, docDate, kind: kind || 'images', category: category || 'general', pageCount: pages.length,
     explanation: explanation || '', addedBy: state.name, addedAt: serverTimestamp(), updatedAt: serverTimestamp()
   };
   if (kind === 'text' && text) data.text = text;
@@ -1390,6 +1526,303 @@ $('doc-delete').addEventListener('click', async () => {
 });
 
 /* ------------------------------------------------------------------ */
+/* Chemo Party Plan: calendar, mood, cheer board                         */
+/* ------------------------------------------------------------------ */
+
+function renderChemo() {
+  renderChemoProgress();
+  renderCalendar();
+  renderCheers();
+  renderChemoDocs();
+}
+
+function renderChemoProgress() {
+  const keys = Object.keys(state.days).filter((k) => state.days[k].chemo).sort();
+  const planned = keys.length;
+  const done = keys.filter((k) => state.days[k].chemoDone).length;
+  $('chemo-count').textContent = `${done} of ${planned} done`;
+  $('chemo-bar').style.width = planned ? Math.round((done / planned) * 100) + '%' : '0%';
+  const today = todayStr();
+  const upcoming = keys.filter((k) => !state.days[k].chemoDone && k >= today);
+  let text;
+  if (!planned) text = 'Tap a day on the calendar to mark a chemo session.';
+  else if (upcoming.length) {
+    const next = upcoming[0];
+    const gap = Math.round((parseDay(next) - parseDay(today)) / 864e5);
+    text = next === today ? 'Next session: today.' : `Next session: ${fmtDayLong(next)}, ${gap === 1 ? 'tomorrow' : 'in ' + gap + ' days'}.`;
+  } else text = done === planned ? 'Every session done. That is a proper milestone.' : 'No upcoming sessions marked.';
+  $('chemo-next').textContent = text;
+}
+
+$('cal-prev').addEventListener('click', () => { state.chemoMonth = shiftMonth(state.chemoMonth, -1); renderCalendar(); });
+$('cal-next').addEventListener('click', () => { state.chemoMonth = shiftMonth(state.chemoMonth, 1); renderCalendar(); });
+$('cal-title').addEventListener('click', () => { state.chemoMonth = todayStr().slice(0, 7); renderCalendar(); });
+
+function shiftMonth(ym, n) {
+  const [y, m] = ym.split('-').map(Number);
+  const d = new Date(y, m - 1 + n, 1);
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
+}
+
+function renderCalendar() {
+  const [y, m] = state.chemoMonth.split('-').map(Number);
+  $('cal-title').textContent = new Date(y, m - 1, 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+  const startDow = (new Date(y, m - 1, 1).getDay() + 6) % 7; // Monday first
+  const daysInMonth = new Date(y, m, 0).getDate();
+  const today = todayStr();
+  const cells = [];
+  for (let i = 0; i < startDow; i++) cells.push(h('div', { class: 'cal-cell is-empty' }));
+  for (let d = 1; d <= daysInMonth; d++) {
+    const key = `${y}-${pad2(m)}-${pad2(d)}`;
+    const info = state.days[key] || {};
+    const cls = ['cal-cell'];
+    if (key === today) cls.push('is-today');
+    if (info.chemo) cls.push('is-chemo');
+    if (info.chemoDone) cls.push('is-done');
+    const label = [fmtDayLong(key), info.chemo ? (info.chemoDone ? 'chemo session done' : 'chemo session') : null, info.mood ? 'mood ' + MOODS[info.mood - 1].label : null].filter(Boolean).join(', ');
+    cells.push(h('button', { class: cls.join(' '), type: 'button', 'aria-label': label, onclick: () => openDaySheet(key) },
+      h('span', { class: 'cal-num', text: String(d) }),
+      info.mood ? h('span', { class: 'cal-face', text: MOODS[info.mood - 1].face }) : null
+    ));
+  }
+  $('cal-grid').replaceChildren(...cells);
+}
+
+/* One sheet per calendar day: chemo session, session done, mood, one good thing */
+function openDaySheet(key) {
+  const info = state.days[key] || {};
+  let mood = info.mood || 0;
+  const cbChemo = h('input', { type: 'checkbox' });
+  cbChemo.checked = !!info.chemo;
+  const cbDone = h('input', { type: 'checkbox' });
+  cbDone.checked = !!info.chemoDone;
+  const doneRow = h('label', { class: 'check' }, cbDone, h('span', { text: 'Session done' }));
+  const syncDone = () => { doneRow.hidden = !cbChemo.checked; if (!cbChemo.checked) cbDone.checked = false; };
+  cbChemo.addEventListener('change', syncDone);
+  syncDone();
+
+  const moodBtns = MOODS.map((mo, i) => h('button', { class: 'mood' + (mood === i + 1 ? ' is-active' : ''), type: 'button', onclick: () => {
+    mood = mood === i + 1 ? 0 : i + 1;
+    moodBtns.forEach((b, j) => b.classList.toggle('is-active', mood === j + 1));
+  } }, h('span', { class: 'face', text: mo.face }), mo.label));
+  const good = h('input', { type: 'text', value: info.good || '', placeholder: 'e.g. Sat in the garden for an hour', maxlength: '140' });
+
+  const body = h('div', null,
+    h('label', { class: 'check' }, cbChemo, h('span', { text: 'Chemo session this day' })),
+    doneRow,
+    h('span', { class: 'fieldlabel', text: 'Mood' }),
+    h('div', { class: 'moods' }, ...moodBtns),
+    field('One good thing today', good),
+    h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
+      const wasDone = !!info.chemoDone;
+      const data = {
+        chemo: cbChemo.checked,
+        chemoDone: cbChemo.checked && cbDone.checked,
+        mood: mood || null,
+        good: good.value.trim(),
+        updatedBy: state.name,
+        updatedAt: serverTimestamp()
+      };
+      closeSheet();
+      try {
+        await setDoc(doc(db, 'days', key), data, { merge: true });
+        if (data.chemoDone && !wasDone) { confetti(); toast('One more session done. Well done.'); }
+        else toast('Saved');
+      } catch (e) { console.error(e); toast('Could not save'); }
+    } }, 'Save'),
+    (info.chemo || info.mood || info.good) ? h('button', { class: 'btn btn-danger btn-block', type: 'button', onclick: async () => {
+      closeSheet();
+      try { await deleteDoc(doc(db, 'days', key)); toast('Day cleared'); } catch (e) { console.error(e); toast('Could not clear'); }
+    } }, 'Clear this day') : null,
+    h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Cancel')
+  );
+  openSheet(fmtDayLong(key), body);
+}
+
+/* Cheer board */
+$('cheer-post').addEventListener('click', postCheer);
+$('cheer-text').addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); postCheer(); } });
+
+async function postCheer() {
+  const input = $('cheer-text');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  try {
+    await setDoc(doc(collection(db, 'cheers')), { text, addedBy: state.name, createdAt: serverTimestamp() });
+  } catch (e) { console.error(e); toast('Could not post'); }
+}
+
+function renderCheers() {
+  const list = $('cheers');
+  list.replaceChildren(...state.cheers.map((c) => {
+    const when = c.createdAt && typeof c.createdAt.toDate === 'function'
+      ? c.createdAt.toDate().toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+      : 'just now';
+    return h('li', { class: 'cheer' },
+      h('div', { class: 'cheer-body' },
+        h('div', { class: 'cheer-text', text: c.text }),
+        h('div', { class: 'cheer-meta', text: (c.addedBy || '') + ' · ' + when })
+      ),
+      c.addedBy === state.name ? h('button', { class: 'cheer-del', type: 'button', 'aria-label': 'Remove note', onclick: async () => {
+        if (await confirmSheet('Remove note', 'Take this note off the board?', 'Remove', true)) deleteDoc(doc(db, 'cheers', c.id));
+      } }, '×') : null
+    );
+  }));
+  $('cheers-empty').hidden = state.cheers.length > 0;
+}
+
+/* A short, calm confetti burst when a session is marked done. Skipped for reduced motion. */
+function confetti() {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const c = $('confetti');
+  const ctx = c.getContext('2d');
+  c.width = window.innerWidth; c.height = window.innerHeight;
+  c.hidden = false;
+  const colours = [cssVar('--teal'), cssVar('--green'), cssVar('--amber'), '#6A5A8E', '#3E7FA6'];
+  const parts = Array.from({ length: 140 }, () => ({
+    x: Math.random() * c.width, y: -20 - Math.random() * c.height * 0.4,
+    vx: (Math.random() - 0.5) * 2.5, vy: 2.5 + Math.random() * 3.5,
+    w: 6 + Math.random() * 6, hh: 3 + Math.random() * 3,
+    rot: Math.random() * Math.PI, vr: (Math.random() - 0.5) * 0.25,
+    colour: colours[Math.floor(Math.random() * colours.length)]
+  }));
+  const start = performance.now();
+  function frame(t) {
+    ctx.clearRect(0, 0, c.width, c.height);
+    for (const p of parts) {
+      p.x += p.vx; p.y += p.vy; p.rot += p.vr;
+      ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot); ctx.fillStyle = p.colour;
+      ctx.fillRect(-p.w / 2, -p.hh / 2, p.w, p.hh); ctx.restore();
+    }
+    if (t - start < 2400) requestAnimationFrame(frame);
+    else { ctx.clearRect(0, 0, c.width, c.height); c.hidden = true; }
+  }
+  requestAnimationFrame(frame);
+}
+
+/* ------------------------------------------------------------------ */
+/* Exercise: steps by hand, daily goals, streak                          */
+/* ------------------------------------------------------------------ */
+
+function goals() { return { ...GOAL_DEFAULTS, ...((state.profile && state.profile.exerciseGoals) || {}) }; }
+function exerciseFor(day) { return state.exercise[day] || {}; }
+function allGoalsDone(day) { const d = exerciseFor(day).done || {}; return GOAL_ROWS.every((g) => d[g.key]); }
+
+function exerciseStreak() {
+  let n = 0;
+  let d = todayStr();
+  if (!allGoalsDone(d)) d = addDays(d, -1);
+  while (allGoalsDone(d) && n < 3660) { n++; d = addDays(d, -1); }
+  return n;
+}
+
+$('ex-prev').addEventListener('click', () => { state.exerciseDay = addDays(state.exerciseDay, -1); renderExercise(); });
+$('ex-next').addEventListener('click', () => { if (state.exerciseDay < todayStr()) { state.exerciseDay = addDays(state.exerciseDay, 1); renderExercise(); } });
+$('ex-label').addEventListener('click', () => { state.exerciseDay = todayStr(); renderExercise(); });
+
+function renderExercise() {
+  const day = state.exerciseDay;
+  const today = todayStr();
+  const lbl = $('ex-label');
+  lbl.replaceChildren(fmtDayLong(day), h('small', { text: day === today ? 'Today' : day === addDays(today, -1) ? 'Yesterday' : fmtDayNum(day) }));
+  $('ex-next').style.visibility = day >= today ? 'hidden' : 'visible';
+
+  const rec = exerciseFor(day);
+  if (rec.steps) { $('ex-steps-value').textContent = Number(rec.steps).toLocaleString('en-GB'); $('ex-steps-sub').textContent = 'steps'; }
+  else { $('ex-steps-value').textContent = '--'; $('ex-steps-sub').textContent = 'not logged'; }
+
+  const streak = exerciseStreak();
+  $('ex-streak-value').textContent = String(streak);
+  $('ex-streak-sub').textContent = streak === 1 ? 'day all done' : 'days all done';
+  $('ex-streak-tile').classList.toggle('is-green', streak > 0);
+
+  const g = goals();
+  const done = rec.done || {};
+  $('ex-goals').replaceChildren(...GOAL_ROWS.map((row) => h('button', { class: 'goal' + (done[row.key] ? ' is-done' : ''), type: 'button', 'aria-pressed': done[row.key] ? 'true' : 'false', onclick: () => toggleGoal(day, row.key) },
+    h('span', { class: 'goal-box', text: done[row.key] ? '✓' : '' }),
+    h('span', { class: 'goal-label', text: row.label }),
+    h('span', { class: 'goal-target', text: row.fmt(g[row.goal]) })
+  )));
+  renderStepsChart();
+}
+
+async function toggleGoal(day, key) {
+  const rec = exerciseFor(day);
+  const done = { ...(rec.done || {}) };
+  done[key] = !done[key];
+  const nowAll = GOAL_ROWS.every((g) => done[g.key]);
+  const wasAll = allGoalsDone(day);
+  try {
+    await setDoc(doc(db, 'exercise', day), { day, done, addedBy: state.name, updatedAt: serverTimestamp() }, { merge: true });
+    if (nowAll && !wasAll) toast('All four done. Nice work.');
+  } catch (e) { console.error(e); toast('Could not save'); }
+}
+
+$('ex-steps-edit').addEventListener('click', () => {
+  const day = state.exerciseDay;
+  const rec = exerciseFor(day);
+  const input = h('input', { type: 'number', inputmode: 'numeric', min: '0', step: '1', value: rec.steps ? String(rec.steps) : '', placeholder: '0' });
+  const body = h('div', null,
+    h('p', { class: 'muted', text: fmtDayLong(day) }),
+    h('div', { class: 'bigvalue' }, input, h('span', { class: 'unit', text: 'steps' })),
+    h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
+      const v = parseInt(input.value, 10);
+      if (isNaN(v) || v < 0) { toast('Please check the number'); return; }
+      closeSheet();
+      try { await setDoc(doc(db, 'exercise', day), { day, steps: v, addedBy: state.name, updatedAt: serverTimestamp() }, { merge: true }); toast('Steps saved'); }
+      catch (e) { console.error(e); toast('Could not save'); }
+    } }, 'Save'),
+    h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Cancel')
+  );
+  openSheet('Steps', body);
+});
+
+$('ex-goals-edit').addEventListener('click', () => {
+  const g = goals();
+  const pressups = h('input', { type: 'number', inputmode: 'numeric', min: '0', value: String(g.pressups) });
+  const situps = h('input', { type: 'number', inputmode: 'numeric', min: '0', value: String(g.situps) });
+  const plank = h('input', { type: 'number', inputmode: 'numeric', min: '0', step: '5', value: String(g.plankSeconds) });
+  const squats = h('input', { type: 'number', inputmode: 'numeric', min: '0', value: String(g.squats) });
+  const body = h('div', null,
+    h('p', { class: 'hint', text: 'Set what a full day looks like. Worth checking these with the oncology team first.' }),
+    field('Press-ups a day', pressups), field('Sit-ups a day', situps), field('Plank (seconds)', plank), field('Squats a day', squats),
+    h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
+      const exerciseGoals = {
+        pressups: Math.max(0, parseInt(pressups.value, 10) || 0),
+        situps: Math.max(0, parseInt(situps.value, 10) || 0),
+        plankSeconds: Math.max(0, parseInt(plank.value, 10) || 0),
+        squats: Math.max(0, parseInt(squats.value, 10) || 0)
+      };
+      closeSheet();
+      try { await setDoc(doc(db, 'profile', 'main'), { exerciseGoals }, { merge: true }); toast('Goals saved'); }
+      catch (e) { console.error(e); toast('Could not save'); }
+    } }, 'Save'),
+    h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Cancel')
+  );
+  openSheet('Daily goals', body);
+});
+
+async function renderStepsChart() {
+  if ($('view-exercise').hidden) return;
+  try { await loadScript(CDN.chart); } catch (e) { return; }
+  const end = state.exerciseDay;
+  const days = [];
+  for (let i = 6; i >= 0; i--) days.push(addDays(end, -i));
+  const Chart = window.Chart;
+  Chart.defaults.font.family = cssVar('--font-mono') || 'monospace';
+  Chart.defaults.font.size = 13;
+  Chart.defaults.color = cssVar('--ink-soft');
+  makeChart('steps', {
+    type: 'bar',
+    data: { labels: days.map((d) => parseDay(d).toLocaleDateString('en-GB', { weekday: 'short' })), datasets: [{ label: 'Steps', data: days.map((d) => Number(exerciseFor(d).steps) || 0), backgroundColor: cssVar('--teal'), borderRadius: 6 }] },
+    options: { responsive: true, maintainAspectRatio: false,
+      scales: { x: { grid: { display: false } }, y: { beginAtZero: true, grid: { color: cssVar('--line') } } },
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: (i) => Number(i.raw).toLocaleString('en-GB') + ' steps' } } } }
+  });
+}
+
+/* ------------------------------------------------------------------ */
 /* More: calls and profile                                              */
 /* ------------------------------------------------------------------ */
 
@@ -1451,6 +1884,7 @@ function checkDayRollover() {
   if (state.recentFrom && state.recentFrom !== expectedFrom) {
     const previousToday = addDays(state.recentFrom, 1);
     if (state.selectedDay === previousToday) state.selectedDay = today;
+    if (state.exerciseDay === previousToday) state.exerciseDay = today;
     watchRecent();
     watchDay();
   }
