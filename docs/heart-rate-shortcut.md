@@ -1,5 +1,13 @@
 # Heart rate: Apple Health shortcut
 
+There is an easier, tick-the-box-as-you-go version of this guide, with
+copy buttons for every technical bit:
+https://claude.ai/artifact/73W44jMTPwTvjDstUxhtx7
+
+Start there if you're building this for the first time. This page is the
+same recipe written out as plain reference, worth keeping in the repo in
+case that link ever stops working.
+
 Care Log is a web app, so it cannot read Apple Health or the Apple Watch
 directly. Safari has no web API for HealthKit, on the Home Screen or not.
 The "Get from Apple Health" button on the Heart rate screen works around
