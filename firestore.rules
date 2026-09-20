@@ -58,6 +58,11 @@ service cloud.firestore {
       allow read, write: if isFamily();
     }
 
+    // Saved meals: quick buttons for logging food, with what goes with each one
+    match /meals/{mealId} {
+      allow read, write: if isFamily();
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

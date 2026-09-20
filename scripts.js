@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '12';
+const APP_VERSION = '13';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
 const TEXT_LIMIT_BYTES = 800 * 1024;
 const PAGE_MAX_DIM = 1600;
@@ -266,6 +266,8 @@ const state = {
   unsub: {},
   charts: {},
   trendRange: 7,
+  foodRange: 14,
+  meals: [],
   currentDoc: null,
   docsReturn: 'more',
   days: {},
@@ -387,6 +389,7 @@ async function startData() {
   watchDays();
   watchCheers();
   watchExercise();
+  watchMeals();
 }
 
 function stopData() {
@@ -420,7 +423,8 @@ function buildDemoFixture() {
     e(-9, '09:00', 'Mark', { type: 'vitals', heartRate: 76 }),
     e(-9, '07:30', 'Mark', { type: 'weight', value: 78.8 }),
     e(-8, '10:00', 'Shelley', { type: 'drink', value: 300, note: 'Water' }),
-    e(-8, '08:00', 'Mark', { type: 'food', note: 'Porridge', amount: 'All of it' }),
+    e(-8, '08:00', 'Mark', { type: 'food', note: 'Porridge', detail: 'honey and banana', amount: 'All of it' }),
+    e(-8, '18:30', 'Shelley', { type: 'food', note: 'Homity pie', detail: 'peas, mash, gravy', amount: 'About half' }),
     e(-7, '15:00', 'Mark', { type: 'temp', value: 37.7 }),
     e(-7, '15:05', 'Mark', { type: 'vitals', heartRate: 88, systolic: 128, diastolic: 82, oxygen: 95 }),
     e(-7, '15:10', 'Mark', { type: 'note', note: 'A bit more tired after today’s session.' }),
@@ -435,7 +439,8 @@ function buildDemoFixture() {
     e(-3, '07:30', 'Shelley', { type: 'weight', value: 78.6 }),
     e(-3, '14:00', 'Mark', { type: 'note', note: 'Rested and read a book in the garden.' }),
     e(-2, '08:00', 'Shelley', { type: 'temp', value: 36.9 }),
-    e(-2, '08:15', 'Mark', { type: 'food', note: 'Scrambled egg on toast', amount: 'Most of it' }),
+    e(-2, '08:15', 'Mark', { type: 'food', note: 'Scrambled egg on toast', detail: 'two eggs, wholemeal toast', amount: 'Most of it' }),
+    e(-2, '15:00', 'Shelley', { type: 'food', note: 'Grapes', amount: 'A few mouthfuls' }),
     e(-1, '14:00', 'Mark', { type: 'temp', value: 37.6 }),
     e(-1, '14:05', 'Mark', { type: 'vitals', heartRate: 84, systolic: 124, diastolic: 80, oxygen: 95 }),
     e(-1, '16:00', 'Shelley', { type: 'drink', value: 200, note: 'Squash' }),
@@ -478,7 +483,15 @@ function buildDemoFixture() {
 
   const profile = { calls: [{ label: 'Oncology ward (example)', number: '01234 567890' }, { label: 'Hospice at home (example)', number: '01234 567891' }] };
 
-  return { entries, documents, days, cheers, exercise, profile };
+  const meals = [
+    { id: fakeId('meal'), name: 'Porridge', parts: 'honey and banana', addedBy: 'Mark' },
+    { id: fakeId('meal'), name: 'Homity pie', parts: 'peas, mash, gravy', addedBy: 'Shelley' },
+    { id: fakeId('meal'), name: 'Scrambled egg on toast', parts: 'two eggs, wholemeal toast', addedBy: 'Mark' },
+    { id: fakeId('meal'), name: 'Grapes', parts: '', addedBy: 'Shelley' },
+    { id: fakeId('meal'), name: 'Cheese and crackers', parts: 'cheddar, water biscuits', addedBy: 'Shelley' }
+  ];
+
+  return { entries, documents, days, cheers, exercise, profile, meals };
 }
 
 function startDemoData() {
@@ -494,6 +507,7 @@ function startDemoData() {
   state.cheers = fixture.cheers;
   state.exercise = fixture.exercise;
   state.profile = fixture.profile;
+  state.meals = fixture.meals;
 
   renderMeds();
   renderDayLabel();
@@ -611,6 +625,12 @@ function watchExercise() {
   }, (e) => console.error(e));
 }
 
+function watchMeals() {
+  state.unsub.meals = onSnapshot(collection(db, 'meals'), (snap) => {
+    state.meals = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  }, (e) => console.error(e));
+}
+
 async function addEntry(data) {
   const at = data.at instanceof Date ? data.at : new Date();
   const entry = {
@@ -655,11 +675,12 @@ document.querySelectorAll('.tab').forEach((btn) => {
 });
 
 function showTab(name) {
-  const highlight = name === 'docs' ? (state.docsReturn || 'more') : name;
+  const highlight = name === 'docs' ? (state.docsReturn || 'more') : name === 'food' ? 'more' : name;
   document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('is-active', b.dataset.tab === highlight));
   document.querySelectorAll('.view').forEach((v) => { v.hidden = v.dataset.view !== name; });
   window.scrollTo(0, 0);
   if (name === 'vitals') renderVitals();
+  if (name === 'food') renderFoodDiary();
   if (name === 'chemo') renderChemo();
   if (name === 'exercise') renderExercise();
   if (name === 'docs') showDocsList();
@@ -738,6 +759,7 @@ function entrySub(e) {
   if (e.type === 'med' && e.note) bits.push(e.note);
   if (e.type === 'temp' && e.note) bits.push(e.note);
   if (e.type === 'food' && e.amount) bits.push(e.amount);
+  if (e.type === 'food' && e.detail) bits.push(e.detail);
   if (e.type === 'weight' && e.note) bits.push(e.note);
   if (e.type === 'vitals' && e.note) bits.push(e.note);
   bits.push('by ' + (e.addedBy || 'unknown'));
@@ -816,7 +838,7 @@ function openAdd(type) {
     const what = h('input', { type: 'text', placeholder: 'What was it?', value: 'Water' });
     const ml = h('input', { type: 'number', inputmode: 'numeric', min: '0', step: '10', value: '200' });
     const whatPresets = presets(['Water', 'Tea', 'Coffee', 'Squash', 'Juice', 'Milk', 'Supplement drink'], what, 'Water');
-    const mlPresets = presets(['50', '100', '150', '200', '250', '300'], ml, '200');
+    const mlPresets = presets(['50', '100', '150', '200', '250', '300', { value: '568', label: '568 pint' }, { value: '750', label: '750 bottle' }], ml, '200');
     body.append(
       field('Drink', what), whatPresets,
       field('Amount (ml)', ml), mlPresets,
@@ -829,13 +851,40 @@ function openAdd(type) {
   }
 
   if (type === 'food') {
-    const what = h('input', { type: 'text', placeholder: 'What was eaten?', required: true });
+    const meals = sortedMeals();
+    const what = h('input', { type: 'text', placeholder: 'What was eaten?', required: true, list: 'meal-names', autocomplete: 'off' });
+    const names = h('datalist', { id: 'meal-names' }, ...meals.map((m) => h('option', { value: m.name })));
+    const parts = h('input', { type: 'text', placeholder: 'e.g. peas, mash, gravy' });
     const amount = h('input', { type: 'hidden', value: 'About half' });
     const amountPresets = presets(['A few mouthfuls', 'About half', 'Most of it', 'All of it'], amount, 'About half');
-    body.append(field('Food', what), h('p', { class: 'field' }, h('span', { text: 'How much' })), amountPresets, field('Time', time));
+    const remember = h('input', { type: 'checkbox' });
+    remember.checked = true;
+    /* Typing or tapping a saved meal fills in what goes with it; the meal
+       buttons set the input first, then this runs on the bubbled click. */
+    const applyMeal = () => { const m = findMeal(what.value); if (m) parts.value = m.parts || ''; };
+    what.addEventListener('input', applyMeal);
+    what.addEventListener('change', applyMeal);
+    const mealButtons = meals.length ? presets(meals.map((m) => m.name), what, '') : null;
+    if (mealButtons) mealButtons.addEventListener('click', applyMeal);
+    body.append(
+      field('Food', what), names,
+      mealButtons || h('p', { class: 'hint', text: 'Meals you log are remembered and appear here as quick buttons.' }),
+      field('What is in it (optional)', parts),
+      h('p', { class: 'field' }, h('span', { text: 'How much' })), amountPresets,
+      field('Time', time),
+      h('label', { class: 'check' }, remember, h('span', { text: 'Remember this meal for next time' }))
+    );
     getData = () => {
-      if (!what.value.trim()) return null;
-      return { type: 'food', note: what.value.trim(), amount: amount.value };
+      const name = what.value.trim();
+      if (!name) return null;
+      const detail = parts.value.trim();
+      if (remember.checked) {
+        const existing = findMeal(name);
+        if (!existing || (existing.parts || '') !== detail) saveMeal(existing ? existing.id : null, existing ? existing.name : name, detail);
+      }
+      const data = { type: 'food', note: name, amount: amount.value };
+      if (detail) data.detail = detail;
+      return data;
     };
   }
 
@@ -935,14 +984,159 @@ function openAdd(type) {
   openSheet(titles[type], body);
 }
 
+/* Each value is a string, or { value, label } when the button should read differently from what it fills in */
 function presets(values, input, initial) {
   const wrap = h('div', { class: 'presets' });
-  const buttons = values.map((v) => h('button', { class: 'preset' + (v === initial ? ' is-active' : ''), type: 'button', text: v }));
-  const mark = (value) => buttons.forEach((b) => b.classList.toggle('is-active', b.textContent === value));
-  buttons.forEach((b) => b.addEventListener('click', () => { input.value = b.textContent; mark(b.textContent); }));
+  const items = values.map((v) => (typeof v === 'object' ? v : { value: v, label: v }));
+  const buttons = items.map((it) => h('button', { class: 'preset' + (it.value === initial ? ' is-active' : ''), type: 'button', text: it.label, dataset: { value: it.value } }));
+  const mark = (value) => buttons.forEach((b) => b.classList.toggle('is-active', b.dataset.value === value));
+  buttons.forEach((b) => b.addEventListener('click', () => { input.value = b.dataset.value; mark(b.dataset.value); }));
   input.addEventListener('input', () => mark(input.value));
   wrap.append(...buttons);
   return wrap;
+}
+
+/* ------------------------------------------------------------------ */
+/* Saved meals: remembered the first time a food is logged, then offered */
+/* as quick buttons and autocomplete with what goes with them filled in  */
+/* ------------------------------------------------------------------ */
+
+function findMeal(name) {
+  const n = String(name || '').trim().toLowerCase();
+  return n ? state.meals.find((m) => (m.name || '').toLowerCase() === n) || null : null;
+}
+function sortedMeals() {
+  return state.meals.slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+}
+
+function saveMeal(id, name, parts) {
+  if (state.demo) {
+    const m = id ? state.meals.find((x) => x.id === id) : null;
+    if (m) { m.name = name; m.parts = parts; }
+    else state.meals.push({ id: fakeId('meal'), name, parts, addedBy: state.name });
+    return Promise.resolve();
+  }
+  const ref = id ? doc(db, 'meals', id) : doc(collection(db, 'meals'));
+  const data = { name, parts, updatedAt: serverTimestamp() };
+  if (!id) { data.addedBy = state.name; data.createdAt = serverTimestamp(); }
+  return setDoc(ref, data, { merge: true }).catch((e) => { console.error(e); toast('Could not save the meal'); });
+}
+
+function deleteMeal(id) {
+  if (state.demo) { state.meals = state.meals.filter((m) => m.id !== id); return Promise.resolve(); }
+  return deleteDoc(doc(db, 'meals', id)).catch((e) => { console.error(e); toast('Could not remove the meal'); });
+}
+
+$('more-meals').addEventListener('click', openManageMeals);
+
+function openManageMeals() {
+  const list = h('div', { class: 'medlist' });
+  sortedMeals().forEach((m) => list.append(h('div', { class: 'medrow' },
+    h('span', { class: 'medrow-name' }, m.name, m.parts ? h('small', { class: 'medrow-sub', text: m.parts }) : null),
+    h('button', { class: 'btn btn-secondary btn-small', type: 'button', onclick: () => openEditMeal(m) }, 'Edit')
+  )));
+  if (!state.meals.length) list.append(h('p', { class: 'empty', text: 'No saved meals yet. Log some food with "Remember this meal" ticked and it will appear here.' }));
+  const body = h('div', null,
+    h('p', { class: 'hint', text: 'Saved meals show as quick buttons when logging food, with what goes with them filled in.' }),
+    list,
+    h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => openEditMeal(null) }, 'Add a meal'),
+    h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Close')
+  );
+  openSheet('Saved meals', body);
+}
+
+function openEditMeal(m) {
+  const isNew = !m;
+  const name = h('input', { type: 'text', value: m ? m.name : '', required: true, placeholder: 'e.g. Homity pie' });
+  const parts = h('input', { type: 'text', value: m ? (m.parts || '') : '', placeholder: 'e.g. peas, mash, gravy' });
+  const body = h('div', null,
+    field('Meal', name), field('What is in it (optional)', parts),
+    h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
+      const n = name.value.trim();
+      if (!n) { toast('Please enter a name'); return; }
+      const dup = findMeal(n);
+      if (dup && (isNew || dup.id !== m.id)) { toast('That meal is already saved'); return; }
+      closeSheet();
+      await saveMeal(isNew ? null : m.id, n, parts.value.trim());
+      toast(isNew ? 'Meal saved' : 'Meal updated');
+    } }, isNew ? 'Save meal' : 'Save changes'),
+    isNew ? null : h('button', { class: 'btn btn-danger btn-block', type: 'button', onclick: async () => {
+      closeSheet();
+      await deleteMeal(m.id);
+      toast('Meal removed');
+    } }, 'Remove this meal'),
+    h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: openManageMeals }, 'Back')
+  );
+  openSheet(isNew ? 'Add a meal' : 'Edit meal', body);
+}
+
+/* ------------------------------------------------------------------ */
+/* Food diary: everything eaten, day by day, with each day's drinks total */
+/* ------------------------------------------------------------------ */
+
+$('more-food').addEventListener('click', () => showTab('food'));
+$('food-back').addEventListener('click', () => showTab('more'));
+$('food-print').addEventListener('click', () => window.print());
+document.querySelectorAll('#view-food .seg').forEach((b) => b.addEventListener('click', () => {
+  state.foodRange = parseInt(b.dataset.range, 10);
+  document.querySelectorAll('#view-food .seg').forEach((x) => x.classList.toggle('is-active', x === b));
+  renderFoodDiary();
+}));
+
+function fmtMl(ml) {
+  return ml >= 1000 ? (ml / 1000).toFixed(2).replace(/0+$/, '').replace(/\.$/, '') + ' L' : ml + ' ml';
+}
+
+async function renderFoodDiary() {
+  const today = todayStr();
+  const from = addDays(today, -(state.foodRange - 1));
+  $('food-sub').textContent = `Last ${state.foodRange} days, from ${fmtDayNum(from)}`;
+  let entries;
+  if (state.demo) {
+    entries = state.recentEntries.filter((e) => e.day >= from);
+  } else {
+    try {
+      const snap = await getDocs(query(collection(db, 'entries'), where('day', '>=', from)));
+      entries = snap.docs.map((d) => d.data());
+    } catch (e) { console.error(e); return; }
+  }
+  const byDay = {};
+  entries.forEach((e) => {
+    if (e.type !== 'food' && e.type !== 'drink') return;
+    (byDay[e.day] = byDay[e.day] || []).push(e);
+  });
+  const logged = Object.keys(byDay).sort();
+  const sections = [];
+  if (logged.length) {
+    /* Every day from the first logged one to today, so a day with nothing eaten still shows */
+    for (let day = today; day >= logged[0]; day = addDays(day, -1)) {
+      const list = (byDay[day] || []).slice().sort((a, b) => entryDate(a) - entryDate(b));
+      const foods = list.filter((e) => e.type === 'food');
+      const drinks = list.filter((e) => e.type === 'drink');
+      const ml = drinks.reduce((s, e) => s + (Number(e.value) || 0), 0);
+      const sum = [
+        foods.length === 0 ? 'Nothing eaten logged' : foods.length === 1 ? '1 food entry' : foods.length + ' food entries',
+        drinks.length ? 'drinks ' + fmtMl(ml) : 'no drinks logged'
+      ].join(' · ');
+      sections.push(h('section', { class: 'diary-day' },
+        h('h3', { class: 'diary-title' }, fmtDayLong(day), h('small', { text: day === today ? 'Today' : fmtDayNum(day) })),
+        h('p', { class: 'diary-sum', text: sum }),
+        foods.length ? h('ul', { class: 'timeline' }, ...foods.map(diaryRow)) : null
+      ));
+    }
+  }
+  $('food-days').replaceChildren(...sections);
+  $('food-empty').hidden = sections.length > 0;
+}
+
+function diaryRow(e) {
+  return h('li', { class: 'entry type-food' },
+    h('span', { class: 'entry-time', text: fmtTime(entryDate(e)) }),
+    h('div', { class: 'entry-main' },
+      h('div', { class: 'entry-title', text: e.note || 'Food' }),
+      h('div', { class: 'entry-sub', text: [e.amount, e.detail, 'by ' + (e.addedBy || 'unknown')].filter(Boolean).join(' · ') })
+    )
+  );
 }
 
 /* Today's mood, from the Chemo Party Plan day record, shown as a one-line card */
@@ -1162,9 +1356,9 @@ function openEditMed(m) {
 
 $('vitals-log').addEventListener('click', () => openAdd('vitals'));
 
-document.querySelectorAll('.seg').forEach((b) => b.addEventListener('click', () => {
+document.querySelectorAll('#view-vitals .seg').forEach((b) => b.addEventListener('click', () => {
   state.trendRange = parseInt(b.dataset.range, 10);
-  document.querySelectorAll('.seg').forEach((x) => x.classList.toggle('is-active', x === b));
+  document.querySelectorAll('#view-vitals .seg').forEach((x) => x.classList.toggle('is-active', x === b));
   renderVitals();
 }));
 
