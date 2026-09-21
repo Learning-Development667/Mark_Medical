@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '15';
+const APP_VERSION = '16';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
 const TEXT_LIMIT_BYTES = 800 * 1024;
 const PAGE_MAX_DIM = 1600;
@@ -843,7 +843,7 @@ function openAdd(type) {
     const what = h('input', { type: 'text', placeholder: 'What was it?', value: 'Water' });
     const ml = h('input', { type: 'number', inputmode: 'numeric', min: '0', step: '10', value: '200' });
     const whatPresets = presets(['Water', 'Tea', 'Coffee', 'Squash', 'Juice', 'Milk', 'Supplement drink'], what, 'Water');
-    const mlPresets = presets(['50', '100', '150', '200', '250', '300', { value: '568', label: '568 pint' }, { value: '750', label: '750 bottle' }], ml, '200');
+    const mlPresets = presets(['50', '100', '150', '200', '250', { value: '300', label: '300 cup' }, { value: '568', label: '568 pint' }, { value: '750', label: '750 bottle' }], ml, '200');
     body.append(
       field('Drink', what), whatPresets,
       field('Amount (ml)', ml), mlPresets,
