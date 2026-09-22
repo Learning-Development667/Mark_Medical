@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '17';
+const APP_VERSION = '18';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
 const TEXT_LIMIT_BYTES = 800 * 1024;
 const PAGE_MAX_DIM = 1600;
@@ -142,6 +142,17 @@ function h(tag, attrs, ...children) {
     el.append(c instanceof Node ? c : document.createTextNode(String(c)));
   }
   return el;
+}
+
+function icon(name, cls) {
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('class', 'icon' + (cls ? ' ' + cls : ''));
+  svg.setAttribute('aria-hidden', 'true');
+  const use = document.createElementNS(ns, 'use');
+  use.setAttribute('href', '#i-' + name);
+  svg.append(use);
+  return svg;
 }
 
 function pad2(n) { return String(n).padStart(2, '0'); }
@@ -1898,7 +1909,7 @@ $('chemo-doc-add').addEventListener('click', () => openAddDocument('chemo'));
 
 function docItem(d) {
   return h('button', { class: 'docitem', type: 'button', onclick: () => { if ($('view-docs').hidden) openDocs(d.category === 'chemo' ? 'chemo' : 'more'); openDocument(d.id); } },
-    h('span', { class: 'docitem-icon', text: d.kind === 'text' ? '\u{1F4C4}' : '\u{1F5BC}' }),
+    icon(d.kind === 'text' ? 'doc' : 'image', 'docitem-icon'),
     h('div', { class: 'docitem-main' },
       h('div', { class: 'docitem-title', text: d.title }),
       h('div', { class: 'docitem-sub', text: [fmtDayNum(d.docDate || ''), d.category === 'chemo' ? 'Chemo plan' : null, d.kind === 'text' ? 'Text' : (d.pageCount === 1 ? '1 page' : d.pageCount + ' pages'), d.explanation ? 'Explained' : 'No explanation yet'].filter(Boolean).join(' \u00B7 ') })
