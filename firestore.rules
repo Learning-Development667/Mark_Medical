@@ -10,8 +10,19 @@ service cloud.firestore {
       return request.auth != null
         && request.auth.token.email != null
         && request.auth.token.email.lower() in [
-          "MARK_EMAIL",
+          "markbrown667@gmail.com",
           "shelleybrown23@gmail.com"
+        ];
+    }
+
+    // Read-only relatives or friends: medicines, med-log/vitals/trend entries and the
+    // chemo/mood day records only. Never documents, cheers, food, notes, exercise or
+    // who-to-call, and never write access. Add further emails to this list as needed.
+    function isViewer() {
+      return request.auth != null
+        && request.auth.token.email != null
+        && request.auth.token.email.lower() in [
+          "VIEWER_EMAIL"
         ];
     }
 
@@ -23,11 +34,13 @@ service cloud.firestore {
     }
 
     match /entries/{entryId} {
-      allow read, write: if isFamily();
+      allow read: if isFamily() || (isViewer() && resource.data.type in ['med', 'temp', 'vitals', 'weight', 'sleep', 'drink']);
+      allow write: if isFamily();
     }
 
     match /medicines/{medId} {
-      allow read, write: if isFamily();
+      allow read: if isFamily() || isViewer();
+      allow write: if isFamily();
     }
 
     match /documents/{docId} {
@@ -45,7 +58,8 @@ service cloud.firestore {
 
     // Chemo Party Plan: one document per calendar day (chemo session, done, mood, one good thing)
     match /days/{dayId} {
-      allow read, write: if isFamily();
+      allow read: if isFamily() || isViewer();
+      allow write: if isFamily();
     }
 
     // Cheer board: short notes between the two of them
