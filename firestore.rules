@@ -1,8 +1,9 @@
 rules_version = '2';
 
-// Care Log: only the two named accounts may read or write anything.
-// Replace MARK_EMAIL with Mark's sign-in email before publishing these rules
-// in the Firebase console (Firestore Database > Rules).
+// Care Log: only the two named accounts in isFamily() may read or write anything.
+// Any email in isViewer() gets read-only access to a narrow slice (see below).
+// Publish this file in the Firebase console (Firestore Database > Rules) after
+// any change here; editing this file alone does not reach the live database.
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -22,7 +23,7 @@ service cloud.firestore {
       return request.auth != null
         && request.auth.token.email != null
         && request.auth.token.email.lower() in [
-          "VIEWER_EMAIL"
+          "hayleybevan79@hotmail.com"
         ];
     }
 
