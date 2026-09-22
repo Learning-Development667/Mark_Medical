@@ -9,6 +9,7 @@ window.CARE_LOG_CONFIG = {
   },
   users: {
     "markbrown667@gmail.com": "Mark",
-    "shelleybrown23@gmail.com": "Shelley"
+    "shelleybrown23@gmail.com": "Shelley",
+    "hayleybevan79@hotmail.com": { name: "Hayley", role: "viewer" }
   }
 };
