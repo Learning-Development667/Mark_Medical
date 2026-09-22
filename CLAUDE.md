@@ -21,8 +21,8 @@ Live: https://learning-development667.github.io/Mark_Medical/
 - Fonts: Bebas Neue (headings), DM Sans (body), DM Mono (times and numbers).
 
 ## Files
-- `index.html`, `styles.css`, `scripts.js`, `sw.js`, `manifest.json`, `config.example.js`, `icons/`, `firestore.rules`, `CLAUDE.md`.
-- `config.js` is created and committed by Mark only. Never create, edit or regenerate it. `index.html` loads `config.js` before `scripts.js`. It was created once, by explicit one-off authorisation from Mark on 2026-09-19, with the real Firebase config and the two permitted email addresses. That authorisation does not repeat: this rule reapplies immediately afterwards, standing, with no further exceptions.
+- `index.html`, `styles.css`, `scripts.js`, `sw.js`, `manifest.json`, `config.js`, `config.example.js`, `icons/`, `firestore.rules`, `CLAUDE.md`.
+- `config.js` holds the real Firebase web config and the `users` map (email to name, or `{ name, role: "viewer" }`). `index.html` loads it before `scripts.js`. It is a normal project file like any other; edit it the same way as the rest of the codebase. (Until 2026-09-22 this file carried a standing "Mark only, never edit" restriction; Mark removed that rule himself after repeated friction over a small, low-risk edit. `config.example.js` stays as the template for setting the project up from scratch.)
 
 ## Standards
 - Body text minimum 17px. Tap targets minimum 48px. The user may be tired or drowsy: clarity beats density.
