@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '16';
+const APP_VERSION = '17';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
 const TEXT_LIMIT_BYTES = 800 * 1024;
 const PAGE_MAX_DIM = 1600;
@@ -157,6 +157,12 @@ function tempClass(v) { if (v >= 38) return 'is-red'; if (v >= 37.5) return 'is-
 function tempWord(v) { if (v >= 38) return 'High. 38.0 or above'; if (v >= 37.5) return 'Raised. Keep an eye on it'; return 'Normal range'; }
 function entryDate(e) { return e.at && typeof e.at.toDate === 'function' ? e.at.toDate() : new Date(); }
 function hoursAgo(d) { return (Date.now() - d.getTime()) / 36e5; }
+function fmtHm(minutes) {
+  const m = Math.max(0, Math.round(Number(minutes) || 0));
+  const hh = Math.floor(m / 60), mm = m % 60;
+  if (!hh) return mm + ' min';
+  return mm ? `${hh} h ${mm} min` : `${hh} h`;
+}
 
 function loadScript(src) {
   if (loadScript.cache[src]) return loadScript.cache[src];
@@ -272,6 +278,7 @@ const state = {
   meals: [],
   currentDoc: null,
   docsReturn: 'more',
+  reportReturn: 'vitals',
   days: {},
   cheers: [],
   exercise: {},
@@ -422,6 +429,12 @@ function buildDemoFixture() {
 
   const entries = [
     e(-9, '08:00', 'Shelley', { type: 'temp', value: 36.9 }),
+    e(-6, '07:40', 'Mark', { type: 'sleep', value: 410 }),
+    e(-5, '07:45', 'Mark', { type: 'sleep', value: 430, deep: 65, rem: 50, core: 290, awake: 25 }),
+    e(-4, '08:05', 'Mark', { type: 'sleep', value: 275, note: 'Up twice with back pain' }),
+    e(-3, '07:30', 'Mark', { type: 'sleep', value: 395 }),
+    e(-1, '07:50', 'Mark', { type: 'sleep', value: 440 }),
+    e(0, '07:55', 'Mark', { type: 'sleep', value: 428, deep: 70, rem: 53, core: 305, awake: 25 }),
     e(-9, '09:00', 'Mark', { type: 'vitals', heartRate: 76 }),
     e(-9, '07:30', 'Mark', { type: 'weight', value: 78.8 }),
     e(-8, '10:00', 'Shelley', { type: 'drink', value: 300, note: 'Water' }),
@@ -679,7 +692,10 @@ document.querySelectorAll('.tab').forEach((btn) => {
 });
 
 function showTab(name) {
-  const highlight = name === 'docs' ? (state.docsReturn || 'more') : (name === 'food' || name === 'notes') ? 'more' : name;
+  /* Report pages highlight the tab they were opened from (Documents can be reached from a report too) */
+  let highlight = name;
+  if (name === 'docs') highlight = state.docsReturn || 'more';
+  if (highlight === 'food' || highlight === 'notes') highlight = state.reportReturn || 'vitals';
   document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('is-active', b.dataset.tab === highlight));
   document.querySelectorAll('.view').forEach((v) => { v.hidden = v.dataset.view !== name; });
   window.scrollTo(0, 0);
@@ -746,6 +762,7 @@ function entryTitle(e) {
     case 'temp': return [h('span', { class: 'val ' + tempClass(e.value), text: Number(e.value).toFixed(1) + ' °C' })];
     case 'drink': return [h('span', { text: e.note || 'Drink' }), e.value ? h('span', { class: 'val', text: '  ' + e.value + ' ml' }) : null];
     case 'food': return [h('span', { text: e.note || 'Food' })];
+    case 'sleep': return [h('span', { class: 'val', text: fmtHm(e.value) }), h('span', { text: ' asleep' })];
     case 'weight': return [h('span', { class: 'val', text: Number(e.value).toFixed(1) + ' kg' })];
     case 'vitals': {
       const parts = [];
@@ -765,10 +782,16 @@ function entrySub(e) {
   if (e.type === 'temp' && e.note) bits.push(e.note);
   if (e.type === 'food' && e.amount) bits.push(e.amount);
   if (e.type === 'food' && e.detail) bits.push(e.detail);
+  if (e.type === 'sleep') { const s = sleepStages(e); if (s) bits.push(s); if (e.note) bits.push(e.note); }
   if (e.type === 'weight' && e.note) bits.push(e.note);
   if (e.type === 'vitals' && e.note) bits.push(e.note);
   bits.push('by ' + (e.addedBy || 'unknown'));
   return bits.join(' · ');
+}
+
+function sleepStages(e) {
+  return [['deep', 'Deep'], ['rem', 'REM'], ['core', 'Core'], ['awake', 'Awake']]
+    .filter(([k]) => e[k]).map(([k, label]) => label + ' ' + fmtHm(e[k])).join(' · ');
 }
 
 function renderEntry(e) {
@@ -907,6 +930,33 @@ function openAdd(type) {
     };
   }
 
+  if (type === 'sleep') {
+    /* Hours and minutes pairs, read straight off the Apple Health sleep screen */
+    const hm = (label) => {
+      const hh = h('input', { type: 'number', inputmode: 'numeric', min: '0', max: '24', placeholder: '0' });
+      const mm = h('input', { type: 'number', inputmode: 'numeric', min: '0', max: '59', placeholder: '0' });
+      const row = h('div', null, h('span', { class: 'fieldlabel', text: label }), h('div', { class: 'field-row' }, field('Hours', hh), field('Minutes', mm)));
+      const minutes = () => (hh.value === '' && mm.value === '') ? null : (parseInt(hh.value, 10) || 0) * 60 + (parseInt(mm.value, 10) || 0);
+      return { row, minutes };
+    };
+    const asleep = hm('Time asleep');
+    const stages = { deep: hm('Deep'), rem: hm('REM'), core: hm('Core'), awake: hm('Awake') };
+    const stagesWrap = h('div', { class: 'stages' }, ...Object.values(stages).map((s) => s.row));
+    stagesWrap.hidden = true;
+    const stagesBtn = h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => { stagesWrap.hidden = !stagesWrap.hidden; stagesBtn.textContent = stagesWrap.hidden ? 'Add the stages (optional)' : 'Hide the stages'; } }, 'Add the stages (optional)');
+    body.append(
+      h('p', { class: 'hint', text: 'Last night, logged against this morning. Type in what Apple Health shows.' }),
+      asleep.row, stagesBtn, stagesWrap, field('Time', time), field('Note', note)
+    );
+    getData = () => {
+      const v = asleep.minutes();
+      if (v === null || v <= 0 || v > 24 * 60) return null;
+      const data = { type: 'sleep', value: v, note: note.value.trim() };
+      Object.keys(stages).forEach((k) => { const m = stages[k].minutes(); if (m !== null && m > 0) data[k] = m; });
+      return data;
+    };
+  }
+
   if (type === 'note') {
     const text = h('textarea', { rows: '4', placeholder: 'How things are, symptoms, questions for the team' });
     body.append(field('Note', text), field('Time', time));
@@ -973,7 +1023,7 @@ function openAdd(type) {
     };
   }
 
-  const titles = { drink: 'Drink', food: 'Food', weight: 'Weight', note: 'Note', vitals: 'Vitals' };
+  const titles = { drink: 'Drink', food: 'Food', weight: 'Weight', note: 'Note', vitals: 'Vitals', sleep: 'Sleep' };
   const save = h('button', { class: 'btn btn-primary btn-block', type: 'button' }, 'Save');
   save.addEventListener('click', async () => {
     const data = getData();
@@ -1079,8 +1129,14 @@ function openEditMeal(m) {
 /* Food diary: everything eaten, day by day, with each day's drinks total */
 /* ------------------------------------------------------------------ */
 
-$('more-food').addEventListener('click', () => showTab('food'));
-$('food-back').addEventListener('click', () => showTab('more'));
+function openReport(name, from) {
+  state.reportReturn = from || 'vitals';
+  showTab(name);
+}
+$('rep-food').addEventListener('click', () => openReport('food', 'vitals'));
+$('rep-notes').addEventListener('click', () => openReport('notes', 'vitals'));
+$('rep-docs').addEventListener('click', () => openDocs('vitals'));
+$('food-back').addEventListener('click', () => showTab(state.reportReturn || 'vitals'));
 $('food-print').addEventListener('click', () => window.print());
 document.querySelectorAll('#view-food .seg').forEach((b) => b.addEventListener('click', () => {
   state.foodRange = parseInt(b.dataset.range, 10);
@@ -1157,8 +1213,7 @@ const NOTES_PROMPT = 'Please turn these care notes into a short, clear list of q
   'If anything here looks like it should be checked before the next appointment, say so clearly at the top. ' +
   'The "worth mentioning" items are simple threshold checks made by the app, not a diagnosis.';
 
-$('more-notes').addEventListener('click', () => showTab('notes'));
-$('notes-back').addEventListener('click', () => showTab('more'));
+$('notes-back').addEventListener('click', () => showTab(state.reportReturn || 'vitals'));
 $('notes-print').addEventListener('click', () => window.print());
 document.querySelectorAll('#view-notes .seg').forEach((b) => b.addEventListener('click', () => {
   state.notesRange = parseInt(b.dataset.range, 10);
@@ -1229,6 +1284,9 @@ function vitalsFlags(entries, rangeDays, today) {
     }
   });
 
+  sorted.filter((e) => e.type === 'sleep' && Number(e.value) > 0 && Number(e.value) < 300)
+    .forEach((e) => flags.push({ level: 'amber', text: `Short night, ${fmtHm(e.value)} asleep before ${fmtDayShort(e.day)}` }));
+
   const weights = sorted.filter((e) => e.type === 'weight');
   if (weights.length >= 2) {
     const first = Number(weights[0].value), last = Number(weights[weights.length - 1].value);
@@ -1290,6 +1348,8 @@ function dayReadings(list) {
   if (ox.length) bits.push('O2 ' + Math.min(...ox) + '%');
   const w = list.filter((e) => e.type === 'weight').pop();
   if (w) bits.push('Weight ' + Number(w.value).toFixed(1) + ' kg');
+  const sl = list.filter((e) => e.type === 'sleep').pop();
+  if (sl) bits.push('Sleep ' + fmtHm(sl.value));
   const ml = list.filter((e) => e.type === 'drink').reduce((s, e) => s + (Number(e.value) || 0), 0);
   if (ml) bits.push('Drinks ' + fmtMl(ml));
   const food = list.filter((e) => e.type === 'food').length;
@@ -1324,9 +1384,18 @@ function buildNotesReport(entries, from, today) {
     days.push({ day, mood, good: info.good || '', readings, prn, notes });
   }
 
+  const docs = state.documents.filter((d) => d.docDate && d.docDate >= from && d.docDate <= today)
+    .sort((a, b) => (a.docDate || '').localeCompare(b.docDate || ''));
+
   const lines = [NOTES_PROMPT, '', `Care Log notes, ${fmtDayNum(from)} to ${fmtDayNum(today)}`, '', 'Worth mentioning from the readings:'];
   if (flags.length) flags.forEach((f) => lines.push('- ' + f.text));
   else lines.push('- Nothing out of the ordinary in the readings for this period.');
+  lines.push('', 'Letters and documents in this period:');
+  if (docs.length) docs.forEach((d) => {
+    lines.push('', `${fmtDayNum(d.docDate)}: ${d.title}${d.category === 'chemo' ? ' (chemo plan)' : ''}`);
+    lines.push((d.explanation || '').trim() || 'No explanation saved yet.');
+  });
+  else lines.push('- None saved for this period.');
   lines.push('', 'Notes by day:');
   days.forEach((d) => {
     lines.push('', `${fmtDayLong(d.day)} (${fmtDayNum(d.day)})`);
@@ -1335,7 +1404,7 @@ function buildNotesReport(entries, from, today) {
     if (d.prn) lines.push('When-needed medicines: ' + d.prn);
     d.notes.forEach((n) => lines.push(`- ${n.time} ${n.who}${n.context ? ' (' + n.context + ')' : ''}: ${n.text}`));
   });
-  return { flags, days, text: lines.join('\n') };
+  return { flags, docs, days, text: lines.join('\n') };
 }
 
 async function renderNotesReport() {
@@ -1353,6 +1422,18 @@ async function renderNotesReport() {
     h('span', { class: 'flag-text', text: f.text })
   )));
   if (!report.flags.length) $('notes-flags').append(h('p', { class: 'muted', text: 'Nothing out of the ordinary in the readings for this period.' }));
+
+  $('notes-docs').replaceChildren(...report.docs.map((d) => {
+    const text = (d.explanation || '').trim();
+    const short = text.length > 260 ? text.slice(0, 260).replace(/\s+\S*$/, '') + '…' : text;
+    return h('div', { class: 'card' },
+      h('div', { class: 'docitem-title', text: d.title }),
+      h('div', { class: 'docitem-sub', text: fmtDayNum(d.docDate) + (d.category === 'chemo' ? ' · Chemo plan' : '') }),
+      h('p', { class: (text ? '' : 'muted'), text: short || 'No explanation saved yet.' }),
+      h('button', { class: 'btn btn-link', type: 'button', onclick: () => { openDocs('notes'); openDocument(d.id); } }, 'Open the document')
+    );
+  }));
+  if (!report.docs.length) $('notes-docs').append(h('p', { class: 'muted', text: 'No letters or documents dated in this period.' }));
 
   const shown = report.days.slice().reverse();
   $('notes-days').replaceChildren(...shown.map((d) => h('section', { class: 'diary-day' },
@@ -1628,6 +1709,14 @@ function renderVitalsLatest(entries) {
   const ox = latest((e) => e.type === 'vitals' && e.oxygen);
   if (ox) { $('vt-oxygen-value').replaceChildren(String(Math.round(ox.oxygen)), h('small', { text: '%' })); $('vt-oxygen-sub').textContent = whenLabel(ox); }
   else { $('vt-oxygen-value').textContent = '--'; $('vt-oxygen-sub').textContent = 'none yet'; }
+
+  const sl = latest((e) => e.type === 'sleep');
+  if (sl) { $('vt-sleep-value').textContent = fmtHm(sl.value); $('vt-sleep-sub').textContent = sl.day === todayStr() ? 'last night' : 'night before ' + fmtDayShort(sl.day); }
+  else { $('vt-sleep-value').textContent = '--'; $('vt-sleep-sub').textContent = 'none yet'; }
+
+  const w = latest((e) => e.type === 'weight');
+  if (w) { $('vt-weight-value').replaceChildren(Number(w.value).toFixed(1), h('small', { text: 'kg' })); $('vt-weight-sub').textContent = whenLabel(w); }
+  else { $('vt-weight-value').textContent = '--'; $('vt-weight-sub').textContent = 'none yet'; }
 }
 
 function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
@@ -1700,6 +1789,16 @@ async function renderVitals() {
       plugins: { legend: { display: false }, tooltip: { callbacks: { label: (i) => Number(i.raw).toFixed(1) + ' kg' } } } }
   });
 
+  /* Sleep: hours asleep per night, one bar per morning */
+  const sleepPerDay = days.map((d) => { const e = entries.filter((x) => x.type === 'sleep' && x.day === d).pop(); return e ? Math.round(Number(e.value) / 6) / 10 : null; });
+  makeChart('sleep', {
+    type: 'bar',
+    data: { labels: days.map(dayLabel), datasets: [{ label: 'Sleep', data: sleepPerDay, backgroundColor: '#4B4FA6', borderRadius: 6 }] },
+    options: { responsive: true, maintainAspectRatio: false,
+      scales: { x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true } }, y: { beginAtZero: true, suggestedMax: 9, grid: { color: line }, ticks: { callback: (v) => v + ' h' } } },
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: (i) => fmtHm(i.raw * 60) } } } }
+  });
+
   /* Vitals: heart rate, blood pressure and oxygen, all logged together from a
      manual reading. Each is its own chart, points in time, same layout as temperature. */
   const vitalsEntries = entries.filter((e) => e.type === 'vitals');
@@ -1762,6 +1861,37 @@ function showDocsList() {
 }
 
 $('doc-back').addEventListener('click', showDocsList);
+
+$('doc-edit').addEventListener('click', () => {
+  const d = currentDocRecord();
+  if (!d) return;
+  const title = h('input', { type: 'text', value: d.title || '', required: true });
+  const date = h('input', { type: 'date', value: d.docDate || todayStr() });
+  const category = h('select', null, h('option', { value: 'general', text: 'General' }), h('option', { value: 'chemo', text: 'Chemo plan (also shown on the Chemo tab)' }));
+  category.value = d.category === 'chemo' ? 'chemo' : 'general';
+  const body = h('div', null,
+    field('Title', title), field('Date on the document', date), field('Category', category),
+    h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
+      const t = title.value.trim();
+      if (!t) { toast('Please enter a title'); return; }
+      const data = { title: t, docDate: date.value || todayStr(), category: category.value };
+      closeSheet();
+      if (state.demo) {
+        Object.assign(d, data);
+        state.documents.sort((a, b) => (b.docDate || '').localeCompare(a.docDate || ''));
+        renderDocsList();
+      } else {
+        try { await updateDoc(doc(db, 'documents', d.id), { ...data, updatedAt: serverTimestamp() }); }
+        catch (e) { console.error(e); toast('Could not save the changes'); return; }
+      }
+      $('doc-title').textContent = t;
+      $('doc-meta').textContent = `${fmtDayNum(data.docDate)} · added by ${d.addedBy || ''}`;
+      toast('Details updated');
+    } }, 'Save changes'),
+    h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Cancel')
+  );
+  openSheet('Edit details', body);
+});
 $('docs-back').addEventListener('click', () => showTab(state.docsReturn || 'more'));
 $('more-docs').addEventListener('click', () => openDocs('more'));
 $('chemo-doc-add').addEventListener('click', () => openAddDocument('chemo'));

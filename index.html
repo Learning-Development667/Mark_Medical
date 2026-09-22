@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=16">
+  <link rel="stylesheet" href="styles.css?v=17">
 </head>
 <body>
 
@@ -97,6 +97,7 @@
           <button class="qa" type="button" data-add="food"><span class="qa-icon">&#127869;</span>Food</button>
           <button class="qa" type="button" data-add="weight"><span class="qa-icon">&#9878;</span>Weight</button>
           <button class="qa" type="button" data-add="note"><span class="qa-icon">&#128221;</span>Note</button>
+          <button class="qa" type="button" data-add="sleep"><span class="qa-icon">&#127769;</span>Sleep</button>
         </div>
 
         <button id="today-mood" class="moodcard" type="button">
@@ -124,15 +125,23 @@
 
       <!-- VITALS -->
       <section id="view-vitals" class="view" data-view="vitals" hidden>
-        <button id="vitals-log" class="btn btn-primary btn-block" type="button">Log a reading</button>
+        <h2 class="section-title">Reports</h2>
+        <div class="reports">
+          <button id="rep-notes" class="report" type="button"><span class="report-icon">&#128203;</span>Notes for the team</button>
+          <button id="rep-food" class="report" type="button"><span class="report-icon">&#127869;</span>Food diary</button>
+          <button id="rep-docs" class="report" type="button"><span class="report-icon">&#128196;</span>Documents</button>
+        </div>
         <h2 class="section-title">Latest</h2>
         <div class="tiles tiles-2" id="vitals-latest">
           <div class="tile" id="vt-temp"><span class="tile-label">Temperature</span><span class="tile-value mono" id="vt-temp-value">--</span><span class="tile-sub" id="vt-temp-sub"></span></div>
           <div class="tile" id="vt-heart"><span class="tile-label">Heart rate</span><span class="tile-value mono" id="vt-heart-value">--</span><span class="tile-sub" id="vt-heart-sub"></span></div>
           <div class="tile" id="vt-bp"><span class="tile-label">Blood pressure</span><span class="tile-value mono" id="vt-bp-value">--</span><span class="tile-sub" id="vt-bp-sub"></span></div>
           <div class="tile" id="vt-oxygen"><span class="tile-label">Oxygen</span><span class="tile-value mono" id="vt-oxygen-value">--</span><span class="tile-sub" id="vt-oxygen-sub"></span></div>
+          <div class="tile" id="vt-sleep"><span class="tile-label">Sleep</span><span class="tile-value mono" id="vt-sleep-value">--</span><span class="tile-sub" id="vt-sleep-sub"></span></div>
+          <div class="tile" id="vt-weight"><span class="tile-label">Weight</span><span class="tile-value mono" id="vt-weight-value">--</span><span class="tile-sub" id="vt-weight-sub"></span></div>
         </div>
-        <h2 class="section-title">Trends</h2>
+        <button id="vitals-log" class="btn btn-primary btn-block" type="button">Log vitals</button>
+        <h2 class="section-title">Charts</h2>
         <div class="segmented" role="group" aria-label="Range">
           <button class="seg is-active" type="button" data-range="7">7 days</button>
           <button class="seg" type="button" data-range="14">14 days</button>
@@ -158,6 +167,11 @@
         <div class="card chart-card">
           <h2 class="section-title">Weight</h2>
           <div class="chart-wrap"><canvas id="chart-weight"></canvas></div>
+        </div>
+        <div class="card chart-card">
+          <h2 class="section-title">Sleep</h2>
+          <div class="chart-wrap"><canvas id="chart-sleep"></canvas></div>
+          <p class="legend-note">Hours asleep each night, logged against the morning you wake up.</p>
         </div>
         <div class="card chart-card">
           <h2 class="section-title">Drinks per day</h2>
@@ -236,6 +250,7 @@
           <button id="doc-back" class="btn btn-link" type="button">&#8249; Back</button>
           <h2 id="doc-title" class="doc-title"></h2>
           <p id="doc-meta" class="muted mono"></p>
+          <button id="doc-edit" class="btn btn-link" type="button">Edit title, date or category</button>
           <div class="btnrow">
             <button id="doc-share" class="btn btn-primary" type="button">Send to Claude</button>
             <button id="doc-copy" class="btn btn-secondary" type="button">Copy for Claude</button>
@@ -294,6 +309,8 @@
         <h3 class="section-title">Worth mentioning</h3>
         <p class="hint">Simple checks on the readings, not medical advice. Anything that worries you, call the team.</p>
         <div id="notes-flags" class="flags"></div>
+        <h3 class="section-title">Letters and documents</h3>
+        <div id="notes-docs" class="cards"></div>
         <h3 class="section-title">Notes by day</h3>
         <div id="notes-days"></div>
         <p id="notes-empty" class="empty" hidden>No notes, moods or readings in this period yet.</p>
@@ -307,12 +324,9 @@
         </div>
         <h2 class="section-title">Documents</h2>
         <button id="more-docs" class="btn btn-primary btn-block" type="button">Letters, results and paperwork</button>
-        <h2 class="section-title">For the team</h2>
-        <button id="more-notes" class="btn btn-primary btn-block" type="button">Notes for the team</button>
-        <p class="hint">All the notes in one place, with anything unusual in the vitals, ready to send to Claude to turn into questions.</p>
         <h2 class="section-title">Food</h2>
-        <button id="more-food" class="btn btn-primary btn-block" type="button">Food diary</button>
         <button id="more-meals" class="btn btn-secondary btn-block" type="button">Saved meals</button>
+        <p class="hint">The Food diary and Notes for the team are under Trends.</p>
         <h2 class="section-title">Who to call</h2>
         <div id="calls" class="cards"></div>
         <button id="calls-edit" class="btn btn-secondary btn-block" type="button">Edit numbers</button>
@@ -329,7 +343,7 @@
     <nav class="tabs" aria-label="Sections">
       <button class="tab is-active" type="button" data-tab="today"><span class="tab-icon">&#9788;</span>Today</button>
       <button class="tab" type="button" data-tab="meds"><span class="tab-icon">&#128138;</span>Meds</button>
-      <button class="tab" type="button" data-tab="vitals"><span class="tab-icon">&#129658;</span>Vitals</button>
+      <button class="tab" type="button" data-tab="vitals"><span class="tab-icon">&#128200;</span>Trends</button>
       <button class="tab" type="button" data-tab="chemo"><span class="tab-icon">&#127881;</span>Chemo</button>
       <button class="tab" type="button" data-tab="exercise"><span class="tab-icon">&#128694;</span>Exercise</button>
       <button class="tab" type="button" data-tab="more"><span class="tab-icon">&#8943;</span>More</button>
@@ -355,6 +369,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=16"></script>
+  <script type="module" src="scripts.js?v=17"></script>
 </body>
 </html>
