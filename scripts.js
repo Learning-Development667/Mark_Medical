@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '18';
+const APP_VERSION = '19';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
 const TEXT_LIMIT_BYTES = 800 * 1024;
 const PAGE_MAX_DIM = 1600;
@@ -23,7 +23,8 @@ const CDN = {
   chart: 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js',
   pdf: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',
   pdfWorker: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js',
-  mammoth: 'https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js'
+  mammoth: 'https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js',
+  jspdf: 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'
 };
 
 const SEED_MEDICINES = [
@@ -286,6 +287,8 @@ const state = {
   foodRange: 14,
   notesRange: 14,
   notesText: '',
+  notesPdf: null,
+  foodPdf: null,
   meals: [],
   currentDoc: null,
   docsReturn: 'more',
@@ -1159,6 +1162,52 @@ function fmtMl(ml) {
   return ml >= 1000 ? (ml / 1000).toFixed(2).replace(/0+$/, '').replace(/\.$/, '') + ' L' : ml + ' ml';
 }
 
+/* Builds a simple text PDF (title, subtitle, then heading / sub / muted / text
+   blocks) and hands it to the share sheet where available, so on the phone it
+   can go straight to Files, Mail or AirDrop; otherwise it downloads. */
+async function savePdf(filename, title, subtitle, blocks) {
+  try { await loadScript(CDN.jspdf); } catch (e) { toast('Saving a PDF needs a connection'); return; }
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
+  const W = pdf.internal.pageSize.getWidth(), H = pdf.internal.pageSize.getHeight();
+  const M = 48, maxW = W - M * 2;
+  let y = M;
+  const footer = () => {
+    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9); pdf.setTextColor(120);
+    pdf.text(`Care Log · ${title} · page ${pdf.getNumberOfPages()}`, M, H - 24);
+  };
+  const write = (text, size, style, color, gapAfter) => {
+    pdf.setFont('helvetica', style); pdf.setFontSize(size); pdf.setTextColor(color);
+    const lh = size * 1.35;
+    pdf.splitTextToSize(String(text), maxW).forEach((ln) => {
+      if (y + lh > H - 48) { footer(); pdf.addPage(); y = M; pdf.setFont('helvetica', style); pdf.setFontSize(size); pdf.setTextColor(color); }
+      pdf.text(ln, M, y + size);
+      y += lh;
+    });
+    y += gapAfter;
+  };
+  write(title, 22, 'bold', '#1E5F74', 2);
+  write(subtitle, 11, 'normal', 100, 14);
+  blocks.forEach((b) => {
+    if (b.kind === 'heading') { y += 8; write(b.text, 14, 'bold', '#1E5F74', 4); }
+    else if (b.kind === 'sub') { y += 4; write(b.text, 12, 'bold', 0, 2); }
+    else if (b.kind === 'muted') write(b.text, 10.5, 'normal', 110, 3);
+    else write(b.text, 11, 'normal', 0, 4);
+  });
+  footer();
+  const blob = pdf.output('blob');
+  const file = new File([blob], filename, { type: 'application/pdf' });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title }); return; }
+    catch (e) { if (e && e.name === 'AbortError') return; }
+  }
+  const url = URL.createObjectURL(blob);
+  const a = h('a', { href: url, download: filename });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  toast('PDF saved');
+}
+
 /* Every entry from a day onwards; null if the read failed */
 async function loadEntriesFrom(from) {
   if (state.demo) return state.recentEntries.filter((e) => e.day >= from);
@@ -1181,6 +1230,7 @@ async function renderFoodDiary() {
   });
   const logged = Object.keys(byDay).sort();
   const sections = [];
+  const blocks = [];
   if (logged.length) {
     /* Every day from the first logged one to today, so a day with nothing eaten still shows */
     for (let day = today; day >= logged[0]; day = addDays(day, -1)) {
@@ -1197,11 +1247,16 @@ async function renderFoodDiary() {
         h('p', { class: 'diary-sum', text: sum }),
         foods.length ? h('ul', { class: 'timeline' }, ...foods.map(diaryRow)) : null
       ));
+      blocks.push({ kind: 'sub', text: `${fmtDayLong(day)} (${fmtDayNum(day)})` }, { kind: 'muted', text: sum });
+      foods.forEach((e) => blocks.push({ kind: 'text', text: `${fmtTime(entryDate(e))}  ${e.note || 'Food'}${e.amount ? ', ' + e.amount.toLowerCase() : ''}${e.detail ? ' (' + e.detail + ')' : ''}, by ${e.addedBy || 'unknown'}` }));
     }
   }
   $('food-days').replaceChildren(...sections);
   $('food-empty').hidden = sections.length > 0;
+  state.foodPdf = { filename: 'care-log-food-diary-' + today + '.pdf', title: 'Food diary', subtitle: `${fmtDayNum(from)} to ${fmtDayNum(today)}, printed ${fmtDayNum(today)}`, blocks };
 }
+
+$('food-pdf').addEventListener('click', () => { if (state.foodPdf) savePdf(state.foodPdf.filename, state.foodPdf.title, state.foodPdf.subtitle, state.foodPdf.blocks); });
 
 function diaryRow(e) {
   return h('li', { class: 'entry type-food' },
@@ -1253,16 +1308,29 @@ $('notes-copy').addEventListener('click', async () => {
   toast('Copied. Paste it into the Claude app.');
 });
 
-$('notes-download').addEventListener('click', () => {
-  if (!state.notesText) return;
-  const blob = new Blob([state.notesText], { type: 'text/plain;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = h('a', { href: url, download: 'care-log-notes-' + todayStr() + '.txt' });
-  document.body.append(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-});
+$('notes-pdf').addEventListener('click', () => { if (state.notesPdf) savePdf(state.notesPdf.filename, state.notesPdf.title, state.notesPdf.subtitle, state.notesPdf.blocks); });
+
+/* The PDF is for people (the clinic, the folder), so it carries the report without the request to Claude */
+function notesPdfBlocks(report) {
+  const blocks = [{ kind: 'heading', text: 'Worth mentioning' }, { kind: 'muted', text: 'Simple checks on the readings made by the app, not medical advice.' }];
+  if (report.flags.length) report.flags.forEach((f) => blocks.push({ kind: 'text', text: '• ' + f.text }));
+  else blocks.push({ kind: 'text', text: 'Nothing out of the ordinary in the readings for this period.' });
+  blocks.push({ kind: 'heading', text: 'Letters and documents' });
+  if (report.docs.length) report.docs.forEach((d) => {
+    blocks.push({ kind: 'sub', text: `${fmtDayNum(d.docDate)} · ${d.title}${d.category === 'chemo' ? ' (chemo plan)' : ''}` });
+    blocks.push({ kind: 'text', text: (d.explanation || '').trim() || 'No explanation saved yet.' });
+  });
+  else blocks.push({ kind: 'text', text: 'None saved for this period.' });
+  blocks.push({ kind: 'heading', text: 'Notes by day' });
+  report.days.forEach((d) => {
+    blocks.push({ kind: 'sub', text: `${fmtDayLong(d.day)} (${fmtDayNum(d.day)})` });
+    if (d.mood || d.good) blocks.push({ kind: 'muted', text: 'Feeling: ' + [d.mood, d.good ? 'One good thing: ' + d.good : ''].filter(Boolean).join('. ') });
+    if (d.readings) blocks.push({ kind: 'muted', text: 'Readings: ' + d.readings });
+    if (d.prn) blocks.push({ kind: 'muted', text: 'When-needed medicines: ' + d.prn });
+    d.notes.forEach((n) => blocks.push({ kind: 'text', text: `${n.time} ${n.who}${n.context ? ' (' + n.context + ')' : ''}: ${n.text}` }));
+  });
+  return blocks;
+}
 
 function listDays(days) { return days.map(fmtDayShort).join(', '); }
 function plural(n, word) { return n + ' ' + word + (n === 1 ? '' : 's'); }
@@ -1426,6 +1494,7 @@ async function renderNotesReport() {
   if (!entries) return;
   const report = buildNotesReport(entries, from, today);
   state.notesText = report.text;
+  state.notesPdf = { filename: 'care-log-notes-' + today + '.pdf', title: 'Notes for the team', subtitle: `${fmtDayNum(from)} to ${fmtDayNum(today)}, printed ${fmtDayNum(today)}`, blocks: notesPdfBlocks(report) };
 
   const levelWord = { red: 'Check', amber: 'Mention', teal: 'Context' };
   $('notes-flags').replaceChildren(...report.flags.map((f) => h('div', { class: 'flag is-' + f.level },
@@ -2547,25 +2616,39 @@ async function toggleGoal(day, key) {
   } catch (e) { console.error(e); toast('Could not save'); }
 }
 
-$('ex-steps-edit').addEventListener('click', () => {
-  const day = state.exerciseDay;
-  const rec = exerciseFor(day);
-  const input = h('input', { type: 'number', inputmode: 'numeric', min: '0', step: '1', value: rec.steps ? String(rec.steps) : '', placeholder: '0' });
+$('ex-steps-edit').addEventListener('click', () => openStepsSheet(state.exerciseDay));
+
+/* Steps can be logged for any past day: the sheet has its own day picker, so
+   yesterday's count can go in the next morning without hunting for the arrows. */
+function openStepsSheet(initialDay) {
+  const today = todayStr();
+  const dateEl = h('input', { type: 'date', value: initialDay, max: today });
+  const dayPresets = presets([{ value: today, label: 'Today' }, { value: addDays(today, -1), label: 'Yesterday' }], dateEl, initialDay);
+  const input = h('input', { type: 'number', inputmode: 'numeric', min: '0', step: '1', placeholder: '0' });
+  const sync = () => { const rec = exerciseFor(dateEl.value); input.value = rec.steps ? String(rec.steps) : ''; };
+  dateEl.addEventListener('input', sync);
+  dayPresets.addEventListener('click', sync);
+  sync();
   const body = h('div', null,
-    h('p', { class: 'muted', text: fmtDayLong(day) }),
+    field('Which day', dateEl), dayPresets,
     h('div', { class: 'bigvalue' }, input, h('span', { class: 'unit', text: 'steps' })),
     h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
+      const day = dateEl.value;
       const v = parseInt(input.value, 10);
+      if (!day || day > today) { toast('Please pick a day up to today'); return; }
       if (isNaN(v) || v < 0) { toast('Please check the number'); return; }
+      const rec = exerciseFor(day);
       closeSheet();
+      state.exerciseDay = day;
       if (state.demo) { state.exercise[day] = { ...rec, day, steps: v }; renderExercise(); toast('Steps saved'); return; }
+      renderExercise();
       try { await setDoc(doc(db, 'exercise', day), { day, steps: v, addedBy: state.name, updatedAt: serverTimestamp() }, { merge: true }); toast('Steps saved'); }
       catch (e) { console.error(e); toast('Could not save'); }
     } }, 'Save'),
     h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Cancel')
   );
   openSheet('Steps', body);
-});
+}
 
 $('ex-goals-edit').addEventListener('click', () => {
   const g = goals();
