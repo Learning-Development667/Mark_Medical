@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=19">
+  <link rel="stylesheet" href="styles.css?v=20">
 </head>
 <body>
 
@@ -77,6 +77,7 @@
       <h1 class="brand">Care Log</h1>
       <div class="topbar-right">
         <span id="guest-pill" class="pill pill-teal" hidden>Preview</span>
+        <span id="viewer-pill" class="pill pill-teal" hidden>View only</span>
         <span id="offline-pill" class="pill pill-amber" hidden>Offline</span>
         <span id="user-chip" class="chip"></span>
       </div>
@@ -144,11 +145,13 @@
 
       <!-- VITALS -->
       <section id="view-vitals" class="view" data-view="vitals" hidden>
-        <h2 class="section-title">Reports</h2>
-        <div class="reports">
-          <button id="rep-notes" class="report" type="button"><svg class="icon report-icon" aria-hidden="true"><use href="#i-list"/></svg>Notes for the team</button>
-          <button id="rep-food" class="report" type="button"><svg class="icon report-icon" aria-hidden="true"><use href="#i-food"/></svg>Food diary</button>
-          <button id="rep-docs" class="report" type="button"><svg class="icon report-icon" aria-hidden="true"><use href="#i-doc"/></svg>Documents</button>
+        <div id="trends-reports">
+          <h2 class="section-title">Reports</h2>
+          <div class="reports">
+            <button id="rep-notes" class="report" type="button"><svg class="icon report-icon" aria-hidden="true"><use href="#i-list"/></svg>Notes for the team</button>
+            <button id="rep-food" class="report" type="button"><svg class="icon report-icon" aria-hidden="true"><use href="#i-food"/></svg>Food diary</button>
+            <button id="rep-docs" class="report" type="button"><svg class="icon report-icon" aria-hidden="true"><use href="#i-doc"/></svg>Documents</button>
+          </div>
         </div>
         <h2 class="section-title">Latest</h2>
         <div class="tiles tiles-2" id="vitals-latest">
@@ -218,19 +221,23 @@
           <p class="cal-key"><span class="key-dot key-chemo"></span> Chemo day <span class="key-dot key-done"></span> Done <span class="key-face">&#128578;</span> Mood logged</p>
         </div>
 
-        <h2 class="section-title">Cheer board</h2>
-        <p class="hint">Notes to each other. A good line on a rough day goes a long way.</p>
-        <div class="cheer-add">
-          <input id="cheer-text" type="text" placeholder="Leave a note for the board" maxlength="200">
-          <button id="cheer-post" class="btn btn-primary" type="button">Post</button>
+        <div id="chemo-cheer-section">
+          <h2 class="section-title">Cheer board</h2>
+          <p class="hint">Notes to each other. A good line on a rough day goes a long way.</p>
+          <div class="cheer-add">
+            <input id="cheer-text" type="text" placeholder="Leave a note for the board" maxlength="200">
+            <button id="cheer-post" class="btn btn-primary" type="button">Post</button>
+          </div>
+          <ul id="cheers" class="cheers"></ul>
+          <p id="cheers-empty" class="empty" hidden>Nothing on the board yet. Be the first.</p>
         </div>
-        <ul id="cheers" class="cheers"></ul>
-        <p id="cheers-empty" class="empty" hidden>Nothing on the board yet. Be the first.</p>
 
-        <h2 class="section-title">Plan documents</h2>
-        <button id="chemo-doc-add" class="btn btn-secondary btn-block" type="button">Add the chemo plan</button>
-        <ul id="chemo-docs" class="doclist"></ul>
-        <p id="chemo-docs-empty" class="empty" hidden>No plan uploaded yet. Add it here when you get it, then send it to Claude for a plain English walk-through.</p>
+        <div id="chemo-docs-section">
+          <h2 class="section-title">Plan documents</h2>
+          <button id="chemo-doc-add" class="btn btn-secondary btn-block" type="button">Add the chemo plan</button>
+          <ul id="chemo-docs" class="doclist"></ul>
+          <p id="chemo-docs-empty" class="empty" hidden>No plan uploaded yet. Add it here when you get it, then send it to Claude for a plain English walk-through.</p>
+        </div>
       </section>
 
       <!-- EXERCISE -->
@@ -360,7 +367,7 @@
 
     </main>
 
-    <nav class="tabs" aria-label="Sections">
+    <nav id="tabs" class="tabs" aria-label="Sections">
       <button class="tab is-active" type="button" data-tab="today"><svg class="icon tab-icon" aria-hidden="true"><use href="#i-sun"/></svg>Today</button>
       <button class="tab" type="button" data-tab="meds"><svg class="icon tab-icon" aria-hidden="true"><use href="#i-pill"/></svg>Meds</button>
       <button class="tab" type="button" data-tab="vitals"><svg class="icon tab-icon" aria-hidden="true"><use href="#i-trend"/></svg>Trends</button>
@@ -389,6 +396,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=19"></script>
+  <script type="module" src="scripts.js?v=20"></script>
 </body>
 </html>

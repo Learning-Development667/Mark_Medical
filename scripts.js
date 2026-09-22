@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '19';
+const APP_VERSION = '20';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
 const TEXT_LIMIT_BYTES = 800 * 1024;
 const PAGE_MAX_DIM = 1600;
@@ -268,8 +268,14 @@ const db = initializeFirestore(app, {
   localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
 });
 
+/* config.js users map: a value is either a plain name (full family access) or
+   { name, role: "viewer" } for someone with read-only access to Meds, Chemo
+   and Trends only. Never anything else, and never a write. */
 const USERS = {};
-for (const [email, name] of Object.entries(CONFIG.users || {})) USERS[email.toLowerCase()] = name;
+for (const [email, entry] of Object.entries(CONFIG.users || {})) {
+  const key = email.toLowerCase();
+  USERS[key] = typeof entry === 'string' ? { name: entry, role: 'family' } : { name: entry.name, role: entry.role || 'family' };
+}
 
 const state = {
   user: null,
@@ -299,7 +305,8 @@ const state = {
   exerciseDay: todayStr(),
   chemoMonth: todayStr().slice(0, 7),
   demo: false,
-  demoPages: {}
+  demoPages: {},
+  viewer: false
 };
 
 /* ------------------------------------------------------------------ */
@@ -308,8 +315,13 @@ const state = {
 
 function nameFor(email) {
   const key = (email || '').toLowerCase();
-  if (USERS[key]) return USERS[key];
+  if (USERS[key]) return USERS[key].name;
   return key.split('@')[0] || 'Unknown';
+}
+
+function isViewerEmail(email) {
+  const key = (email || '').toLowerCase();
+  return Boolean(USERS[key]) && USERS[key].role === 'viewer';
 }
 
 function isAllowed(email) {
@@ -353,26 +365,44 @@ onAuthStateChanged(auth, async (user) => {
     state.user = user;
     state.name = nameFor(user.email);
     state.demo = false;
+    state.viewer = isViewerEmail(user.email);
     $('signin').hidden = true;
     $('app').hidden = false;
     $('user-chip').textContent = state.name;
     $('more-user').textContent = `${state.name} (${user.email})`;
     $('guest-pill').hidden = true;
+    $('viewer-pill').hidden = !state.viewer;
     $('signin-password').value = '';
+    setViewerMode(state.viewer);
+    if (!state.viewer) showTab('today'); // always a known landing tab, even right after a viewer session on the same device
     await startData();
   } else if (!state.demo) {
     stopData();
     state.user = null;
+    state.viewer = false;
+    setViewerMode(false);
     $('app').hidden = true;
     $('signin').hidden = false;
   }
 });
+
+/* Viewer mode: read-only relatives see Meds, Chemo and Trends only, with every
+   add/edit/delete control on those three hidden, and land on Meds rather than
+   Today (which mixes in food, drink and personal notes they were not given). */
+function setViewerMode(on) {
+  document.body.classList.toggle('is-viewer', on);
+  $('tabs').classList.toggle('tabs-3', on);
+  document.querySelectorAll('.tab[data-tab="today"], .tab[data-tab="exercise"], .tab[data-tab="more"]').forEach((b) => { b.hidden = on; });
+  if (on) showTab('meds');
+}
 
 /* Guest preview: no Firebase account, no Firestore access, ever. Everything
    this shows is made-up (see buildDemoFixture); nothing typed here is saved. */
 function enterPreview() {
   state.demo = true;
   state.name = 'Guest';
+  state.viewer = false;
+  setViewerMode(false);
   $('signin').hidden = true;
   $('app').hidden = false;
   $('user-chip').textContent = 'Guest';
@@ -403,13 +433,14 @@ $('signout').addEventListener('click', async () => {
 /* ------------------------------------------------------------------ */
 
 async function startData() {
-  await seedMedicinesIfEmpty();
   watchMedicines();
   watchRecent();
   watchDay();
+  watchDays();
+  if (state.viewer) return; // Meds, Chemo (via watchDays above) and Trends only, nothing else, no writes
+  await seedMedicinesIfEmpty();
   watchDocuments();
   watchProfile();
-  watchDays();
   watchCheers();
   watchExercise();
   watchMeals();
@@ -1625,8 +1656,10 @@ function medCard(m, today) {
   if (todays.length) {
     card.append(h('div', { class: 'med-times' },
       h('span', { class: 'med-times-label', text: 'Today' }),
-      ...todays.map((e) => h('button', { class: 'med-time', type: 'button', 'aria-label': `Dose at ${fmtTime(entryDate(e))}, tap for options`, onclick: () => entryOptions(e) },
-        fmtTime(entryDate(e)) + ' · ' + (e.addedBy || '')))
+      ...todays.map((e) => state.viewer
+        ? h('span', { class: 'med-time med-time-view', text: fmtTime(entryDate(e)) + ' · ' + (e.addedBy || '') })
+        : h('button', { class: 'med-time', type: 'button', 'aria-label': `Dose at ${fmtTime(entryDate(e))}, tap for options`, onclick: () => entryOptions(e) },
+          fmtTime(entryDate(e)) + ' · ' + (e.addedBy || '')))
     ));
   } else if (last) {
     status.append(h('span', { class: 'med-last', text: 'Last ' + fmtDayShort(last.day) + ' ' + fmtTime(entryDate(last)) + ' (' + (last.addedBy || '') + ')' }));
@@ -2418,7 +2451,7 @@ function renderCalendar() {
     if (info.chemo) cls.push('is-chemo');
     if (info.chemoDone) cls.push('is-done');
     const label = [fmtDayLong(key), info.chemo ? (info.chemoDone ? 'chemo session done' : 'chemo session') : null, info.mood ? 'mood ' + MOODS[info.mood - 1].label : null].filter(Boolean).join(', ');
-    cells.push(h('button', { class: cls.join(' '), type: 'button', 'aria-label': label, onclick: () => openDaySheet(key) },
+    cells.push(h('button', { class: cls.join(' '), type: 'button', 'aria-label': label, disabled: state.viewer, onclick: () => openDaySheet(key) },
       h('span', { class: 'cal-num', text: String(d) }),
       info.mood ? h('span', { class: 'cal-face', text: MOODS[info.mood - 1].face }) : null
     ));
