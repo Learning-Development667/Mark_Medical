@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '20';
+const APP_VERSION = '21';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
 const TEXT_LIMIT_BYTES = 800 * 1024;
 const PAGE_MAX_DIM = 1600;
@@ -2653,22 +2653,69 @@ $('ex-steps-edit').addEventListener('click', () => openStepsSheet(state.exercise
 
 /* Steps can be logged for any past day: the sheet has its own day picker, so
    yesterday's count can go in the next morning without hunting for the arrows. */
+/* A real calendar, same look as the Chemo one, so any past day can be tapped
+   directly rather than hunting through Today/Yesterday presets or a native
+   date wheel. Days already logged show green; today has a ring; the chosen
+   day is filled in teal; future days are disabled. */
 function openStepsSheet(initialDay) {
   const today = todayStr();
-  const dateEl = h('input', { type: 'date', value: initialDay, max: today });
-  const dayPresets = presets([{ value: today, label: 'Today' }, { value: addDays(today, -1), label: 'Yesterday' }], dateEl, initialDay);
+  let day = initialDay > today ? today : initialDay;
+  let month = day.slice(0, 7);
+
   const input = h('input', { type: 'number', inputmode: 'numeric', min: '0', step: '1', placeholder: '0' });
-  const sync = () => { const rec = exerciseFor(dateEl.value); input.value = rec.steps ? String(rec.steps) : ''; };
-  dateEl.addEventListener('input', sync);
-  dayPresets.addEventListener('click', sync);
-  sync();
+  const dayLabel = h('p', { class: 'muted' });
+  const calTitle = h('button', { class: 'cal-title', type: 'button', 'aria-label': 'Go to this month' });
+  const calGrid = h('div', { class: 'cal-grid' });
+  const calPrev = h('button', { class: 'iconbtn', type: 'button', 'aria-label': 'Previous month', text: '‹' });
+  const calNext = h('button', { class: 'iconbtn', type: 'button', 'aria-label': 'Next month', text: '›' });
+
+  const syncInput = () => {
+    const rec = exerciseFor(day);
+    input.value = rec.steps ? String(rec.steps) : '';
+    dayLabel.textContent = fmtDayLong(day) + (day === today ? ' (today)' : '');
+  };
+
+  function renderCal() {
+    const [y, m] = month.split('-').map(Number);
+    calTitle.textContent = new Date(y, m - 1, 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+    calNext.disabled = month >= today.slice(0, 7);
+    const startDow = (new Date(y, m - 1, 1).getDay() + 6) % 7; // Monday first
+    const daysInMonth = new Date(y, m, 0).getDate();
+    const cells = [];
+    for (let i = 0; i < startDow; i++) cells.push(h('div', { class: 'cal-cell is-empty' }));
+    for (let d = 1; d <= daysInMonth; d++) {
+      const key = `${y}-${pad2(m)}-${pad2(d)}`;
+      const future = key > today;
+      const logged = Boolean(exerciseFor(key).steps);
+      const cls = ['cal-cell'];
+      if (key === today) cls.push('is-today');
+      if (key === day) cls.push('is-selected');
+      if (logged) cls.push('is-logged');
+      cells.push(h('button', {
+        class: cls.join(' '), type: 'button', disabled: future,
+        'aria-label': fmtDayLong(key) + (logged ? ', steps logged' : ''),
+        onclick: () => { day = key; renderCal(); syncInput(); }
+      }, h('span', { class: 'cal-num', text: String(d) })));
+    }
+    calGrid.replaceChildren(...cells);
+  }
+  calPrev.addEventListener('click', () => { month = shiftMonth(month, -1); renderCal(); });
+  calNext.addEventListener('click', () => { if (month < today.slice(0, 7)) { month = shiftMonth(month, 1); renderCal(); } });
+  calTitle.addEventListener('click', () => { month = today.slice(0, 7); renderCal(); });
+  renderCal();
+  syncInput();
+
   const body = h('div', null,
-    field('Which day', dateEl), dayPresets,
+    h('div', { class: 'card cal' },
+      h('div', { class: 'cal-head' }, calPrev, calTitle, calNext),
+      h('div', { class: 'cal-dow' }, ...['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((dw) => h('span', { text: dw }))),
+      calGrid,
+      h('p', { class: 'cal-key' }, h('span', { class: 'key-dot key-done' }), ' Already logged')
+    ),
+    dayLabel,
     h('div', { class: 'bigvalue' }, input, h('span', { class: 'unit', text: 'steps' })),
     h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
-      const day = dateEl.value;
       const v = parseInt(input.value, 10);
-      if (!day || day > today) { toast('Please pick a day up to today'); return; }
       if (isNaN(v) || v < 0) { toast('Please check the number'); return; }
       const rec = exerciseFor(day);
       closeSheet();
