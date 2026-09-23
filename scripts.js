@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '21';
+const APP_VERSION = '22';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
 const TEXT_LIMIT_BYTES = 800 * 1024;
 const PAGE_MAX_DIM = 1600;
@@ -835,7 +835,7 @@ function entrySub(e) {
 }
 
 function sleepStages(e) {
-  return [['deep', 'Deep'], ['rem', 'REM'], ['core', 'Core'], ['awake', 'Awake']]
+  return [['awake', 'Awake'], ['rem', 'REM'], ['core', 'Core'], ['deep', 'Deep']]
     .filter(([k]) => e[k]).map(([k, label]) => label + ' ' + fmtHm(e[k])).join(' · ');
 }
 
@@ -985,7 +985,7 @@ function openAdd(type) {
       return { row, minutes };
     };
     const asleep = hm('Time asleep');
-    const stages = { deep: hm('Deep'), rem: hm('REM'), core: hm('Core'), awake: hm('Awake') };
+    const stages = { awake: hm('Awake'), rem: hm('REM'), core: hm('Core'), deep: hm('Deep') };
     const stagesWrap = h('div', { class: 'stages' }, ...Object.values(stages).map((s) => s.row));
     stagesWrap.hidden = true;
     const stagesBtn = h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => { stagesWrap.hidden = !stagesWrap.hidden; stagesBtn.textContent = stagesWrap.hidden ? 'Add the stages (optional)' : 'Hide the stages'; } }, 'Add the stages (optional)');
