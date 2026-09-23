@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '22';
+const APP_VERSION = '23';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
 const TEXT_LIMIT_BYTES = 800 * 1024;
 const PAGE_MAX_DIM = 1600;
@@ -169,6 +169,29 @@ function tempClass(v) { if (v >= 38) return 'is-red'; if (v >= 37.5) return 'is-
 function tempWord(v) { if (v >= 38) return 'High. 38.0 or above'; if (v >= 37.5) return 'Raised. Keep an eye on it'; return 'Normal range'; }
 function entryDate(e) { return e.at && typeof e.at.toDate === 'function' ? e.at.toDate() : new Date(); }
 function hoursAgo(d) { return (Date.now() - d.getTime()) / 36e5; }
+
+/* Counts a tile value up on first paint and eases between values after that.
+   Repaints instantly when the value has not changed, and under reduced motion. */
+function countTo(el, target, opts) {
+  const o = Object.assign({ decimals: 0, unit: '', duration: 650 }, opts || {});
+  const fmt = o.format || ((n) => n.toFixed(o.decimals));
+  const paint = (n) => { el.replaceChildren(fmt(n)); if (o.unit) el.append(h('small', { text: o.unit })); };
+  const prev = el.dataset.count === undefined ? 0 : Number(el.dataset.count);
+  const same = el.dataset.painted === '1' && prev === target;
+  el.dataset.count = String(target);
+  el.dataset.painted = '1';
+  if (same || window.matchMedia('(prefers-reduced-motion: reduce)').matches) { paint(target); return; }
+  if (el._raf) cancelAnimationFrame(el._raf);
+  const start = performance.now();
+  const ease = (t) => 1 - Math.pow(1 - t, 3);
+  const tick = (now) => {
+    const t = Math.min(1, (now - start) / o.duration);
+    paint(prev + (target - prev) * ease(t));
+    if (t < 1) el._raf = requestAnimationFrame(tick);
+  };
+  el._raf = requestAnimationFrame(tick);
+}
+function clearCount(el, text) { el.textContent = text; el.dataset.count = '0'; el.dataset.painted = '0'; if (el._raf) cancelAnimationFrame(el._raf); }
 function fmtHm(minutes) {
   const m = Math.max(0, Math.round(Number(minutes) || 0));
   const hh = Math.floor(m / 60), mm = m % 60;
@@ -471,6 +494,10 @@ function buildDemoFixture() {
   const e = (offset, hhmm, who, fields) => ({
     id: fakeId('entry'), day: day(offset), at: demoTs(at(offset, hhmm)), addedBy: who, createdAt: demoTs(at(offset, hhmm)), note: '', ...fields
   });
+  const ci = (offset, slot, fields) => {
+    const when = at(offset, slot === 'morning' ? '08:30' : '21:00');
+    return { id: day(offset) + '_' + slot, type: 'checkin', slot, day: day(offset), at: demoTs(when), addedBy: 'Mark', createdAt: demoTs(when), updatedAt: demoTs(when), ...fields };
+  };
 
   const entries = [
     e(-9, '08:00', 'Shelley', { type: 'temp', value: 36.9 }),
@@ -511,6 +538,17 @@ function buildDemoFixture() {
     e(0, '08:15', 'Mark', { type: 'med', medId: 'creon', medName: 'Creon 25000', dose: '2 capsules' }),
     e(0, '08:20', 'Mark', { type: 'food', note: 'Toast and scrambled egg', amount: 'Most of it' }),
     e(0, '08:25', 'Mark', { type: 'note', note: 'Slept well, a little tired by afternoon.' }),
+    e(-2, '15:30', 'Mark', { type: 'pain', value: 7, note: 'Back, worse sitting' }),
+    e(0, '11:40', 'Mark', { type: 'pain', value: 4 }),
+    ci(-6, 'morning', { sleep: 6, sleepHours: 6.5, pain: 3, mood: 6, symptoms: '', lookingForward: 'A walk if the weather holds' }),
+    ci(-6, 'evening', { pain: 4, mood: 6, worstPain: 5, sickness: 3, appetite: 5, energy: 4, symptoms: '', settled: '', goodThing: 'Fish and chips on the bench' }),
+    ci(-5, 'morning', { sleep: 7, sleepHours: 7, pain: 2, mood: 7, symptoms: '', lookingForward: '' }),
+    ci(-5, 'evening', { pain: 3, mood: 7, worstPain: 4, sickness: 2, appetite: 6, energy: 5, symptoms: '', settled: 'The sickness has eased', goodThing: 'Beat Shelley at cards' }),
+    ci(-2, 'morning', { sleep: 4, sleepHours: 4.5, pain: 6, mood: 4, symptoms: 'Back pain woke me twice', lookingForward: '' }),
+    ci(-2, 'evening', { pain: 7, mood: 4, worstPain: 8, sickness: 6, appetite: 2, energy: 3, symptoms: 'Felt sick most of the afternoon', settled: '', goodThing: 'Shelley made soup' }),
+    ci(-1, 'morning', { sleep: 6, sleepHours: 7.5, pain: 4, mood: 6, symptoms: '', lookingForward: 'Quiet day' }),
+    ci(-1, 'evening', { pain: 3, mood: 6, worstPain: 5, sickness: 3, appetite: 5, energy: 5, symptoms: '', settled: 'Back is easier than yesterday', goodThing: 'Sun on the patio' }),
+    ci(0, 'morning', { sleep: 7, sleepHours: 7, pain: 3, mood: 7, symptoms: '', lookingForward: 'Hayley visiting later' }),
     e(0, '09:00', 'Shelley', { type: 'drink', value: 250, note: 'Water' })
   ];
 
@@ -667,7 +705,6 @@ function watchDays() {
     snap.docs.forEach((d) => { days[d.id] = d.data(); });
     state.days = days;
     renderChemo();
-    renderTodayMood();
   }, (e) => console.error(e));
 }
 
@@ -759,6 +796,7 @@ function openDocs(from) {
 }
 
 $('sheet').addEventListener('click', (ev) => { if (ev.target.hasAttribute('data-close')) closeSheet(); });
+$('sheet-close').addEventListener('click', closeSheet);
 
 /* ------------------------------------------------------------------ */
 /* Today                                                                */
@@ -795,7 +833,7 @@ function renderDayLabel() {
 
 function renderToday() {
   renderTiles();
-  renderTodayMood();
+  renderCheckins();
   const list = $('timeline');
   list.replaceChildren(...state.dayEntries.map(renderEntry));
   $('timeline-empty').hidden = state.dayEntries.length > 0;
@@ -808,6 +846,8 @@ function entryTitle(e) {
     case 'drink': return [h('span', { text: e.note || 'Drink' }), e.value ? h('span', { class: 'val', text: '  ' + e.value + ' ml' }) : null];
     case 'food': return [h('span', { text: e.note || 'Food' })];
     case 'sleep': return [h('span', { class: 'val', text: fmtHm(e.value) }), h('span', { text: ' asleep' })];
+    case 'checkin': return [h('span', { text: slotWord(e.slot) + ' check-in' })];
+    case 'pain': return [h('span', { class: 'val', text: 'Pain ' + e.value + '/10' })];
     case 'weight': return [h('span', { class: 'val', text: Number(e.value).toFixed(1) + ' kg' })];
     case 'vitals': {
       const parts = [];
@@ -828,6 +868,8 @@ function entrySub(e) {
   if (e.type === 'food' && e.amount) bits.push(e.amount);
   if (e.type === 'food' && e.detail) bits.push(e.detail);
   if (e.type === 'sleep') { const s = sleepStages(e); if (s) bits.push(s); if (e.note) bits.push(e.note); }
+  if (e.type === 'checkin') { const s = checkinSummary(e); if (s) bits.push(s); }
+  if (e.type === 'pain' && e.note) bits.push(e.note);
   if (e.type === 'weight' && e.note) bits.push(e.note);
   if (e.type === 'vitals' && e.note) bits.push(e.note);
   bits.push('by ' + (e.addedBy || 'unknown'));
@@ -874,24 +916,24 @@ function renderTiles() {
   tileT.classList.remove('is-red', 'is-amber', 'is-green');
   if (temps.length) {
     const t = temps[0];
-    $('tile-temp-value').replaceChildren(Number(t.value).toFixed(1), h('small', { text: '°C' }));
+    countTo($('tile-temp-value'), Number(t.value), { decimals: 1, unit: '°C' });
     $('tile-temp-sub').textContent = 'at ' + fmtTime(entryDate(t));
     const c = tempClass(t.value);
     tileT.classList.add(c || 'is-green');
   } else {
-    $('tile-temp-value').textContent = '--';
+    clearCount($('tile-temp-value'), '--');
     $('tile-temp-sub').textContent = 'none today';
   }
 
   const drinks = entries.filter((e) => e.type === 'drink');
   const ml = drinks.reduce((s, e) => s + (Number(e.value) || 0), 0);
-  $('tile-drink-value').replaceChildren(ml >= 1000 ? (ml / 1000).toFixed(2).replace(/0+$/, '').replace(/\.$/, '') : String(ml), h('small', { text: ml >= 1000 ? 'L' : 'ml' }));
+  countTo($('tile-drink-value'), ml, { unit: ml >= 1000 ? 'L' : 'ml', format: (n) => ml >= 1000 ? (n / 1000).toFixed(2).replace(/0+$/, '').replace(/\.$/, '') : String(Math.round(n)) });
   $('tile-drink-sub').textContent = drinks.length === 1 ? '1 drink' : drinks.length + ' drinks';
 
   const sched = activeScheduled(state.selectedDay);
   const need = sched.reduce((s, m) => s + (m.perDay || 1), 0);
   const done = sched.reduce((s, m) => s + Math.min(m.perDay || 1, countMedOnDay(m.id, state.selectedDay)), 0);
-  $('tile-meds-value').textContent = `${done} of ${need}`;
+  countTo($('tile-meds-value'), done, { format: (n) => Math.round(n) + ' of ' + need });
   const tileM = $('tile-meds');
   tileM.classList.toggle('is-green', need > 0 && done >= need);
   $('tile-meds-sub').textContent = need > 0 && done >= need ? 'all done' : 'doses taken';
@@ -1394,6 +1436,18 @@ function vitalsFlags(entries, rangeDays, today) {
     }
   });
 
+  sorted.filter((e) => e.type === 'checkin').forEach((e) => {
+    const where = `at the ${e.slot} check-in on ${fmtDayShort(e.day)}`;
+    if (e.pain >= 7) flags.push({ level: 'red', text: `Bad pain, ${e.pain}/10 ${where}` });
+    else if (e.pain >= 5) flags.push({ level: 'amber', text: `Pain ${e.pain}/10 ${where}` });
+    if (e.worstPain >= 7) flags.push({ level: 'red', text: `Worst pain ${e.worstPain}/10 on ${fmtDayShort(e.day)}` });
+    if (e.sickness >= 6) flags.push({ level: 'amber', text: `Sickness ${e.sickness}/10 on ${fmtDayShort(e.day)}` });
+    if (e.appetite != null && e.appetite <= 3) flags.push({ level: 'amber', text: `Appetite low, ${e.appetite}/10 on ${fmtDayShort(e.day)}` });
+    if (e.energy != null && e.energy <= 3) flags.push({ level: 'amber', text: `Energy low, ${e.energy}/10 on ${fmtDayShort(e.day)}` });
+  });
+  sorted.filter((e) => e.type === 'pain' && Number(e.value) >= 7)
+    .forEach((e) => flags.push({ level: 'red', text: `Bad pain, ${e.value}/10 logged on ${when(e)}` }));
+
   sorted.filter((e) => e.type === 'sleep' && Number(e.value) > 0 && Number(e.value) < 300)
     .forEach((e) => flags.push({ level: 'amber', text: `Short night, ${fmtHm(e.value)} asleep before ${fmtDayShort(e.day)}` }));
 
@@ -1442,6 +1496,7 @@ function noteContext(e) {
       return 'with vitals ' + p.join(', ');
     }
     case 'med': return 'with ' + (e.medName || 'a medicine');
+    case 'pain': return 'with pain ' + e.value + '/10';
     default: return '';
   }
 }
@@ -1460,6 +1515,21 @@ function dayReadings(list) {
   if (w) bits.push('Weight ' + Number(w.value).toFixed(1) + ' kg');
   const sl = list.filter((e) => e.type === 'sleep').pop();
   if (sl) bits.push('Sleep ' + fmtHm(sl.value));
+  const am = list.find((e) => e.type === 'checkin' && e.slot === 'morning');
+  const pm = list.find((e) => e.type === 'checkin' && e.slot === 'evening');
+  const pair = (k, label) => {
+    const parts = [am && am[k] != null ? 'am ' + am[k] : null, pm && pm[k] != null ? 'pm ' + pm[k] : null].filter(Boolean);
+    if (parts.length) bits.push(label + ' ' + parts.join(', ') + '/10');
+  };
+  pair('pain', 'Pain');
+  pair('mood', 'Mood');
+  if (pm && pm.worstPain != null) bits.push('Worst pain ' + pm.worstPain + '/10');
+  if (pm && pm.sickness != null) bits.push('Sickness ' + pm.sickness + '/10');
+  if (pm && pm.appetite != null) bits.push('Appetite ' + pm.appetite + '/10');
+  if (pm && pm.energy != null) bits.push('Energy ' + pm.energy + '/10');
+  if (am && am.sleep != null) bits.push('Sleep score ' + am.sleep + '/10' + (am.sleepHours != null ? ' (' + am.sleepHours + ' h)' : ''));
+  const spots = list.filter((e) => e.type === 'pain');
+  if (spots.length) bits.push('Extra pain readings ' + spots.map((e) => e.value).join(', '));
   const ml = list.filter((e) => e.type === 'drink').reduce((s, e) => s + (Number(e.value) || 0), 0);
   if (ml) bits.push('Drinks ' + fmtMl(ml));
   const food = list.filter((e) => e.type === 'food').length;
@@ -1485,8 +1555,14 @@ function buildNotesReport(entries, from, today) {
   for (let day = from; day <= today; day = addDays(day, 1)) {
     const list = (byDay[day] || []).slice().sort((a, b) => entryDate(a) - entryDate(b));
     const info = state.days[day] || {};
-    const notes = list.filter((e) => e.type === 'note' || (e.note && ['temp', 'weight', 'vitals', 'med'].includes(e.type)))
+    const notes = list.filter((e) => e.type === 'note' || (e.note && ['temp', 'weight', 'vitals', 'med', 'pain'].includes(e.type)))
       .map((e) => ({ time: fmtTime(entryDate(e)), who: e.addedBy || 'unknown', text: e.note, context: e.type === 'note' ? '' : noteContext(e) }));
+    list.filter((e) => e.type === 'checkin').forEach((e) => {
+      CHECKIN_TEXT_KEYS.forEach(([k, label]) => {
+        if (e[k]) notes.push({ time: fmtTime(entryDate(e)), who: e.addedBy || 'unknown', text: label + ': ' + e[k], context: e.slot + ' check-in' });
+      });
+    });
+    notes.sort((a, b) => a.time.localeCompare(b.time));
     const mood = info.mood ? MOODS[info.mood - 1].label : '';
     const readings = dayReadings(list);
     const prn = dayPrn(list);
@@ -1563,20 +1639,234 @@ async function renderNotesReport() {
   $('notes-empty').hidden = report.days.length > 0;
 }
 
-/* Today's mood, from the Chemo Party Plan day record, shown as a one-line card */
-function renderTodayMood() {
-  const info = state.days[state.selectedDay] || {};
-  const m = info.mood ? MOODS[info.mood - 1] : null;
-  $('today-mood-face').textContent = m ? m.face : '\u{1F642}';
-  if (m) {
-    $('today-mood-title').textContent = 'Feeling ' + m.label.toLowerCase() + (info.good ? '. ' + info.good : '');
-    $('today-mood-sub').textContent = state.selectedDay === todayStr() ? 'Tap to change' : 'Tap to edit';
-  } else {
-    $('today-mood-title').textContent = state.selectedDay === todayStr() ? 'How are you feeling today?' : 'No mood logged for this day';
-    $('today-mood-sub').textContent = 'Tap to log a mood and one good thing';
-  }
+/* ------------------------------------------------------------------ */
+/* Daily check-ins: morning and evening, one question per screen.        */
+/* Stored in entries as {day}_{slot} (type "checkin", one field per      */
+/* answer; a skipped slider is null, skipped text is ""), so a day and    */
+/* slot can only ever have one document and reopening edits it. Mood is   */
+/* mirrored to days/{day}.mood (1 to 5) so the Chemo calendar, the report */
+/* and the flags keep working unchanged.                                  */
+/* ------------------------------------------------------------------ */
+
+const CHECKIN_QUESTIONS = {
+  morning: [
+    { key: 'sleep', kind: 'sleep', q: 'How did you sleep?', low: '1 terribly', high: '10 brilliantly' },
+    { key: 'pain', kind: 'pain', q: 'Pain right now', low: '1 none', high: '10 worst' },
+    { key: 'mood', kind: 'slider', q: 'How is your mood?', low: '1 rough', high: '10 great' },
+    { key: 'symptoms', kind: 'text', q: 'Any new or worse symptoms overnight?', ph: 'e.g. more sick than usual, a new ache' },
+    { key: 'lookingForward', kind: 'text', q: 'What are you looking forward to today?', ph: 'e.g. a walk in the garden, a visitor' }
+  ],
+  evening: [
+    { key: 'pain', kind: 'pain', q: 'Pain right now', low: '1 none', high: '10 worst' },
+    { key: 'mood', kind: 'slider', q: 'How is your mood?', low: '1 rough', high: '10 great' },
+    { key: 'worstPain', kind: 'pain', q: 'Worst pain today', low: '1 none', high: '10 worst' },
+    { key: 'sickness', kind: 'pain', q: 'Sickness today', low: '1 none', high: '10 severe' },
+    { key: 'appetite', kind: 'slider', q: 'Appetite today', low: '1 nothing', high: '10 normal' },
+    { key: 'energy', kind: 'slider', q: 'Energy today', low: '1 wiped out', high: '10 plenty' },
+    { key: 'symptoms', kind: 'text', q: 'Any new or worse symptoms today?', ph: 'e.g. felt sick after lunch, back worse' },
+    { key: 'settled', kind: 'text', q: 'Anything that has settled since yesterday?', ph: 'e.g. the sickness has eased' },
+    { key: 'goodThing', kind: 'text', q: 'One good thing about today', ph: 'e.g. sat in the garden for an hour' }
+  ]
+};
+const CHECKIN_LABELS = {
+  sleep: 'Sleep', sleepHours: 'Hours slept', pain: 'Pain now', mood: 'Mood', symptoms: 'New or worse symptoms',
+  lookingForward: 'Looking forward to', worstPain: 'Worst pain', sickness: 'Sickness', appetite: 'Appetite',
+  energy: 'Energy', settled: 'Settled since yesterday', goodThing: 'One good thing'
+};
+const CHECKIN_TEXT_KEYS = [['symptoms', 'New or worse symptoms'], ['settled', 'Settled since yesterday'], ['lookingForward', 'Looking forward to'], ['goodThing', 'One good thing']];
+
+function checkinId(day, slot) { return day + '_' + slot; }
+function findCheckin(day, slot) {
+  const id = checkinId(day, slot);
+  return state.dayEntries.find((e) => e.id === id) || state.recentEntries.find((e) => e.id === id) || null;
 }
-$('today-mood').addEventListener('click', () => openDaySheet(state.selectedDay));
+function dueSlot() { return new Date().getHours() < 15 ? 'morning' : 'evening'; }
+function slotWord(slot) { return slot === 'morning' ? 'Morning' : 'Evening'; }
+
+function checkinSummary(e) {
+  const bits = [];
+  if (e.sleep != null) bits.push('Sleep ' + e.sleep + (e.sleepHours != null ? ' (' + e.sleepHours + ' h)' : ''));
+  if (e.pain != null) bits.push('Pain ' + e.pain);
+  if (e.mood != null) bits.push('Mood ' + e.mood);
+  if (e.worstPain != null) bits.push('Worst pain ' + e.worstPain);
+  if (e.sickness != null) bits.push('Sickness ' + e.sickness);
+  if (e.appetite != null) bits.push('Appetite ' + e.appetite);
+  if (e.energy != null) bits.push('Energy ' + e.energy);
+  return bits.join(' · ');
+}
+
+function renderCheckins() {
+  const day = state.selectedDay, isToday = day === todayStr();
+  ['morning', 'evening'].forEach((slot) => {
+    const row = $('checkin-' + slot), sub = $('checkin-' + slot + '-sub');
+    const c = findCheckin(day, slot);
+    row.classList.remove('is-due', 'is-done');
+    if (c) {
+      row.classList.add('is-done');
+      sub.replaceChildren(h('span', { class: 'checkin-done' }, icon('check'), 'Done ' + fmtTime(entryDate(c))), ' · tap to change');
+    } else if (isToday && dueSlot() === slot) { row.classList.add('is-due'); sub.textContent = 'Due now, about a minute'; }
+    else if (isToday && slot === 'morning') sub.textContent = 'Missed this morning, tap to fill in';
+    else if (isToday) sub.textContent = 'Later today';
+    else sub.textContent = 'Not filled in, tap to add';
+  });
+}
+$('checkin-morning').addEventListener('click', () => openCheckin('morning', state.selectedDay));
+$('checkin-evening').addEventListener('click', () => openCheckin('evening', state.selectedDay));
+
+function sliderBlock(q, current, onChange) {
+  const num = h('div', { class: 'wiz-num' + (current == null ? ' is-unset' : ''), text: current == null ? 'Slide to answer' : String(current) });
+  const range = h('input', { type: 'range', class: 'slider' + (q.kind === 'pain' ? ' is-pain' : ''), min: '1', max: '10', step: '1', value: String(current == null ? 5 : current), 'aria-label': q.q });
+  let touched = current != null;
+  range.addEventListener('input', () => { touched = true; num.textContent = range.value; num.classList.remove('is-unset'); if (onChange) onChange(); });
+  const nodes = [num, range, h('div', { class: 'wiz-anchors' }, h('span', { text: q.low }), h('span', { text: q.high }))];
+  return { nodes, value: () => (touched ? parseInt(range.value, 10) : null) };
+}
+
+function openCheckin(slot, initialDay) {
+  const today = todayStr();
+  let day = initialDay > today ? today : initialDay;
+  const qs = CHECKIN_QUESTIONS[slot];
+  let answers = {}, existing = null, step = 0, dir = 1;
+
+  const load = () => {
+    existing = findCheckin(day, slot);
+    answers = {};
+    qs.forEach((q) => { answers[q.key] = existing && existing[q.key] !== undefined ? existing[q.key] : (q.kind === 'text' ? '' : null); });
+    answers.sleepHours = existing && existing.sleepHours != null ? existing.sleepHours : null;
+  };
+  load();
+
+  const body = h('div', null);
+
+  function render() {
+    const wrap = h('div', { class: 'wiz-step' + (dir < 0 ? ' is-back' : '') });
+    if (step < qs.length) {
+      const q = qs[step];
+      if (step === 0) {
+        const options = [[today, 'Today'], [addDays(today, -1), 'Yesterday']];
+        if (day !== today && day !== addDays(today, -1)) options.unshift([day, fmtDayShort(day)]);
+        wrap.append(h('div', { class: 'wiz-day' }, ...options.map(([d, label]) =>
+          h('button', { class: 'preset' + (d === day ? ' is-active' : ''), type: 'button', onclick: () => { if (d !== day) { day = d; load(); render(); } } }, label))));
+      }
+      const bar = h('div', { class: 'progress-bar' }, h('div'));
+      bar.firstChild.style.width = Math.round(((step + 1) / (qs.length + 1)) * 100) + '%';
+      wrap.append(h('div', { class: 'wiz-progress' }, h('span', { text: `${step + 1} of ${qs.length}` }), bar));
+      wrap.append(h('p', { class: 'wiz-q', text: q.q }));
+
+      let getVal;
+      if (q.kind === 'text') {
+        const ta = h('textarea', { rows: '3', placeholder: q.ph || '' });
+        ta.value = answers[q.key] || '';
+        wrap.append(h('p', { class: 'wiz-hint', text: 'Optional. Skip if there is nothing to say.' }), ta);
+        getVal = () => ta.value.trim();
+      } else {
+        const sl = sliderBlock(q, answers[q.key]);
+        wrap.append(...sl.nodes);
+        let hours = null;
+        if (q.kind === 'sleep') {
+          hours = h('input', { type: 'number', inputmode: 'decimal', min: '0', max: '24', step: '0.5', placeholder: 'e.g. 7', value: answers.sleepHours != null ? String(answers.sleepHours) : '' });
+          wrap.append(field('Roughly how many hours (optional)', hours));
+        }
+        getVal = () => {
+          if (hours) { const hv = parseFloat(hours.value); answers.sleepHours = isNaN(hv) ? null : hv; }
+          return sl.value();
+        };
+      }
+      const go = (n, d) => { dir = d; step = n; render(); };
+      const back = h('button', { class: 'btn btn-secondary btn-back', type: 'button', disabled: step === 0, onclick: () => { answers[q.key] = getVal(); go(step - 1, -1); } }, 'Back');
+      const skip = h('button', { class: 'btn-link wiz-skip', type: 'button', onclick: () => { if (q.kind === 'sleep') getVal(); answers[q.key] = q.kind === 'text' ? '' : null; go(step + 1, 1); } }, 'Skip');
+      const next = h('button', { class: 'btn btn-primary btn-next', type: 'button', onclick: () => { answers[q.key] = getVal(); go(step + 1, 1); } }, step === qs.length - 1 ? 'Review' : 'Next');
+      wrap.append(h('div', { class: 'wiz-buttons' }, back, skip, next));
+    } else {
+      const bar = h('div', { class: 'progress-bar' }, h('div'));
+      bar.firstChild.style.width = '100%';
+      wrap.append(h('div', { class: 'wiz-progress' }, h('span', { text: 'Review' }), bar));
+      wrap.append(h('p', { class: 'wiz-q', text: fmtDayLong(day) + (day === today ? ', today' : '') }));
+      wrap.append(h('p', { class: 'wiz-hint', text: 'Tap an answer to change it.' }));
+      const list = h('ul', { class: 'wiz-summary' });
+      qs.forEach((q, i) => {
+        const v = answers[q.key];
+        const skipped = q.kind === 'text' ? !v : v == null;
+        const shown = skipped ? 'Skipped' : (q.kind === 'text' ? v : String(v) + (q.kind === 'sleep' && answers.sleepHours != null ? ' · ' + answers.sleepHours + ' h' : ''));
+        list.append(h('li', null, h('button', { type: 'button', onclick: () => { dir = -1; step = i; render(); } },
+          h('span', { class: 'k', text: CHECKIN_LABELS[q.key] }),
+          h('span', { class: 'v' + (skipped ? ' is-skipped' : (q.kind === 'text' ? '' : ' is-num')), text: shown }))));
+      });
+      wrap.append(list);
+      const save = h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
+        save.disabled = true;
+        await saveCheckin(slot, day, answers, existing);
+        closeSheet();
+      } }, existing ? 'Save changes' : 'Save check-in');
+      wrap.append(save, h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => { dir = -1; step = qs.length - 1; render(); } }, 'Back'));
+    }
+    body.replaceChildren(wrap);
+    const panel = document.querySelector('.sheet-panel');
+    if (panel) panel.scrollTop = 0;
+  }
+  render();
+  openSheet(slotWord(slot) + ' check-in', body);
+}
+
+async function saveCheckin(slot, day, answers, existing) {
+  const id = checkinId(day, slot);
+  const today = todayStr();
+  const at = existing ? entryDate(existing) : atFromInputs(day, day === today ? fmtTime(new Date()) : (slot === 'morning' ? '09:00' : '21:00'));
+  const data = { type: 'checkin', slot, day, addedBy: state.name };
+  CHECKIN_QUESTIONS[slot].forEach((q) => { data[q.key] = answers[q.key]; });
+  if (slot === 'morning') data.sleepHours = answers.sleepHours;
+  const mirror = {};
+  if (data.mood != null) mirror.mood = Math.max(1, Math.min(5, Math.ceil(data.mood / 2)));
+  if (slot === 'evening' && data.goodThing) mirror.good = data.goodThing;
+  const label = slotWord(slot) + ' check-in ' + (existing ? 'updated' : 'saved');
+
+  if (state.demo) {
+    const now = new Date();
+    const entry = { id, ...data, at: demoTs(at), createdAt: existing ? existing.createdAt : demoTs(now), updatedAt: demoTs(now) };
+    state.recentEntries = state.recentEntries.filter((e) => e.id !== id);
+    state.recentEntries.push(entry);
+    sortEntries(state.recentEntries);
+    state.dayEntries = state.recentEntries.filter((e) => e.day === state.selectedDay);
+    if (Object.keys(mirror).length) state.days[day] = { ...(state.days[day] || {}), ...mirror };
+    renderToday(); renderChemo();
+    if (!$('view-vitals').hidden) renderVitals();
+    toast(label);
+    return;
+  }
+  try {
+    await setDoc(doc(db, 'entries', id), {
+      ...data,
+      at: Timestamp.fromDate(at),
+      createdAt: existing && existing.createdAt ? existing.createdAt : serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+    if (Object.keys(mirror).length) await setDoc(doc(db, 'days', day), { ...mirror, updatedBy: state.name, updatedAt: serverTimestamp() }, { merge: true });
+    toast(label);
+  } catch (e) { console.error(e); toast('Could not save the check-in'); }
+}
+
+/* Extra pain readings during the day: ordinary timestamped entries, separate from the check-in scores */
+$('pain-now').addEventListener('click', () => {
+  const day = state.selectedDay;
+  const time = timeInput(day);
+  const note = h('input', { type: 'text', placeholder: 'Where, or what helped (optional)' });
+  const sl = sliderBlock({ kind: 'pain', q: 'Pain right now', low: '1 none', high: '10 worst' }, null);
+  const body = h('div', null,
+    h('p', { class: 'wiz-q', text: 'Pain right now' }),
+    ...sl.nodes,
+    field('Time', time), field('Note', note),
+    h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
+      const v = sl.value();
+      if (v == null) { toast('Slide to a number first'); return; }
+      const at = atFromInputs(day, time.value);
+      closeSheet();
+      const id = await addEntry({ type: 'pain', value: v, note: note.value.trim(), at });
+      toast('Pain ' + v + '/10 logged', { label: 'Undo', onClick: () => deleteEntry(id) });
+    } }, 'Save'),
+    h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Cancel')
+  );
+  openSheet('Log pain', body);
+});
 
 /* ------------------------------------------------------------------ */
 /* Medicines                                                            */
@@ -1806,30 +2096,40 @@ function renderVitalsLatest(entries) {
   const tile = $('vt-temp');
   tile.classList.remove('is-red', 'is-amber', 'is-green');
   if (t) {
-    $('vt-temp-value').replaceChildren(Number(t.value).toFixed(1), h('small', { text: '\u00B0C' }));
+    countTo($('vt-temp-value'), Number(t.value), { decimals: 1, unit: '\u00B0C' });
     $('vt-temp-sub').textContent = whenLabel(t);
     tile.classList.add(tempClass(t.value) || 'is-green');
-  } else { $('vt-temp-value').textContent = '--'; $('vt-temp-sub').textContent = 'none yet'; }
+  } else { clearCount($('vt-temp-value'), '--'); $('vt-temp-sub').textContent = 'none yet'; }
 
   const hr = latest((e) => e.type === 'vitals' && e.heartRate);
-  if (hr) { $('vt-heart-value').replaceChildren(String(Math.round(hr.heartRate)), h('small', { text: 'bpm' })); $('vt-heart-sub').textContent = whenLabel(hr); }
-  else { $('vt-heart-value').textContent = '--'; $('vt-heart-sub').textContent = 'none yet'; }
+  if (hr) { countTo($('vt-heart-value'), Math.round(hr.heartRate), { unit: 'bpm' }); $('vt-heart-sub').textContent = whenLabel(hr); }
+  else { clearCount($('vt-heart-value'), '--'); $('vt-heart-sub').textContent = 'none yet'; }
+
+  const pn = latest((e) => (e.type === 'checkin' && e.pain != null) || e.type === 'pain');
+  if (pn) {
+    countTo($('vt-pain-value'), Number(pn.type === 'pain' ? pn.value : pn.pain), { unit: '/10' });
+    $('vt-pain-sub').textContent = whenLabel(pn) + (pn.type === 'pain' ? ' reading' : ' check-in');
+  } else { clearCount($('vt-pain-value'), '--'); $('vt-pain-sub').textContent = 'none yet'; }
+
+  const md = latest((e) => e.type === 'checkin' && e.mood != null);
+  if (md) { countTo($('vt-mood-value'), Number(md.mood), { unit: '/10' }); $('vt-mood-sub').textContent = whenLabel(md) + ' check-in'; }
+  else { clearCount($('vt-mood-value'), '--'); $('vt-mood-sub').textContent = 'none yet'; }
 
   const bp = latest((e) => e.type === 'vitals' && e.systolic && e.diastolic);
   if (bp) { $('vt-bp-value').textContent = Math.round(bp.systolic) + '/' + Math.round(bp.diastolic); $('vt-bp-sub').textContent = whenLabel(bp); }
   else { $('vt-bp-value').textContent = '--'; $('vt-bp-sub').textContent = 'none yet'; }
 
   const ox = latest((e) => e.type === 'vitals' && e.oxygen);
-  if (ox) { $('vt-oxygen-value').replaceChildren(String(Math.round(ox.oxygen)), h('small', { text: '%' })); $('vt-oxygen-sub').textContent = whenLabel(ox); }
-  else { $('vt-oxygen-value').textContent = '--'; $('vt-oxygen-sub').textContent = 'none yet'; }
+  if (ox) { countTo($('vt-oxygen-value'), Math.round(ox.oxygen), { unit: '%' }); $('vt-oxygen-sub').textContent = whenLabel(ox); }
+  else { clearCount($('vt-oxygen-value'), '--'); $('vt-oxygen-sub').textContent = 'none yet'; }
 
   const sl = latest((e) => e.type === 'sleep');
   if (sl) { $('vt-sleep-value').textContent = fmtHm(sl.value); $('vt-sleep-sub').textContent = sl.day === todayStr() ? 'last night' : 'night before ' + fmtDayShort(sl.day); }
   else { $('vt-sleep-value').textContent = '--'; $('vt-sleep-sub').textContent = 'none yet'; }
 
   const w = latest((e) => e.type === 'weight');
-  if (w) { $('vt-weight-value').replaceChildren(Number(w.value).toFixed(1), h('small', { text: 'kg' })); $('vt-weight-sub').textContent = whenLabel(w); }
-  else { $('vt-weight-value').textContent = '--'; $('vt-weight-sub').textContent = 'none yet'; }
+  if (w) { countTo($('vt-weight-value'), Number(w.value), { decimals: 1, unit: 'kg' }); $('vt-weight-sub').textContent = whenLabel(w); }
+  else { clearCount($('vt-weight-value'), '--'); $('vt-weight-sub').textContent = 'none yet'; }
 }
 
 function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
@@ -1953,6 +2253,34 @@ async function renderVitals() {
       responsive: true, maintainAspectRatio: false,
       scales: { x: xAxis(), y: { min: 80, max: 100, grid: { color: line }, ticks: { callback: (v) => v + '%' } } },
       plugins: { legend: { display: false }, tooltip: { callbacks: { title: pointTitle, label: (item) => Math.round(item.raw.y) + '%' } } }
+    }
+  });
+
+  /* Pain: the check-in scores make the line; extra readings are hollow points */
+  const ciPain = entries.filter((e) => e.type === 'checkin' && e.pain != null).map((e) => ({ x: entryDate(e).getTime(), y: Number(e.pain) }));
+  const spotPain = entries.filter((e) => e.type === 'pain').map((e) => ({ x: entryDate(e).getTime(), y: Number(e.value) }));
+  const tenScale = { min: 0, max: 10, grid: { color: line }, ticks: { stepSize: 2 } };
+  makeChart('pain', {
+    type: 'line',
+    data: { datasets: [
+      { label: 'Check-in', data: ciPain, borderColor: teal, backgroundColor: teal, pointRadius: 5, pointHoverRadius: 7, tension: 0.25, showLine: ciPain.length > 1 },
+      { label: 'Extra reading', data: spotPain, borderColor: amber, backgroundColor: 'transparent', pointRadius: 5, pointHoverRadius: 7, pointBorderWidth: 2, showLine: false }
+    ] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: { x: xAxis(), y: tenScale },
+      plugins: { legend: { display: true, position: 'bottom' }, tooltip: { callbacks: { title: pointTitle, label: (item) => item.dataset.label + ': ' + item.raw.y + '/10' } } }
+    }
+  });
+
+  const ciMood = entries.filter((e) => e.type === 'checkin' && e.mood != null).map((e) => ({ x: entryDate(e).getTime(), y: Number(e.mood) }));
+  makeChart('mood', {
+    type: 'line',
+    data: { datasets: [{ label: 'Mood', data: ciMood, borderColor: teal, backgroundColor: teal, pointRadius: 5, pointHoverRadius: 7, tension: 0.25, showLine: ciMood.length > 1 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: { x: xAxis(), y: tenScale },
+      plugins: { legend: { display: false }, tooltip: { callbacks: { title: pointTitle, label: (item) => item.raw.y + '/10' } } }
     }
   });
 }
@@ -2462,7 +2790,6 @@ function renderCalendar() {
 /* One sheet per calendar day: chemo session, session done, mood, one good thing */
 function openDaySheet(key) {
   const info = state.days[key] || {};
-  let mood = info.mood || 0;
   const cbChemo = h('input', { type: 'checkbox' });
   cbChemo.checked = !!info.chemo;
   const cbDone = h('input', { type: 'checkbox' });
@@ -2472,32 +2799,19 @@ function openDaySheet(key) {
   cbChemo.addEventListener('change', syncDone);
   syncDone();
 
-  const moodBtns = MOODS.map((mo, i) => h('button', { class: 'mood' + (mood === i + 1 ? ' is-active' : ''), type: 'button', onclick: () => {
-    mood = mood === i + 1 ? 0 : i + 1;
-    moodBtns.forEach((b, j) => b.classList.toggle('is-active', mood === j + 1));
-  } }, h('span', { class: 'face', text: mo.face }), mo.label));
-  const good = h('input', { type: 'text', value: info.good || '', placeholder: 'e.g. Sat in the garden for an hour', maxlength: '140' });
+  const moodInfo = info.mood ? 'Mood that day: ' + MOODS[info.mood - 1].label.toLowerCase() + (info.good ? '. ' + info.good : '') : '';
 
   const body = h('div', null,
     h('label', { class: 'check' }, cbChemo, h('span', { text: 'Chemo session this day' })),
     doneRow,
-    h('span', { class: 'fieldlabel', text: 'Mood' }),
-    h('div', { class: 'moods' }, ...moodBtns),
-    field('One good thing today', good),
+    h('p', { class: 'hint', text: (moodInfo ? moodInfo + ' ' : '') + 'Mood and one good thing come from the daily check-ins on Today.' }),
     h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
       const wasDone = !!info.chemoDone;
-      const data = {
-        chemo: cbChemo.checked,
-        chemoDone: cbChemo.checked && cbDone.checked,
-        mood: mood || null,
-        good: good.value.trim(),
-        updatedBy: state.name,
-        updatedAt: serverTimestamp()
-      };
+      const data = { chemo: cbChemo.checked, chemoDone: cbChemo.checked && cbDone.checked, updatedBy: state.name, updatedAt: serverTimestamp() };
       closeSheet();
       if (state.demo) {
         state.days[key] = { ...state.days[key], ...data };
-        renderChemo(); renderTodayMood();
+        renderChemo();
         if (data.chemoDone && !wasDone) { confetti(); toast('One more session done. Well done.'); }
         else toast('Saved');
         return;
@@ -2508,11 +2822,12 @@ function openDaySheet(key) {
         else toast('Saved');
       } catch (e) { console.error(e); toast('Could not save'); }
     } }, 'Save'),
-    (info.chemo || info.mood || info.good) ? h('button', { class: 'btn btn-danger btn-block', type: 'button', onclick: async () => {
+    info.chemo ? h('button', { class: 'btn btn-danger btn-block', type: 'button', onclick: async () => {
       closeSheet();
-      if (state.demo) { delete state.days[key]; renderChemo(); renderTodayMood(); toast('Day cleared'); return; }
-      try { await deleteDoc(doc(db, 'days', key)); toast('Day cleared'); } catch (e) { console.error(e); toast('Could not clear'); }
-    } }, 'Clear this day') : null,
+      const data = { chemo: false, chemoDone: false, updatedBy: state.name, updatedAt: serverTimestamp() };
+      if (state.demo) { state.days[key] = { ...state.days[key], chemo: false, chemoDone: false }; renderChemo(); toast('Session removed'); return; }
+      try { await setDoc(doc(db, 'days', key), data, { merge: true }); toast('Session removed'); } catch (e) { console.error(e); toast('Could not clear'); }
+    } }, 'Remove the session from this day') : null,
     h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Cancel')
   );
   openSheet(fmtDayLong(key), body);
