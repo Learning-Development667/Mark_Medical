@@ -13,7 +13,9 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '24';
+const APP_VERSION = '25';
+/* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
+const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
 const TEXT_LIMIT_BYTES = 800 * 1024;
 const PAGE_MAX_DIM = 1600;
@@ -56,12 +58,28 @@ const NOT_MEDICAL_ADVICE = 'This explanation is for context only. It is not medi
 
 /* Mood scale for the Chemo Party Plan, 1 (rough) to 5 (great). */
 const MOODS = [
-  { face: '\u{1F61E}', label: 'Rough' },
-  { face: '\u{1F615}', label: 'Low' },
-  { face: '\u{1F610}', label: 'OK' },
-  { face: '\u{1F642}', label: 'Good' },
-  { face: '\u{1F604}', label: 'Great' }
+  { label: 'Rough' },
+  { label: 'Low' },
+  { label: 'OK' },
+  { label: 'Good' },
+  { label: 'Great' }
 ];
+
+/* Mood on the chemo calendar: a filled dot (OK, Good, Great) or a ring (Low, Rough)
+   on a calm teal-to-warm scale. Shape and colour both carry it; never emoji. */
+function moodMark(level) {
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', '0 0 12 12');
+  svg.setAttribute('class', 'cal-face mood-' + level);
+  svg.setAttribute('aria-hidden', 'true');
+  const c = document.createElementNS(ns, 'circle');
+  c.setAttribute('cx', '6'); c.setAttribute('cy', '6');
+  c.setAttribute('r', level >= 3 ? '5' : '4');
+  c.setAttribute('class', level >= 3 ? 'mood-fill' : 'mood-ring');
+  svg.append(c);
+  return svg;
+}
 
 /* Daily exercise goals. Defaults are what Mark asked for; editable in the app and
    stored on profile/main.exerciseGoals. Plank is stored in seconds. */
@@ -391,6 +409,7 @@ onAuthStateChanged(auth, async (user) => {
     state.viewer = isViewerEmail(user.email);
     $('signin').hidden = true;
     $('app').hidden = false;
+    requestAnimationFrame(moveTabIndicator);
     $('user-chip').textContent = state.name;
     $('more-user').textContent = `${state.name} (${user.email})`;
     $('guest-pill').hidden = true;
@@ -428,6 +447,7 @@ function enterPreview() {
   setViewerMode(false);
   $('signin').hidden = true;
   $('app').hidden = false;
+  requestAnimationFrame(moveTabIndicator);
   $('user-chip').textContent = 'Guest';
   $('more-user').textContent = 'Guest (preview, nothing saved)';
   $('guest-pill').hidden = false;
@@ -781,12 +801,43 @@ function showTab(name) {
   document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('is-active', b.dataset.tab === highlight));
   document.querySelectorAll('.view').forEach((v) => { v.hidden = v.dataset.view !== name; });
   window.scrollTo(0, 0);
+  enterView(document.querySelector('.view[data-view="' + name + '"]'));
+  moveTabIndicator();
+  requestAnimationFrame(moveTabIndicator);
   if (name === 'vitals') renderVitals();
   if (name === 'food') renderFoodDiary();
   if (name === 'notes') renderNotesReport();
   if (name === 'chemo') renderChemo();
   if (name === 'exercise') renderExercise();
   if (name === 'docs') showDocsList();
+}
+
+/* Screen entrance: each major block of the view fades in and rises, 50ms apart (CSS does the motion) */
+function enterView(view) {
+  if (!view) return;
+  view.classList.remove('is-entering');
+  void view.offsetWidth;
+  Array.from(view.children).forEach((c, i) => c.style.setProperty('--i', String(Math.min(i, 8))));
+  view.classList.add('is-entering');
+}
+
+/* The tab bar's indicator slides to sit under the active tab */
+function moveTabIndicator() {
+  const ind = $('tab-indicator');
+  const tab = document.querySelector('.tab.is-active:not([hidden])');
+  if (!ind || !tab || !tab.offsetWidth) return;
+  const w = Math.round(tab.offsetWidth * 0.5);
+  ind.style.width = w + 'px';
+  ind.style.transform = 'translateX(' + Math.round(tab.offsetLeft + (tab.offsetWidth - w) / 2) + 'px)';
+}
+window.addEventListener('resize', moveTabIndicator);
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(moveTabIndicator);
+
+/* Only rows that are new to the screen animate in; rows already shown stay put on data updates */
+const seenIds = { entries: new Set(), cheers: new Set(), docs: new Set() };
+function markNew(el, set, id, i) {
+  if (!set.has(id)) { set.add(id); el.classList.add('is-new'); el.style.setProperty('--i', String(Math.min(i, 10))); }
+  return el;
 }
 
 /* Documents is reached from More (and chemo plan documents from Chemo); remember where to go back to. */
@@ -835,7 +886,12 @@ function renderToday() {
   renderTiles();
   renderCheckins();
   const list = $('timeline');
-  list.replaceChildren(...state.dayEntries.map(renderEntry));
+  let fresh = 0;
+  list.replaceChildren(...state.dayEntries.map((e) => {
+    const el = renderEntry(e);
+    const id = e.id || (e.type + ':' + entryDate(e).getTime());
+    return seenIds.entries.has(id) ? el : markNew(el, seenIds.entries, id, fresh++);
+  }));
   $('timeline-empty').hidden = state.dayEntries.length > 0;
 }
 
@@ -1208,7 +1264,7 @@ function openManageMeals() {
     h('span', { class: 'medrow-name' }, m.name, m.parts ? h('small', { class: 'medrow-sub', text: m.parts }) : null),
     h('button', { class: 'btn btn-secondary btn-small', type: 'button', onclick: () => openEditMeal(m) }, 'Edit')
   )));
-  if (!state.meals.length) list.append(h('p', { class: 'empty', text: 'No saved meals yet. Log some food with "Remember this meal" ticked and it will appear here.' }));
+  if (!state.meals.length) list.append(h('p', { class: 'empty', 'data-art': 'meal', text: 'No saved meals yet. Log some food with "Remember this meal" ticked and it will appear here.' }));
   const body = h('div', null,
     h('p', { class: 'hint', text: 'Saved meals show as quick buttons when logging food, with what goes with them filled in.' }),
     list,
@@ -1290,10 +1346,10 @@ async function savePdf(filename, title, subtitle, blocks) {
     });
     y += gapAfter;
   };
-  write(title, 22, 'bold', '#1E5F74', 2);
+  write(title, 22, 'bold', PDF_TEAL, 2);
   write(subtitle, 11, 'normal', 100, 14);
   blocks.forEach((b) => {
-    if (b.kind === 'heading') { y += 8; write(b.text, 14, 'bold', '#1E5F74', 4); }
+    if (b.kind === 'heading') { y += 8; write(b.text, 14, 'bold', PDF_TEAL, 4); }
     else if (b.kind === 'sub') { y += 4; write(b.text, 12, 'bold', 0, 2); }
     else if (b.kind === 'muted') write(b.text, 10.5, 'normal', 110, 3);
     else write(b.text, 11, 'normal', 0, 4);
@@ -1922,9 +1978,9 @@ function renderMeds() {
   const sched = activeScheduled(today);
   const prn = activePrn();
   $('meds-scheduled').replaceChildren(...sched.map((m) => medCard(m, today)));
-  if (!sched.length) $('meds-scheduled').append(h('p', { class: 'empty', text: 'No scheduled medicines.' }));
+  if (!sched.length) $('meds-scheduled').append(h('p', { class: 'empty', 'data-art': 'pill', text: 'No scheduled medicines.' }));
   $('meds-prn').replaceChildren(...prn.map((m) => medCard(m, today)));
-  if (!prn.length) $('meds-prn').append(h('p', { class: 'empty', text: 'No when-needed medicines.' }));
+  if (!prn.length) $('meds-prn').append(h('p', { class: 'empty', 'data-art': 'pill', text: 'No when-needed medicines.' }));
 }
 
 function prnStatus(m) {
@@ -2176,88 +2232,73 @@ async function renderVitals() {
     await loadScript(CDN.chart);
   } catch (e) { toast('Charts need a connection'); return; }
 
-  const ink = cssVar('--ink-soft'), line = cssVar('--line'), teal = cssVar('--teal'), red = cssVar('--red'), amber = cssVar('--amber');
-  const Chart = window.Chart;
-  Chart.defaults.font.family = cssVar('--font-mono') || 'monospace';
-  Chart.defaults.font.size = 13;
-  Chart.defaults.color = ink;
+  const T = chartTheme();
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   const days = [];
   for (let i = 0; i < state.trendRange; i++) days.push(addDays(from, i));
   const dayLabel = (s) => parseDay(s).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-
-  /* Temperature: points in time across the range */
-  const temps = entries.filter((e) => e.type === 'temp');
-  const tPoints = temps.map((e) => ({ x: entryDate(e).getTime(), y: Number(e.value) }));
   const start = parseDay(from).getTime(), end = parseDay(addDays(todayStr(), 1)).getTime();
   const tickDays = days.map((s) => parseDay(s).getTime());
+  const timeAxis = () => Object.assign(xAxisBase(T), { type: 'linear', min: start, max: end, ticks: Object.assign(xAxisBase(T).ticks, { callback: (v) => { const t = tickDays.indexOf(v); return t >= 0 ? dayLabel(days[t]) : ''; }, stepSize: 864e5 }), afterBuildTicks: (axis) => { axis.ticks = tickDays.map((t) => ({ value: t })); } });
+  const pointTitle = (items) => items.length ? new Date(items[0].raw.x).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+  const lineOptions = (yAxis, tooltip, legend, pointCount) => ({
+    responsive: true, maintainAspectRatio: false, layout: { padding: { top: 8, right: 10 } },
+    interaction: { mode: 'nearest', intersect: false },
+    animation: reduced ? false : drawIn(pointCount),
+    scales: { x: timeAxis(), y: yAxis },
+    plugins: { legend: legend ? legendStyle(T) : { display: false }, tooltip: Object.assign(tooltipStyle(T), { callbacks: tooltip, filter: (item) => !String(item.dataset.label).startsWith('band') }) }
+  });
+
+  /* Temperature: points in time across the range, with the 37.5 amber and 38.0 red thresholds as soft bands */
+  const temps = entries.filter((e) => e.type === 'temp');
+  const tPoints = temps.map((e) => ({ x: entryDate(e).getTime(), y: Number(e.value) }));
+  const tempColour = (v) => v >= 38 ? T.red : v >= 37.5 ? T.amber : T.teal;
+  const tLast = tPoints.length - 1;
   makeChart('temp', {
     type: 'line',
     data: { datasets: [
-      { label: 'Temperature', data: tPoints, borderColor: teal, backgroundColor: teal, pointRadius: 5, pointHoverRadius: 7, tension: 0.25,
-        pointBackgroundColor: (ctx) => { const v = ctx.raw && ctx.raw.y; return v >= 38 ? red : v >= 37.5 ? amber : teal; },
-        pointBorderColor: (ctx) => { const v = ctx.raw && ctx.raw.y; return v >= 38 ? red : v >= 37.5 ? amber : teal; } },
-      { label: '38.0', data: [{ x: start, y: 38 }, { x: end, y: 38 }], borderColor: red, borderDash: [6, 6], pointRadius: 0, borderWidth: 2 },
-      { label: '37.5', data: [{ x: start, y: 37.5 }, { x: end, y: 37.5 }], borderColor: amber, borderDash: [4, 6], pointRadius: 0, borderWidth: 2 }
+      lineSeries(T, T.teal, tPoints, { label: 'Temperature',
+        pointBackgroundColor: (c) => { const v = c.raw && c.raw.y; return c.dataIndex === tLast ? tempColour(v) : hexAlpha(tempColour(v), 0.7); },
+        pointBorderColor: (c) => c.dataIndex === tLast ? T.surface : 'transparent' }),
+      bandSeries(start, end, 38, 37.5, hexAlpha(T.amber, 0.16), 'band-amber'),
+      bandSeries(start, end, 40.5, 38, hexAlpha(T.red, 0.12), 'band-red')
     ] },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      scales: {
-        x: { type: 'linear', min: start, max: end, grid: { color: line }, ticks: { maxRotation: 0, autoSkip: true, callback: (v) => { const t = tickDays.indexOf(v); return t >= 0 ? dayLabel(days[t]) : ''; }, stepSize: 864e5 }, afterBuildTicks: (axis) => { axis.ticks = tickDays.map((t) => ({ value: t })); } },
-        y: { min: 35, max: 40.5, grid: { color: line }, ticks: { stepSize: 0.5, callback: (v) => v.toFixed(1) } }
-      },
-      plugins: { legend: { display: false }, tooltip: { callbacks: {
-        title: (items) => items.length ? new Date(items[0].raw.x).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '',
-        label: (item) => item.raw.y.toFixed(1) + ' °C'
-      } } }
-    }
+    options: lineOptions(Object.assign(yAxisBase(T), { min: 35, max: 40.5, ticks: Object.assign(yAxisBase(T).ticks, { stepSize: 1, maxTicksLimit: 8, includeBounds: false, callback: (v) => v.toFixed(1) }) }), {
+      title: pointTitle, label: (item) => item.raw.y.toFixed(1) + ' °C'
+    }, false, tPoints.length)
   });
 
   /* Drinks per day */
   const perDay = days.map((d) => entries.filter((e) => e.type === 'drink' && e.day === d).reduce((s, e) => s + (Number(e.value) || 0), 0));
-  makeChart('drink', {
-    type: 'bar',
-    data: { labels: days.map(dayLabel), datasets: [{ label: 'ml', data: perDay, backgroundColor: teal, borderRadius: 6 }] },
-    options: { responsive: true, maintainAspectRatio: false,
-      scales: { x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true } }, y: { beginAtZero: true, grid: { color: line }, ticks: { callback: (v) => v + ' ml' } } },
-      plugins: { legend: { display: false }, tooltip: { callbacks: { label: (i) => i.raw + ' ml' } } } }
-  });
+  makeChart('drink', barChart(T, days.map(dayLabel), perDay, { unit: (v) => v + ' ml', reduced }));
 
   /* Weight */
   const weights = entries.filter((e) => e.type === 'weight');
+  const wPoints = weights.map((e) => Number(e.value));
   makeChart('weight', {
     type: 'line',
-    data: { labels: weights.map((e) => dayLabel(e.day)), datasets: [{ label: 'kg', data: weights.map((e) => Number(e.value)), borderColor: teal, backgroundColor: teal, pointRadius: 5, tension: 0.25 }] },
-    options: { responsive: true, maintainAspectRatio: false,
-      scales: { x: { grid: { display: false } }, y: { grid: { color: line }, ticks: { callback: (v) => v + ' kg' } } },
-      plugins: { legend: { display: false }, tooltip: { callbacks: { label: (i) => Number(i.raw).toFixed(1) + ' kg' } } } }
+    data: { labels: weights.map((e) => dayLabel(e.day)), datasets: [lineSeries(T, T.teal, wPoints, { label: 'kg' })] },
+    options: { responsive: true, maintainAspectRatio: false, layout: { padding: { top: 8, right: 10 } },
+      interaction: { mode: 'nearest', intersect: false },
+      animation: reduced ? false : drawIn(wPoints.length),
+      scales: { x: xAxisBase(T), y: Object.assign(yAxisBase(T), { grace: '15%', ticks: Object.assign(yAxisBase(T).ticks, { precision: 1, callback: (v) => v + ' kg' }) }) },
+      plugins: { legend: { display: false }, tooltip: Object.assign(tooltipStyle(T), { callbacks: { label: (i) => Number(i.raw).toFixed(1) + ' kg' } }) } }
   });
 
   /* Sleep: hours asleep per night, one bar per morning */
   const sleepPerDay = days.map((d) => { const e = entries.filter((x) => x.type === 'sleep' && x.day === d).pop(); return e ? Math.round(Number(e.value) / 6) / 10 : null; });
-  makeChart('sleep', {
-    type: 'bar',
-    data: { labels: days.map(dayLabel), datasets: [{ label: 'Sleep', data: sleepPerDay, backgroundColor: '#4B4FA6', borderRadius: 6 }] },
-    options: { responsive: true, maintainAspectRatio: false,
-      scales: { x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true } }, y: { beginAtZero: true, suggestedMax: 9, grid: { color: line }, ticks: { callback: (v) => v + ' h' } } },
-      plugins: { legend: { display: false }, tooltip: { callbacks: { label: (i) => fmtHm(i.raw * 60) } } } }
-  });
+  makeChart('sleep', barChart(T, days.map(dayLabel), sleepPerDay, { unit: (v) => v + ' h', tip: (v) => fmtHm(v * 60), suggestedMax: 9, reduced }));
 
   /* Vitals: heart rate, blood pressure and oxygen, all logged together from a
      manual reading. Each is its own chart, points in time, same layout as temperature. */
   const vitalsEntries = entries.filter((e) => e.type === 'vitals');
-  const xAxis = () => ({ type: 'linear', min: start, max: end, grid: { color: line }, ticks: { maxRotation: 0, autoSkip: true, callback: (v) => { const t = tickDays.indexOf(v); return t >= 0 ? dayLabel(days[t]) : ''; }, stepSize: 864e5 }, afterBuildTicks: (axis) => { axis.ticks = tickDays.map((t) => ({ value: t })); } });
-  const pointTitle = (items) => items.length ? new Date(items[0].raw.x).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
 
   const hPoints = vitalsEntries.filter((e) => e.heartRate).map((e) => ({ x: entryDate(e).getTime(), y: Number(e.heartRate) }));
   makeChart('heart', {
     type: 'line',
-    data: { datasets: [{ label: 'Heart rate', data: hPoints, borderColor: teal, backgroundColor: teal, pointRadius: 5, pointHoverRadius: 7, tension: 0.25, showLine: hPoints.length > 1 }] },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      scales: { x: xAxis(), y: { beginAtZero: false, grid: { color: line }, ticks: { callback: (v) => v + ' bpm' } } },
-      plugins: { legend: { display: false }, tooltip: { callbacks: { title: pointTitle, label: (item) => Math.round(item.raw.y) + ' bpm' } } }
-    }
+    data: { datasets: [lineSeries(T, T.teal, hPoints, { label: 'Heart rate' })] },
+    options: lineOptions(Object.assign(yAxisBase(T), { beginAtZero: false, ticks: Object.assign(yAxisBase(T).ticks, { callback: (v) => v + ' bpm' }) }), { title: pointTitle, label: (item) => Math.round(item.raw.y) + ' bpm' }, false, hPoints.length)
   });
 
   const bpEntries = vitalsEntries.filter((e) => e.systolic && e.diastolic);
@@ -2266,54 +2307,113 @@ async function renderVitals() {
   makeChart('bp', {
     type: 'line',
     data: { datasets: [
-      { label: 'Systolic', data: sysPoints, borderColor: teal, backgroundColor: teal, pointRadius: 5, pointHoverRadius: 7, tension: 0.25, showLine: sysPoints.length > 1 },
-      { label: 'Diastolic', data: diaPoints, borderColor: amber, backgroundColor: amber, pointRadius: 5, pointHoverRadius: 7, tension: 0.25, showLine: diaPoints.length > 1 }
+      lineSeries(T, T.teal, sysPoints, { label: 'Systolic' }),
+      lineSeries(T, T.warm, diaPoints, { label: 'Diastolic' })
     ] },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      scales: { x: xAxis(), y: { beginAtZero: false, grid: { color: line }, ticks: { callback: (v) => v + ' mmHg' } } },
-      plugins: { legend: { display: true, position: 'bottom' }, tooltip: { callbacks: { title: pointTitle, label: (item) => item.dataset.label + ': ' + Math.round(item.raw.y) + ' mmHg' } } }
-    }
+    options: lineOptions(Object.assign(yAxisBase(T), { beginAtZero: false, ticks: Object.assign(yAxisBase(T).ticks, { callback: (v) => v + ' mmHg' }) }), { title: pointTitle, label: (item) => item.dataset.label + ': ' + Math.round(item.raw.y) + ' mmHg' }, true, sysPoints.length)
   });
 
   const o2Points = vitalsEntries.filter((e) => e.oxygen).map((e) => ({ x: entryDate(e).getTime(), y: Number(e.oxygen) }));
   makeChart('oxygen', {
     type: 'line',
-    data: { datasets: [{ label: 'Oxygen', data: o2Points, borderColor: teal, backgroundColor: teal, pointRadius: 5, pointHoverRadius: 7, tension: 0.25, showLine: o2Points.length > 1 }] },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      scales: { x: xAxis(), y: { min: 80, max: 100, grid: { color: line }, ticks: { callback: (v) => v + '%' } } },
-      plugins: { legend: { display: false }, tooltip: { callbacks: { title: pointTitle, label: (item) => Math.round(item.raw.y) + '%' } } }
-    }
+    data: { datasets: [lineSeries(T, T.teal, o2Points, { label: 'Oxygen' })] },
+    options: lineOptions(Object.assign(yAxisBase(T), { min: 80, max: 100, ticks: Object.assign(yAxisBase(T).ticks, { callback: (v) => v + '%' }) }), { title: pointTitle, label: (item) => Math.round(item.raw.y) + '%' }, false, o2Points.length)
   });
 
-  /* Pain: the check-in scores make the line; extra readings are hollow points */
+  /* Pain: the check-in scores make the line; extra readings are hollow warm points. A calm scale, no red. */
   const ciPain = entries.filter((e) => e.type === 'checkin' && e.pain != null).map((e) => ({ x: entryDate(e).getTime(), y: Number(e.pain) }));
   const spotPain = entries.filter((e) => e.type === 'pain').map((e) => ({ x: entryDate(e).getTime(), y: Number(e.value) }));
-  const tenScale = { min: 0, max: 10, grid: { color: line }, ticks: { stepSize: 2 } };
+  const tenScale = () => Object.assign(yAxisBase(T), { min: 0, max: 10, ticks: Object.assign(yAxisBase(T).ticks, { stepSize: 2, maxTicksLimit: 6 }) });
   makeChart('pain', {
     type: 'line',
     data: { datasets: [
-      { label: 'Check-in', data: ciPain, borderColor: teal, backgroundColor: teal, pointRadius: 5, pointHoverRadius: 7, tension: 0.25, showLine: ciPain.length > 1 },
-      { label: 'Extra reading', data: spotPain, borderColor: amber, backgroundColor: 'transparent', pointRadius: 5, pointHoverRadius: 7, pointBorderWidth: 2, showLine: false }
+      lineSeries(T, T.teal, ciPain, { label: 'Check-in' }),
+      { label: 'Extra reading', data: spotPain, borderColor: T.warm, backgroundColor: T.surface, pointBackgroundColor: T.surface, pointBorderColor: T.warm, pointRadius: 4, pointHoverRadius: 7, pointBorderWidth: 2, pointHitRadius: 12, showLine: false, fill: false }
     ] },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      scales: { x: xAxis(), y: tenScale },
-      plugins: { legend: { display: true, position: 'bottom' }, tooltip: { callbacks: { title: pointTitle, label: (item) => item.dataset.label + ': ' + item.raw.y + '/10' } } }
-    }
+    options: lineOptions(tenScale(), { title: pointTitle, label: (item) => item.dataset.label + ': ' + item.raw.y + '/10' }, true, ciPain.length)
   });
 
   const ciMood = entries.filter((e) => e.type === 'checkin' && e.mood != null).map((e) => ({ x: entryDate(e).getTime(), y: Number(e.mood) }));
   makeChart('mood', {
     type: 'line',
-    data: { datasets: [{ label: 'Mood', data: ciMood, borderColor: teal, backgroundColor: teal, pointRadius: 5, pointHoverRadius: 7, tension: 0.25, showLine: ciMood.length > 1 }] },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      scales: { x: xAxis(), y: tenScale },
-      plugins: { legend: { display: false }, tooltip: { callbacks: { title: pointTitle, label: (item) => item.raw.y + '/10' } } }
-    }
+    data: { datasets: [lineSeries(T, T.teal, ciMood, { label: 'Mood' })] },
+    options: lineOptions(tenScale(), { title: pointTitle, label: (item) => item.raw.y + '/10' }, false, ciMood.length)
   });
+}
+
+/* ---- Chart styling shared by every chart: calm lines, gradient fills, subtle points, a lit last point ---- */
+function hexAlpha(hex, a) {
+  const c = String(hex).replace('#', '');
+  if (c.length !== 6 && c.length !== 3) return hex;
+  const n = parseInt(c.length === 3 ? c.split('').map((x) => x + x).join('') : c, 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+}
+function chartTheme() {
+  const Chart = window.Chart;
+  Chart.defaults.font.family = cssVar('--font-mono') || 'monospace';
+  Chart.defaults.font.size = 11;
+  Chart.defaults.color = cssVar('--text-muted');
+  return {
+    teal: cssVar('--teal'), warm: cssVar('--warm'), red: cssVar('--danger'), amber: cssVar('--warning'),
+    surface: cssVar('--surface'), ink: cssVar('--text-primary'), muted: cssVar('--text-muted'),
+    grid: hexAlpha(cssVar('--border-subtle'), 0.6), body: cssVar('--font-body'), mono: cssVar('--font-mono')
+  };
+}
+function xAxisBase(T) { return { grid: { display: false }, border: { display: false }, ticks: { color: T.muted, maxRotation: 0, autoSkip: true, maxTicksLimit: 6, padding: 6, font: { size: 11 } } }; }
+function yAxisBase(T) { return { grid: { color: T.grid, drawTicks: false }, border: { display: false }, ticks: { color: T.muted, maxTicksLimit: 5, padding: 8, font: { size: 11 } } }; }
+function legendStyle(T) { return { display: true, position: 'bottom', labels: { usePointStyle: true, pointStyle: 'circle', boxWidth: 8, boxHeight: 8, padding: 18, color: cssVar('--text-secondary'), font: { family: T.body, size: 13 } } }; }
+function tooltipStyle(T) { return { backgroundColor: T.ink, titleColor: T.surface, bodyColor: T.surface, titleFont: { family: T.mono, size: 11 }, bodyFont: { family: T.body, size: 14, weight: '600' }, padding: 10, cornerRadius: 8, displayColors: false }; }
+function areaFill(colour) {
+  return (ctx) => {
+    const area = ctx.chart.chartArea;
+    if (!area) return hexAlpha(colour, 0.12);
+    const g = ctx.chart.ctx.createLinearGradient(0, area.top, 0, area.bottom);
+    g.addColorStop(0, hexAlpha(colour, 0.26));
+    g.addColorStop(1, hexAlpha(colour, 0));
+    return g;
+  };
+}
+function lineSeries(T, colour, data, extra) {
+  const last = data.length - 1;
+  return Object.assign({
+    data, borderColor: colour, borderWidth: 2.5, borderCapStyle: 'round', borderJoinStyle: 'round',
+    tension: 0.3, cubicInterpolationMode: 'monotone', fill: 'origin', backgroundColor: areaFill(colour),
+    pointRadius: (c) => c.dataIndex === last ? 5 : 2.5, pointHoverRadius: 7, pointHitRadius: 12,
+    pointBackgroundColor: (c) => c.dataIndex === last ? colour : hexAlpha(colour, 0.6),
+    pointBorderColor: (c) => c.dataIndex === last ? T.surface : 'transparent', pointBorderWidth: 2,
+    showLine: data.length > 1
+  }, extra || {});
+}
+/* A soft filled band between two values, drawn behind the line and kept out of the tooltip */
+function bandSeries(start, end, top, bottom, colour, label) {
+  return { label, data: [{ x: start, y: top }, { x: end, y: top }], borderWidth: 0, pointRadius: 0, pointHitRadius: 0, pointHoverRadius: 0, tension: 0, animation: false, fill: { target: { value: bottom }, above: colour, below: colour }, backgroundColor: colour };
+}
+/* Lines draw in left to right, the area fill following behind them (the Chart.js progressive-line pattern) */
+function drawIn(pointCount) {
+  const total = 900, step = total / Math.max(1, pointCount);
+  const started = (key) => (ctx) => { if (ctx.type !== 'data' || ctx[key]) return 0; ctx[key] = true; return ctx.index * step; };
+  return {
+    x: { type: 'number', easing: 'linear', duration: step, from: NaN, delay: started('xStarted') },
+    y: { type: 'number', easing: 'linear', duration: step, delay: started('yStarted'),
+      from: (ctx) => {
+        const base = ctx.chart.scales.y.getPixelForValue(ctx.chart.scales.y.min);
+        if (ctx.type !== 'data' || ctx.index === 0) return base;
+        const meta = ctx.chart.getDatasetMeta(ctx.datasetIndex);
+        const prev = meta && meta.data && meta.data[ctx.index - 1];
+        return prev && typeof prev.getProps === 'function' ? prev.getProps(['y'], true).y : base;
+      } }
+  };
+}
+function barChart(T, labels, data, o) {
+  const last = (() => { for (let i = data.length - 1; i >= 0; i--) if (data[i] != null && data[i] > 0) return i; return -1; })();
+  return {
+    type: 'bar',
+    data: { labels, datasets: [{ data, backgroundColor: (c) => c.dataIndex === last ? T.teal : hexAlpha(T.teal, 0.6), borderRadius: 6, borderSkipped: 'bottom', maxBarThickness: 28 }] },
+    options: { responsive: true, maintainAspectRatio: false, layout: { padding: { top: 8, right: 4 } },
+      animation: o.reduced ? false : { duration: 700, easing: 'easeOutQuart' },
+      scales: { x: xAxisBase(T), y: Object.assign(yAxisBase(T), { beginAtZero: true, suggestedMax: o.suggestedMax, ticks: Object.assign(yAxisBase(T).ticks, { callback: o.unit }) }) },
+      plugins: { legend: { display: false }, tooltip: Object.assign(tooltipStyle(T), { callbacks: { label: (i) => (o.tip || o.unit)(i.raw) } }) } }
+  };
 }
 
 function makeChart(key, cfg) {
@@ -2368,26 +2468,30 @@ $('docs-back').addEventListener('click', () => showTab(state.docsReturn || 'more
 $('more-docs').addEventListener('click', () => openDocs('more'));
 $('chemo-doc-add').addEventListener('click', () => openAddDocument('chemo'));
 
-function docItem(d) {
+function docItem(d, i) {
+  return markNew(docItemEl(d), seenIds.docs, d.id, i || 0);
+}
+
+function docItemEl(d) {
   return h('button', { class: 'docitem', type: 'button', onclick: () => { if ($('view-docs').hidden) openDocs(d.category === 'chemo' ? 'chemo' : 'more'); openDocument(d.id); } },
     icon(d.kind === 'text' ? 'doc' : 'image', 'docitem-icon'),
     h('div', { class: 'docitem-main' },
       h('div', { class: 'docitem-title', text: d.title }),
       h('div', { class: 'docitem-sub', text: [fmtDayNum(d.docDate || ''), d.category === 'chemo' ? 'Chemo plan' : null, d.kind === 'text' ? 'Text' : (d.pageCount === 1 ? '1 page' : d.pageCount + ' pages'), d.explanation ? 'Explained' : 'No explanation yet'].filter(Boolean).join(' \u00B7 ') })
     ),
-    h('span', { class: 'pill ' + (d.explanation ? 'pill-green' : 'pill-amber'), text: d.explanation ? '\u2713' : '?' })
+    h('span', { class: 'pill ' + (d.explanation ? 'pill-green' : 'pill-amber'), 'aria-label': d.explanation ? 'Explained' : 'No explanation yet' }, d.explanation ? icon('check') : '?')
   );
 }
 
 function renderChemoDocs() {
   const docs = state.documents.filter((d) => d.category === 'chemo');
-  $('chemo-docs').replaceChildren(...docs.map((d) => h('li', null, docItem(d))));
+  $('chemo-docs').replaceChildren(...docs.map((d, i) => h('li', null, docItem(d, i))));
   $('chemo-docs-empty').hidden = docs.length > 0;
 }
 
 function renderDocsList() {
   const list = $('docs-list');
-  list.replaceChildren(...state.documents.map((d) => h('li', null, docItem(d))));
+  list.replaceChildren(...state.documents.map((d, i) => h('li', null, docItem(d, i))));
   renderChemoDocs();
   $('docs-empty').hidden = state.documents.length > 0;
   if (state.currentDoc) {
@@ -2645,7 +2749,7 @@ async function openDocument(id) {
   if (state.demo) {
     state.currentDoc.pages = state.demoPages[id] || [];
     pagesEl.replaceChildren(...state.currentDoc.pages.map((p, i) => h('img', { src: 'data:image/jpeg;base64,' + p.data, alt: `Page ${i + 1}`, width: p.width, height: p.height, loading: 'lazy' })));
-    if (!state.currentDoc.pages.length) pagesEl.append(h('p', { class: 'empty', text: 'No pages found.' }));
+    if (!state.currentDoc.pages.length) pagesEl.append(h('p', { class: 'empty', 'data-art': 'doc', text: 'No pages found.' }));
     return;
   }
   try {
@@ -2653,7 +2757,7 @@ async function openDocument(id) {
     if (!state.currentDoc || state.currentDoc.id !== id) return;
     state.currentDoc.pages = snap.docs.map((p) => p.data());
     pagesEl.replaceChildren(...state.currentDoc.pages.map((p, i) => h('img', { src: 'data:image/jpeg;base64,' + p.data, alt: `Page ${i + 1}`, width: p.width, height: p.height, loading: 'lazy' })));
-    if (!state.currentDoc.pages.length) pagesEl.append(h('p', { class: 'empty', text: 'No pages found.' }));
+    if (!state.currentDoc.pages.length) pagesEl.append(h('p', { class: 'empty', 'data-art': 'doc', text: 'No pages found.' }));
   } catch (e) {
     console.error(e);
     pagesEl.replaceChildren(h('p', { class: 'error', text: 'Could not load the pages.' }));
@@ -2812,7 +2916,7 @@ function renderCalendar() {
     const label = [fmtDayLong(key), info.chemo ? (info.chemoDone ? 'chemo session done' : 'chemo session') : null, info.mood ? 'mood ' + MOODS[info.mood - 1].label : null].filter(Boolean).join(', ');
     cells.push(h('button', { class: cls.join(' '), type: 'button', 'aria-label': label, disabled: state.viewer, onclick: () => openDaySheet(key) },
       h('span', { class: 'cal-num', text: String(d) }),
-      info.mood ? h('span', { class: 'cal-face', text: MOODS[info.mood - 1].face }) : null
+      info.mood ? moodMark(info.mood) : null
     ));
   }
   $('cal-grid').replaceChildren(...cells);
@@ -2885,7 +2989,13 @@ async function postCheer() {
 
 function renderCheers() {
   const list = $('cheers');
-  list.replaceChildren(...state.cheers.map((c) => {
+  let fresh = 0;
+  list.replaceChildren(...state.cheers.map((c) => markNew(cheerRow(c), seenIds.cheers, c.id, seenIds.cheers.has(c.id) ? 0 : fresh++)));
+  $('cheers-empty').hidden = state.cheers.length > 0;
+}
+
+function cheerRow(c) {
+  {
     const when = c.createdAt && typeof c.createdAt.toDate === 'function'
       ? c.createdAt.toDate().toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
       : 'just now';
@@ -2898,8 +3008,7 @@ function renderCheers() {
         if (await confirmSheet('Remove note', 'Take this note off the board?', 'Remove', true)) deleteDoc(doc(db, 'cheers', c.id));
       } }, '×') : null
     );
-  }));
-  $('cheers-empty').hidden = state.cheers.length > 0;
+  }
 }
 
 /* A short, calm confetti burst when a session is marked done. Skipped for reduced motion. */
@@ -2909,7 +3018,7 @@ function confetti() {
   const ctx = c.getContext('2d');
   c.width = window.innerWidth; c.height = window.innerHeight;
   c.hidden = false;
-  const colours = [cssVar('--teal'), cssVar('--green'), cssVar('--amber'), '#6A5A8E', '#3E7FA6'];
+  const colours = [cssVar('--teal'), cssVar('--success'), cssVar('--warm'), cssVar('--cat-weight'), cssVar('--cat-drink')];
   const parts = Array.from({ length: 140 }, () => ({
     x: Math.random() * c.width, y: -20 - Math.random() * c.height * 0.4,
     vx: (Math.random() - 0.5) * 2.5, vy: 2.5 + Math.random() * 3.5,
@@ -2959,18 +3068,18 @@ function renderExercise() {
   $('ex-next').style.visibility = day >= today ? 'hidden' : 'visible';
 
   const rec = exerciseFor(day);
-  if (rec.steps) { $('ex-steps-value').textContent = Number(rec.steps).toLocaleString('en-GB'); $('ex-steps-sub').textContent = 'steps'; }
-  else { $('ex-steps-value').textContent = '--'; $('ex-steps-sub').textContent = 'not logged'; }
+  if (rec.steps) { countTo($('ex-steps-value'), Number(rec.steps), { format: (n) => Math.round(n).toLocaleString('en-GB') }); $('ex-steps-sub').textContent = 'steps'; }
+  else { clearCount($('ex-steps-value'), '--'); $('ex-steps-sub').textContent = 'not logged'; }
 
   const streak = exerciseStreak();
-  $('ex-streak-value').textContent = String(streak);
+  countTo($('ex-streak-value'), streak);
   $('ex-streak-sub').textContent = streak === 1 ? 'day all done' : 'days all done';
   $('ex-streak-tile').classList.toggle('is-green', streak > 0);
 
   const g = goals();
   const done = rec.done || {};
   $('ex-goals').replaceChildren(...GOAL_ROWS.map((row) => h('button', { class: 'goal' + (done[row.key] ? ' is-done' : ''), type: 'button', 'aria-pressed': done[row.key] ? 'true' : 'false', onclick: () => toggleGoal(day, row.key) },
-    h('span', { class: 'goal-box', text: done[row.key] ? '✓' : '' }),
+    h('span', { class: 'goal-box' }, done[row.key] ? icon('check') : null),
     h('span', { class: 'goal-label', text: row.label }),
     h('span', { class: 'goal-target', text: row.fmt(g[row.goal]) })
   )));
@@ -3108,17 +3217,9 @@ async function renderStepsChart() {
   const end = state.exerciseDay;
   const days = [];
   for (let i = 6; i >= 0; i--) days.push(addDays(end, -i));
-  const Chart = window.Chart;
-  Chart.defaults.font.family = cssVar('--font-mono') || 'monospace';
-  Chart.defaults.font.size = 13;
-  Chart.defaults.color = cssVar('--ink-soft');
-  makeChart('steps', {
-    type: 'bar',
-    data: { labels: days.map((d) => parseDay(d).toLocaleDateString('en-GB', { weekday: 'short' })), datasets: [{ label: 'Steps', data: days.map((d) => Number(exerciseFor(d).steps) || 0), backgroundColor: cssVar('--teal'), borderRadius: 6 }] },
-    options: { responsive: true, maintainAspectRatio: false,
-      scales: { x: { grid: { display: false } }, y: { beginAtZero: true, grid: { color: cssVar('--line') } } },
-      plugins: { legend: { display: false }, tooltip: { callbacks: { label: (i) => Number(i.raw).toLocaleString('en-GB') + ' steps' } } } }
-  });
+  const T = chartTheme();
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  makeChart('steps', barChart(T, days.map((d) => parseDay(d).toLocaleDateString('en-GB', { weekday: 'short' })), days.map((d) => Number(exerciseFor(d).steps) || 0), { unit: (v) => Number(v).toLocaleString('en-GB'), tip: (v) => Number(v).toLocaleString('en-GB') + ' steps', reduced }));
 }
 
 /* ------------------------------------------------------------------ */
@@ -3132,7 +3233,7 @@ function renderCalls() {
     h('div', null, h('div', { class: 'call-label', text: c.label }), h('div', { class: 'call-number', text: c.number })),
     h('a', { class: 'btn btn-primary', href: 'tel:' + String(c.number || '').replace(/[^+\d]/g, '') }, 'Call')
   )));
-  if (!calls.length) wrap.append(h('p', { class: 'empty', text: 'No numbers saved yet. Add the ward, hospice or GP so they are one tap away.' }));
+  if (!calls.length) wrap.append(h('p', { class: 'empty', 'data-art': 'call', text: 'No numbers saved yet. Add the ward, hospice or GP so they are one tap away.' }));
 }
 
 $('calls-edit').addEventListener('click', () => {
