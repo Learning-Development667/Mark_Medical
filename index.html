@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=24">
+  <link rel="stylesheet" href="styles.css?v=25">
 </head>
 <body>
 
@@ -147,7 +147,7 @@
 
         <h2 class="section-title">Timeline</h2>
         <ul id="timeline" class="timeline" aria-live="polite"></ul>
-        <p id="timeline-empty" class="empty" hidden>Nothing logged yet for this day.</p>
+        <p id="timeline-empty" class="empty" data-art="day" hidden>Nothing logged yet for this day.</p>
       </section>
 
       <!-- MEDICINES -->
@@ -192,7 +192,7 @@
         <div class="card chart-card">
           <h2 class="section-title">Temperature</h2>
           <div class="chart-wrap"><canvas id="chart-temp"></canvas></div>
-          <p class="legend-note">Amber band 37.5 to 37.9. Red line 38.0 and above.</p>
+          <p class="legend-note">Amber band 37.5 to 37.9. Red band 38.0 and above.</p>
         </div>
         <div class="card chart-card">
           <h2 class="section-title">Pain</h2>
@@ -247,7 +247,7 @@
           </div>
           <div class="cal-dow"><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span></div>
           <div class="cal-grid" id="cal-grid"></div>
-          <p class="cal-key"><span class="key-dot key-chemo"></span> Chemo day <span class="key-dot key-done"></span> Done <span class="key-face">&#128578;</span> Mood logged</p>
+          <p class="cal-key"><span class="key-dot key-chemo"></span> Chemo day <span class="key-dot key-done"></span> Done <span class="key-mood"><svg class="cal-face mood-5" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="5" class="mood-fill"/></svg><svg class="cal-face mood-3" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="5" class="mood-fill"/></svg><svg class="cal-face mood-1" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="4" class="mood-ring"/></svg> Mood, good to rough</span></p>
         </div>
 
         <div id="chemo-cheer-section">
@@ -258,14 +258,14 @@
             <button id="cheer-post" class="btn btn-primary" type="button">Post</button>
           </div>
           <ul id="cheers" class="cheers"></ul>
-          <p id="cheers-empty" class="empty" hidden>Nothing on the board yet. Be the first.</p>
+          <p id="cheers-empty" class="empty" data-art="cheer" hidden>Nothing on the board yet. Be the first.</p>
         </div>
 
         <div id="chemo-docs-section">
           <h2 class="section-title">Plan documents</h2>
           <button id="chemo-doc-add" class="btn btn-secondary btn-block" type="button">Add the chemo plan</button>
           <ul id="chemo-docs" class="doclist"></ul>
-          <p id="chemo-docs-empty" class="empty" hidden>No plan uploaded yet. Add it here when you get it, then send it to Claude for a plain English walk-through.</p>
+          <p id="chemo-docs-empty" class="empty" data-art="doc" hidden>No plan uploaded yet. Add it here when you get it, then send it to Claude for a plain English walk-through.</p>
         </div>
       </section>
 
@@ -299,7 +299,7 @@
           <button id="docs-back" class="btn btn-link" type="button">&#8249; Back</button>
           <button id="doc-add" class="btn btn-primary btn-block" type="button">Add a document</button>
           <ul id="docs-list" class="doclist"></ul>
-          <p id="docs-empty" class="empty" hidden>No documents yet. Add letters, results or photos of paperwork here.</p>
+          <p id="docs-empty" class="empty" data-art="doc" hidden>No documents yet. Add letters, results or photos of paperwork here.</p>
         </div>
         <div id="doc-detail" hidden>
           <button id="doc-back" class="btn btn-link" type="button">&#8249; Back</button>
@@ -339,7 +339,7 @@
         </div>
         <button id="food-pdf" class="btn btn-secondary btn-block" type="button">Save as PDF</button>
         <div id="food-days"></div>
-        <p id="food-empty" class="empty" hidden>No food or drink logged in this period yet.</p>
+        <p id="food-empty" class="empty" data-art="food" hidden>No food or drink logged in this period yet.</p>
       </section>
 
       <!-- NOTES FOR THE TEAM -->
@@ -369,7 +369,7 @@
         <div id="notes-docs" class="cards"></div>
         <h3 class="section-title">Notes by day</h3>
         <div id="notes-days"></div>
-        <p id="notes-empty" class="empty" hidden>No notes, moods or readings in this period yet.</p>
+        <p id="notes-empty" class="empty" data-art="note" hidden>No notes, moods or readings in this period yet.</p>
       </section>
 
       <!-- MORE -->
@@ -403,6 +403,7 @@
       <button class="tab" type="button" data-tab="chemo"><svg class="icon tab-icon" aria-hidden="true"><use href="#i-party"/></svg>Chemo</button>
       <button class="tab" type="button" data-tab="exercise"><svg class="icon tab-icon" aria-hidden="true"><use href="#i-walk"/></svg>Exercise</button>
       <button class="tab" type="button" data-tab="more"><svg class="icon tab-icon" aria-hidden="true"><use href="#i-more"/></svg>More</button>
+      <span id="tab-indicator" class="tab-indicator" aria-hidden="true"></span>
     </nav>
   </div>
 
@@ -426,6 +427,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=24"></script>
+  <script type="module" src="scripts.js?v=25"></script>
 </body>
 </html>
