@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=22">
+  <link rel="stylesheet" href="styles.css?v=23">
 </head>
 <body>
 
@@ -36,6 +36,9 @@
     <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a7.5 7.5 0 1 0 10.5 10.5z"/></symbol>
     <symbol id="i-list" viewBox="0 0 24 24"><rect x="5.5" y="4" width="13" height="17" rx="2"/><path d="M9.5 3.5h5v2.5h-5z"/><path d="M9 11h6M9 14.5h6M9 18h3"/></symbol>
     <symbol id="i-doc" viewBox="0 0 24 24"><path d="M6.5 3h7.5l4.5 4.5V21h-12z"/><path d="M14 3v5h4.5"/><path d="M9.5 13h5M9.5 17h5"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2.5L5 13.5h6l-1 8 8-11h-6z"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
     <symbol id="i-image" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="M20.5 15.5l-4.5-4.5-7 7"/></symbol>
   </svg>
 
@@ -93,41 +96,54 @@
           <button id="day-next" class="iconbtn" type="button" aria-label="Next day">&#8250;</button>
         </div>
 
-        <div class="tiles">
-          <div class="tile" id="tile-temp">
-            <span class="tile-label">Latest temp</span>
-            <span class="tile-value mono" id="tile-temp-value">--</span>
-            <span class="tile-sub" id="tile-temp-sub"></span>
-          </div>
-          <div class="tile" id="tile-drink">
-            <span class="tile-label">Drinks</span>
-            <span class="tile-value mono" id="tile-drink-value">0 ml</span>
-            <span class="tile-sub" id="tile-drink-sub"></span>
-          </div>
-          <div class="tile" id="tile-meds">
-            <span class="tile-label">Scheduled meds</span>
-            <span class="tile-value mono" id="tile-meds-value">0 of 0</span>
-            <span class="tile-sub" id="tile-meds-sub"></span>
+        <div class="status" aria-label="Today at a glance">
+          <div class="tiles">
+            <div class="tile" id="tile-temp">
+              <span class="tile-label">Latest temp</span>
+              <span class="tile-value" id="tile-temp-value">--</span>
+              <span class="tile-sub" id="tile-temp-sub"></span>
+            </div>
+            <div class="tile" id="tile-drink">
+              <span class="tile-label">Drinks</span>
+              <span class="tile-value" id="tile-drink-value">0 ml</span>
+              <span class="tile-sub" id="tile-drink-sub"></span>
+            </div>
+            <div class="tile" id="tile-meds">
+              <span class="tile-label">Meds taken</span>
+              <span class="tile-value" id="tile-meds-value">0 of 0</span>
+              <span class="tile-sub" id="tile-meds-sub"></span>
+            </div>
           </div>
         </div>
 
-        <div class="quickadd">
-          <button class="qa" type="button" data-add="vitals"><svg class="icon qa-icon" aria-hidden="true"><use href="#i-vitals"/></svg>Vitals</button>
-          <button class="qa" type="button" data-add="drink"><svg class="icon qa-icon" aria-hidden="true"><use href="#i-cup"/></svg>Drink</button>
-          <button class="qa" type="button" data-add="food"><svg class="icon qa-icon" aria-hidden="true"><use href="#i-food"/></svg>Food</button>
-          <button class="qa" type="button" data-add="weight"><svg class="icon qa-icon" aria-hidden="true"><use href="#i-scale"/></svg>Weight</button>
-          <button class="qa" type="button" data-add="note"><svg class="icon qa-icon" aria-hidden="true"><use href="#i-note"/></svg>Note</button>
-          <button class="qa" type="button" data-add="sleep"><svg class="icon qa-icon" aria-hidden="true"><use href="#i-moon"/></svg>Sleep</button>
-        </div>
+        <div class="actions">
+          <div class="checkins" id="checkin-card">
+            <button class="checkin-row" id="checkin-morning" type="button" data-slot="morning">
+              <svg class="icon checkin-icon" aria-hidden="true"><use href="#i-sun"/></svg>
+              <span class="checkin-main"><span class="checkin-title">Morning check-in</span><span class="checkin-sub" id="checkin-morning-sub"></span></span>
+              <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
+            </button>
+            <button class="checkin-row" id="checkin-evening" type="button" data-slot="evening">
+              <svg class="icon checkin-icon" aria-hidden="true"><use href="#i-moon"/></svg>
+              <span class="checkin-main"><span class="checkin-title">Evening check-in</span><span class="checkin-sub" id="checkin-evening-sub"></span></span>
+              <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
+            </button>
+          </div>
 
-        <button id="today-mood" class="moodcard" type="button">
-          <span class="moodcard-face" id="today-mood-face">&#128578;</span>
-          <span class="moodcard-main">
-            <span class="moodcard-title" id="today-mood-title">How are you feeling today?</span>
-            <span class="moodcard-sub" id="today-mood-sub">Tap to log your mood</span>
-          </span>
-          <span class="moodcard-chevron">&#8250;</span>
-        </button>
+          <button class="painbtn" id="pain-now" type="button">
+            <svg class="icon" aria-hidden="true"><use href="#i-bolt"/></svg>
+            <span>Log pain now</span>
+          </button>
+
+          <div class="quickadd">
+            <button class="qa" type="button" data-add="vitals"><svg class="icon qa-icon" aria-hidden="true"><use href="#i-vitals"/></svg>Vitals</button>
+            <button class="qa" type="button" data-add="drink"><svg class="icon qa-icon" aria-hidden="true"><use href="#i-cup"/></svg>Drink</button>
+            <button class="qa" type="button" data-add="food"><svg class="icon qa-icon" aria-hidden="true"><use href="#i-food"/></svg>Food</button>
+            <button class="qa" type="button" data-add="weight"><svg class="icon qa-icon" aria-hidden="true"><use href="#i-scale"/></svg>Weight</button>
+            <button class="qa" type="button" data-add="note"><svg class="icon qa-icon" aria-hidden="true"><use href="#i-note"/></svg>Note</button>
+            <button class="qa" type="button" data-add="sleep"><svg class="icon qa-icon" aria-hidden="true"><use href="#i-moon"/></svg>Sleep</button>
+          </div>
+        </div>
 
         <h2 class="section-title">Timeline</h2>
         <ul id="timeline" class="timeline" aria-live="polite"></ul>
@@ -154,13 +170,17 @@
           </div>
         </div>
         <h2 class="section-title">Latest</h2>
-        <div class="tiles tiles-2" id="vitals-latest">
-          <div class="tile" id="vt-temp"><span class="tile-label">Temperature</span><span class="tile-value mono" id="vt-temp-value">--</span><span class="tile-sub" id="vt-temp-sub"></span></div>
-          <div class="tile" id="vt-heart"><span class="tile-label">Heart rate</span><span class="tile-value mono" id="vt-heart-value">--</span><span class="tile-sub" id="vt-heart-sub"></span></div>
-          <div class="tile" id="vt-bp"><span class="tile-label">Blood pressure</span><span class="tile-value mono" id="vt-bp-value">--</span><span class="tile-sub" id="vt-bp-sub"></span></div>
-          <div class="tile" id="vt-oxygen"><span class="tile-label">Oxygen</span><span class="tile-value mono" id="vt-oxygen-value">--</span><span class="tile-sub" id="vt-oxygen-sub"></span></div>
-          <div class="tile" id="vt-sleep"><span class="tile-label">Sleep</span><span class="tile-value mono" id="vt-sleep-value">--</span><span class="tile-sub" id="vt-sleep-sub"></span></div>
-          <div class="tile" id="vt-weight"><span class="tile-label">Weight</span><span class="tile-value mono" id="vt-weight-value">--</span><span class="tile-sub" id="vt-weight-sub"></span></div>
+        <div class="status">
+          <div class="tiles tiles-2" id="vitals-latest">
+            <div class="tile" id="vt-temp"><span class="tile-label">Temperature</span><span class="tile-value" id="vt-temp-value">--</span><span class="tile-sub" id="vt-temp-sub"></span></div>
+            <div class="tile" id="vt-heart"><span class="tile-label">Heart rate</span><span class="tile-value" id="vt-heart-value">--</span><span class="tile-sub" id="vt-heart-sub"></span></div>
+            <div class="tile" id="vt-bp"><span class="tile-label">Blood pressure</span><span class="tile-value" id="vt-bp-value">--</span><span class="tile-sub" id="vt-bp-sub"></span></div>
+            <div class="tile" id="vt-oxygen"><span class="tile-label">Oxygen</span><span class="tile-value" id="vt-oxygen-value">--</span><span class="tile-sub" id="vt-oxygen-sub"></span></div>
+            <div class="tile" id="vt-pain"><span class="tile-label">Pain</span><span class="tile-value" id="vt-pain-value">--</span><span class="tile-sub" id="vt-pain-sub"></span></div>
+            <div class="tile" id="vt-mood"><span class="tile-label">Mood</span><span class="tile-value" id="vt-mood-value">--</span><span class="tile-sub" id="vt-mood-sub"></span></div>
+            <div class="tile" id="vt-sleep"><span class="tile-label">Sleep</span><span class="tile-value" id="vt-sleep-value">--</span><span class="tile-sub" id="vt-sleep-sub"></span></div>
+            <div class="tile" id="vt-weight"><span class="tile-label">Weight</span><span class="tile-value" id="vt-weight-value">--</span><span class="tile-sub" id="vt-weight-sub"></span></div>
+          </div>
         </div>
         <button id="vitals-log" class="btn btn-primary btn-block" type="button">Log vitals</button>
         <h2 class="section-title">Charts</h2>
@@ -173,6 +193,15 @@
           <h2 class="section-title">Temperature</h2>
           <div class="chart-wrap"><canvas id="chart-temp"></canvas></div>
           <p class="legend-note">Amber band 37.5 to 37.9. Red line 38.0 and above.</p>
+        </div>
+        <div class="card chart-card">
+          <h2 class="section-title">Pain</h2>
+          <div class="chart-wrap"><canvas id="chart-pain"></canvas></div>
+          <p class="legend-note">Check-in scores make the line. Extra readings from Log pain now are the hollow points.</p>
+        </div>
+        <div class="card chart-card">
+          <h2 class="section-title">Mood</h2>
+          <div class="chart-wrap"><canvas id="chart-mood"></canvas></div>
         </div>
         <div class="card chart-card">
           <h2 class="section-title">Heart rate</h2>
@@ -384,6 +413,7 @@
     <div class="sheet-backdrop" data-close></div>
     <div class="sheet-panel" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
       <div class="sheet-handle"></div>
+      <button id="sheet-close" class="sheet-close" type="button" aria-label="Close">&#215;</button>
       <h2 id="sheet-title" class="sheet-title"></h2>
       <div id="sheet-body" class="sheet-body"></div>
     </div>
@@ -396,6 +426,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=22"></script>
+  <script type="module" src="scripts.js?v=23"></script>
 </body>
 </html>
