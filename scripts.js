@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '23';
+const APP_VERSION = '24';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
 const TEXT_LIMIT_BYTES = 800 * 1024;
 const PAGE_MAX_DIM = 1600;
@@ -506,7 +506,7 @@ function buildDemoFixture() {
     e(-4, '08:05', 'Mark', { type: 'sleep', value: 275, note: 'Up twice with back pain' }),
     e(-3, '07:30', 'Mark', { type: 'sleep', value: 395 }),
     e(-1, '07:50', 'Mark', { type: 'sleep', value: 440 }),
-    e(0, '07:55', 'Mark', { type: 'sleep', value: 428, deep: 70, rem: 53, core: 305, awake: 25 }),
+    e(0, '07:55', 'Mark', { type: 'sleep', value: 428, deep: 70, rem: 53, core: 305, awake: 25, bedAt: '22:10', wokeAt: '07:05' }),
     e(-9, '09:00', 'Mark', { type: 'vitals', heartRate: 76 }),
     e(-9, '07:30', 'Mark', { type: 'weight', value: 78.8 }),
     e(-8, '10:00', 'Shelley', { type: 'drink', value: 300, note: 'Water' }),
@@ -867,7 +867,11 @@ function entrySub(e) {
   if (e.type === 'temp' && e.note) bits.push(e.note);
   if (e.type === 'food' && e.amount) bits.push(e.amount);
   if (e.type === 'food' && e.detail) bits.push(e.detail);
-  if (e.type === 'sleep') { const s = sleepStages(e); if (s) bits.push(s); if (e.note) bits.push(e.note); }
+  if (e.type === 'sleep') {
+    if (e.bedAt || e.wokeAt) bits.push((e.bedAt || '?') + ' to ' + (e.wokeAt || '?'));
+    const s = sleepStages(e); if (s) bits.push(s);
+    if (e.note) bits.push(e.note);
+  }
   if (e.type === 'checkin') { const s = checkinSummary(e); if (s) bits.push(s); }
   if (e.type === 'pain' && e.note) bits.push(e.note);
   if (e.type === 'weight' && e.note) bits.push(e.note);
@@ -1024,22 +1028,49 @@ function openAdd(type) {
       const mm = h('input', { type: 'number', inputmode: 'numeric', min: '0', max: '59', placeholder: '0' });
       const row = h('div', null, h('span', { class: 'fieldlabel', text: label }), h('div', { class: 'field-row' }, field('Hours', hh), field('Minutes', mm)));
       const minutes = () => (hh.value === '' && mm.value === '') ? null : (parseInt(hh.value, 10) || 0) * 60 + (parseInt(mm.value, 10) || 0);
-      return { row, minutes };
+      const onChange = (fn) => { hh.addEventListener('input', fn); mm.addEventListener('input', fn); };
+      return { row, minutes, onChange };
     };
     const asleep = hm('Time asleep');
     const stages = { awake: hm('Awake'), rem: hm('REM'), core: hm('Core'), deep: hm('Deep') };
     const stagesWrap = h('div', { class: 'stages' }, ...Object.values(stages).map((s) => s.row));
-    stagesWrap.hidden = true;
-    const stagesBtn = h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => { stagesWrap.hidden = !stagesWrap.hidden; stagesBtn.textContent = stagesWrap.hidden ? 'Add the stages (optional)' : 'Hide the stages'; } }, 'Add the stages (optional)');
+    const last = state.recentEntries.find((e) => e.type === 'sleep');
+    const bed = h('input', { type: 'time', value: (last && last.bedAt) || '' });
+    const woke = h('input', { type: 'time' });
+    const wokeHint = h('p', { class: 'hint', text: 'Worked out from bedtime plus time asleep (and any time awake). Change it if it is wrong.' });
+    /* Woke at fills itself in from bedtime plus the night's sleep until it is typed in by hand */
+    let wokeByHand = false;
+    const workOutWoke = () => {
+      if (wokeByHand || !bed.value) return;
+      const slept = asleep.minutes();
+      if (slept === null || slept <= 0) return;
+      const [bh, bm] = bed.value.split(':').map(Number);
+      const total = (bh * 60 + bm + slept + (stages.awake.minutes() || 0)) % (24 * 60);
+      woke.value = pad2(Math.floor(total / 60)) + ':' + pad2(total % 60);
+      time.value = woke.value;
+    };
+    bed.addEventListener('input', workOutWoke);
+    asleep.onChange(workOutWoke);
+    stages.awake.onChange(workOutWoke);
+    /* The entry's own time is the wake-up time, so the timeline shows it where the night ended */
+    woke.addEventListener('input', () => { wokeByHand = !!woke.value; if (woke.value) time.value = woke.value; });
     body.append(
       h('p', { class: 'hint', text: 'Last night, logged against this morning. Type in what Apple Health shows.' }),
-      asleep.row, stagesBtn, stagesWrap, field('Time', time), field('Note', note)
+      field('In bed at', bed),
+      asleep.row,
+      h('span', { class: 'fieldlabel', text: 'The four stages, in the order Apple Health lists them' }),
+      stagesWrap,
+      field('Woke at', woke),
+      wokeHint,
+      field('Note', note)
     );
     getData = () => {
       const v = asleep.minutes();
       if (v === null || v <= 0 || v > 24 * 60) return null;
       const data = { type: 'sleep', value: v, note: note.value.trim() };
       Object.keys(stages).forEach((k) => { const m = stages[k].minutes(); if (m !== null && m > 0) data[k] = m; });
+      if (bed.value) data.bedAt = bed.value;
+      if (woke.value) data.wokeAt = woke.value;
       return data;
     };
   }
