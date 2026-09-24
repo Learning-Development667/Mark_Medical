@@ -740,6 +740,26 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 .diary-title small { font-family: var(--font-mono); font-size: 13px; font-weight: 500; color: var(--text-muted); letter-spacing: 0.08em; text-transform: uppercase; }
 .diary-sum { color: var(--text-secondary); margin: 0 0 var(--s-2); }
 
+/* Food diary: nutrition tags (neutral chips; the "High" ones carry a warm dot as well as the word) */
+.tags { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-top: 6px; }
+.tag {
+  display: inline-flex; align-items: center; gap: 5px; min-height: 26px; padding: 2px 9px;
+  border-radius: var(--r-pill); background: var(--surface-sunken); color: var(--text-secondary);
+  font-size: 13px; font-weight: 600; letter-spacing: 0.01em; line-height: 1.2; white-space: nowrap;
+}
+.tag::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--teal); opacity: 0.8; }
+.tag.is-watch::before { background: var(--warm); }
+.diary-tags { color: var(--text-secondary); font-size: 15px; margin: 0 0 var(--s-2); font-family: var(--font-mono); letter-spacing: 0.01em; }
+.unmatched { color: var(--text-muted); font-size: 14px; font-style: italic; margin-top: 4px; }
+.nudge { color: var(--warm-dark); font-weight: 500; margin-top: var(--s-3); }
+.food-overview { margin: var(--s-3) 0 var(--s-2); }
+.nutri-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.nutri-cell { display: flex; flex-direction: column; gap: 2px; padding: var(--s-2) 6px; min-width: 0; }
+.nutri-cell .tile-label { font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nutri-value { font-family: var(--font-head); font-size: 24px; line-height: 1; letter-spacing: 0.02em; }
+.nutri-value small { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.04em; color: var(--text-muted); text-transform: uppercase; }
+.nutri-cell.is-zero .nutri-value { color: var(--text-muted); }
+
 /* Notes for the team: flagged readings */
 .flags { display: flex; flex-direction: column; gap: var(--s-2); margin-top: 10px; }
 .flag { position: relative; display: flex; align-items: flex-start; gap: 10px; background: var(--grad-raised); border-radius: var(--r-md); padding: var(--s-3) 14px var(--s-3) var(--s-5); box-shadow: var(--elev-raised); --cat: var(--teal); }
@@ -754,6 +774,8 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
   .topbar, .tabs, .btn, .segmented, .toast, .sheet, .quickadd, .confetti, #toast { display: none !important; }
   .main { padding: 0; }
   .entry, .card { box-shadow: none; border: 1px solid #C8D0D3; break-inside: avoid; background: #fff; }
+  .tag { border: 1px solid #C8D0D3; background: #fff; }
+  .unmatched { display: none; }
   .diary-day { break-inside: avoid; }
 }
 .check { display: flex; align-items: center; gap: var(--s-3); min-height: var(--tap); font-weight: 600; margin-bottom: var(--s-2); }

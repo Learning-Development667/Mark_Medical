@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '28';
+const APP_VERSION = '29';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -1050,7 +1050,11 @@ function openAdd(type) {
   }
 
   if (type === 'food') {
+    loadFoodTable();
     const meals = sortedMeals();
+    const warn = h('p', { class: 'hint nudge' });
+    warn.hidden = true;
+    let nudged = false;
     const what = h('input', { type: 'text', placeholder: 'What was eaten?', required: true, list: 'meal-names', autocomplete: 'off' });
     const names = h('datalist', { id: 'meal-names' }, ...meals.map((m) => h('option', { value: m.name })));
     const parts = h('input', { type: 'text', placeholder: 'e.g. peas, mash, gravy' });
@@ -1071,12 +1075,21 @@ function openAdd(type) {
       field('What is in it (optional)', parts),
       h('p', { class: 'field' }, h('span', { text: 'How much' })), amountPresets,
       field('Time', time),
-      h('label', { class: 'check' }, remember, h('span', { text: 'Remember this meal for next time' }))
+      h('label', { class: 'check' }, remember, h('span', { text: 'Remember this meal for next time' })),
+      warn
     );
     getData = () => {
       const name = what.value.trim();
       if (!name) return null;
       const detail = parts.value.trim();
+      /* Something vague like "picky lunch" cannot be broken down: ask once for what was in it */
+      if (foodIndex && !detail && !nudged && !entryNutrition(foodIndex, { note: name }).matches.length) {
+        nudged = true;
+        warn.textContent = `"${name}" is not in the food table, so the diary cannot break it down. Add what is in it above, or tap Save again to keep it as it is.`;
+        warn.hidden = false;
+        parts.focus();
+        return { hold: true };
+      }
       if (remember.checked) {
         const existing = findMeal(name);
         if (!existing || (existing.parts || '') !== detail) saveMeal(existing ? existing.id : null, existing ? existing.name : name, detail);
@@ -1237,6 +1250,7 @@ function openAdd(type) {
   const save = h('button', { class: 'btn btn-primary btn-block', type: 'button' }, 'Save');
   save.addEventListener('click', async () => {
     const data = getData();
+    if (data && data.hold) return;
     if (!data) { toast('Please check the value'); return; }
     const at = atFromInputs(day, time.value);
     const list = Array.isArray(data) ? data : [data];
@@ -1389,10 +1403,30 @@ async function savePdf(filename, title, subtitle, blocks) {
   };
   write(title, 22, 'bold', PDF_TEAL, 2);
   write(subtitle, 11, 'normal', 100, 14);
+  /* Two-column table: left column wraps, right column is short tags; a light rule under each row */
+  const table = (b) => {
+    const widths = b.widths || [0.64, 0.36];
+    const gap = 10, size = 10.5, lh = size * 1.35, pad = 4;
+    const colW = widths.map((w) => maxW * w - gap / 2);
+    const xs = [M, M + maxW * widths[0] + gap / 2];
+    const row = (cells, bold, colour) => {
+      pdf.setFont('helvetica', bold ? 'bold' : 'normal'); pdf.setFontSize(size); pdf.setTextColor(colour);
+      const lines = cells.map((c, i) => pdf.splitTextToSize(String(c || ''), colW[i]));
+      const rh = Math.max(...lines.map((l) => l.length), 1) * lh + pad * 2;
+      if (y + rh > H - 48) { footer(); pdf.addPage(); y = M; pdf.setFont('helvetica', bold ? 'bold' : 'normal'); pdf.setFontSize(size); pdf.setTextColor(colour); }
+      lines.forEach((l, i) => l.forEach((ln, k) => pdf.text(ln, xs[i], y + pad + size + k * lh)));
+      y += rh;
+      pdf.setDrawColor(215); pdf.setLineWidth(0.5); pdf.line(M, y, M + maxW, y);
+    };
+    if (b.head) row(b.head, true, 90);
+    b.rows.forEach((r) => row(r, false, 0));
+    y += 6;
+  };
   blocks.forEach((b) => {
     if (b.kind === 'heading') { y += 8; write(b.text, 14, 'bold', PDF_TEAL, 4); }
     else if (b.kind === 'sub') { y += 4; write(b.text, 12, 'bold', 0, 2); }
     else if (b.kind === 'muted') write(b.text, 10.5, 'normal', 110, 3);
+    else if (b.kind === 'table') table(b);
     else write(b.text, 11, 'normal', 0, 4);
   });
   footer();
@@ -1418,12 +1452,486 @@ async function loadEntriesFrom(from) {
   } catch (e) { console.error(e); return null; }
 }
 
+/* ---------- Nutrition: the UK food table (CoFID) and simple label-style tags ---------- */
+/* The table itself is data/cofid.json, built from the official spreadsheet by
+   .github/workflows/build-cofid.yml. Matching is plain word lookup: the words you typed
+   against the table's own names, with a curated alias list for everyday phrasing.
+   Tags follow UK label rules per 100 g, so they say what a food is like, not how much was eaten. */
+
+/* Everyday names mapped to the table's own names. A phrase maps to one or more searches;
+   each search is a list of regexes tried in order against the table names. */
+const FOOD_ALIASES = {
+  'toast': [[/^bread, white, toasted/i]],
+  'white toast': [[/^bread, white, toasted/i]],
+  'brown toast': [[/^bread, wholemeal, toasted/i]],
+  'wholemeal toast': [[/^bread, wholemeal, toasted/i]],
+  'granary toast': [[/^bread, granary/i, /^bread, wholemeal, toasted/i]],
+  'bread': [[/^bread, white, average/i]],
+  'white bread': [[/^bread, white, average/i]],
+  'brown bread': [[/^bread, brown, average/i, /^bread, wholemeal, average/i]],
+  'wholemeal bread': [[/^bread, wholemeal, average/i]],
+  'granary bread': [[/^bread, granary/i, /^bread, wholemeal, average/i]],
+  'roll': [[/^bread rolls, white, soft/i, /^bread rolls, white/i]],
+  'bread roll': [[/^bread rolls, white, soft/i, /^bread rolls, white/i]],
+  'bagel': [[/^bagels, plain/i]],
+  'crumpet': [[/^crumpets, toasted/i]],
+  'shredded wheat': [[/^breakfast cereal, shredded wheat type, unfortified$/i, /shredded wheat/i]],
+  'weetabix': [[/weetabix type, fortified/i]],
+  'porridge': [[/^porridge, made with milk and water/i, /^porridge, made with whole milk/i, /^porridge/i]],
+  'oats': [[/^porridge oats, unfortified$/i]],
+  'cornflakes': [[/^breakfast cereal, cornflakes, fortified$/i]],
+  'cereal': [[/^breakfast cereal, cornflakes, fortified$/i]],
+  'granola': [[/crunchy\/crispy muesli type cereal, with nuts/i]],
+  'muesli': [[/^muesli, swiss style, no added sugar/i, /^muesli/i]],
+  'yop': [[/^yogurt, drinking/i, /^yogurt, low fat, fruit/i]],
+  'yoghurt drink': [[/^yogurt, drinking/i, /^yogurt, low fat, fruit/i]],
+  'yogurt drink': [[/^yogurt, drinking/i, /^yogurt, low fat, fruit/i]],
+  'yoghurt': [[/^yogurt, low fat, fruit/i]],
+  'yogurt': [[/^yogurt, low fat, fruit/i]],
+  'greek yoghurt': [[/^yogurt, greek style, plain/i]],
+  'greek yogurt': [[/^yogurt, greek style, plain/i]],
+  'natural yoghurt': [[/^yogurt, whole milk, plain/i]],
+  'cheese': [[/^cheese, cheddar, english/i]],
+  'cheddar': [[/^cheese, cheddar, english/i]],
+  'brie': [[/^cheese, brie$/i, /^cheese, brie/i]],
+  'feta': [[/^cheese, feta/i]],
+  'mozzarella': [[/^cheese, mozzarella/i]],
+  'cottage cheese': [[/^cheese, cottage, plain/i, /^cheese, cottage/i]],
+  'cream cheese': [[/^cheese, cream|^cheese, soft/i, /^cheese spread, plain$/i]],
+  'egg': [[/^eggs, chicken, whole, boiled/i]],
+  'eggs': [[/^eggs, chicken, whole, boiled/i]],
+  'boiled egg': [[/^eggs, chicken, whole, boiled/i]],
+  'poached egg': [[/^eggs, chicken, whole, poached/i]],
+  'poached eggs': [[/^eggs, chicken, whole, poached/i]],
+  'boiled eggs': [[/^eggs, chicken, whole, boiled/i]],
+  'fried eggs': [[/^eggs, chicken, whole, fried in sunflower oil/i]],
+  'scrambled eggs': [[/^eggs, chicken, scrambled, with semi-skimmed milk/i, /^eggs, chicken, scrambled/i]],
+  'fried egg': [[/^eggs, chicken, whole, fried in sunflower oil/i]],
+  'scrambled egg': [[/^eggs, chicken, scrambled, with semi-skimmed milk/i, /^eggs, chicken, scrambled/i]],
+  'omelette': [[/^omelette, plain, homemade/i]],
+  'bacon': [[/^bacon rashers, back, grilled$/i, /^bacon rashers, back, .*grilled/i]],
+  'sausage': [[/^sausages, pork, chilled, grilled/i]],
+  'sausages': [[/^sausages, pork, chilled, grilled/i]],
+  'ham': [[/^ham$/i]],
+  'chicken': [[/^chicken, breast, grilled with skin, meat only/i, /^chicken, breast, grilled/i]],
+  'chicken breast': [[/^chicken, breast, grilled with skin, meat only/i, /^chicken, breast, grilled/i]],
+  'roast chicken': [[/^chicken, light meat, roasted$/i, /^chicken, .*roasted, meat only/i]],
+  'chicken thigh': [[/^chicken, thigh, .*roasted, meat only|^chicken, dark meat, roasted/i]],
+  'turkey': [[/^turkey, breast, fillet, grilled, meat only/i]],
+  'beef': [[/^beef, topside, roasted, lean$|^beef, .*roasted, lean$/i, /^beef, rump steak, grilled, lean/i]],
+  'roast beef': [[/^beef, topside, roasted, lean$|^beef, .*roasted, lean$/i]],
+  'steak': [[/^beef, rump steak, grilled, lean$/i, /^beef, .*steak, grilled, lean/i]],
+  'mince': [[/^beef, mince, extra lean, stewed/i, /^beef, mince, stewed/i]],
+  'lamb': [[/^lamb, leg joint, roasted, lean$/i, /^lamb, .*grilled, lean$/i]],
+  'pork': [[/^pork, leg joint, roasted, lean$/i, /^pork, loin chops, grilled, lean$/i, /^pork, .*roasted, lean/i]],
+  'gammon': [[/^ham, gammon joint, boiled/i]],
+  'salmon': [[/^salmon, farmed, flesh only, grilled$/i, /^salmon, farmed, flesh only, baked/i]],
+  'tuna': [[/^tuna, canned in brine, drained/i]],
+  'cod': [[/^cod, flesh only, baked$/i, /^cod, flesh only, grilled/i]],
+  'haddock': [[/^haddock, flesh only, .*grilled|^haddock, flesh only, .*baked/i, /^haddock/i]],
+  'fish': [[/^cod, flesh only, baked$/i]],
+  'fish fingers': [[/^fish fingers, cod, grilled/i]],
+  'fish finger': [[/^fish fingers, cod, grilled/i]],
+  'prawns': [[/^prawns, king, purchased cooked$/i]],
+  'prawn': [[/^prawns, king, purchased cooked$/i]],
+  'mash': [[/^potatoes, old, mashed with butter/i]],
+  'mashed potato': [[/^potatoes, old, mashed with butter/i]],
+  'maris piper mash': [[/^potatoes, old, mashed with butter/i]],
+  'potato': [[/^potatoes, old, boiled in unsalted water, flesh only|^potatoes, old, boiled/i]],
+  'potatoes': [[/^potatoes, old, boiled in unsalted water, flesh only|^potatoes, old, boiled/i]],
+  'new potatoes': [[/^potatoes, new and salad, boiled in unsalted water, flesh and skin/i]],
+  'roast potatoes': [[/^potatoes, old, roasted in rapeseed oil/i]],
+  'roast potato': [[/^potatoes, old, roasted in rapeseed oil/i]],
+  'jacket potato': [[/^potatoes, old, baked, flesh and skin$/i]],
+  'baked potato': [[/^potatoes, old, baked, flesh and skin$/i]],
+  'chips': [[/^potato chips, oven ready, no batter, baked/i]],
+  'oven chips': [[/^potato chips, oven ready, no batter, baked/i]],
+  'sweet potato': [[/^sweet potato, baked/i]],
+  'rice': [[/^rice, white, basmati, boiled in unsalted water/i]],
+  'white rice': [[/^rice, white, basmati, boiled in unsalted water/i]],
+  'brown rice': [[/^rice, brown, .*boiled in unsalted water/i]],
+  'pasta': [[/^pasta, white, dried, boiled in unsalted water/i]],
+  'spaghetti': [[/^pasta, white, spaghetti, .*boiled|^spaghetti, white, .*boiled/i, /^pasta, white, dried, boiled/i]],
+  'wholewheat pasta': [[/^pasta, wholewheat, .*boiled|^pasta, wholemeal/i]],
+  'noodles': [[/^noodles, egg, .*boiled in unsalted water/i, /^noodles/i]],
+  'couscous': [[/^couscous, plain, cooked/i]],
+  'quinoa': [[/^quinoa/i]],
+  'pizza': [[/^pizza, cheese and tomato, retail/i]],
+  'cookie': [[/^biscuits, cookies, chocolate chip, standard/i]],
+  'cookies': [[/^biscuits, cookies, chocolate chip, standard/i]],
+  'biscuit': [[/^biscuits, digestive, plain/i]],
+  'biscuits': [[/^biscuits, digestive, plain/i]],
+  'digestive': [[/^biscuits, digestive, plain/i]],
+  'crisps': [[/^potato crisps, fried in sunflower oil/i]],
+  'chocolate': [[/^chocolate, milk$/i]],
+  'cake': [[/^cake, sponge, homemade/i]],
+  'scone': [[/^scones, plain, homemade/i]],
+  'flapjack': [[/^flapjacks, retail$/i]],
+  'croissant': [[/^croissants/i]],
+  'pastries': [[/^pastries, danish, retail/i]],
+  'pastry': [[/^pastries, danish, retail/i]],
+  'danish pastry': [[/^pastries, danish, retail/i]],
+  'sausage roll': [[/^sausage roll, flaky pastry, ready-to-eat, retail/i]],
+  'pasty': [[/^cornish pasty, retail/i]],
+  'ice cream': [[/^ice cream, dairy, vanilla, soft scoop/i]],
+  'custard': [[/^custard, made up with semi-skimmed milk/i, /^custard, made up/i]],
+  'jam': [[/^jam, fruit with edible seeds/i]],
+  'honey': [[/^honey$/i]],
+  'marmite': [[/^yeast extract/i]],
+  'peanut butter': [[/^peanut butter/i]],
+  'butter': [[/^butter, salted/i]],
+  'olive oil': [[/^oil, olive/i]],
+  'almonds': [[/^almonds, whole kernels/i]],
+  'almond': [[/^almonds, whole kernels/i]],
+  'peanuts': [[/^peanuts, kernel only, plain, unsalted/i]],
+  'cashews': [[/^cashew nuts, plain/i, /^cashew/i]],
+  'walnuts': [[/^walnuts/i]],
+  'nuts': [[/^nuts, mixed/i]],
+  'mixed nuts': [[/^nuts, mixed/i]],
+  'raisins': [[/^raisins, dried/i]],
+  'dried fruit': [[/^raisins, dried/i]],
+  'grapes': [[/^grapes, average$/i]],
+  'grape': [[/^grapes, average$/i]],
+  'banana': [[/^bananas, flesh only$/i]],
+  'apple': [[/^apples, eating, raw, flesh and skin$/i]],
+  'pear': [[/^pears, average, raw, flesh and skin/i, /^pears, average, raw, flesh only/i]],
+  'orange': [[/^oranges, flesh only$/i]],
+  'satsuma': [[/^satsumas, flesh only|^tangerines, flesh only|^clementines/i, /^oranges, flesh only$/i]],
+  'clementine': [[/^clementines|^satsumas, flesh only/i, /^oranges, flesh only$/i]],
+  'cherry': [[/^cherries, flesh and skin, raw$/i]],
+  'cherries': [[/^cherries, flesh and skin, raw$/i]],
+  'strawberry': [[/^strawberries, raw/i]],
+  'strawberries': [[/^strawberries, raw/i]],
+  'blueberries': [[/^blueberries/i]],
+  'raspberries': [[/^raspberries, raw/i]],
+  'melon': [[/^melon, canteloupe-type, flesh only$/i, /^melon, .*flesh only$/i]],
+  'pineapple': [[/^pineapple, raw, flesh only|^pineapple, fresh/i, /^pineapple, canned in juice/i]],
+  'mango': [[/^mangoes, ripe, flesh only, raw$/i]],
+  'kiwi': [[/^kiwi fruit, flesh only, raw$/i]],
+  'peach': [[/^peaches, raw, flesh and skin|^peaches, flesh and skin/i]],
+  'plum': [[/^plums, average, raw|^plums, .*raw/i]],
+  'fruit': [[/^apples, eating, raw, flesh and skin$/i]],
+  'avocado': [[/^avocado, hass, flesh only$/i]],
+  'avacado': [[/^avocado, hass, flesh only$/i]],
+  'tomato': [[/^tomatoes, standard, raw/i]],
+  'tomatoes': [[/^tomatoes, standard, raw/i]],
+  'cucumber': [[/^cucumber, raw/i]],
+  'lettuce': [[/^lettuce, average, raw/i]],
+  'salad': [[/^lettuce, average, raw/i], [/^tomatoes, standard, raw/i], [/^cucumber, raw/i]],
+  'coleslaw': [[/^coleslaw, not low calorie, retail/i]],
+  'beetroot': [[/^beetroot, cooked in unsalted water/i, /^beetroot, pickled/i]],
+  'carrot': [[/^carrots, old, boiled in unsalted water/i]],
+  'carrots': [[/^carrots, old, boiled in unsalted water/i]],
+  'peas': [[/^peas, frozen, boiled in unsalted water/i]],
+  'broccoli': [[/^broccoli, green, boiled in unsalted water/i]],
+  'tenderstem broccoli': [[/^broccoli, green, boiled in unsalted water/i]],
+  'tenderstem': [[/^broccoli, green, boiled in unsalted water/i]],
+  'cauliflower': [[/^cauliflower, boiled in unsalted water/i]],
+  'cabbage': [[/^cabbage, average, boiled in unsalted water|^cabbage, .*boiled in unsalted water/i]],
+  'sprouts': [[/^brussels sprouts, boiled in unsalted water/i]],
+  'brussels sprouts': [[/^brussels sprouts, boiled in unsalted water/i]],
+  'green beans': [[/^green beans\/french beans, .*boiled in unsalted water|^beans, green.*boiled|^french beans, .*boiled/i, /^green beans/i]],
+  'sweetcorn': [[/^sweetcorn kernels, canned in water, drained/i]],
+  'spinach': [[/^spinach, mature, boiled in unsalted water/i, /^spinach, baby, raw/i]],
+  'onion': [[/^onions, raw$/i, /^onions, fried in/i]],
+  'onions': [[/^onions, raw$/i, /^onions, fried in/i]],
+  'pepper': [[/^peppers, capsicum, red, raw|^peppers, capsicum, green, raw/i]],
+  'peppers': [[/^peppers, capsicum, red, raw|^peppers, capsicum, green, raw/i]],
+  'mushroom': [[/^mushrooms, white, raw/i]],
+  'mushrooms': [[/^mushrooms, white, raw/i]],
+  'leek': [[/^leeks, boiled in unsalted water/i, /^leeks/i]],
+  'leak': [[/^leeks, boiled in unsalted water/i, /^leeks/i]],
+  'leeks': [[/^leeks, boiled in unsalted water/i, /^leeks/i]],
+  'parsnip': [[/^parsnip, roasted in rapeseed oil|^parsnip, boiled/i]],
+  'parsnips': [[/^parsnip, roasted in rapeseed oil|^parsnip, boiled/i]],
+  'baked beans': [[/^baked beans, canned in tomato sauce$/i]],
+  'beans': [[/^baked beans, canned in tomato sauce$/i]],
+  'lentils': [[/^lentils, red, split, dried, boiled in unsalted water/i]],
+  'chickpeas': [[/^beans, chick peas, canned, re-heated, drained/i, /^beans, chick peas, .*boiled/i]],
+  'chick peas': [[/^beans, chick peas, canned, re-heated, drained/i, /^beans, chick peas, .*boiled/i]],
+  'hummus': [[/^houmous/i]],
+  'houmous': [[/^houmous/i]],
+  'olives': [[/^olives, green, in brine, drained, flesh and skin$/i]],
+  'olive': [[/^olives, green, in brine, drained, flesh and skin$/i]],
+  'soup': [[/^soup, vegetable, .*homemade|^soup, carrot and orange, homemade/i, /^soup, .*carton, chilled/i]],
+  'tomato soup': [[/^soup, tomato, carton, chilled/i]],
+  'chicken soup': [[/^soup, chicken, cream of, canned/i]],
+  'leek and potato soup': [[/^soup, leek and potato|^leek and potato soup/i, /^soup, vegetable, .*homemade/i]],
+  'gravy': [[/^gravy instant granules, made up with water/i]],
+  'milk': [[/^milk, semi-skimmed, pasteurised, average/i]],
+  'semi skimmed milk': [[/^milk, semi-skimmed, pasteurised, average/i]],
+  'whole milk': [[/^milk, whole, pasteurised, average/i]],
+  'complan': [[/^complan powder, sweet, made up with semi-skimmed milk/i]],
+  'fortisip': [[/^complan powder, sweet, made up with semi-skimmed milk/i]],
+  'ensure': [[/^complan powder, sweet, made up with semi-skimmed milk/i]],
+  'supplement drink': [[/^complan powder, sweet, made up with semi-skimmed milk/i]],
+  'nutrition drink': [[/^complan powder, sweet, made up with semi-skimmed milk/i]],
+  'build up': [[/^build up, powder, shake/i]],
+  'protein shake': [[/^build up, powder, shake/i]],
+  'smoothie': [[/^smoothies/i]],
+  'orange juice': [[/^orange juice, chilled/i]],
+  'apple juice': [[/^apple juice, clear/i]],
+  'squash': [[/^fruit juice drink\/squash, diluted/i]],
+  'tortilla': [[/^tortilla, wheat, soft/i]],
+  'wrap': [[/^tortilla, wheat, soft/i]],
+  'fajita': [[/^fajita, chicken, meat only/i], [/^tortilla, wheat, soft/i], [/^peppers, capsicum, red, raw|^peppers, capsicum, green, raw/i]],
+  'fajitas': [[/^fajita, chicken, meat only/i], [/^tortilla, wheat, soft/i], [/^peppers, capsicum, red, raw|^peppers, capsicum, green, raw/i]],
+  'chicken fajitas': [[/^fajita, chicken, meat only/i], [/^tortilla, wheat, soft/i], [/^peppers, capsicum, red, raw|^peppers, capsicum, green, raw/i]],
+  'curry': [[/^curry, chicken, average, takeaway|^curry, chicken korma, homemade/i]],
+  'chicken curry': [[/^curry, chicken, average, takeaway|^curry, chicken korma, homemade/i]],
+  'chilli': [[/^chilli con carne, homemade/i]],
+  'chilli con carne': [[/^chilli con carne, homemade/i]],
+  'bolognese': [[/^spaghetti bolognese, homemade|^bolognese sauce \(with meat\), homemade/i]],
+  'spaghetti bolognese': [[/^spaghetti bolognese, homemade|^bolognese sauce \(with meat\), homemade/i]],
+  'lasagne': [[/^lasagne, homemade$/i]],
+  "shepherd's pie": [[/^shepherd's pie, homemade/i]],
+  'shepherds pie': [[/^shepherd's pie, homemade/i]],
+  'cottage pie': [[/^shepherd's pie, homemade/i]],
+  'fish pie': [[/^pie, fish, white fish, homemade/i]],
+  'chicken pie': [[/^pie, chicken, individual, baked/i]],
+  'quiche': [[/^quiche, lorraine, homemade/i]],
+  'macaroni cheese': [[/^macaroni cheese, homemade/i]],
+  'stew': [[/^beef stew, homemade|^stew, beef/i, /^casserole, beef/i]],
+  'casserole': [[/^casserole, chicken|^casserole, beef/i]],
+  'sandwich': [[/^bread, white, average/i]],
+  'sandwiches': [[/^bread, white, average/i]],
+  'roast': [[/^chicken, light meat, roasted$/i, /^chicken, .*roasted, meat only/i], [/^potatoes, old, roasted in rapeseed oil/i], [/^carrots, old, boiled in unsalted water/i], [/^broccoli, green, boiled in unsalted water/i], [/^gravy instant granules, made up with water/i]],
+  'chicken roast': [[/^chicken, light meat, roasted$/i, /^chicken, .*roasted, meat only/i], [/^potatoes, old, roasted in rapeseed oil/i], [/^carrots, old, boiled in unsalted water/i], [/^broccoli, green, boiled in unsalted water/i], [/^gravy instant granules, made up with water/i]],
+  'roast dinner': [[/^chicken, light meat, roasted$/i, /^chicken, .*roasted, meat only/i], [/^potatoes, old, roasted in rapeseed oil/i], [/^carrots, old, boiled in unsalted water/i], [/^broccoli, green, boiled in unsalted water/i], [/^gravy instant granules, made up with water/i]],
+  'chicken roast dinner': [[/^chicken, light meat, roasted$/i, /^chicken, .*roasted, meat only/i], [/^potatoes, old, roasted in rapeseed oil/i], [/^carrots, old, boiled in unsalted water/i], [/^broccoli, green, boiled in unsalted water/i], [/^gravy instant granules, made up with water/i]],
+  'sunday roast': [[/^chicken, light meat, roasted$/i, /^chicken, .*roasted, meat only/i], [/^potatoes, old, roasted in rapeseed oil/i], [/^carrots, old, boiled in unsalted water/i], [/^broccoli, green, boiled in unsalted water/i], [/^gravy instant granules, made up with water/i]],
+  'full english': [[/^bacon rashers, back, grilled$/i], [/^sausages, pork, chilled, grilled/i], [/^eggs, chicken, whole, fried in sunflower oil/i], [/^baked beans, canned in tomato sauce$/i], [/^bread, white, toasted/i]],
+  'homity pie': [[/^potatoes, old, mashed with butter/i], [/^cheese, cheddar, english/i], [/^onions, fried in/i], [/^pastry, shortcrust, cooked, homemade|^pastry, shortcrust/i]],
+  'oatcakes': [[/^oatcakes, plain, retail/i]],
+  'oatcake': [[/^oatcakes, plain, retail/i]],
+  'crackers': [[/^cream crackers/i]],
+  'cracker': [[/^cream crackers/i]],
+  'rice cakes': [[/^rice cakes|^rice cake/i, /^cream crackers/i]],
+  'popcorn': [[/^popcorn, plain|^popcorn, candied/i]],
+};
+
+/* Words that carry no food meaning on their own */
+const FOOD_STOP = new Set(['and', 'with', 'of', 'on', 'in', 'the', 'a', 'an', 'x', 'some', 'plain', 'small', 'large', 'big', 'half', 'slice', 'slices', 'piece', 'pieces', 'bowl', 'cup', 'glass', 'portion', 'handful', 'few', 'bit', 'bits', 'homemade', 'fresh', 'hot', 'cold', 'leftover', 'leftovers', 'lunch', 'dinner', 'breakfast', 'tea', 'supper', 'snack', 'meal', 'picky', 'mixed', 'little', 'lots', 'more', 'extra', 'it', 'all', 'most', 'my', 'for', 'from', 'at', 'to']);
+
+const COOKING_WORDS = new Set(['roast', 'roasted', 'grilled', 'fried', 'boiled', 'baked', 'poached', 'scrambled', 'steamed', 'mashed', 'cooked', 'toasted', 'chopped', 'sliced', 'diced', 'raw', 'warm', 'whole', 'tinned', 'canned', 'frozen', 'dried', 'grated', 'melted', 'buttered', 'bowl', 'cup', 'mug', 'plate', 'tin', 'pot', 'tub', 'bag', 'packet']);
+
+const IRREGULAR_SINGULAR = { tomatoes: 'tomato', potatoes: 'potato', cherries: 'cherry', strawberries: 'strawberry', raspberries: 'raspberry', blueberries: 'blueberries', pastries: 'pastries', leaves: 'leaf', olives: 'olives', grapes: 'grapes', peas: 'peas', chips: 'chips', crisps: 'crisps', beans: 'beans', nuts: 'nuts', oats: 'oats', noodles: 'noodles', sprouts: 'sprouts', lentils: 'lentils', chickpeas: 'chickpeas', prawns: 'prawns', biscuits: 'biscuits', cookies: 'cookies', crackers: 'crackers', oatcakes: 'oatcakes', raisins: 'raisins', almonds: 'almonds', peanuts: 'peanuts', walnuts: 'walnuts', cashews: 'cashews', carrots: 'carrots', peppers: 'peppers', mushrooms: 'mushrooms', onions: 'onions', leeks: 'leeks', parsnips: 'parsnips', sausages: 'sausages', fajitas: 'fajitas', sandwiches: 'sandwiches' };
+
+function foodSingular(w) {
+  if (IRREGULAR_SINGULAR[w]) return IRREGULAR_SINGULAR[w];
+  if (w === 'eggs') return 'egg';
+  if (w.length > 4 && w.endsWith('ies')) return w.slice(0, -3) + 'y';
+  if (w.length > 4 && w.endsWith('oes')) return w.slice(0, -2);
+  if (w.length > 4 && w.endsWith('ses')) return w.slice(0, -2);
+  if (w.length > 3 && w.endsWith('s') && !w.endsWith('ss')) return w.slice(0, -1);
+  return w;
+}
+
+/* Lowercase, drop quantities and punctuation, keep words */
+function foodClean(s) {
+  return String(s || '').toLowerCase()
+    .replace(/[’']/g, "'")
+    .replace(/\b\d+(\.\d+)?\s*(g|kg|ml|l|oz|x|grams?|mls?)\b/g, ' ')
+    .replace(/\bx\s*\d+\b|\b\d+\s*x\b/g, ' ')
+    .replace(/\b\d+(\.\d+)?\b/g, ' ')
+    .replace(/[^a-z' ]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/* Build the lookup once from the table: alias phrases and the table's own head words */
+function buildFoodIndex(table) {
+  const foods = table.foods;
+  const byHead = new Map();
+  const add = (key, food, weight) => {
+    if (!key) return;
+    const list = byHead.get(key) || [];
+    list.push({ food, weight });
+    byHead.set(key, list);
+  };
+  foods.forEach((f) => {
+    const name = f.n.toLowerCase();
+    const head = name.split(',')[0].trim();
+    add(head, f, 2);
+    const short = head.split(/ in | with | and | on | from /)[0].trim();
+    if (short !== head) add(short, f, 1);
+    const sing = short.split(' ').map(foodSingular).join(' ');
+    if (sing !== short) add(sing, f, 1);
+  });
+  const find = (regexes) => {
+    for (const re of regexes) { const hit = foods.find((f) => re.test(f.n)); if (hit) return hit; }
+    return null;
+  };
+  /* Resolve every alias now, so lookups are cheap and misses are visible */
+  const alias = new Map();
+  Object.entries(FOOD_ALIASES).forEach(([phrase, searches]) => {
+    const hits = searches.map(find).filter(Boolean);
+    if (hits.length) alias.set(phrase, hits);
+  });
+  const keys = [...alias.keys(), ...byHead.keys()];
+  return { foods, byHead, alias, keys, find };
+}
+
+/* Best table row for a plain head word: prefer plain, cooked, average forms over dishes and oddities */
+function pickRepresentative(list, key) {
+  let best = null, bestScore = -Infinity;
+  for (const { food, weight } of list) {
+    const n = food.n.toLowerCase();
+    let s = weight * 10;
+    if (n.split(',')[0].trim() === key) s += 10;
+    if (/\baverage\b/.test(n)) s += 6;
+    if (/flesh only|flesh and skin/.test(n)) s += 2;
+    if (/\braw\b/.test(n) && /^(F|D)/.test(food.g || '')) s += 3;
+    if (/\braw\b/.test(n) && /^(M|J|C|A)/.test(food.g || '')) s -= 6;
+    if (/boiled in unsalted water|grilled|baked|roasted|steamed/.test(n)) s += 2;
+    if (/weighed with|dried|canned|powder|frozen, raw|uncooked|concentrate|essence|flavoured|homemade|retail|takeaway/.test(n)) s -= 3;
+    if (/sauce|pie|curry|soup|sandwich|salad,|stuffed|with sugar|in syrup|fried/.test(n)) s -= 4;
+    if (n.length > 60) s -= 2;
+    if (s > bestScore) { bestScore = s; best = food; }
+  }
+  return best;
+}
+
+function editDistance(a, b) {
+  if (Math.abs(a.length - b.length) > 2) return 3;
+  const dp = Array.from({ length: a.length + 1 }, (_, i) => [i]);
+  for (let j = 1; j <= b.length; j++) dp[0][j] = j;
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) {
+    dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+  }
+  return dp[a.length][b.length];
+}
+
+function lookupPhrase(index, phrase) {
+  if (!phrase) return null;
+  if (index.alias.has(phrase)) return index.alias.get(phrase);
+  const sing = phrase.split(' ').map(foodSingular).join(' ');
+  if (index.alias.has(sing)) return index.alias.get(sing);
+  const list = index.byHead.get(phrase) || index.byHead.get(sing);
+  if (list) { const f = pickRepresentative(list, phrase); return f ? [f] : null; }
+  return null;
+}
+
+/* A typo one or two letters out from a known name, for words long enough to be safe */
+function fuzzyPhrase(index, word) {
+  if (word.length < 5 || COOKING_WORDS.has(word)) return null;
+  let best = null, bestD = 3;
+  for (const k of index.keys) {
+    if (k.includes(' ') || Math.abs(k.length - word.length) > 2) continue;
+    const d = editDistance(word, k);
+    if (d < bestD) { bestD = d; best = k; if (d === 1) break; }
+  }
+  return best && bestD <= (word.length >= 8 ? 2 : 1) ? lookupPhrase(index, best) : null;
+}
+
+/* Turn a food entry's text into matched table rows and the phrases nothing was found for */
+function matchFoodText(index, text) {
+  const clean = foodClean(text);
+  const raw = clean.split(/\s+(?:and|with|on|in|plus|or)\s+|,|;|\/|&|\+/).map((p) => p.trim()).filter(Boolean);
+  const phrases = [];
+  const seenRaw = new Set();
+  /* A whole phrase such as "chicken roast dinner" can be an alias before any tidying */
+  const pre = [];
+  for (const p of raw) {
+    if (index.alias.has(p)) { pre.push(p); continue; }
+    const stripped = p.split(' ').filter((w) => !FOOD_STOP.has(w) && !COOKING_WORDS.has(w) || ['peas', 'oats', 'beans', 'nuts', 'roast', 'whole'].includes(w)).join(' ').trim();
+    if (stripped && !seenRaw.has(stripped)) { seenRaw.add(stripped); phrases.push(stripped); }
+  }
+  const seen = new Set();
+  const matches = [];
+  const unmatched = [];
+  const take = (foods, phrase) => { foods.forEach((f) => { if (!seen.has(f.c)) { seen.add(f.c); matches.push({ phrase, food: f }); } }); };
+  pre.forEach((p) => take(index.alias.get(p), p));
+  for (const phrase of phrases) {
+    let hit = lookupPhrase(index, phrase);
+    if (hit) { take(hit, phrase); continue; }
+    const words = phrase.split(' ');
+    let any = false;
+    /* two-word windows first (e.g. "poached egg", "roast potatoes"), then single words */
+    for (let i = 0; i < words.length - 1; i++) {
+      const two = words[i] + ' ' + words[i + 1];
+      const h2 = lookupPhrase(index, two);
+      if (h2) { take(h2, two); any = true; words[i] = words[i + 1] = null; i++; }
+    }
+    for (const w of words) {
+      if (!w || COOKING_WORDS.has(w)) continue;
+      const h1 = lookupPhrase(index, w) || fuzzyPhrase(index, w);
+      if (h1) { take(h1, w); any = true; }
+    }
+    if (!any) unmatched.push(phrase);
+  }
+  return { matches, unmatched };
+}
+
+/* ---- Tags: UK label thresholds per 100 g, plus what kind of food it is ---- */
+const FOOD_TAG_ORDER = ['Protein', 'Fibre', 'Wholegrain', 'Fruit and veg', 'Dairy', 'Starchy carbs', 'Good fats', 'High sugar', 'High fat', 'High sat fat'];
+
+function foodTags(f) {
+  const tags = [];
+  const g = f.g || '';
+  const fibre = f.fibre != null ? f.fibre : f.nsp;
+  const kcal = f.kcal || 0;
+  const protShare = kcal > 0 ? (f.prot || 0) * 4 / kcal : 0;
+  const name = f.n.toLowerCase();
+  const fruitVeg = (/^F/.test(g) || (/^D/.test(g) && !/^DA/.test(g))) && !/juice|squash|smoothie/.test(name);
+  const starchy = (/^A/.test(g) && !/^(AM|AN|AO|AP|AS)/.test(g)) || /^DA/.test(g);
+  const dairy = /^B/.test(g) && !/^(BP|BR|BTM)/.test(g);
+  const wholegrain = starchy && /wholemeal|wholegrain|whole ?wheat|brown|oat|porridge|shredded wheat|weetabix|bran|granary|rye|seeded|muesli/.test(name);
+  /* Small-amount foods (sauces, spreads, sugars, oils, herbs) do not earn tags on their own */
+  const minor = /^(S|W|H|O)/.test(g);
+  if (minor) return tags;
+  if ((f.prot || 0) >= 10 || (protShare >= 0.2 && (f.prot || 0) >= 5)) tags.push('Protein');
+  /* Source of fibre: over 3 g per 100 g, or 1.5 g per 100 kcal (the second catches fruit and veg) */
+  if (fibre != null && (fibre > 3 || (kcal > 0 && fibre >= 1 && fibre / kcal * 100 >= 1.5))) tags.push('Fibre');
+  if (wholegrain) tags.push('Wholegrain');
+  if (fruitVeg) tags.push('Fruit and veg');
+  if (dairy) tags.push('Dairy');
+  if (starchy && !wholegrain) tags.push('Starchy carbs');
+  const fat = f.fat || 0, sat = f.sat || 0;
+  const oily = /^(G|JC)/.test(g) || /avocado|salmon|mackerel|sardine|pilchard|trout|herring|kipper|tuna, canned in .*oil/.test(name);
+  if (oily && fat >= 5 && (sat === 0 || sat / fat < 0.35)) tags.push('Good fats');
+  else if (fat > 17.5) tags.push('High fat');
+  if (sat > 5) tags.push('High sat fat');
+  if ((f.sugar || 0) > 22.5 && !fruitVeg) tags.push('High sugar');
+  return tags;
+}
+
+/* Per entry: union of its components' tags, in a fixed order */
+function entryNutrition(index, entry) {
+  const text = [entry.note, entry.detail].filter(Boolean).join(', ');
+  const { matches, unmatched } = matchFoodText(index, text);
+  const set = new Set();
+  matches.forEach((m) => foodTags(m.food).forEach((t) => set.add(t)));
+  return { tags: FOOD_TAG_ORDER.filter((t) => set.has(t)), matches, unmatched };
+}
+
+/* Per day: how many entries carried each tag */
+function tagCounts(entriesNutrition) {
+  const counts = {};
+  entriesNutrition.forEach((n) => n.tags.forEach((t) => { counts[t] = (counts[t] || 0) + 1; }));
+  return counts;
+}
+
+/* The table is fetched once, when the Food sheet or the Food diary first needs it */
+let foodIndex = null;
+let foodIndexPromise = null;
+function loadFoodTable() {
+  if (foodIndex) return Promise.resolve(foodIndex);
+  if (!foodIndexPromise) {
+    foodIndexPromise = fetch('data/cofid.json?v=' + APP_VERSION).then((r) => (r.ok ? r.json() : null))
+      .then((t) => { foodIndex = t && t.foods ? buildFoodIndex(t) : null; return foodIndex; })
+      .catch(() => null);
+  }
+  return foodIndexPromise;
+}
+
 async function renderFoodDiary() {
   const today = todayStr();
   const from = addDays(today, -(state.foodRange - 1));
   $('food-sub').textContent = `Last ${state.foodRange} days, from ${fmtDayNum(from)}`;
   const entries = await loadEntriesFrom(from);
   if (!entries) return;
+  const index = await loadFoodTable();
   const byDay = {};
   entries.forEach((e) => {
     if (e.type !== 'food' && e.type !== 'drink') return;
@@ -1432,6 +1940,8 @@ async function renderFoodDiary() {
   const logged = Object.keys(byDay).sort();
   const sections = [];
   const blocks = [];
+  const daysWith = {};
+  let dayCount = 0;
   if (logged.length) {
     /* Every day from the first logged one to today, so a day with nothing eaten still shows */
     for (let day = today; day >= logged[0]; day = addDays(day, -1)) {
@@ -1443,15 +1953,34 @@ async function renderFoodDiary() {
         foods.length === 0 ? 'Nothing eaten logged' : foods.length === 1 ? '1 food entry' : foods.length + ' food entries',
         drinks.length ? 'drinks ' + fmtMl(ml) : 'no drinks logged'
       ].join(' · ');
+      const nutri = foods.map((e) => (index ? entryNutrition(index, e) : null));
+      const counts = tagCounts(nutri.filter(Boolean));
+      const tagLine = FOOD_TAG_ORDER.filter((t) => counts[t]).map((t) => t + ' ' + counts[t]).join(' · ');
+      dayCount++;
+      Object.keys(counts).forEach((t) => { daysWith[t] = (daysWith[t] || 0) + 1; });
       sections.push(h('section', { class: 'diary-day' },
         h('h3', { class: 'diary-title' }, fmtDayLong(day), h('small', { text: day === today ? 'Today' : fmtDayNum(day) })),
         h('p', { class: 'diary-sum', text: sum }),
-        foods.length ? h('ul', { class: 'timeline' }, ...foods.map(diaryRow)) : null
+        tagLine ? h('p', { class: 'diary-tags', text: tagLine }) : null,
+        foods.length ? h('ul', { class: 'timeline' }, ...foods.map((e, i) => diaryRow(e, nutri[i]))) : null
       ));
-      blocks.push({ kind: 'sub', text: `${fmtDayLong(day)} (${fmtDayNum(day)})` }, { kind: 'muted', text: sum });
-      foods.forEach((e) => blocks.push({ kind: 'text', text: `${fmtTime(entryDate(e))}  ${e.note || 'Food'}${e.amount ? ', ' + e.amount.toLowerCase() : ''}${e.detail ? ' (' + e.detail + ')' : ''}, by ${e.addedBy || 'unknown'}` }));
+      blocks.push({ kind: 'sub', text: `${fmtDayLong(day)} (${fmtDayNum(day)})` }, { kind: 'muted', text: sum + (tagLine ? ' · ' + tagLine : '') });
+      if (foods.length) blocks.push({ kind: 'table', head: ['What was eaten', 'Nutrition'], rows: foods.map((e, i) => [
+        `${fmtTime(entryDate(e))}  ${e.note || 'Food'}${e.amount ? ', ' + e.amount.toLowerCase() : ''}${e.detail ? ' (' + e.detail + ')' : ''}, by ${e.addedBy || 'unknown'}`,
+        nutri[i] && nutri[i].tags.length ? nutri[i].tags.join(', ') : (nutri[i] && !nutri[i].matches.length ? 'Not in the food table' : '')
+      ]) });
     }
   }
+  /* Overview: on how many of the days each kind of food turned up */
+  const overview = $('food-overview');
+  if (dayCount && index) {
+    overview.hidden = false;
+    overview.replaceChildren(h('div', { class: 'nutri-grid' }, ...FOOD_TAG_ORDER.map((t) => h('div', { class: 'nutri-cell' + (daysWith[t] ? '' : ' is-zero') },
+      h('span', { class: 'tile-label', text: t }),
+      h('span', { class: 'nutri-value' }, String(daysWith[t] || 0), h('small', { text: ' of ' + dayCount + ' days' }))
+    ))));
+    blocks.unshift({ kind: 'muted', text: 'Days with: ' + FOOD_TAG_ORDER.map((t) => `${t} ${daysWith[t] || 0} of ${dayCount}`).join(' · ') + '. Tags follow UK food label rules per 100 g of each food named, from the McCance and Widdowson food table. Not portion sizes, not medical advice.' });
+  } else { overview.hidden = true; overview.replaceChildren(); }
   $('food-days').replaceChildren(...sections);
   $('food-empty').hidden = sections.length > 0;
   state.foodPdf = { filename: 'care-log-food-diary-' + today + '.pdf', title: 'Food diary', subtitle: `${fmtDayNum(from)} to ${fmtDayNum(today)}, printed ${fmtDayNum(today)}`, blocks };
@@ -1459,12 +1988,16 @@ async function renderFoodDiary() {
 
 $('food-pdf').addEventListener('click', () => { if (state.foodPdf) savePdf(state.foodPdf.filename, state.foodPdf.title, state.foodPdf.subtitle, state.foodPdf.blocks); });
 
-function diaryRow(e) {
+function diaryRow(e, nutri) {
+  const watch = (t) => /^High /.test(t);
   return h('li', { class: 'entry type-food' },
     h('span', { class: 'entry-time', text: fmtTime(entryDate(e)) }),
     h('div', { class: 'entry-main' },
       h('div', { class: 'entry-title', text: e.note || 'Food' }),
-      h('div', { class: 'entry-sub', text: [e.amount, e.detail, 'by ' + (e.addedBy || 'unknown')].filter(Boolean).join(' · ') })
+      h('div', { class: 'entry-sub', text: [e.amount, e.detail, 'by ' + (e.addedBy || 'unknown')].filter(Boolean).join(' · ') }),
+      nutri && nutri.tags.length ? h('div', { class: 'tags' }, ...nutri.tags.map((t) => h('span', { class: 'tag' + (watch(t) ? ' is-watch' : ''), text: t }))) : null,
+      nutri && !nutri.matches.length ? h('div', { class: 'unmatched', text: 'Not in the food table yet' })
+        : nutri && nutri.unmatched.length ? h('div', { class: 'unmatched', text: 'Not recognised: ' + nutri.unmatched.join(', ') }) : null
     )
   );
 }

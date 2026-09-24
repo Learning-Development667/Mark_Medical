@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=28">
+  <link rel="stylesheet" href="styles.css?v=29">
 </head>
 <body>
 
@@ -331,6 +331,8 @@
         </div>
         <h2 class="page-title">Food diary</h2>
         <p id="food-sub" class="muted"></p>
+        <p class="hint">Each food gets simple tags from the UK food table (McCance and Widdowson), matched on the words typed in and following UK food label rules per 100 g. They say what a food is like, not how much was eaten. A guide for the conversation, not medical advice.</p>
+        <div id="food-overview" class="status food-overview" aria-label="Days with each kind of food" hidden></div>
         <div class="segmented" role="group" aria-label="Range">
           <button class="seg" type="button" data-range="7">7 days</button>
           <button class="seg is-active" type="button" data-range="14">14 days</button>
@@ -427,6 +429,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=28"></script>
+  <script type="module" src="scripts.js?v=29"></script>
 </body>
 </html>
