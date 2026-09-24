@@ -70,10 +70,10 @@ ci = {
     'code': col(hm, 'food code'), 'name': col(hm, 'food name'), 'group': col(hm, 'group'),
     'kcal': col(hm, 'energy', 'kcal'), 'prot': col(hm, 'protein'), 'fat': col(hm, 'fat (g)'),
     'carb': col(hm, 'carbohydrate'), 'sugar': col(hm, 'total sugars'), 'starch': col(hm, 'starch'),
-    'fibre': col(hm, 'aoac'), 'sat': col(hm, 'satd', '100g fd') or col(hm, 'saturated', 'fd'),
+    'fibre': col(hm, 'aoac'), 'nsp': col(hm, 'nsp'), 'sat': col(hm, 'satd', '100g fd') or col(hm, 'saturated', 'fd'),
 }
 print('column picks:', ci)
-missing = [k for k, v in ci.items() if v is None and k not in ('sat', 'starch')]
+missing = [k for k, v in ci.items() if v is None and k not in ('sat', 'starch', 'nsp')]
 if missing: sys.exit('Missing columns: ' + ', '.join(missing))
 
 foods = {}
@@ -85,7 +85,7 @@ for row in prox.iter_rows(min_row=hrow + 1, values_only=True):
     name = row[ci['name']]
     if not name: continue
     rec = {'c': code, 'n': str(name).strip(), 'g': (str(row[ci['group']]).strip() if row[ci['group']] else None)}
-    for k in ('kcal', 'prot', 'fat', 'sat', 'carb', 'sugar', 'starch', 'fibre'):
+    for k in ('kcal', 'prot', 'fat', 'sat', 'carb', 'sugar', 'starch', 'fibre', 'nsp'):
         j = ci[k]
         rec[k] = num(row[j]) if j is not None else None
     rec['salt'] = None
