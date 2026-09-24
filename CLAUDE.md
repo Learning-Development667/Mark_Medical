@@ -56,7 +56,7 @@ Live: https://learning-development667.github.io/Mark_Medical/
 - `days/{YYYY-MM-DD}`: { chemo (bool, session planned), chemoDone (bool), mood? (1 to 5, mirrored from the check-ins), good? (string, mirrored from the evening check-in), updatedBy, updatedAt }
 - `cheers/{autoId}`: { text, addedBy, createdAt } (the cheer board on the Chemo tab, newest first, last 50 shown)
 - `exercise/{YYYY-MM-DD}`: { day, steps? (number), done: { pressups, situps, plank, squats } (bools), addedBy, updatedAt }
-  - The Exercise tab has day arrows, and the Steps sheet has its own day picker (date field plus Today and Yesterday buttons, capped at today) so yesterday's steps can be logged the next morning.
+  - The Exercise tab has day arrows, and the Steps sheet has its own month calendar (`openStepsSheet()`, days already logged shown green, future days disabled) so any past day can be logged directly, retrospectively and in any order. Save writes the tapped day and keeps the sheet open, so several days can be logged in one sitting; switching to a different day, or leaving via Done, the round close button or the backdrop, saves whatever is typed and not yet saved first (`saveIfDirty()`, and the generic `openSheet(title, body, onClose)` close-guard it uses), so nothing typed is ever silently dropped.
 - `profile/main`: { calls: [{label, number}], exerciseGoals?: { pressups, situps, plankSeconds, squats } } (goal defaults 20, 20, 60, 2; editable in the app)
 
 ## Navigation

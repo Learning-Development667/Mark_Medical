@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '26';
+const APP_VERSION = '27';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -250,16 +250,20 @@ function toast(text, action) {
 function hideToast() { $('toast').hidden = true; }
 
 /* Sheet */
-function openSheet(title, body) {
+function openSheet(title, body, onClose) {
   $('sheet-title').textContent = title;
   const b = $('sheet-body');
   b.replaceChildren(body);
   $('sheet').hidden = false;
   document.body.style.overflow = 'hidden';
+  /* Runs (fire-and-forget, same as the rest of the app's save calls) however the sheet is
+     closed: Done, the round X, or tapping the backdrop, not just a screen's own Save button. */
+  state.sheetOnClose = onClose || null;
   const first = b.querySelector('input:not([type=hidden]), textarea');
   if (first && first.type !== 'file' && window.matchMedia('(min-width: 700px)').matches) first.focus();
 }
 function closeSheet() {
+  if (state.sheetOnClose) { const fn = state.sheetOnClose; state.sheetOnClose = null; fn(); }
   $('sheet').hidden = true;
   $('sheet-body').replaceChildren();
   document.body.style.overflow = '';
@@ -3164,6 +3168,32 @@ function openStepsSheet(initialDay) {
     dayLabel.textContent = fmtDayLong(day) + (day === today ? ' (today)' : '');
   };
 
+  /* Saves steps for one day without touching whichever day is on screen afterwards.
+     Used by both the Save button and the day-switch guard below. */
+  async function saveStepsFor(targetDay, v) {
+    const rec = exerciseFor(targetDay);
+    if (!state.demo) {
+      try { await setDoc(doc(db, 'exercise', targetDay), { day: targetDay, steps: v, addedBy: state.name, updatedAt: serverTimestamp() }, { merge: true }); }
+      catch (e) { console.error(e); return false; }
+    }
+    state.exercise[targetDay] = { ...rec, day: targetDay, steps: v };
+    return true;
+  }
+
+  /* If the box has a typed value that has not been saved for the day it belongs to,
+     save it before moving on, so switching days never silently drops what was typed. */
+  async function saveIfDirty() {
+    const raw = input.value.trim();
+    if (raw === '') return;
+    const v = parseInt(raw, 10);
+    if (isNaN(v) || v < 0) return;
+    if (v === (exerciseFor(day).steps || 0)) return;
+    const savedDay = day;
+    const ok = await saveStepsFor(savedDay, v);
+    if (ok) { renderExercise(); toast(fmtDayShort(savedDay) + ': ' + v.toLocaleString('en-GB') + ' steps saved'); }
+    else toast('Could not save ' + fmtDayShort(savedDay));
+  }
+
   function renderCal() {
     const [y, m] = month.split('-').map(Number);
     calTitle.textContent = new Date(y, m - 1, 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
@@ -3183,7 +3213,7 @@ function openStepsSheet(initialDay) {
       cells.push(h('button', {
         class: cls.join(' '), type: 'button', disabled: future,
         'aria-label': fmtDayLong(key) + (logged ? ', steps logged' : ''),
-        onclick: () => { day = key; renderCal(); syncInput(); }
+        onclick: async () => { await saveIfDirty(); day = key; renderCal(); syncInput(); }
       }, h('span', { class: 'cal-num', text: String(d) })));
     }
     calGrid.replaceChildren(...cells);
@@ -3206,17 +3236,18 @@ function openStepsSheet(initialDay) {
     h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
       const v = parseInt(input.value, 10);
       if (isNaN(v) || v < 0) { toast('Please check the number'); return; }
-      const rec = exerciseFor(day);
-      closeSheet();
-      state.exerciseDay = day;
-      if (state.demo) { state.exercise[day] = { ...rec, day, steps: v }; renderExercise(); toast('Steps saved'); return; }
+      const savedDay = day;
+      const ok = await saveStepsFor(savedDay, v);
+      if (!ok) { toast('Could not save'); return; }
+      state.exerciseDay = savedDay;
       renderExercise();
-      try { await setDoc(doc(db, 'exercise', day), { day, steps: v, addedBy: state.name, updatedAt: serverTimestamp() }, { merge: true }); toast('Steps saved'); }
-      catch (e) { console.error(e); toast('Could not save'); }
+      renderCal();
+      toast(fmtDayShort(savedDay) + ': ' + v.toLocaleString('en-GB') + ' steps saved');
     } }, 'Save'),
-    h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Cancel')
+    h('p', { class: 'hint', text: 'Save keeps this open, so you can pick another day and carry on.' }),
+    h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Done')
   );
-  openSheet('Steps', body);
+  openSheet('Steps', body, saveIfDirty);
 }
 
 $('ex-goals-edit').addEventListener('click', () => {
