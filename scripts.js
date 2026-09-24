@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '27';
+const APP_VERSION = '28';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -778,6 +778,25 @@ async function addEntry(data) {
   return ref.id;
 }
 
+/* Change fields on an existing entry (used when a night already has an Apple Health sleep entry) */
+async function updateEntry(id, data) {
+  const at = data.at instanceof Date ? data.at : null;
+  const fields = { ...data };
+  delete fields.at;
+  if (state.demo) {
+    const e = state.recentEntries.find((x) => x.id === id);
+    if (e) { Object.assign(e, fields); if (at) e.at = demoTs(at); }
+    sortEntries(state.recentEntries);
+    state.dayEntries = state.recentEntries.filter((x) => x.day === state.selectedDay);
+    renderToday();
+    if (!$('view-vitals').hidden) renderVitals();
+    return;
+  }
+  const patch = { ...fields, updatedAt: serverTimestamp() };
+  if (at) patch.at = Timestamp.fromDate(at);
+  await updateDoc(doc(db, 'entries', id), patch);
+}
+
 function deleteEntry(id) {
   if (state.demo) {
     state.recentEntries = state.recentEntries.filter((e) => e.id !== id);
@@ -1012,6 +1031,7 @@ function openAdd(type) {
   const note = h('input', { type: 'text', placeholder: 'Optional note' });
   const body = h('div', null);
   let getData;
+  let editId = null;
 
   if (type === 'drink') {
     const what = h('input', { type: 'text', placeholder: 'What was it?', value: 'Water' });
@@ -1089,17 +1109,27 @@ function openAdd(type) {
       const row = h('div', null, h('span', { class: 'fieldlabel', text: label }), h('div', { class: 'field-row' }, field('Hours', hh), field('Minutes', mm)));
       const minutes = () => (hh.value === '' && mm.value === '') ? null : (parseInt(hh.value, 10) || 0) * 60 + (parseInt(mm.value, 10) || 0);
       const onChange = (fn) => { hh.addEventListener('input', fn); mm.addEventListener('input', fn); };
-      return { row, minutes, onChange };
+      const set = (mins) => { const m = Math.max(0, Math.round(Number(mins) || 0)); hh.value = String(Math.floor(m / 60)); mm.value = String(m % 60); };
+      return { row, minutes, onChange, set };
     };
     const asleep = hm('Time asleep');
     const stages = { awake: hm('Awake'), rem: hm('REM'), core: hm('Core'), deep: hm('Deep') };
     const stagesWrap = h('div', { class: 'stages' }, ...Object.values(stages).map((s) => s.row));
-    const last = state.recentEntries.find((e) => e.type === 'sleep');
+    /* If this morning already has a sleep entry (Apple Health sends one automatically), edit it rather than add a second */
+    const existing = state.dayEntries.find((e) => e.type === 'sleep') || null;
+    const last = existing || state.recentEntries.find((e) => e.type === 'sleep');
     const bed = h('input', { type: 'time', value: (last && last.bedAt) || '' });
-    const woke = h('input', { type: 'time' });
+    const woke = h('input', { type: 'time', value: (existing && existing.wokeAt) || '' });
+    if (existing) {
+      editId = existing.id;
+      asleep.set(existing.value);
+      Object.keys(stages).forEach((k) => { if (existing[k]) stages[k].set(existing[k]); });
+      note.value = existing.note || '';
+      if (woke.value) time.value = woke.value;
+    }
     const wokeHint = h('p', { class: 'hint', text: 'Worked out from bedtime plus time asleep (and any time awake). Change it if it is wrong.' });
     /* Woke at fills itself in from bedtime plus the night's sleep until it is typed in by hand */
-    let wokeByHand = false;
+    let wokeByHand = Boolean(existing && existing.wokeAt);
     const workOutWoke = () => {
       if (wokeByHand || !bed.value) return;
       const slept = asleep.minutes();
@@ -1115,7 +1145,9 @@ function openAdd(type) {
     /* The entry's own time is the wake-up time, so the timeline shows it where the night ended */
     woke.addEventListener('input', () => { wokeByHand = !!woke.value; if (woke.value) time.value = woke.value; });
     body.append(
-      h('p', { class: 'hint', text: 'Last night, logged against this morning. Type in what Apple Health shows.' }),
+      h('p', { class: 'hint', text: existing && existing.addedBy === 'Apple Health'
+        ? 'Apple Health sent this night automatically. Change anything that is wrong and save.'
+        : existing ? 'Editing the sleep already logged for this morning.' : 'Last night, logged against this morning. Type in what Apple Health shows.' }),
       field('In bed at', bed),
       asleep.row,
       h('span', { class: 'fieldlabel', text: 'The four stages, in the order Apple Health lists them' }),
@@ -1209,6 +1241,11 @@ function openAdd(type) {
     const at = atFromInputs(day, time.value);
     const list = Array.isArray(data) ? data : [data];
     closeSheet();
+    if (editId) {
+      try { await updateEntry(editId, { ...list[0], at }); toast(titles[type] + ' updated'); }
+      catch (e) { console.error(e); toast('Could not save'); }
+      return;
+    }
     const ids = [];
     for (const d of list) { d.at = at; ids.push(await addEntry(d)); }
     toast(titles[type] + ' saved', { label: 'Undo', onClick: () => ids.forEach((id) => deleteEntry(id)) });
@@ -2300,7 +2337,8 @@ async function renderVitals() {
   const deepH = sleepEntries.map((e) => e ? hoursOf(e.deep) : null);
   const coreH = sleepEntries.map((e) => e ? hoursOf(e.core) : null);
   const remH = sleepEntries.map((e) => e ? hoursOf(e.rem) : null);
-  const otherH = sleepEntries.map((e, i) => e ? Math.max(0, Math.round((hoursOf(e.value) - (deepH[i] || 0) - (coreH[i] || 0) - (remH[i] || 0)) * 10) / 10) : null);
+  /* Remainder worked out in whole minutes first, so rounding the stages does not leave a phantom sliver */
+  const otherH = sleepEntries.map((e) => e ? hoursOf(Math.max(0, (Number(e.value) || 0) - (Number(e.deep) || 0) - (Number(e.core) || 0) - (Number(e.rem) || 0))) : null);
   const awakeMins = sleepEntries.map((e) => (e && e.awake) ? Number(e.awake) : 0);
   const sleepStageSet = (label, data, colour) => ({ label, data, backgroundColor: hexAlpha(colour, 0.85), borderColor: T.surface, borderWidth: 1.5, borderRadius: 4, borderSkipped: false, stack: 'sleep', maxBarThickness: 28 });
   makeChart('sleep', {
