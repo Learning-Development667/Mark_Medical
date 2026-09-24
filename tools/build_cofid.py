@@ -40,9 +40,9 @@ def find_sheet(word):
 
 def header_map(ws):
     """Returns (header row index, {normalised header: column index}) using the first row that has 'Food Code'."""
-    for i, row in enumerate(ws.iter_rows(min_row=1, max_row=8, values_only=True)):
+    for i, row in enumerate(ws.iter_rows(min_row=1, max_row=20, values_only=True)):
         cells = [str(c).strip() if c is not None else '' for c in row]
-        if any(c.lower() == 'food code' for c in cells):
+        if any('food code' in c.lower() for c in cells):
             return i + 1, {re.sub(r'\s+', ' ', c.lower()): j for j, c in enumerate(cells) if c}
     raise SystemExit(f'No header row with "Food Code" in sheet {ws.title}')
 
@@ -92,11 +92,17 @@ for row in prox.iter_rows(min_row=hrow + 1, values_only=True):
     foods[code] = rec
     order.append(code)
 
-if inorg is not None:
+try:
+    if inorg is None: raise SystemExit('no inorganics sheet')
     hrow2, hm2 = header_map(inorg)
     jcode, jna = col(hm2, 'food code'), col(hm2, 'sodium')
-    print('inorganics sodium column:', jna)
-    if jna is not None:
+    print('inorganics headers:', list(hm2.keys())[:12], '... sodium column:', jna)
+    if jna is None: raise SystemExit('no sodium column')
+except SystemExit as e:
+    print('WARNING: salt not available:', e)
+    jna = None
+if jna is not None:
+    if True:
         for row in inorg.iter_rows(min_row=hrow2 + 1, values_only=True):
             code = row[jcode]
             if code and str(code).strip() in foods:
