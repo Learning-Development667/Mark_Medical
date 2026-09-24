@@ -17,6 +17,18 @@ export default {
     try {
       if (url.pathname === '/ping') return withCors(request, json({ ok: true, at: new Date().toISOString() }));
       if (url.pathname === '/health' && request.method === 'POST') return withCors(request, await handleHealth(request, env));
+      /* Diagnostic: what the phone last sent and what was written, for checking the field names.
+         Opened in a browser with ?key=<BRIDGE_KEY>. Health data only, no secrets. */
+      if (url.pathname === '/last' && request.method === 'GET') {
+        if (!env.BRIDGE_KEY || url.searchParams.get('key') !== env.BRIDGE_KEY) return json({ error: 'Unauthorised' }, 401);
+        const fs = await firestore(env);
+        const doc = await fs.get('bridge/last');
+        if (!doc) return json({ note: 'Nothing received yet' });
+        const f = doc.fields || {};
+        let sample = null;
+        try { sample = JSON.parse(f.sample && f.sample.stringValue || 'null'); } catch (e) { sample = f.sample && f.sample.stringValue; }
+        return json({ receivedAt: f.receivedAt && f.receivedAt.timestampValue, result: f.result && f.result.stringValue, sample });
+      }
       return withCors(request, json({ error: 'Not found' }, 404));
     } catch (e) {
       return withCors(request, json({ error: String(e && e.message || e) }, 500));
@@ -92,6 +104,7 @@ async function handleHealth(request, env) {
       result.skipped.push(name || '(unnamed metric)');
     }
   }
+  await fs.merge('bridge/last', { result: strVal(JSON.stringify(result)) });
   return json({ ok: true, ...result });
 }
 
