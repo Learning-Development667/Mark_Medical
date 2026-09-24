@@ -42,6 +42,10 @@
   --cat-vitals: #A33B5A;
   --cat-sleep: #4B4FA6;
   --cat-note: #546569;
+  /* Colour: sleep-stage ramp for the Trends sleep chart, one hue (deepest to lightest) */
+  --sleep-deep: #373B8A;
+  --sleep-core: #4348A7;
+  --sleep-rem: #585CBC;
   /* Colour: mood scale for the chemo calendar, teal (good) through neutral to warm (rough) */
   --mood-5: #1E5F74;
   --mood-4: #4F8EA0;
@@ -142,6 +146,9 @@
     --cat-vitals: #D2778F;
     --cat-sleep: #8A8DD6;
     --cat-note: #8FA0A6;
+    --sleep-deep: #BFC0E9;
+    --sleep-core: #9D9FDD;
+    --sleep-rem: #7B7ED1;
     --mood-5: #4FA3BC;
     --mood-4: #6FA9B8;
     --mood-3: #7E8E94;

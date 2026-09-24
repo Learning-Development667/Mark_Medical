@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '25';
+const APP_VERSION = '26';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -2286,9 +2286,43 @@ async function renderVitals() {
       plugins: { legend: { display: false }, tooltip: Object.assign(tooltipStyle(T), { callbacks: { label: (i) => Number(i.raw).toFixed(1) + ' kg' } }) } }
   });
 
-  /* Sleep: hours asleep per night, one bar per morning */
-  const sleepPerDay = days.map((d) => { const e = entries.filter((x) => x.type === 'sleep' && x.day === d).pop(); return e ? Math.round(Number(e.value) / 6) / 10 : null; });
-  makeChart('sleep', barChart(T, days.map(dayLabel), sleepPerDay, { unit: (v) => v + ' h', tip: (v) => fmtHm(v * 60), suggestedMax: 9, reduced }));
+  /* Sleep: hours asleep per night, stacked by stage (deep, core, REM). Bar height always
+     equals the logged hours asleep, same as before; any night without a stage breakdown
+     (or only partly tagged) fills the rest as "Not broken down" so old entries still show.
+     Awake-in-bed minutes are not part of the total (they are time in bed, not asleep) and
+     appear in the tooltip instead. */
+  const sleepEntries = days.map((d) => entries.filter((x) => x.type === 'sleep' && x.day === d).pop() || null);
+  const hoursOf = (mins) => Math.round(Number(mins || 0) / 6) / 10;
+  const deepH = sleepEntries.map((e) => e ? hoursOf(e.deep) : null);
+  const coreH = sleepEntries.map((e) => e ? hoursOf(e.core) : null);
+  const remH = sleepEntries.map((e) => e ? hoursOf(e.rem) : null);
+  const otherH = sleepEntries.map((e, i) => e ? Math.max(0, Math.round((hoursOf(e.value) - (deepH[i] || 0) - (coreH[i] || 0) - (remH[i] || 0)) * 10) / 10) : null);
+  const awakeMins = sleepEntries.map((e) => (e && e.awake) ? Number(e.awake) : 0);
+  const sleepStageSet = (label, data, colour) => ({ label, data, backgroundColor: hexAlpha(colour, 0.85), borderColor: T.surface, borderWidth: 1.5, borderRadius: 4, borderSkipped: false, stack: 'sleep', maxBarThickness: 28 });
+  makeChart('sleep', {
+    type: 'bar',
+    data: { labels: days.map(dayLabel), datasets: [
+      sleepStageSet('Deep', deepH, cssVar('--sleep-deep')),
+      sleepStageSet('Core', coreH, cssVar('--sleep-core')),
+      sleepStageSet('REM', remH, cssVar('--sleep-rem')),
+      sleepStageSet('Not broken down', otherH, T.muted)
+    ] },
+    options: {
+      responsive: true, maintainAspectRatio: false, layout: { padding: { top: 8, right: 4 } },
+      animation: reduced ? false : { duration: 700, easing: 'easeOutQuart' },
+      scales: {
+        x: Object.assign(xAxisBase(T), { stacked: true }),
+        y: Object.assign(yAxisBase(T), { stacked: true, beginAtZero: true, suggestedMax: 9, ticks: Object.assign(yAxisBase(T).ticks, { callback: (v) => v + ' h' }) })
+      },
+      plugins: {
+        legend: (() => { const L = legendStyle(T); L.labels = Object.assign({}, L.labels, { filter: (item, data) => data.datasets[item.datasetIndex].data.some((v) => v > 0) }); return L; })(),
+        tooltip: Object.assign(tooltipStyle(T), { callbacks: {
+          label: (item) => item.raw > 0 ? item.dataset.label + ': ' + fmtHm(item.raw * 60) : null,
+          footer: (items) => { const m = awakeMins[items[0].dataIndex]; return m > 0 ? 'Also ' + fmtHm(m) + ' awake in bed' : ''; }
+        } })
+      }
+    }
+  });
 
   /* Vitals: heart rate, blood pressure and oxygen, all logged together from a
      manual reading. Each is its own chart, points in time, same layout as temperature. */
