@@ -25,10 +25,17 @@ jobs:
           KEY: ${{ secrets.BRIDGE_KEY }}
           SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: |
-          if [ -z "$TOKEN" ] || [ -z "$ACCOUNT" ] || [ -z "$KEY" ] || [ -z "$SA" ]; then
-            echo "::notice::Bridge not deployed: one or more secrets are not set yet (CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, BRIDGE_KEY, FIREBASE_SERVICE_ACCOUNT)."
+          missing=""
+          [ -z "$TOKEN" ] && missing="$missing CLOUDFLARE_API_TOKEN"
+          [ -z "$ACCOUNT" ] && missing="$missing CLOUDFLARE_ACCOUNT_ID"
+          [ -z "$KEY" ] && missing="$missing BRIDGE_KEY"
+          [ -z "$SA" ] && missing="$missing FIREBASE_SERVICE_ACCOUNT"
+          if [ -n "$missing" ]; then
+            echo "::notice::Bridge not deployed. Secrets still missing:$missing"
+            echo "MISSING:$missing"
             echo "ready=false" >> "$GITHUB_OUTPUT"
           else
+            echo "All four secrets present."
             echo "ready=true" >> "$GITHUB_OUTPUT"
           fi
 
