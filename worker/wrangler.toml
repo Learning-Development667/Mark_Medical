@@ -1,0 +1,10 @@
+# Care Log bridge: a small Cloudflare Worker on the free plan.
+# It is the app's keyholder and its inbox: secrets live here, never in the public site.
+name = "care-log-bridge"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+workers_dev = true
+
+# Secrets (set by the deploy workflow from GitHub repository secrets, never committed):
+#   BRIDGE_KEY               shared key Health Auto Export sends in the X-Care-Log-Key header
+#   FIREBASE_SERVICE_ACCOUNT the Firebase service account JSON (Project settings > Service accounts)
