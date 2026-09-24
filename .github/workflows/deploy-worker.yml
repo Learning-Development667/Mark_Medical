@@ -1,0 +1,48 @@
+# Deploys the Care Log bridge (worker/) to Cloudflare Workers.
+# Runs when anything under worker/ changes on main, or by hand from the Actions tab.
+# Needs four repository secrets (Settings > Secrets and variables > Actions):
+#   CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, BRIDGE_KEY, FIREBASE_SERVICE_ACCOUNT
+# Until they exist the job stops early with a notice rather than failing.
+name: Deploy bridge worker
+
+on:
+  push:
+    branches: [main]
+    paths: ['worker/**', '.github/workflows/deploy-worker.yml']
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the secrets are in place
+        id: check
+        env:
+          TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          KEY: ${{ secrets.BRIDGE_KEY }}
+          SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$TOKEN" ] || [ -z "$ACCOUNT" ] || [ -z "$KEY" ] || [ -z "$SA" ]; then
+            echo "::notice::Bridge not deployed: one or more secrets are not set yet (CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, BRIDGE_KEY, FIREBASE_SERVICE_ACCOUNT)."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Deploy to Cloudflare
+        if: steps.check.outputs.ready == 'true'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: worker
+          command: deploy
+          secrets: |
+            BRIDGE_KEY
+            FIREBASE_SERVICE_ACCOUNT
+        env:
+          BRIDGE_KEY: ${{ secrets.BRIDGE_KEY }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}

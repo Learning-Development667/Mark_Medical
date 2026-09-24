@@ -3,12 +3,14 @@
 Private, shared health tracker for Mark and Shelley. Hosted on GitHub Pages from `main`, root.
 Live: https://learning-development667.github.io/Mark_Medical/
 
-## COST RULE (never break this)
-- Runs entirely on the Firebase free Spark plan and GitHub Pages.
-- Use ONLY Firebase Auth (email and password) and Cloud Firestore.
-- Do NOT use Firebase Storage, Cloud Functions, any paid API, or any server.
-- No API keys other than the public Firebase web config in `config.js`.
+## COST RULE (amended 2026-09-24, by Mark)
+- Runs on free tiers: the Firebase Spark plan, GitHub Pages and one Cloudflare Worker on the Workers free plan (`worker/`, the "bridge"). Nothing with a monthly charge.
+- Firebase: only Auth (email and password) and Cloud Firestore. No Firebase Storage, no Cloud Functions.
+- Secrets never go in the public site. Anything that needs a key (the Apple Health bridge key, the Firebase service account, any future nutrition or AI key) lives in the Worker as a secret, set from GitHub repository secrets by `.github/workflows/deploy-worker.yml`. `config.js` still carries only the public Firebase web config.
+- A one-off Anthropic Console credit (about $5, lasts a year) is allowed for food lookups if and when Mark decides it is worth it. Not set up yet; the app must work fully without it.
+- One-off app purchases on Mark's phone (Health Auto Export lifetime, for pushing steps and sleep to the bridge) are fine.
 - Document pages are stored as base64 JPEG strings in Firestore. Each page document MUST stay under 900 KB.
+- History: until 2026-09-24 the rule was "Firebase and GitHub Pages only, no keys, no server". Mark relaxed it after the rule, which came from the multi-user Forge project, blocked nutrition lookups and automatic steps and sleep here.
 
 ## Branch and hosting
 - All work is committed directly to `main`. No feature branches, no pull requests.
@@ -22,6 +24,7 @@ Live: https://learning-development667.github.io/Mark_Medical/
 
 ## Files
 - `index.html`, `styles.css`, `scripts.js`, `sw.js`, `manifest.json`, `config.js`, `config.example.js`, `icons/`, `firestore.rules`, `CLAUDE.md`.
+- `worker/` is the bridge (see "Bridge" below): `wrangler.toml`, `src/index.js`, `README.md`. Plain JavaScript module worker, no build step, no dependencies. Run `node --check worker/src/index.js` before committing like any other JS file.
 - `config.js` holds the real Firebase web config and the `users` map (email to name, or `{ name, role: "viewer" }`). `index.html` loads it before `scripts.js`. It is a normal project file like any other; edit it the same way as the rest of the codebase. (Until 2026-09-22 this file carried a standing "Mark only, never edit" restriction; Mark removed that rule himself after repeated friction over a small, low-risk edit. `config.example.js` stays as the template for setting the project up from scratch.)
 
 ## Standards
@@ -58,6 +61,13 @@ Live: https://learning-development667.github.io/Mark_Medical/
 - `exercise/{YYYY-MM-DD}`: { day, steps? (number), done: { pressups, situps, plank, squats } (bools), addedBy, updatedAt }
   - The Exercise tab has day arrows, and the Steps sheet has its own month calendar (`openStepsSheet()`, days already logged shown green, future days disabled) so any past day can be logged directly, retrospectively and in any order. Save writes the tapped day and keeps the sheet open, so several days can be logged in one sitting; switching to a different day, or leaving via Done, the round close button or the backdrop, saves whatever is typed and not yet saved first (`saveIfDirty()`, and the generic `openSheet(title, body, onClose)` close-guard it uses), so nothing typed is ever silently dropped.
 - `profile/main`: { calls: [{label, number}], exerciseGoals?: { pressups, situps, plankSeconds, squats } } (goal defaults 20, 20, 60, 2; editable in the app)
+
+## Bridge (Cloudflare Worker, `worker/`)
+- Deployed as `care-log-bridge` on workers.dev by `.github/workflows/deploy-worker.yml` whenever `worker/**` changes on `main` (or by hand from the Actions tab). The job stops early with a notice, not a failure, until the four repository secrets exist: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `BRIDGE_KEY`, `FIREBASE_SERVICE_ACCOUNT`.
+- Writes to Firestore through the REST API with the Firebase service account (JWT signed with WebCrypto, token cached for the hour). A service account bypasses `firestore.rules`, so nothing in the rules changes for it.
+- `POST /health`: the inbox for the Health Auto Export app (iOS, Premium/lifetime, background REST automation). Auth is the `X-Care-Log-Key` header matching `BRIDGE_KEY`. Metric `step_count` rows are summed per day into `exercise/{day}.steps` (merge, `addedBy: "Apple Health"`). Metric `sleep_analysis` rows become `entries/{day}_sleep` (deterministic id, `day` is the morning the sleep ended, `value` minutes asleep, `core`/`deep`/`rem`/`awake` minutes, `bedAt`/`wokeAt` "HH:MM" from the sleep start and end, `at` the sleep end, `addedBy: "Apple Health"`, `source: "health-auto-export"`), so re-sends update the same document. The last raw payload is kept at `bridge/last` (trimmed to 20 KB) to check the exact field names after the first real send; the parser reads the sleep fields leniently (`asleep`/`totalSleep`, `sleepStart`/`inBedStart`, `sleepEnd`/`inBedEnd`).
+- `GET /ping` is a health check. CORS is allowed only for the GitHub Pages origin, for the app's own future calls (nutrition lookups).
+- Planned next on the bridge: `GET /food?barcode=` proxying Open Food Facts (keyless, 10 requests a minute, no CORS of its own), cached in a `foods` collection.
 
 ## Navigation
 Six bottom tabs: Today, Meds, Trends, Chemo, Exercise, More. "Vitals" is the name of the reading you log (the Today quick-add button and the Log vitals button); "Trends" is the look-back tab: a Reports row (Notes for the team, Food diary, Documents), the Latest tiles and every chart. The tab's internal ids stay `vitals` (`view-vitals`, `data-tab="vitals"`). Documents also lives under More (and chemo plan documents under Chemo); Saved meals, who to call and the app section are under More. Report pages remember the tab they were opened from (`state.reportReturn`, `state.docsReturn`) for Back and for tab highlighting.
