@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '29';
+const APP_VERSION = '30';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -1052,7 +1052,7 @@ function openAdd(type) {
   if (type === 'food') {
     loadFoodTable();
     const meals = sortedMeals();
-    const warn = h('p', { class: 'hint nudge' });
+    const warn = h('div', { class: 'nudge' });
     warn.hidden = true;
     let nudged = false;
     const what = h('input', { type: 'text', placeholder: 'What was eaten?', required: true, list: 'meal-names', autocomplete: 'off' });
@@ -1085,7 +1085,11 @@ function openAdd(type) {
       /* Something vague like "picky lunch" cannot be broken down: ask once for what was in it */
       if (foodIndex && !detail && !nudged && !entryNutrition(foodIndex, { note: name }).matches.length) {
         nudged = true;
-        warn.textContent = `"${name}" is not in the food table, so the diary cannot break it down. Add what is in it above, or tap Save again to keep it as it is.`;
+        warn.replaceChildren(
+          h('p', { text: `"${name}" is not in the food table yet, so the diary can't add nutrition tags for it. That's fine, it still saves either way.` }),
+          h('p', { class: 'hint', text: 'Add what is in it above for a better match, or save it as it is.' }),
+          h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => save.click() }, 'Save without tags')
+        );
         warn.hidden = false;
         parts.focus();
         return { hold: true };
