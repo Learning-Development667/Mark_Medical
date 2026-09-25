@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '30';
+const APP_VERSION = '31';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -1744,6 +1744,18 @@ function foodClean(s) {
 }
 
 /* Build the lookup once from the table: alias phrases and the table's own head words */
+/* Foods added by hand from a product's own nutrition label, for branded things the official
+   table was never going to have (it only covers generic whole foods and dishes). Added when
+   asked, from a photo of the label; per 100 g, so they go through the same lookup and tagging
+   as everything else. Their own aliases take priority over a generic guess. */
+const ADDED_FOODS = [
+  {
+    c: 'added-1', n: 'Whey protein powder, Gold Standard, strawberry', g: null,
+    kcal: 378, prot: 79, fat: 4.2, sat: 1.4, carb: 5.5, sugar: 3.3, starch: null, fibre: null, salt: 0.24,
+    aliases: ['gold standard whey protein', 'whey protein powder', 'whey protein', 'protein powder', 'whey powder', 'whey']
+  }
+];
+
 function buildFoodIndex(table) {
   const foods = table.foods;
   const byHead = new Map();
@@ -1772,8 +1784,11 @@ function buildFoodIndex(table) {
     const hits = searches.map(find).filter(Boolean);
     if (hits.length) alias.set(phrase, hits);
   });
+  /* Hand-added foods register their own aliases directly, no searching needed, and take
+     priority over a generic table guess for the same phrase */
+  ADDED_FOODS.forEach((f) => { (f.aliases || []).forEach((phrase) => alias.set(phrase, [f])); });
   const keys = [...alias.keys(), ...byHead.keys()];
-  return { foods, byHead, alias, keys, find };
+  return { foods: [...foods, ...ADDED_FOODS], byHead, alias, keys, find };
 }
 
 /* Best table row for a plain head word: prefer plain, cooked, average forms over dishes and oddities */
