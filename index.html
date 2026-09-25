@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=33">
+  <link rel="stylesheet" href="styles.css?v=34">
 </head>
 <body>
 
@@ -313,6 +313,8 @@
           <button id="doc-back" class="btn btn-link" type="button">&#8249; Back</button>
           <h2 id="doc-title" class="doc-title"></h2>
           <p id="doc-meta" class="muted mono"></p>
+          <div id="doc-pages" class="pages"></div>
+          <pre id="doc-text" class="doctext" hidden></pre>
           <button id="doc-edit" class="btn btn-link" type="button">Edit title, date or category</button>
           <div class="btnrow">
             <button id="doc-share" class="btn btn-primary" type="button">Send to Claude</button>
@@ -324,9 +326,6 @@
           <textarea id="doc-explanation" rows="8" placeholder="Paste Claude's explanation here, or use Paste summary above"></textarea>
           <p class="hint">This explanation is for context only. It is not medical advice. Always check changes with the medical team.</p>
           <button id="doc-save-explanation" class="btn btn-primary btn-block" type="button">Save explanation</button>
-          <h3 class="section-title">Document</h3>
-          <div id="doc-pages" class="pages"></div>
-          <pre id="doc-text" class="doctext" hidden></pre>
           <button id="doc-delete" class="btn btn-danger btn-block" type="button">Delete this document</button>
         </div>
       </section>
@@ -437,6 +436,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=33"></script>
+  <script type="module" src="scripts.js?v=34"></script>
 </body>
 </html>
