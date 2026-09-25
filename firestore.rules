@@ -1,7 +1,8 @@
 rules_version = '2';
 
 // Care Log: only the two named accounts in isFamily() may read or write anything.
-// Any email in isViewer() gets read-only access to a narrow slice (see below).
+// Any email in isReadOnly() sees everything they see but can write nothing; any
+// email in isViewer() gets read-only access to a narrower slice (see below).
 // Publish this file in the Firebase console (Firestore Database > Rules) after
 // any change here; editing this file alone does not reach the live database.
 service cloud.firestore {
@@ -23,6 +24,18 @@ service cloud.firestore {
       return request.auth != null
         && request.auth.token.email != null
         && request.auth.token.email.lower() in [
+        ];
+    }
+
+    // Full read-only access: sees everything a family member sees (every entry type,
+    // documents, cheers, exercise, meals, profile), never write access anywhere.
+    // Different from isViewer(), which is deliberately narrowed to a few chart-only
+    // fields; this is the "sees it all but can't touch it" tier. Add further emails
+    // to this list as needed.
+    function isReadOnly() {
+      return request.auth != null
+        && request.auth.token.email != null
+        && request.auth.token.email.lower() in [
           "hayleybevan79@hotmail.com"
         ];
     }
@@ -35,47 +48,53 @@ service cloud.firestore {
     }
 
     match /entries/{entryId} {
-      allow read: if isFamily() || (isViewer() && resource.data.type in ['med', 'temp', 'vitals', 'weight', 'sleep', 'drink']);
+      allow read: if isFamily() || isReadOnly() || (isViewer() && resource.data.type in ['med', 'temp', 'vitals', 'weight', 'sleep', 'drink']);
       allow write: if isFamily();
     }
 
     match /medicines/{medId} {
-      allow read: if isFamily() || isViewer();
+      allow read: if isFamily() || isReadOnly() || isViewer();
       allow write: if isFamily();
     }
 
     match /documents/{docId} {
-      allow read, write: if isFamily();
+      allow read: if isFamily() || isReadOnly();
+      allow write: if isFamily();
 
       match /pages/{pageNo} {
-        allow read, delete: if isFamily();
+        allow read: if isFamily() || isReadOnly();
+        allow delete: if isFamily();
         allow create, update: if isFamily() && pageSizeOk();
       }
     }
 
     match /profile/{profileId} {
-      allow read, write: if isFamily();
+      allow read: if isFamily() || isReadOnly();
+      allow write: if isFamily();
     }
 
     // Chemo Party Plan: one document per calendar day (chemo session, done, mood, one good thing)
     match /days/{dayId} {
-      allow read: if isFamily() || isViewer();
+      allow read: if isFamily() || isReadOnly() || isViewer();
       allow write: if isFamily();
     }
 
     // Cheer board: short notes between the two of them
     match /cheers/{cheerId} {
-      allow read, write: if isFamily();
+      allow read: if isFamily() || isReadOnly();
+      allow write: if isFamily();
     }
 
     // Exercise: one document per day (steps, which daily goals were done)
     match /exercise/{dayId} {
-      allow read, write: if isFamily();
+      allow read: if isFamily() || isReadOnly();
+      allow write: if isFamily();
     }
 
     // Saved meals: quick buttons for logging food, with what goes with each one
     match /meals/{mealId} {
-      allow read, write: if isFamily();
+      allow read: if isFamily() || isReadOnly();
+      allow write: if isFamily();
     }
 
     match /{document=**} {

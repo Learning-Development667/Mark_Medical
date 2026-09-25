@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '34';
+const APP_VERSION = '35';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -351,7 +351,8 @@ const state = {
   chemoMonth: todayStr().slice(0, 7),
   demo: false,
   demoPages: {},
-  viewer: false
+  viewer: false,
+  readOnly: false
 };
 
 /* ------------------------------------------------------------------ */
@@ -367,6 +368,11 @@ function nameFor(email) {
 function isViewerEmail(email) {
   const key = (email || '').toLowerCase();
   return Boolean(USERS[key]) && USERS[key].role === 'viewer';
+}
+
+function isReadOnlyEmail(email) {
+  const key = (email || '').toLowerCase();
+  return Boolean(USERS[key]) && USERS[key].role === 'readonly';
 }
 
 function isAllowed(email) {
@@ -411,6 +417,7 @@ onAuthStateChanged(auth, async (user) => {
     state.name = nameFor(user.email);
     state.demo = false;
     state.viewer = isViewerEmail(user.email);
+    state.readOnly = isReadOnlyEmail(user.email);
     $('signin').hidden = true;
     $('app').hidden = false;
     requestAnimationFrame(moveTabIndicator);
@@ -418,15 +425,19 @@ onAuthStateChanged(auth, async (user) => {
     $('more-user').textContent = `${state.name} (${user.email})`;
     $('guest-pill').hidden = true;
     $('viewer-pill').hidden = !state.viewer;
+    $('readonly-pill').hidden = !state.readOnly;
     $('signin-password').value = '';
     setViewerMode(state.viewer);
+    setReadOnlyMode(state.readOnly);
     if (!state.viewer) showTab('today'); // always a known landing tab, even right after a viewer session on the same device
     await startData();
   } else if (!state.demo) {
     stopData();
     state.user = null;
     state.viewer = false;
+    state.readOnly = false;
     setViewerMode(false);
+    setReadOnlyMode(false);
     $('app').hidden = true;
     $('signin').hidden = false;
   }
@@ -442,13 +453,23 @@ function setViewerMode(on) {
   if (on) showTab('meds');
 }
 
+/* Read-only mode: sees every tab and every report exactly like a family member,
+   but every add/edit/delete control anywhere in the app is hidden (body.is-readonly
+   in styles.css). Unlike viewer mode, nothing is hidden or narrowed, and it lands
+   on Today like a normal sign-in. */
+function setReadOnlyMode(on) {
+  document.body.classList.toggle('is-readonly', on);
+}
+
 /* Guest preview: no Firebase account, no Firestore access, ever. Everything
    this shows is made-up (see buildDemoFixture); nothing typed here is saved. */
 function enterPreview() {
   state.demo = true;
   state.name = 'Guest';
   state.viewer = false;
+  state.readOnly = false;
   setViewerMode(false);
+  setReadOnlyMode(false);
   $('signin').hidden = true;
   $('app').hidden = false;
   requestAnimationFrame(moveTabIndicator);
@@ -485,7 +506,7 @@ async function startData() {
   watchDay();
   watchDays();
   if (state.viewer) return; // Meds, Chemo (via watchDays above) and Trends only, nothing else, no writes
-  await seedMedicinesIfEmpty();
+  if (!state.readOnly) await seedMedicinesIfEmpty(); // a write; read-only sees whatever is already there
   watchDocuments();
   watchProfile();
   watchCheers();
@@ -973,7 +994,7 @@ function renderEntry(e) {
       h('div', { class: 'entry-title' }, ...entryTitle(e)),
       h('div', { class: 'entry-sub', text: entrySub(e) })
     ),
-    h('button', { class: 'entry-menu', type: 'button', 'aria-label': 'Entry options', onclick: () => entryOptions(e) }, '⋯')
+    state.readOnly ? null : h('button', { class: 'entry-menu', type: 'button', 'aria-label': 'Entry options', onclick: () => entryOptions(e) }, '⋯')
   );
 }
 
@@ -2381,13 +2402,14 @@ function renderCheckins() {
     const row = $('checkin-' + slot), sub = $('checkin-' + slot + '-sub');
     const c = findCheckin(day, slot);
     row.classList.remove('is-due', 'is-done');
+    row.disabled = state.readOnly;
     if (c) {
       row.classList.add('is-done');
-      sub.replaceChildren(h('span', { class: 'checkin-done' }, icon('check'), 'Done ' + fmtTime(entryDate(c))), ' · tap to change');
-    } else if (isToday && dueSlot() === slot) { row.classList.add('is-due'); sub.textContent = 'Due now, about a minute'; }
-    else if (isToday && slot === 'morning') sub.textContent = 'Missed this morning, tap to fill in';
+      sub.replaceChildren(h('span', { class: 'checkin-done' }, icon('check'), 'Done ' + fmtTime(entryDate(c))), state.readOnly ? '' : ' · tap to change');
+    } else if (isToday && dueSlot() === slot) { row.classList.add('is-due'); sub.textContent = state.readOnly ? 'Due now' : 'Due now, about a minute'; }
+    else if (isToday && slot === 'morning') sub.textContent = state.readOnly ? 'Missed this morning' : 'Missed this morning, tap to fill in';
     else if (isToday) sub.textContent = 'Later today';
-    else sub.textContent = 'Not filled in, tap to add';
+    else sub.textContent = state.readOnly ? 'Not filled in' : 'Not filled in, tap to add';
   });
 }
 $('checkin-morning').addEventListener('click', () => openCheckin('morning', state.selectedDay));
@@ -2626,7 +2648,7 @@ function medCard(m, today) {
   if (todays.length) {
     card.append(h('div', { class: 'med-times' },
       h('span', { class: 'med-times-label', text: 'Today' }),
-      ...todays.map((e) => state.viewer
+      ...todays.map((e) => (state.viewer || state.readOnly)
         ? h('span', { class: 'med-time med-time-view', text: fmtTime(entryDate(e)) + ' · ' + (e.addedBy || '') })
         : h('button', { class: 'med-time', type: 'button', 'aria-label': `Dose at ${fmtTime(entryDate(e))}, tap for options`, onclick: () => entryOptions(e) },
           fmtTime(entryDate(e)) + ' · ' + (e.addedBy || '')))
@@ -3376,6 +3398,7 @@ async function openDocument(id) {
   $('doc-title').textContent = d.title;
   $('doc-meta').textContent = `${fmtDayNum(d.docDate || '')} · added by ${d.addedBy || ''}`;
   $('doc-explanation').value = d.explanation || '';
+  $('doc-explanation').readOnly = state.readOnly;
   const pagesEl = $('doc-pages'), textEl = $('doc-text');
   pagesEl.replaceChildren();
   textEl.hidden = true;
@@ -3565,6 +3588,18 @@ function renderCalendar() {
 /* One sheet per calendar day: chemo session, session done, mood, one good thing */
 function openDaySheet(key) {
   const info = state.days[key] || {};
+
+  if (state.readOnly) {
+    const chemoStatus = info.chemo ? (info.chemoDone ? 'Chemo session, done' : 'Chemo session planned') : 'No chemo session this day';
+    const moodInfo = info.mood ? 'Mood that day: ' + MOODS[info.mood - 1].label.toLowerCase() + (info.good ? '. ' + info.good : '') : '';
+    openSheet(fmtDayLong(key), h('div', null,
+      h('p', { text: chemoStatus }),
+      moodInfo ? h('p', { class: 'hint', text: moodInfo }) : null,
+      h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Close')
+    ));
+    return;
+  }
+
   const cbChemo = h('input', { type: 'checkbox' });
   cbChemo.checked = !!info.chemo;
   const cbDone = h('input', { type: 'checkbox' });
@@ -3644,7 +3679,7 @@ function cheerRow(c) {
         h('div', { class: 'cheer-text', text: c.text }),
         h('div', { class: 'cheer-meta', text: (c.addedBy || '') + ' · ' + when })
       ),
-      c.addedBy === state.name ? h('button', { class: 'cheer-del', type: 'button', 'aria-label': 'Remove note', onclick: async () => {
+      (c.addedBy === state.name && !state.readOnly) ? h('button', { class: 'cheer-del', type: 'button', 'aria-label': 'Remove note', onclick: async () => {
         if (await confirmSheet('Remove note', 'Take this note off the board?', 'Remove', true)) deleteDoc(doc(db, 'cheers', c.id));
       } }, '×') : null
     );
@@ -3718,7 +3753,7 @@ function renderExercise() {
 
   const g = goals();
   const done = rec.done || {};
-  $('ex-goals').replaceChildren(...GOAL_ROWS.map((row) => h('button', { class: 'goal' + (done[row.key] ? ' is-done' : ''), type: 'button', 'aria-pressed': done[row.key] ? 'true' : 'false', onclick: () => toggleGoal(day, row.key) },
+  $('ex-goals').replaceChildren(...GOAL_ROWS.map((row) => h('button', { class: 'goal' + (done[row.key] ? ' is-done' : ''), type: 'button', 'aria-pressed': done[row.key] ? 'true' : 'false', disabled: state.readOnly, onclick: () => toggleGoal(day, row.key) },
     h('span', { class: 'goal-box' }, done[row.key] ? icon('check') : null),
     h('span', { class: 'goal-label', text: row.label }),
     h('span', { class: 'goal-target', text: row.fmt(g[row.goal]) })
