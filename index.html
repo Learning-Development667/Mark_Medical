@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=32">
+  <link rel="stylesheet" href="styles.css?v=33">
 </head>
 <body>
 
@@ -157,6 +157,14 @@
         <h2 class="section-title">When needed</h2>
         <div id="meds-prn" class="cards"></div>
         <button id="meds-manage" class="btn btn-secondary btn-block" type="button">Manage medicines</button>
+
+        <div id="meds-docs-section">
+          <h2 class="section-title">Exemption certificate</h2>
+          <p class="hint">Your NHS prescription exemption certificate, ready to show at the pharmacy.</p>
+          <button id="meds-doc-add" class="btn btn-secondary btn-block" type="button">Add exemption certificate</button>
+          <ul id="meds-docs" class="doclist"></ul>
+          <p id="meds-docs-empty" class="empty" data-art="doc" hidden>Not added yet. Add it here so it is always to hand at the pharmacy counter.</p>
+        </div>
       </section>
 
       <!-- VITALS -->
@@ -429,6 +437,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=32"></script>
+  <script type="module" src="scripts.js?v=33"></script>
 </body>
 </html>
