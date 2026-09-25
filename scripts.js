@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '32';
+const APP_VERSION = '33';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -2250,7 +2250,7 @@ function buildNotesReport(entries, from, today) {
     days.push({ day, mood, good: info.good || '', readings, prn, notes });
   }
 
-  const docs = state.documents.filter((d) => d.docDate && d.docDate >= from && d.docDate <= today)
+  const docs = state.documents.filter((d) => d.category !== 'exemption' && d.docDate && d.docDate >= from && d.docDate <= today)
     .sort((a, b) => (a.docDate || '').localeCompare(b.docDate || ''));
 
   const lines = [NOTES_PROMPT, '', `Care Log notes, ${fmtDayNum(from)} to ${fmtDayNum(today)}`, '', 'Worth mentioning from the readings:'];
@@ -3067,8 +3067,12 @@ $('doc-edit').addEventListener('click', () => {
   if (!d) return;
   const title = h('input', { type: 'text', value: d.title || '', required: true });
   const date = h('input', { type: 'date', value: d.docDate || todayStr() });
-  const category = h('select', null, h('option', { value: 'general', text: 'General' }), h('option', { value: 'chemo', text: 'Chemo plan (also shown on the Chemo tab)' }));
-  category.value = d.category === 'chemo' ? 'chemo' : 'general';
+  const category = h('select', null,
+    h('option', { value: 'general', text: 'General' }),
+    h('option', { value: 'chemo', text: 'Chemo plan (also shown on the Chemo tab)' }),
+    h('option', { value: 'exemption', text: 'Exemption certificate (also shown on the Meds tab)' })
+  );
+  category.value = d.category === 'chemo' ? 'chemo' : d.category === 'exemption' ? 'exemption' : 'general';
   const body = h('div', null,
     field('Title', title), field('Date on the document', date), field('Category', category),
     h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
@@ -3101,11 +3105,11 @@ function docItem(d, i) {
 }
 
 function docItemEl(d) {
-  return h('button', { class: 'docitem', type: 'button', onclick: () => { if ($('view-docs').hidden) openDocs(d.category === 'chemo' ? 'chemo' : 'more'); openDocument(d.id); } },
+  return h('button', { class: 'docitem', type: 'button', onclick: () => { if ($('view-docs').hidden) openDocs(d.category === 'chemo' ? 'chemo' : d.category === 'exemption' ? 'meds' : 'more'); openDocument(d.id); } },
     icon(d.kind === 'text' ? 'doc' : 'image', 'docitem-icon'),
     h('div', { class: 'docitem-main' },
       h('div', { class: 'docitem-title', text: d.title }),
-      h('div', { class: 'docitem-sub', text: [fmtDayNum(d.docDate || ''), d.category === 'chemo' ? 'Chemo plan' : null, d.kind === 'text' ? 'Text' : (d.pageCount === 1 ? '1 page' : d.pageCount + ' pages'), d.explanation ? 'Explained' : 'No explanation yet'].filter(Boolean).join(' \u00B7 ') })
+      h('div', { class: 'docitem-sub', text: [fmtDayNum(d.docDate || ''), d.category === 'chemo' ? 'Chemo plan' : d.category === 'exemption' ? 'Exemption certificate' : null, d.kind === 'text' ? 'Text' : (d.pageCount === 1 ? '1 page' : d.pageCount + ' pages'), d.explanation ? 'Explained' : 'No explanation yet'].filter(Boolean).join(' \u00B7 ') })
     ),
     h('span', { class: 'pill ' + (d.explanation ? 'pill-green' : 'pill-amber'), 'aria-label': d.explanation ? 'Explained' : 'No explanation yet' }, d.explanation ? icon('check') : '?')
   );
@@ -3117,10 +3121,17 @@ function renderChemoDocs() {
   $('chemo-docs-empty').hidden = docs.length > 0;
 }
 
+function renderMedsDocs() {
+  const docs = state.documents.filter((d) => d.category === 'exemption');
+  $('meds-docs').replaceChildren(...docs.map((d, i) => h('li', null, docItem(d, i))));
+  $('meds-docs-empty').hidden = docs.length > 0;
+}
+
 function renderDocsList() {
   const list = $('docs-list');
   list.replaceChildren(...state.documents.map((d, i) => h('li', null, docItem(d, i))));
   renderChemoDocs();
+  renderMedsDocs();
   $('docs-empty').hidden = state.documents.length > 0;
   if (state.currentDoc) {
     const d = state.documents.find((x) => x.id === state.currentDoc.id);
@@ -3129,6 +3140,7 @@ function renderDocsList() {
 }
 
 $('doc-add').addEventListener('click', () => openAddDocument('general'));
+$('meds-doc-add').addEventListener('click', () => openAddDocument('exemption'));
 
 /* One-screen add: choose photos or a PDF, give a title and date, paste Claude's
    summary (smart-filling title, date and explanation when it is in the Care Log
@@ -3145,7 +3157,7 @@ function openAddDocument(category) {
   const pageCountLabel = h('p', { class: 'muted mono' });
   pageCountLabel.hidden = true;
 
-  const title = h('input', { type: 'text', placeholder: 'e.g. Oncology letter', required: true });
+  const title = h('input', { type: 'text', placeholder: 'e.g. Oncology letter', required: true, value: category === 'exemption' ? 'NHS Medical Exemption Certificate' : '' });
   const date = h('input', { type: 'date', value: todayStr() });
 
   const explanation = h('textarea', { rows: '8', placeholder: 'Paste Claude’s explanation here, or use Paste summary above' });
@@ -3198,7 +3210,7 @@ function openAddDocument(category) {
     setSaveProgress('Saving', 0.6);
     try {
       await saveDocumentBatch({
-        category: category === 'chemo' ? 'chemo' : 'general',
+        category: category === 'chemo' ? 'chemo' : category === 'exemption' ? 'exemption' : 'general',
         title: title.value.trim(),
         docDate: date.value || todayStr(),
         explanation: explanation.value.trim(),
@@ -3225,7 +3237,7 @@ function openAddDocument(category) {
     h('p', { class: 'hint', text: NOT_MEDICAL_ADVICE }),
     save, saveProgress, cancel
   );
-  openSheet(category === 'chemo' ? 'Add the chemo plan' : 'Add document', body);
+  openSheet(category === 'chemo' ? 'Add the chemo plan' : category === 'exemption' ? 'Add exemption certificate' : 'Add document', body);
 }
 
 async function processFiles(files, onProgress) {

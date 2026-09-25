@@ -400,7 +400,8 @@ body.is-viewer #vitals-log,
 body.is-viewer #meds-manage,
 body.is-viewer .med-actions,
 body.is-viewer #chemo-cheer-section,
-body.is-viewer #chemo-docs-section { display: none; }
+body.is-viewer #chemo-docs-section,
+body.is-viewer #meds-docs-section { display: none; }
 body.is-viewer .cal-cell { pointer-events: none; }
 
 /* ---------- Tab bar ---------- */
