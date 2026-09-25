@@ -198,10 +198,10 @@ code { font-family: var(--font-mono); font-size: 0.95em; }
 /* Section headings frame the content rather than compete with it: small, spaced, muted */
 .section-title {
   font-family: var(--font-head);
-  font-size: 18px;
-  letter-spacing: 0.14em;
+  font-size: 21px;
+  letter-spacing: 0.13em;
   text-transform: uppercase;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   margin: var(--s-6) 0 var(--s-2);
   line-height: 1;
 }
@@ -625,6 +625,9 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 }
 .card + .card { margin-top: 0; }
 .chart-card { margin-top: 14px; padding: var(--s-5) var(--s-4) var(--s-4); }
+/* .card + .card zeroes the gap between stacked cards generally; charts want a visible one, so
+   this needs to match its specificity and come after it to win */
+.chart-card + .chart-card { margin-top: 20px; }
 .chart-card .section-title { margin: 0 0 var(--s-3); }
 .chart-wrap { position: relative; height: 240px; }
 .legend-note { color: var(--text-secondary); font-size: 15px; margin: var(--s-3) 0 0; }
