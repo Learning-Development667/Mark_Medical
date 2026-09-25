@@ -10,6 +10,6 @@ window.CARE_LOG_CONFIG = {
   users: {
     "markbrown667@gmail.com": "Mark",
     "someone@example.com": "Shelley",
-    "someone@example.com": { name: "Hayley", role: "viewer" }
+    "someone@example.com": { name: "Hayley", role: "readonly" }
   }
 };

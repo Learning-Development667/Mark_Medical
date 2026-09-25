@@ -404,6 +404,28 @@ body.is-viewer #chemo-docs-section,
 body.is-viewer #meds-docs-section { display: none; }
 body.is-viewer .cal-cell { pointer-events: none; }
 
+/* Full read-only relatives: every tab and report stays visible and reachable,
+   only the controls that create, edit or delete anything are hidden. Rows that
+   carry live status (check-ins, chemo calendar days) stay tappable or visible
+   as plain information rather than being removed. */
+body.is-readonly .qa,
+body.is-readonly #pain-now,
+body.is-readonly #meds-manage,
+body.is-readonly .med-actions,
+body.is-readonly #meds-doc-add,
+body.is-readonly #vitals-log,
+body.is-readonly .cheer-add,
+body.is-readonly #chemo-doc-add,
+body.is-readonly #ex-steps-edit,
+body.is-readonly #ex-goals-edit,
+body.is-readonly #doc-add,
+body.is-readonly #doc-edit,
+body.is-readonly #doc-paste-summary,
+body.is-readonly #doc-save-explanation,
+body.is-readonly #doc-delete,
+body.is-readonly #more-meals,
+body.is-readonly #calls-edit { display: none; }
+
 /* ---------- Tab bar ---------- */
 .tabs {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
