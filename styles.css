@@ -751,7 +751,10 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 .tag.is-watch::before { background: var(--warm); }
 .diary-tags { color: var(--text-secondary); font-size: 15px; margin: 0 0 var(--s-2); font-family: var(--font-mono); letter-spacing: 0.01em; }
 .unmatched { color: var(--text-muted); font-size: 14px; font-style: italic; margin-top: 4px; }
-.nudge { color: var(--warm-dark); font-weight: 500; margin-top: var(--s-3); }
+.nudge { margin-top: var(--s-3); padding: var(--s-3) 14px; border-radius: var(--r-md); background: var(--warm-light); }
+.nudge p { margin: 0 0 var(--s-2); }
+.nudge p:first-child { color: var(--warm-dark); font-weight: 600; }
+.nudge .btn { margin-top: var(--s-1); }
 .food-overview { margin: var(--s-3) 0 var(--s-2); }
 .nutri-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
 .nutri-cell { display: flex; flex-direction: column; gap: 2px; padding: var(--s-2) 6px; min-width: 0; }
