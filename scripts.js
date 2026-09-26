@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '40';
+const APP_VERSION = '41';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -1452,18 +1452,45 @@ function buildPdfBlob(title, subtitle, blocks) {
   };
   write(title, 22, 'bold', PDF_TEAL, 2);
   write(subtitle, 11, 'normal', 100, 14);
-  /* Two-column table: left column wraps, right column is short tags; a light rule under each row */
+  /* Nutrition-group colours as PDF fill RGB (jsPDF wants 0-255 triples, not
+     hex or CSS vars); the same groups and hues as the on-screen tag chips. */
+  const GROUP_RGB = { veg: [46, 125, 79], protein: [156, 79, 156], carb: [192, 138, 21], dairy: [90, 102, 108], watch: [154, 78, 34] };
+  /* Two-column table: left column wraps, right column is either plain text or
+     an array of { label, group } tags, each drawn in its own colour and
+     wrapped word by word so a long tag list still breaks onto new lines. */
   const table = (b) => {
     const widths = b.widths || [0.64, 0.36];
     const gap = 10, size = 10.5, lh = size * 1.35, pad = 4;
     const colW = widths.map((w) => maxW * w - gap / 2);
     const xs = [M, M + maxW * widths[0] + gap / 2];
+    const wrapTags = (tags, width) => {
+      const lines = []; let line = [], lineW = 0;
+      tags.forEach((t, i) => {
+        const text = t.label + (i < tags.length - 1 ? ', ' : '');
+        const w = pdf.getTextWidth(text);
+        if (lineW + w > width && line.length) { lines.push(line); line = []; lineW = 0; }
+        line.push({ text, rgb: GROUP_RGB[t.group] || [0, 0, 0] });
+        lineW += w;
+      });
+      if (line.length) lines.push(line);
+      return lines;
+    };
     const row = (cells, bold, colour) => {
-      pdf.setFont('helvetica', bold ? 'bold' : 'normal'); pdf.setFontSize(size); pdf.setTextColor(colour);
-      const lines = cells.map((c, i) => pdf.splitTextToSize(String(c || ''), colW[i]));
-      const rh = Math.max(...lines.map((l) => l.length), 1) * lh + pad * 2;
-      if (y + rh > H - 48) { footer(); pdf.addPage(); y = M; pdf.setFont('helvetica', bold ? 'bold' : 'normal'); pdf.setFontSize(size); pdf.setTextColor(colour); }
-      lines.forEach((l, i) => l.forEach((ln, k) => pdf.text(ln, xs[i], y + pad + size + k * lh)));
+      pdf.setFont('helvetica', bold ? 'bold' : 'normal'); pdf.setFontSize(size);
+      const cellData = cells.map((c, i) => Array.isArray(c) ? { tags: wrapTags(c, colW[i]) } : { plain: pdf.splitTextToSize(String(c || ''), colW[i]) });
+      const rh = Math.max(...cellData.map((c) => (c.tags || c.plain).length), 1) * lh + pad * 2;
+      if (y + rh > H - 48) { footer(); pdf.addPage(); y = M; pdf.setFont('helvetica', bold ? 'bold' : 'normal'); pdf.setFontSize(size); }
+      cellData.forEach((c, i) => {
+        if (c.tags) {
+          c.tags.forEach((line, k) => {
+            let x = xs[i];
+            line.forEach((run) => { pdf.setTextColor(...run.rgb); pdf.text(run.text, x, y + pad + size + k * lh); x += pdf.getTextWidth(run.text); });
+          });
+        } else {
+          pdf.setTextColor(colour);
+          c.plain.forEach((ln, k) => pdf.text(ln, xs[i], y + pad + size + k * lh));
+        }
+      });
       y += rh;
       pdf.setDrawColor(215); pdf.setLineWidth(0.5); pdf.line(M, y, M + maxW, y);
     };
@@ -1471,11 +1498,52 @@ function buildPdfBlob(title, subtitle, blocks) {
     b.rows.forEach((r) => row(r, false, 0));
     y += 6;
   };
+  /* A day's nutrition-group mix as a solid pie (a white circle punched over
+     the middle gives the same donut look as the on-screen chart), with a
+     coloured-swatch legend to its right. */
+  const wedge = (cx, cy, r, fromDeg, toDeg) => {
+    const steps = Math.max(1, Math.ceil((toDeg - fromDeg) / 8));
+    const pt = (deg) => { const rad = deg * Math.PI / 180; return [cx + r * Math.sin(rad), cy - r * Math.cos(rad)]; };
+    for (let i = 0; i < steps; i++) {
+      const a0 = fromDeg + (toDeg - fromDeg) * i / steps, a1 = fromDeg + (toDeg - fromDeg) * (i + 1) / steps;
+      const [x0, y0] = pt(a0), [x1, y1] = pt(a1);
+      pdf.triangle(cx, cy, x0, y0, x1, y1, 'F');
+    }
+  };
+  const donut = (b) => {
+    const r = 30, rowH = r * 2 + 10;
+    if (y + rowH > H - 48) { footer(); pdf.addPage(); y = M; }
+    const cx = M + r, cy = y + r;
+    const total = NUTRI_GROUP_ORDER.reduce((s, g) => s + (b.groups[g] || 0), 0);
+    let at = 0;
+    NUTRI_GROUP_ORDER.forEach((g) => {
+      if (!b.groups[g]) return;
+      const from = at, to = at + (b.groups[g] / total) * 360;
+      pdf.setFillColor(...GROUP_RGB[g]);
+      wedge(cx, cy, r, from, to);
+      at = to;
+    });
+    pdf.setFillColor(255, 255, 255);
+    pdf.circle(cx, cy, r * 0.42, 'F');
+    let ly = cy - r + 8;
+    const lx = cx + r + 18;
+    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(10.5);
+    NUTRI_GROUP_ORDER.forEach((g) => {
+      if (!b.groups[g]) return;
+      pdf.setFillColor(...GROUP_RGB[g]);
+      pdf.rect(lx, ly - 8, 9, 9, 'F');
+      pdf.setTextColor(0);
+      pdf.text(`${NUTRI_GROUP_LABEL[g]} (${b.groups[g]})`, lx + 14, ly);
+      ly += 16;
+    });
+    y = Math.max(cy + r, ly) + 10;
+  };
   blocks.forEach((b) => {
     if (b.kind === 'heading') { y += 8; write(b.text, 14, 'bold', PDF_TEAL, 4); }
     else if (b.kind === 'sub') { y += 4; write(b.text, 12, 'bold', 0, 2); }
     else if (b.kind === 'muted') write(b.text, 10.5, 'normal', 110, 3);
     else if (b.kind === 'table') table(b);
+    else if (b.kind === 'donut') donut(b);
     else write(b.text, 11, 'normal', 0, 4);
   });
   footer();
@@ -1974,6 +2042,52 @@ function matchFoodText(index, text) {
 /* ---- Tags: UK label thresholds per 100 g, plus what kind of food it is ---- */
 const FOOD_TAG_ORDER = ['Protein', 'Fibre', 'Wholegrain', 'Fruit and veg', 'Dairy', 'Starchy carbs', 'Good fats', 'High sugar', 'High fat', 'High sat fat'];
 
+/* Colour groups for the Food diary's donut chart and tag chips. Only three tags
+   get their own hue (Fruit and veg, and the "Protein"/"Carbs" pairings below);
+   any more than that stops being tellable apart at a glance (checked with the
+   data-viz palette validator, all-pairs, both colour schemes). Dairy stays the
+   plain neutral chip it always was; "watch" reuses the app's existing warm
+   accent, since that is a status signal, not a new identity colour. */
+const NUTRI_GROUP = {
+  'Protein': 'protein', 'Good fats': 'protein',
+  'Fibre': 'carb', 'Wholegrain': 'carb', 'Starchy carbs': 'carb',
+  'Fruit and veg': 'veg',
+  'Dairy': 'dairy',
+  'High sugar': 'watch', 'High fat': 'watch', 'High sat fat': 'watch'
+};
+const NUTRI_GROUP_ORDER = ['veg', 'protein', 'carb', 'dairy', 'watch'];
+const NUTRI_GROUP_LABEL = { veg: 'Fruit and veg', protein: 'Protein and good fats', carb: 'Carbs and fibre', dairy: 'Dairy', watch: 'Worth a look' };
+
+/* Per day: how many tagged foods fall in each colour group (a food with several
+   tags in the same group, e.g. Fibre and Wholegrain, only counts once there,
+   same as the on-screen chip row it matches) */
+function nutriGroupCounts(dayNutris) {
+  const counts = { veg: 0, protein: 0, carb: 0, dairy: 0, watch: 0 };
+  dayNutris.filter(Boolean).forEach((n) => {
+    const groups = new Set(n.tags.map((t) => NUTRI_GROUP[t]));
+    groups.forEach((g) => { counts[g]++; });
+  });
+  return counts;
+}
+
+/* The conic-gradient stops for the donut chart, in NUTRI_GROUP_ORDER, skipping
+   empty groups; var(--nutri-*) so it stays on the design tokens like everything
+   else, computed inline only because the split itself is real per-day data. */
+function donutGradient(counts) {
+  const total = NUTRI_GROUP_ORDER.reduce((s, g) => s + counts[g], 0);
+  if (!total) return null;
+  const colorVar = { veg: '--nutri-veg', protein: '--nutri-protein', carb: '--nutri-carb', dairy: '--text-muted', watch: '--warm' };
+  let at = 0;
+  const stops = [];
+  NUTRI_GROUP_ORDER.forEach((g) => {
+    if (!counts[g]) return;
+    const from = at, to = at + (counts[g] / total) * 100;
+    stops.push(`var(${colorVar[g]}) ${from}% ${to}%`);
+    at = to;
+  });
+  return `conic-gradient(${stops.join(', ')})`;
+}
+
 function foodTags(f) {
   const tags = [];
   const g = f.g || '';
@@ -2064,18 +2178,27 @@ async function renderFoodDiary() {
       const nutri = foods.map((e) => (index ? entryNutrition(index, e) : null));
       const counts = tagCounts(nutri.filter(Boolean));
       const tagLine = FOOD_TAG_ORDER.filter((t) => counts[t]).map((t) => t + ' ' + counts[t]).join(' · ');
+      const groups = nutriGroupCounts(nutri);
+      const gradient = donutGradient(groups);
       dayCount++;
       Object.keys(counts).forEach((t) => { daysWith[t] = (daysWith[t] || 0) + 1; });
       sections.push(h('section', { class: 'diary-day' },
         h('h3', { class: 'diary-title' }, fmtDayLong(day), h('small', { text: day === today ? 'Today' : fmtDayNum(day) })),
         h('p', { class: 'diary-sum', text: sum }),
+        gradient ? h('div', { class: 'diary-donut-row' },
+          h('div', { class: 'diary-donut', style: 'background: ' + gradient + ';' }),
+          h('div', { class: 'diary-legend' }, ...NUTRI_GROUP_ORDER.filter((g) => groups[g]).map((g) =>
+            h('div', { class: 'row' }, h('span', { class: 'sw is-' + g }), NUTRI_GROUP_LABEL[g], h('span', { class: 'n', text: String(groups[g]) }))
+          ))
+        ) : null,
         tagLine ? h('p', { class: 'diary-tags', text: tagLine }) : null,
         foods.length ? h('ul', { class: 'timeline' }, ...foods.map((e, i) => diaryRow(e, nutri[i]))) : null
       ));
       blocks.push({ kind: 'sub', text: `${fmtDayLong(day)} (${fmtDayNum(day)})` }, { kind: 'muted', text: sum + (tagLine ? ' · ' + tagLine : '') });
+      if (gradient) blocks.push({ kind: 'donut', groups });
       if (foods.length) blocks.push({ kind: 'table', head: ['What was eaten', 'Nutrition'], rows: foods.map((e, i) => [
         `${fmtTime(entryDate(e))}  ${e.note || 'Food'}${e.amount ? ', ' + e.amount.toLowerCase() : ''}${e.detail ? ' (' + e.detail + ')' : ''}, by ${e.addedBy || 'unknown'}`,
-        nutri[i] && nutri[i].tags.length ? nutri[i].tags.join(', ') : (nutri[i] && !nutri[i].matches.length ? 'Not in the food table' : '')
+        nutri[i] && nutri[i].tags.length ? nutri[i].tags.map((t) => ({ label: t, group: NUTRI_GROUP[t] })) : (nutri[i] && !nutri[i].matches.length ? 'Not in the food table' : '')
       ]) });
     }
   }
@@ -2098,13 +2221,12 @@ $('food-pdf').addEventListener('click', () => { if (state.foodPdf) savePdf(state
 $('food-preview').addEventListener('click', () => { if (state.foodPdf) previewPdf(state.foodPdf.title, state.foodPdf.subtitle, state.foodPdf.blocks); });
 
 function diaryRow(e, nutri) {
-  const watch = (t) => /^High /.test(t);
   return h('li', { class: 'entry type-food' },
     h('span', { class: 'entry-time', text: fmtTime(entryDate(e)) }),
     h('div', { class: 'entry-main' },
       h('div', { class: 'entry-title', text: e.note || 'Food' }),
       h('div', { class: 'entry-sub', text: [e.amount, e.detail, 'by ' + (e.addedBy || 'unknown')].filter(Boolean).join(' · ') }),
-      nutri && nutri.tags.length ? h('div', { class: 'tags' }, ...nutri.tags.map((t) => h('span', { class: 'tag' + (watch(t) ? ' is-watch' : ''), text: t }))) : null,
+      nutri && nutri.tags.length ? h('div', { class: 'tags' }, ...nutri.tags.map((t) => h('span', { class: 'tag is-' + NUTRI_GROUP[t], text: t }))) : null,
       nutri && !nutri.matches.length ? h('div', { class: 'unmatched', text: 'Not in the food table yet' })
         : nutri && nutri.unmatched.length ? h('div', { class: 'unmatched', text: 'Not recognised: ' + nutri.unmatched.join(', ') }) : null
     ),
