@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '35';
+const APP_VERSION = '36';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -904,6 +904,15 @@ $('day-next').addEventListener('click', () => {
 });
 $('day-label').addEventListener('click', () => { state.selectedDay = todayStr(); refreshDay(); });
 
+/* The Meds tab shares Today's selected day, so a day picked on either one shows
+   its own medicine adherence for that day, not always "right now". */
+$('meds-day-prev').addEventListener('click', () => { state.selectedDay = addDays(state.selectedDay, -1); refreshDay(); });
+$('meds-day-next').addEventListener('click', () => {
+  if (state.selectedDay >= todayStr()) return;
+  state.selectedDay = addDays(state.selectedDay, 1); refreshDay();
+});
+$('meds-day-label').addEventListener('click', () => { state.selectedDay = todayStr(); refreshDay(); });
+
 /* Switching day: a live Firestore listener normally, or a local recompute in guest preview mode. */
 function refreshDay() {
   if (state.demo) {
@@ -917,18 +926,21 @@ function refreshDay() {
 
 function renderDayLabel() {
   const today = todayStr();
-  const lbl = $('day-label');
   let small = fmtDayNum(state.selectedDay);
   if (state.selectedDay === today) small = 'Today';
   else if (state.selectedDay === addDays(today, -1)) small = 'Yesterday';
-  lbl.replaceChildren(fmtDayLong(state.selectedDay), h('small', { text: small }));
-  $('day-next').disabled = state.selectedDay >= today;
-  $('day-next').style.visibility = state.selectedDay >= today ? 'hidden' : 'visible';
+  const isFuture = state.selectedDay >= today;
+  ['day', 'meds-day'].forEach((prefix) => {
+    $(prefix + '-label').replaceChildren(fmtDayLong(state.selectedDay), h('small', { text: small }));
+    $(prefix + '-next').disabled = isFuture;
+    $(prefix + '-next').style.visibility = isFuture ? 'hidden' : 'visible';
+  });
 }
 
 function renderToday() {
   renderTiles();
   renderCheckins();
+  renderMeds();
   const list = $('timeline');
   let fresh = 0;
   list.replaceChildren(...state.dayEntries.map((e) => {
@@ -2589,12 +2601,12 @@ function lastMedEntry(medId) {
 }
 
 function renderMeds() {
-  const today = todayStr();
-  const sched = activeScheduled(today);
+  const day = state.selectedDay;
+  const sched = activeScheduled(day);
   const prn = activePrn();
-  $('meds-scheduled').replaceChildren(...sched.map((m) => medCard(m, today)));
+  $('meds-scheduled').replaceChildren(...sched.map((m) => medCard(m, day)));
   if (!sched.length) $('meds-scheduled').append(h('p', { class: 'empty', 'data-art': 'pill', text: 'No scheduled medicines.' }));
-  $('meds-prn').replaceChildren(...prn.map((m) => medCard(m, today)));
+  $('meds-prn').replaceChildren(...prn.map((m) => medCard(m, day)));
   if (!prn.length) $('meds-prn').append(h('p', { class: 'empty', 'data-art': 'pill', text: 'No when-needed medicines.' }));
 }
 
@@ -2614,8 +2626,9 @@ function prnStatus(m) {
   return { level: 'green', text: 'Can be given now', block: false };
 }
 
-function medCard(m, today) {
-  const count = countMedOnDay(m.id, today);
+function medCard(m, day) {
+  const isToday = day === todayStr();
+  const count = countMedOnDay(m.id, day);
   const last = lastMedEntry(m.id);
   const card = h('div', { class: 'card med' });
   const head = h('div', { class: 'med-head' },
@@ -2633,33 +2646,38 @@ function medCard(m, today) {
     const perDay = m.perDay || 1;
     const dots = h('div', { class: 'dots' });
     for (let i = 0; i < perDay; i++) dots.append(h('span', { class: 'dot' + (i < count ? ' is-done' : '') }));
-    status.append(dots, h('span', { class: 'med-last', text: `${Math.min(count, perDay)} of ${perDay} today` }));
-    if (count >= perDay) { card.classList.add('is-complete'); status.append(h('span', { class: 'pill pill-green', text: 'Done for today' })); }
+    status.append(dots, h('span', { class: 'med-last', text: `${Math.min(count, perDay)} of ${perDay}` + (isToday ? ' today' : '') }));
+    if (count >= perDay) { card.classList.add('is-complete'); status.append(h('span', { class: 'pill pill-green', text: isToday ? 'Done for today' : 'All doses given' })); }
     if (m.courseEnd) status.append(h('span', { class: 'pill pill-teal', text: 'Course ends ' + fmtDayShort(m.courseEnd) }));
   } else {
-    const s = prnStatus(m);
-    status.append(h('span', { class: 'pill pill-' + s.level, text: s.text }));
-    if (m.maxPerDay) status.append(h('span', { class: 'med-last', text: `${count} of ${m.maxPerDay} today` }));
+    if (isToday) {
+      const s = prnStatus(m);
+      status.append(h('span', { class: 'pill pill-' + s.level, text: s.text }));
+    }
+    if (m.maxPerDay) status.append(h('span', { class: 'med-last', text: `${count} of ${m.maxPerDay}` + (isToday ? ' today' : '') }));
   }
   card.append(status);
 
-  /* Every dose given today, as tappable chips (tap one to see or delete it) */
-  const todays = state.recentEntries.filter((e) => e.type === 'med' && e.medId === m.id && e.day === today).sort((a, b) => entryDate(a) - entryDate(b));
-  if (todays.length) {
+  /* Every dose given that day, as tappable chips (tap one to see or delete it) */
+  const dayEntriesSrc = day >= (state.recentFrom || '') ? state.recentEntries : state.dayEntries;
+  const doses = dayEntriesSrc.filter((e) => e.type === 'med' && e.medId === m.id && e.day === day).sort((a, b) => entryDate(a) - entryDate(b));
+  if (doses.length) {
     card.append(h('div', { class: 'med-times' },
-      h('span', { class: 'med-times-label', text: 'Today' }),
-      ...todays.map((e) => (state.viewer || state.readOnly)
+      h('span', { class: 'med-times-label', text: isToday ? 'Today' : fmtDayShort(day) }),
+      ...doses.map((e) => (state.viewer || state.readOnly)
         ? h('span', { class: 'med-time med-time-view', text: fmtTime(entryDate(e)) + ' · ' + (e.addedBy || '') })
         : h('button', { class: 'med-time', type: 'button', 'aria-label': `Dose at ${fmtTime(entryDate(e))}, tap for options`, onclick: () => entryOptions(e) },
           fmtTime(entryDate(e)) + ' · ' + (e.addedBy || '')))
     ));
-  } else if (last) {
+  } else if (isToday && last) {
     status.append(h('span', { class: 'med-last', text: 'Last ' + fmtDayShort(last.day) + ' ' + fmtTime(entryDate(last)) + ' (' + (last.addedBy || '') + ')' }));
+  } else if (!isToday) {
+    status.append(h('span', { class: 'med-last', text: 'Not given this day' }));
   }
 
   card.append(h('div', { class: 'med-actions' },
-    h('button', { class: 'btn btn-primary', type: 'button', onclick: () => logMed(m) }, 'Log now'),
-    h('button', { class: 'btn btn-secondary', type: 'button', onclick: () => logMedAtTime(m) }, 'Other time')
+    isToday ? h('button', { class: 'btn btn-primary', type: 'button', onclick: () => logMed(m) }, 'Log now') : null,
+    h('button', { class: isToday ? 'btn btn-secondary' : 'btn btn-primary', type: 'button', onclick: () => logMedAtTime(m) }, isToday ? 'Other time' : 'Log a dose')
   ));
   return card;
 }
@@ -2677,7 +2695,7 @@ async function logMed(m, at, note) {
 }
 
 function logMedAtTime(m) {
-  const day = h('input', { type: 'date', value: todayStr(), max: todayStr() });
+  const day = h('input', { type: 'date', value: state.selectedDay, max: todayStr() });
   const time = timeInput(todayStr());
   const note = h('input', { type: 'text', placeholder: 'Optional note' });
   const body = h('div', null,
