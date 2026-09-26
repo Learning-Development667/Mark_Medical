@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '39';
+const APP_VERSION = '40';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -1483,8 +1483,30 @@ function buildPdfBlob(title, subtitle, blocks) {
 }
 
 async function savePdf(filename, title, subtitle, blocks) {
+  /* On desktop Chrome/Edge, ask where to save (Desktop and all) straight away,
+     before anything else, so the browser still counts this as a direct
+     response to the tap; not supported on phones (or Safari, or Firefox),
+     which fall through to the share sheet or a plain download below. */
+  let saveHandle = null;
+  if (window.showSaveFilePicker) {
+    try {
+      saveHandle = await window.showSaveFilePicker({ suggestedName: filename, types: [{ description: 'PDF', accept: { 'application/pdf': ['.pdf'] } }] });
+    } catch (e) {
+      if (e && e.name === 'AbortError') return;
+      saveHandle = null;
+    }
+  }
   try { await loadScript(CDN.jspdf); } catch (e) { toast('Saving a PDF needs a connection'); return; }
   const blob = buildPdfBlob(title, subtitle, blocks);
+  if (saveHandle) {
+    try {
+      const writable = await saveHandle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      toast('PDF saved');
+    } catch (e) { console.error(e); toast('Could not save the file'); }
+    return;
+  }
   const file = new File([blob], filename, { type: 'application/pdf' });
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
     try { await navigator.share({ files: [file], title }); return; }
