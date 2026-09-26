@@ -800,7 +800,7 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 
 @media print {
   body { background: #fff; }
-  .topbar, .tabs, .btn, .segmented, .toast, .sheet, .quickadd, .confetti, #toast { display: none !important; }
+  .topbar, .tabs, .btn, .segmented, .toast, .sheet, .quickadd, .confetti, #toast, .entry-menu { display: none !important; }
   .main { padding: 0; }
   .entry, .card { box-shadow: none; border: 1px solid #C8D0D3; break-inside: avoid; background: #fff; }
   .tag { border: 1px solid #C8D0D3; background: #fff; }
