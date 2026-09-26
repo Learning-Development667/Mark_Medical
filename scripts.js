@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '36';
+const APP_VERSION = '37';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -1010,15 +1010,21 @@ function renderEntry(e) {
   );
 }
 
+/* Types openAdd() can pre-fill and update in place, given the original entry */
+const EDITABLE_ENTRY_TYPES = ['food', 'drink', 'weight', 'note'];
+
 function entryOptions(e) {
   const d = entryDate(e);
+  const canEdit = EDITABLE_ENTRY_TYPES.includes(e.type);
   const body = h('div', null,
     h('p', null, h('strong', null, ...entryTitle(e).map((n) => n.cloneNode(true)))),
     h('p', { class: 'muted', text: `${fmtDayLong(e.day)} at ${fmtTime(d)}. ${entrySub(e)}` }),
+    canEdit ? h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => openAdd(e.type, e) }, 'Edit') : null,
     h('button', { class: 'btn btn-danger btn-block', type: 'button', onclick: async () => {
       closeSheet();
       await deleteEntry(e.id);
       toast('Entry deleted');
+      if (!$('view-food').hidden) renderFoodDiary();
     } }, 'Delete this entry'),
     h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Cancel')
   );
@@ -1058,19 +1064,22 @@ function renderTiles() {
 /* Quick add */
 document.querySelectorAll('.qa').forEach((b) => b.addEventListener('click', () => openAdd(b.dataset.add)));
 
-function openAdd(type) {
-  const day = state.selectedDay;
+function openAdd(type, editEntry) {
+  const day = editEntry ? editEntry.day : state.selectedDay;
   const time = timeInput(day);
-  const note = h('input', { type: 'text', placeholder: 'Optional note' });
+  if (editEntry) time.value = fmtTime(entryDate(editEntry));
+  const note = h('input', { type: 'text', placeholder: 'Optional note', value: (editEntry && editEntry.note) || '' });
   const body = h('div', null);
   let getData;
-  let editId = null;
+  let editId = editEntry ? editEntry.id : null;
 
   if (type === 'drink') {
-    const what = h('input', { type: 'text', placeholder: 'What was it?', value: 'Water' });
-    const ml = h('input', { type: 'number', inputmode: 'numeric', min: '0', step: '10', value: '200' });
-    const whatPresets = presets(['Water', 'Tea', 'Coffee', 'Squash', 'Juice', 'Milk', 'Supplement drink'], what, 'Water');
-    const mlPresets = presets(['50', '100', '150', '200', '250', { value: '300', label: '300 cup' }, { value: '568', label: '568 pint' }, { value: '750', label: '750 bottle' }], ml, '200');
+    const whatDefault = (editEntry && editEntry.note) || 'Water';
+    const mlDefault = editEntry ? String(editEntry.value || 0) : '200';
+    const what = h('input', { type: 'text', placeholder: 'What was it?', value: whatDefault });
+    const ml = h('input', { type: 'number', inputmode: 'numeric', min: '0', step: '10', value: mlDefault });
+    const whatPresets = presets(['Water', 'Tea', 'Coffee', 'Squash', 'Juice', 'Milk', 'Supplement drink'], what, whatDefault);
+    const mlPresets = presets(['50', '100', '150', '200', '250', { value: '300', label: '300 cup' }, { value: '568', label: '568 pint' }, { value: '750', label: '750 bottle' }], ml, mlDefault);
     body.append(
       field('Drink', what), whatPresets,
       field('Amount (ml)', ml), mlPresets,
@@ -1088,11 +1097,12 @@ function openAdd(type) {
     const warn = h('div', { class: 'nudge' });
     warn.hidden = true;
     let nudged = false;
-    const what = h('input', { type: 'text', placeholder: 'What was eaten?', required: true, list: 'meal-names', autocomplete: 'off' });
+    const amountDefault = (editEntry && editEntry.amount) || 'About half';
+    const what = h('input', { type: 'text', placeholder: 'What was eaten?', required: true, list: 'meal-names', autocomplete: 'off', value: (editEntry && editEntry.note) || '' });
     const names = h('datalist', { id: 'meal-names' }, ...meals.map((m) => h('option', { value: m.name })));
-    const parts = h('input', { type: 'text', placeholder: 'e.g. peas, mash, gravy' });
-    const amount = h('input', { type: 'hidden', value: 'About half' });
-    const amountPresets = presets(['A few mouthfuls', 'About half', 'Most of it', 'All of it'], amount, 'About half');
+    const parts = h('input', { type: 'text', placeholder: 'e.g. peas, mash, gravy', value: (editEntry && editEntry.detail) || '' });
+    const amount = h('input', { type: 'hidden', value: amountDefault });
+    const amountPresets = presets(['A few mouthfuls', 'About half', 'Most of it', 'All of it'], amount, amountDefault);
     const remember = h('input', { type: 'checkbox' });
     remember.checked = true;
     /* Typing or tapping a saved meal fills in what goes with it; the meal
@@ -1139,7 +1149,7 @@ function openAdd(type) {
 
   if (type === 'weight') {
     const last = state.recentEntries.find((e) => e.type === 'weight');
-    const input = h('input', { type: 'number', step: '0.1', min: '20', max: '250', inputmode: 'decimal', value: last ? Number(last.value).toFixed(1) : '', placeholder: '0.0', required: true });
+    const input = h('input', { type: 'number', step: '0.1', min: '20', max: '250', inputmode: 'decimal', value: editEntry ? Number(editEntry.value).toFixed(1) : (last ? Number(last.value).toFixed(1) : ''), placeholder: '0.0', required: true });
     body.append(
       h('div', { class: 'bigvalue' }, input, h('span', { class: 'unit', text: 'kg' })),
       field('Time', time), field('Note', note)
@@ -1219,6 +1229,7 @@ function openAdd(type) {
 
   if (type === 'note') {
     const text = h('textarea', { rows: '4', placeholder: 'How things are, symptoms, questions for the team' });
+    if (editEntry) text.value = editEntry.note || '';
     body.append(field('Note', text), field('Time', time));
     getData = () => {
       if (!text.value.trim()) return null;
@@ -1295,11 +1306,13 @@ function openAdd(type) {
     if (editId) {
       try { await updateEntry(editId, { ...list[0], at }); toast(titles[type] + ' updated'); }
       catch (e) { console.error(e); toast('Could not save'); }
+      if (!$('view-food').hidden) renderFoodDiary();
       return;
     }
     const ids = [];
     for (const d of list) { d.at = at; ids.push(await addEntry(d)); }
     toast(titles[type] + ' saved', { label: 'Undo', onClick: () => ids.forEach((id) => deleteEntry(id)) });
+    if (!$('view-food').hidden) renderFoodDiary();
   });
   body.append(save, h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Cancel'));
   openSheet(titles[type], body);
@@ -1485,7 +1498,7 @@ async function loadEntriesFrom(from) {
   if (state.demo) return state.recentEntries.filter((e) => e.day >= from);
   try {
     const snap = await getDocs(query(collection(db, 'entries'), where('day', '>=', from)));
-    return snap.docs.map((d) => d.data());
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
   } catch (e) { console.error(e); return null; }
 }
 
@@ -2050,7 +2063,8 @@ function diaryRow(e, nutri) {
       nutri && nutri.tags.length ? h('div', { class: 'tags' }, ...nutri.tags.map((t) => h('span', { class: 'tag' + (watch(t) ? ' is-watch' : ''), text: t }))) : null,
       nutri && !nutri.matches.length ? h('div', { class: 'unmatched', text: 'Not in the food table yet' })
         : nutri && nutri.unmatched.length ? h('div', { class: 'unmatched', text: 'Not recognised: ' + nutri.unmatched.join(', ') }) : null
-    )
+    ),
+    state.readOnly ? null : h('button', { class: 'entry-menu', type: 'button', 'aria-label': 'Entry options', onclick: () => entryOptions(e) }, '⋯')
   );
 }
 
