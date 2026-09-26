@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '38';
+const APP_VERSION = '39';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -1079,7 +1079,7 @@ function openAdd(type, editEntry) {
     const what = h('input', { type: 'text', placeholder: 'What was it?', value: whatDefault });
     const ml = h('input', { type: 'number', inputmode: 'numeric', min: '0', step: '10', value: mlDefault });
     const whatPresets = presets(['Water', 'Tea', 'Coffee', 'Squash', 'Juice', 'Milk', 'Supplement drink'], what, whatDefault);
-    const mlPresets = presets(['50', '100', '150', '200', '250', { value: '300', label: '300 cup' }, { value: '568', label: '568 pint' }, { value: '750', label: '750 bottle' }], ml, mlDefault);
+    const mlPresets = presets(['50', '100', '150', '200', '250', { value: '300', label: '300 cup' }, { value: '568', label: '568 pint' }, { value: '900', label: '900 bottle' }], ml, mlDefault);
     body.append(
       field('Drink', what), whatPresets,
       field('Amount (ml)', ml), mlPresets,
