@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '37';
+const APP_VERSION = '38';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -1430,8 +1430,7 @@ function fmtMl(ml) {
 /* Builds a simple text PDF (title, subtitle, then heading / sub / muted / text
    blocks) and hands it to the share sheet where available, so on the phone it
    can go straight to Files, Mail or AirDrop; otherwise it downloads. */
-async function savePdf(filename, title, subtitle, blocks) {
-  try { await loadScript(CDN.jspdf); } catch (e) { toast('Saving a PDF needs a connection'); return; }
+function buildPdfBlob(title, subtitle, blocks) {
   const { jsPDF } = window.jspdf;
   const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
   const W = pdf.internal.pageSize.getWidth(), H = pdf.internal.pageSize.getHeight();
@@ -1480,7 +1479,12 @@ async function savePdf(filename, title, subtitle, blocks) {
     else write(b.text, 11, 'normal', 0, 4);
   });
   footer();
-  const blob = pdf.output('blob');
+  return pdf.output('blob');
+}
+
+async function savePdf(filename, title, subtitle, blocks) {
+  try { await loadScript(CDN.jspdf); } catch (e) { toast('Saving a PDF needs a connection'); return; }
+  const blob = buildPdfBlob(title, subtitle, blocks);
   const file = new File([blob], filename, { type: 'application/pdf' });
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
     try { await navigator.share({ files: [file], title }); return; }
@@ -1491,6 +1495,23 @@ async function savePdf(filename, title, subtitle, blocks) {
   document.body.append(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
   toast('PDF saved');
+}
+
+/* Opens the PDF in a new tab to look at, without sending or downloading it.
+   The tab is opened straight away, synchronously, before the PDF itself is
+   built (which needs the jsPDF library to load first); filling it in only
+   once that is ready, rather than opening the tab after the fact, is what
+   stops browsers treating this as a blocked pop-up. */
+function previewPdf(title, subtitle, blocks) {
+  const win = window.open('', '_blank');
+  (async () => {
+    try { await loadScript(CDN.jspdf); }
+    catch (e) { toast('Preview needs a connection'); if (win) win.close(); return; }
+    const blob = buildPdfBlob(title, subtitle, blocks);
+    const url = URL.createObjectURL(blob);
+    if (win) win.location = url;
+    else toast('Could not open the preview. Check pop-ups are allowed.');
+  })();
 }
 
 /* Every entry from a day onwards; null if the read failed */
@@ -2052,6 +2073,7 @@ async function renderFoodDiary() {
 }
 
 $('food-pdf').addEventListener('click', () => { if (state.foodPdf) savePdf(state.foodPdf.filename, state.foodPdf.title, state.foodPdf.subtitle, state.foodPdf.blocks); });
+$('food-preview').addEventListener('click', () => { if (state.foodPdf) previewPdf(state.foodPdf.title, state.foodPdf.subtitle, state.foodPdf.blocks); });
 
 function diaryRow(e, nutri) {
   const watch = (t) => /^High /.test(t);
@@ -2109,6 +2131,7 @@ $('notes-copy').addEventListener('click', async () => {
 });
 
 $('notes-pdf').addEventListener('click', () => { if (state.notesPdf) savePdf(state.notesPdf.filename, state.notesPdf.title, state.notesPdf.subtitle, state.notesPdf.blocks); });
+$('notes-preview').addEventListener('click', () => { if (state.notesPdf) previewPdf(state.notesPdf.title, state.notesPdf.subtitle, state.notesPdf.blocks); });
 
 /* The PDF is for people (the clinic, the folder), so it carries the report without the request to Claude */
 function notesPdfBlocks(report) {
