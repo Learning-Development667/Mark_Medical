@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '49';
+const APP_VERSION = '50';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -750,6 +750,8 @@ function watchProfile() {
 function syncSettings() {
   const on = detailedNutritionOn();
   ['settings-nutrition', 'food-nutrition'].forEach((id) => { const box = $(id); if (box.checked !== on) box.checked = on; });
+  const target = $('settings-protein');
+  if (document.activeElement !== target) target.value = proteinTarget() ? String(proteinTarget()) : '';
   /* Today's timeline reads the setting when it draws, so redraw it, and any open report */
   renderToday();
   if (!$('view-food').hidden) renderFoodDiary();
@@ -763,6 +765,13 @@ async function setDetailedNutrition(detailedNutrition, input) {
   catch (e) { console.error(e); toast('Could not save the setting'); input.checked = !detailedNutrition; }
 }
 $('settings-nutrition').addEventListener('change', (ev) => setDetailedNutrition(ev.target.checked, ev.target));
+$('settings-protein').addEventListener('change', async (ev) => {
+  const n = Math.round(parseFloat(ev.target.value));
+  const proteinTarget = n > 0 ? n : null;
+  if (state.demo) { state.profile = { ...state.profile, proteinTarget }; syncSettings(); toast(proteinTarget ? 'Protein target saved' : 'Protein target cleared'); return; }
+  try { await setDoc(doc(db, 'profile', 'main'), { proteinTarget }, { merge: true }); toast(proteinTarget ? 'Protein target saved' : 'Protein target cleared'); }
+  catch (e) { console.error(e); toast('Could not save the target'); }
+});
 $('food-nutrition').addEventListener('change', (ev) => setDetailedNutrition(ev.target.checked, ev.target));
 
 function watchDays() {
@@ -2641,8 +2650,18 @@ function entryMacros(index, entry) {
   return { any: counted > 0, totals, excluded, components };
 }
 
+/* "12 g protein, 24% of energy": the dietitian's per-meal percentage is protein grams times four over the calories */
 function fmtMacroLine(totals) {
-  return `${Math.round(totals.kcal)} kcal · ${Math.round(totals.prot)} g protein · ${Math.round(totals.carb)} g carbs · ${Math.round(totals.fat)} g fat`;
+  const pct = totals.kcal > 0 ? Math.round((totals.prot * 4 / totals.kcal) * 100) : 0;
+  return `${Math.round(totals.kcal)} kcal · ${Math.round(totals.prot)} g protein${pct ? ', ' + pct + '% of energy' : ''} · ${Math.round(totals.carb)} g carbs · ${Math.round(totals.fat)} g fat`;
+}
+
+/* The daily protein target from the dietitian, in grams (More > Settings > Food); 0 when none is set */
+function proteinTarget() { const t = Number(state.profile && state.profile.proteinTarget); return t > 0 ? t : 0; }
+function proteinTargetText(prot) {
+  const t = proteinTarget();
+  if (!t) return '';
+  return prot >= t ? `protein target ${t} g met` : `protein ${Math.round(t - prot)} g under the ${t} g target`;
 }
 
 /* Per day: how many entries carried each tag */
@@ -2704,7 +2723,7 @@ async function renderFoodDiary() {
       /* Estimated totals for the day and each entry, only with the Food setting on */
       const macros = macrosOn ? foods.map((e) => entryMacros(index, e)) : [];
       const dayTotal = macrosOn ? dayMacros(foods) : null;
-      const macroLine = dayTotal ? 'Estimate ' + fmtMacroLine(dayTotal.totals) + (dayTotal.excluded ? ` (${plural(dayTotal.excluded, 'item')} not counted)` : '') : '';
+      const macroLine = dayTotal ? 'Estimate ' + fmtMacroLine(dayTotal.totals) + (proteinTargetText(dayTotal.totals.prot) ? ' · ' + proteinTargetText(dayTotal.totals.prot) : '') + (dayTotal.excluded ? ` (${plural(dayTotal.excluded, 'item')} not counted)` : '') : '';
       const entryMacroText = (i) => (macros[i] && macros[i].any ? 'About ' + fmtMacroLine(macros[i].totals) : '');
       dayCount++;
       Object.keys(counts).forEach((t) => { daysWith[t] = (daysWith[t] || 0) + 1; });
@@ -2991,7 +3010,17 @@ function summaryRows(entries, from, to) {
     const eatingDays = Math.max(1, loggedDays.length - noFood.length);
     const macros = dayMacros(foods);
     const est = macros ? `about ${Math.round(macros.totals.kcal / eatingDays)} kcal and ${Math.round(macros.totals.prot / eatingDays)} g protein a day` : '';
-    if (noFood.length) push('amber', 'Eating', `Nothing eaten logged on ${plural(noFood.length, 'day')} of the ${loggedDays.length} logged (${listDays(noFood)})${est ? '; on the other days ' + est : ''}.`, noFood.length === 1 ? `nothing eaten logged on ${fmtDayShort(noFood[0])}` : null);
+    /* Against the dietitian's daily protein target, day by day, when one is set */
+    const target = proteinTarget();
+    let targetText = '', underDays = 0, targetDays = 0;
+    if (macros && target) {
+      const perDay = loggedDays.filter((d) => byDay[d].some((e) => e.type === 'food')).map((d) => { const m = dayMacros(byDay[d].filter((e) => e.type === 'food')); return m ? m.totals.prot : 0; });
+      targetDays = perDay.length;
+      underDays = perDay.filter((p) => p < target).length;
+      targetText = `; against the ${target} g protein target, ${underDays ? 'under on ' + underDays + ' of ' + plural(targetDays, 'day') : 'met on every one of ' + plural(targetDays, 'day')}`;
+    }
+    if (noFood.length) push('amber', 'Eating', `Nothing eaten logged on ${plural(noFood.length, 'day')} of the ${loggedDays.length} logged (${listDays(noFood)})${est ? '; on the other days ' + est : ''}${targetText}.`, noFood.length === 1 && !underDays ? `nothing eaten logged on ${fmtDayShort(noFood[0])}` : null);
+    else if (target && macros) push(underDays > targetDays / 2 ? 'amber' : 'green', 'Eating', `Eating: something every logged day, ${est}${targetText}.`);
     else fine.push(`eating (something every logged day${est ? ', ' + est : ''})`);
   }
 

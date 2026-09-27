@@ -863,6 +863,7 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 .menu-row .checkin-title { font-size: 21px; }
 .settings-group { margin-top: var(--s-2); }
 .settings-toggle { margin-bottom: 0; }
+.settings-target { margin-top: var(--s-3); }
 .settings-group .hint { margin-top: var(--s-2); }
 
 /* The topbar names the page: "Care Log" then a lighter ": Food diary" */
