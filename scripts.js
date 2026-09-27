@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '45';
+const APP_VERSION = '46';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -758,20 +758,21 @@ function watchProfile() {
 /* ---- Settings (More > Settings): the Food toggle, shared in profile/main ---- */
 function syncSettings() {
   const on = detailedNutritionOn();
-  const box = $('settings-nutrition');
-  if (box.checked !== on) box.checked = on;
+  ['settings-nutrition', 'food-nutrition'].forEach((id) => { const box = $(id); if (box.checked !== on) box.checked = on; });
   /* Today's timeline reads the setting when it draws, so redraw it, and any open report */
   renderToday();
   if (!$('view-food').hidden) renderFoodDiary();
   if (!$('view-notes').hidden) renderNotesReport();
 }
 
-$('settings-nutrition').addEventListener('change', async (ev) => {
-  const detailedNutrition = ev.target.checked;
+/* The same account-wide setting, switchable from Settings and from the top of the Food diary */
+async function setDetailedNutrition(detailedNutrition, input) {
   if (state.demo) { state.profile = { ...state.profile, detailedNutrition }; syncSettings(); toast(detailedNutrition ? 'Estimates on' : 'Estimates off'); return; }
   try { await setDoc(doc(db, 'profile', 'main'), { detailedNutrition }, { merge: true }); toast(detailedNutrition ? 'Estimates on' : 'Estimates off'); }
-  catch (e) { console.error(e); toast('Could not save the setting'); ev.target.checked = !detailedNutrition; }
-});
+  catch (e) { console.error(e); toast('Could not save the setting'); input.checked = !detailedNutrition; }
+}
+$('settings-nutrition').addEventListener('change', (ev) => setDetailedNutrition(ev.target.checked, ev.target));
+$('food-nutrition').addEventListener('change', (ev) => setDetailedNutrition(ev.target.checked, ev.target));
 
 function watchDays() {
   state.unsub.days = onSnapshot(collection(db, 'days'), (snap) => {
@@ -1805,7 +1806,7 @@ function buildPdfBlob(title, subtitle, blocks) {
   const FLAG_RGB = { red: [164, 38, 44], amber: [154, 91, 0], teal: [30, 95, 116], green: [46, 107, 69] };
   const flag = (b) => {
     const size = 11, lh = size * 1.35, x = M + 12, w = maxW - 12;
-    const label = LEVEL_WORD[b.level] + ' · ' + b.topic + ': ';
+    const label = LEVEL_WORD[b.level] + ': ';
     pdf.setFont('helvetica', 'bold'); pdf.setFontSize(size);
     const labelW = pdf.getTextWidth(label);
     pdf.setFont('helvetica', 'normal');
@@ -1821,9 +1822,37 @@ function buildPdfBlob(title, subtitle, blocks) {
     lines.forEach((ln, k) => pdf.text(ln, k === 0 ? x + labelW : x, y + 4 + size + k * lh));
     y += rh;
   };
+  /* A question with a box to tick in the appointment, then who asked it and when */
+  const question = (b) => {
+    const size = 11.5, lh = size * 1.35, x = M + 22;
+    const lines = pdf.splitTextToSize(`${b.n}. ${b.text}`, maxW - 22);
+    const rh = (lines.length + 1) * lh + 6;
+    if (y + rh > H - 48) { footer(); pdf.addPage(); y = M; }
+    pdf.setDrawColor(120); pdf.setLineWidth(0.8); pdf.rect(M + 2, y + 3, 11, 11);
+    pdf.setFont('helvetica', 'bold'); pdf.setFontSize(size); pdf.setTextColor(0);
+    lines.forEach((ln, k) => pdf.text(ln, x, y + size + k * lh));
+    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9.5); pdf.setTextColor(110);
+    pdf.text(`Asked by ${b.who}, ${fmtDayShort(b.day)}`, x, y + size + lines.length * lh);
+    y += rh;
+  };
+  /* A written note: who wrote it (bold), when and in what context, then the note itself */
+  const note = (b) => {
+    const size = 10.5, lh = size * 1.35;
+    const head = `${b.who} · ${b.time}${b.context ? ' · ' + b.context : ''}`;
+    const lines = pdf.splitTextToSize(b.text, maxW - 10);
+    const rh = (lines.length + 1) * lh + 6;
+    if (y + rh > H - 48) { footer(); pdf.addPage(); y = M; }
+    pdf.setFont('helvetica', 'bold'); pdf.setFontSize(size); pdf.setTextColor(...FLAG_RGB.teal);
+    pdf.text(head, M + 10, y + size);
+    pdf.setFont('helvetica', 'normal'); pdf.setTextColor(0);
+    lines.forEach((ln, k) => pdf.text(ln, M + 10, y + size + (k + 1) * lh));
+    y += rh;
+  };
   blocks.forEach((b) => {
     if (b.kind === 'flag') flag(b);
-    else if (b.kind === 'heading') { y += 8; write(b.text, 14, 'bold', PDF_TEAL, 4); }
+    else if (b.kind === 'question') question(b);
+    else if (b.kind === 'note') note(b);
+    else if (b.kind === 'heading') { y += 10; write(b.text, 14, 'bold', PDF_TEAL, 0); pdf.setDrawColor(200); pdf.setLineWidth(0.5); pdf.line(M, y + 1, M + maxW, y + 1); y += 8; }
     else if (b.kind === 'sub') { y += 4; write(b.text, 12, 'bold', 0, 2); }
     else if (b.kind === 'muted') write(b.text, 10.5, 'normal', 110, 3);
     else if (b.kind === 'table') table(b);
@@ -2746,22 +2775,22 @@ $('notes-preview').addEventListener('click', () => { if (state.notesPdf) preview
 /* The PDF is for people (the clinic, the folder), so it carries the report without the request to Claude */
 function notesPdfBlocks(report) {
   const blocks = [{ kind: 'heading', text: 'Questions for the team' }];
-  if (report.questions.length) report.questions.forEach((q, i) => blocks.push({ kind: 'text', text: `${i + 1}. ${q.text}  (${q.who}, ${fmtDayShort(q.day)})` }));
+  if (report.questions.length) report.questions.forEach((q, i) => blocks.push({ kind: 'question', n: i + 1, text: q.text, who: q.who, day: q.day }));
   else blocks.push({ kind: 'muted', text: 'No open questions.' });
   if (report.answered) blocks.push({ kind: 'muted', text: `${plural(report.answered, 'question')} marked answered in this period.` });
-  blocks.push({ kind: 'heading', text: 'At a glance' }, { kind: 'muted', text: report.rangeLabel + '. Simple checks on the readings made by the app, worst reading and how many days, not medical advice. The detail for any one day is in the app.' });
-  if (report.glance.length) report.glance.forEach((g) => blocks.push({ kind: 'flag', level: g.level, topic: g.topic, text: g.text }));
+  blocks.push({ kind: 'heading', text: 'Summary' }, { kind: 'muted', text: report.rangeLabel + '. Simple checks on the readings made by the app, not medical advice. The detail for any one day is in the app.' });
+  if (report.glance.length) report.glance.forEach((g) => blocks.push({ kind: 'flag', level: g.level, text: g.text }));
   else blocks.push({ kind: 'text', text: 'No readings logged in this period.' });
   blocks.push({ kind: 'heading', text: 'Letters and documents' });
   if (report.docs.length) report.docs.forEach((d) => {
     blocks.push({ kind: 'sub', text: `${fmtDayNum(d.docDate)} · ${d.title}${d.category === 'chemo' ? ' (chemo plan)' : ''}` });
-    blocks.push({ kind: 'text', text: excerpt(d.explanation, 400) || 'No explanation saved yet.' });
+    blocks.push({ kind: 'text', text: excerpt(docSummary(d), 400) || 'No explanation saved yet.' });
   });
   else blocks.push({ kind: 'text', text: 'None saved for this period.' });
   blocks.push({ kind: 'heading', text: 'Notes' });
   if (report.days.length) report.days.forEach((d) => {
     blocks.push({ kind: 'sub', text: `${fmtDayLong(d.day)} (${fmtDayNum(d.day)})` });
-    d.notes.forEach((n) => blocks.push({ kind: 'text', text: `${n.time} ${n.who}${n.context ? ' (' + n.context + ')' : ''}: ${n.text}` }));
+    d.notes.forEach((n) => blocks.push({ kind: 'note', who: n.who, time: n.time, context: n.context, text: n.text }));
   });
   else blocks.push({ kind: 'text', text: 'No written notes in this period.' });
   return blocks;
@@ -2780,25 +2809,40 @@ function plural(n, word) { return n + ' ' + word + (n === 1 ? '' : 's'); }
 const LEVEL_WORD = { red: 'Check', amber: 'Mention', teal: 'Context', green: 'Fine' };
 const LEVEL_RANK = { red: 0, amber: 1, teal: 2, green: 3 };
 
-/* The period at a glance: one line per topic with the worst reading and how
-   many days, instead of one line per reading. Thresholds are unchanged from
-   the old flag list (temp 37.5/38.0, heart rate 100/120 or 50 and under, BP
-   140/90 and 160/100 or systolic 90 and under, oxygen 93/90 and under, pain
-   5/7, sickness 6, appetite and energy 3 and under, short nights under 5 h,
+/* The period summarised in a few plain sentences, worst first. Only topics
+   worth checking or mentioning get a line of their own, with a trend where
+   the period is long enough to compare its second half with its first; the
+   topics with nothing of concern share one line, and the when-needed
+   medicines share another. Thresholds are unchanged from the old flag list
+   (temp 37.5/38.0, heart rate 100/120 or 50 and under, BP 140/90 and
+   160/100 or systolic 90 and under, oxygen 93/90 and under, pain 5/7,
+   sickness 6, appetite and energy 3 and under, short nights under 5 h,
    weight down 2 kg (red at 4), days under 1 L, days with nothing eaten,
-   low-mood days, when-needed medicine use). Sorted worst first. */
-function glanceRows(entries, from, to) {
+   low-mood days, when-needed medicine use). */
+function summaryRows(entries, from, to) {
   const rows = [];
+  const fine = [];
+  const once = [];
   const today = todayStr();
   const byDay = {};
   entries.forEach((e) => { (byDay[e.day] = byDay[e.day] || []).push(e); });
   const when = (e) => fmtDayShort(e.day);
-  const push = (level, topic, text) => rows.push({ level, topic, text });
+  /* An amber topic that happened once, with no worsening trend, is a one-off: those share a line at the end */
+  const push = (level, topic, text, brief) => { if (level === 'amber' && brief) once.push({ topic, text, brief }); else rows.push({ level, topic, text }); };
   const daysWith = (pred) => Object.keys(byDay).filter((d) => byDay[d].some(pred)).length;
   const maxBy = (list, f) => list.reduce((a, b) => (f(b) > f(a) ? b : a));
   const minBy = (list, f) => list.reduce((a, b) => (f(b) < f(a) ? b : a));
   const avg = (list) => list.reduce((s, v) => s + v, 0) / list.length;
   const one = (n) => (Math.round(n * 10) / 10).toString();
+  const mid = addDays(from, Math.floor(daysBetween(from, to) / 2));
+  /* Second half of the period against the first, when both halves have enough scores */
+  const trend = (scores, higherIsWorse) => {
+    const a = scores.filter((s) => s.day <= mid).map((s) => s.v), b = scores.filter((s) => s.day > mid).map((s) => s.v);
+    if (a.length < 3 || b.length < 3) return null;
+    const d = avg(b) - avg(a);
+    if (Math.abs(d) < 1) return { word: 'steady', a: avg(a), b: avg(b) };
+    return { word: (higherIsWorse ? d > 0 : d < 0) ? 'worse' : 'better', a: avg(a), b: avg(b) };
+  };
 
   const temps = entries.filter((e) => e.type === 'temp' && Number(e.value) > 0);
   if (temps.length) {
@@ -2806,44 +2850,45 @@ function glanceRows(entries, from, to) {
     const tDays = daysWith((e) => e.type === 'temp');
     const highDays = daysWith((e) => e.type === 'temp' && Number(e.value) >= 38);
     const raisedDays = daysWith((e) => e.type === 'temp' && Number(e.value) >= 37.5);
-    const hiText = `highest ${Number(hi.value).toFixed(1)} °C on ${when(hi)}`;
-    if (highDays) push('red', 'Temperature', `38.0 or over on ${plural(highDays, 'day')} of the ${tDays} with a reading, ${hiText}`);
-    else if (raisedDays) push('amber', 'Temperature', `Raised (37.5 to 37.9) on ${plural(raisedDays, 'day')} of the ${tDays} with a reading, ${hiText}, never 38.0`);
-    else push('green', 'Temperature', `Normal on all ${tDays} days with a reading, ${hiText}`);
+    const peak = `peaking at ${Number(hi.value).toFixed(1)} °C on ${when(hi)}`;
+    if (highDays) push('red', 'Temperature', `High temperature (38.0 or over) on ${plural(highDays, 'day')} of the ${tDays} with a reading, ${peak}.`);
+    else if (raisedDays) push('amber', 'Temperature', `Temperature raised (37.5 to 37.9) on ${raisedDays} of the ${tDays} days with a reading, ${peak}, never reaching 38.0.`, raisedDays === 1 ? `temperature ${Number(hi.value).toFixed(1)} °C on ${when(hi)}` : null);
+    else fine.push(`temperature (highest ${Number(hi.value).toFixed(1)} °C)`);
   }
 
   const hrs = entries.filter((e) => e.type === 'vitals' && Number(e.heartRate) > 0);
   if (hrs.length) {
     const hi = maxBy(hrs, (e) => Number(e.heartRate)), lo = minBy(hrs, (e) => Number(e.heartRate));
     const fast = hrs.filter((e) => e.heartRate >= 120).length, high = hrs.filter((e) => e.heartRate >= 100).length, slow = hrs.filter((e) => e.heartRate <= 50).length;
-    const range = `${Math.round(lo.heartRate)} to ${Math.round(hi.heartRate)} bpm over ${plural(hrs.length, 'reading')}`;
-    if (fast) push('red', 'Heart rate', `120 or over on ${plural(fast, 'reading')}, highest ${Math.round(hi.heartRate)} on ${when(hi)}; ${range}`);
-    else if (high) push('amber', 'Heart rate', `100 or over on ${plural(high, 'reading')}, highest ${Math.round(hi.heartRate)} on ${when(hi)}; ${range}`);
-    else if (slow) push('amber', 'Heart rate', `50 or under on ${plural(slow, 'reading')}, lowest ${Math.round(lo.heartRate)} on ${when(lo)}; ${range}`);
-    else push('green', 'Heart rate', range);
+    const range = `readings ranged ${Math.round(lo.heartRate)} to ${Math.round(hi.heartRate)} bpm`;
+    if (fast) push('red', 'Heart rate', `Heart rate 120 or over on ${plural(fast, 'reading')} of ${hrs.length}, highest ${Math.round(hi.heartRate)} on ${when(hi)}; ${range}.`);
+    else if (high) push('amber', 'Heart rate', `Heart rate over 100 on ${plural(high, 'reading')} of ${hrs.length}, highest ${Math.round(hi.heartRate)} on ${when(hi)}; ${range}.`, high === 1 ? `heart rate ${Math.round(hi.heartRate)} bpm on ${when(hi)}` : null);
+    else if (slow) push('amber', 'Heart rate', `Heart rate 50 or under on ${plural(slow, 'reading')} of ${hrs.length}, lowest ${Math.round(lo.heartRate)} on ${when(lo)}; ${range}.`, slow === 1 ? `heart rate ${Math.round(lo.heartRate)} bpm on ${when(lo)}` : null);
+    else fine.push(`heart rate (${Math.round(lo.heartRate)} to ${Math.round(hi.heartRate)} bpm)`);
   }
 
   const bps = entries.filter((e) => e.type === 'vitals' && Number(e.systolic) > 0 && Number(e.diastolic) > 0);
   if (bps.length) {
-    const hi = maxBy(bps, (e) => Number(e.systolic)), lo = minBy(bps, (e) => Number(e.systolic));
     const bp = (e) => `${Math.round(e.systolic)}/${Math.round(e.diastolic)}`;
-    const red = bps.filter((e) => e.systolic >= 160 || e.diastolic >= 100).length;
-    const amber = bps.filter((e) => e.systolic >= 140 || e.diastolic >= 90).length;
-    const low = bps.filter((e) => e.systolic <= 90).length;
-    const range = `highest ${bp(hi)} on ${when(hi)}, lowest ${bp(lo)} on ${when(lo)}, ${plural(bps.length, 'reading')}`;
-    if (red) push('red', 'Blood pressure', `160/100 or over on ${plural(red, 'reading')}; ${range}`);
-    else if (amber) push('amber', 'Blood pressure', `140/90 or over on ${plural(amber, 'reading')}; ${range}`);
-    else if (low) push('amber', 'Blood pressure', `Top number 90 or under on ${plural(low, 'reading')}; ${range}`);
-    else push('green', 'Blood pressure', range.charAt(0).toUpperCase() + range.slice(1));
+    const hi = maxBy(bps, (e) => Number(e.systolic)), lo = minBy(bps, (e) => Number(e.systolic));
+    const range = `readings ranged ${bp(lo)} to ${bp(hi)}`;
+    const red = bps.filter((e) => e.systolic >= 160 || e.diastolic >= 100);
+    const amber = bps.filter((e) => e.systolic >= 140 || e.diastolic >= 90);
+    const low = bps.filter((e) => e.systolic <= 90);
+    /* The reading that crossed its line by the most, whichever number did the crossing */
+    const worstOf = (list) => maxBy(list, (e) => Math.max(e.systolic - 140, (e.diastolic - 90) * 2));
+    if (red.length) { const w = worstOf(red); push('red', 'Blood pressure', `Blood pressure ${bp(w)} on ${when(w)}${red.length > 1 ? ', and over the 160/100 line on ' + plural(red.length, 'reading') + ' in all' : ''}; ${range}.`); }
+    else if (amber.length) { const w = worstOf(amber); push('amber', 'Blood pressure', `Blood pressure over the 140/90 line on ${plural(amber.length, 'reading')} of ${bps.length}, highest ${bp(w)} on ${when(w)}; ${range}.`, amber.length === 1 ? `blood pressure ${bp(w)} on ${when(w)}` : null); }
+    else if (low.length) { const w = minBy(low, (e) => Number(e.systolic)); push('amber', 'Blood pressure', `Low blood pressure ${bp(w)} on ${when(w)}${low.length > 1 ? ' and on ' + (low.length - 1) + ' other ' + (low.length === 2 ? 'reading' : 'readings') : ''}; ${range}.`); }
+    else fine.push(`blood pressure (${bp(lo)} to ${bp(hi)})`);
   }
 
   const oxs = entries.filter((e) => e.type === 'vitals' && Number(e.oxygen) > 0);
   if (oxs.length) {
     const lo = minBy(oxs, (e) => Number(e.oxygen));
-    const text = `lowest ${Math.round(lo.oxygen)}% on ${when(lo)}, ${plural(oxs.length, 'reading')}`;
-    if (lo.oxygen <= 90) push('red', 'Oxygen', `90% or under, ${text}`);
-    else if (lo.oxygen <= 93) push('amber', 'Oxygen', `93% or under, ${text}`);
-    else push('green', 'Oxygen', text.charAt(0).toUpperCase() + text.slice(1));
+    if (lo.oxygen <= 90) push('red', 'Oxygen', `Oxygen down to ${Math.round(lo.oxygen)}% on ${when(lo)} (${plural(oxs.length, 'reading')} in all).`);
+    else if (lo.oxygen <= 93) push('amber', 'Oxygen', `Oxygen a little low, ${Math.round(lo.oxygen)}% on ${when(lo)} (${plural(oxs.length, 'reading')} in all).`, oxs.filter((e) => e.oxygen <= 93).length === 1 ? `oxygen ${Math.round(lo.oxygen)}% on ${when(lo)}` : null);
+    else fine.push(`oxygen (lowest ${Math.round(lo.oxygen)}%)`);
   }
 
   const checkins = entries.filter((e) => e.type === 'checkin');
@@ -2853,44 +2898,51 @@ function glanceRows(entries, from, to) {
   if (painScores.length) {
     const worst = maxBy(painScores, (s) => s.v);
     const highDays = new Set(painScores.filter((s) => s.v >= 5).map((s) => s.day)).size;
-    const mean = one(avg(painScores.map((s) => s.v)));
-    const bits = [`Averaged ${mean}/10 over ${plural(painScores.length, 'score')}`];
-    if (highDays) bits.push(`5 or more on ${plural(highDays, 'day')}`);
-    bits.push(`worst ${worst.v}/10 on ${fmtDayShort(worst.day)}`);
-    push(worst.v >= 7 ? 'red' : worst.v >= 5 ? 'amber' : 'green', 'Pain', bits.join('; '));
+    const mean = avg(painScores.map((s) => s.v));
+    const t = trend(painScores, true);
+    if (worst.v >= 5) {
+      let text = t && t.word === 'worse' ? `Pain has increased, from about ${one(t.a)}/10 in the first half of the period to ${one(t.b)}/10 in the second`
+        : t && t.word === 'better' ? `Pain has eased, from about ${one(t.a)}/10 in the first half of the period to ${one(t.b)}/10 in the second`
+        : `Pain about ${one(mean)}/10 through the period`;
+      text += `; 5 or more on ${plural(highDays, 'day')}, worst ${worst.v}/10 on ${fmtDayShort(worst.day)}.`;
+      push(worst.v >= 7 ? 'red' : 'amber', 'Pain', text);
+    } else fine.push(`pain (about ${one(mean)}/10, worst ${worst.v}/10)`);
   }
 
   const evenings = checkins.filter((e) => e.slot === 'evening');
-  const scale = (key, topic, bad, badWord, lowIsBad) => {
+  const scale = (key, topic, bad, lowIsBad, phrases) => {
     const list = evenings.filter((e) => e[key] != null).map((e) => ({ v: Number(e[key]), day: e.day }));
     if (!list.length) return;
     const badOnes = list.filter((s) => (lowIsBad ? s.v <= bad : s.v >= bad));
-    const mean = one(avg(list.map((s) => s.v)));
+    const mean = avg(list.map((s) => s.v));
+    const t = trend(list, !lowIsBad);
     if (badOnes.length) {
       const worst = lowIsBad ? minBy(badOnes, (s) => s.v) : maxBy(badOnes, (s) => s.v);
-      push('amber', topic, `${badWord} on ${plural(badOnes.length, 'evening')} of ${list.length}, ${lowIsBad ? 'lowest' : 'worst'} ${worst.v}/10 on ${fmtDayShort(worst.day)}; averaged ${mean}/10`);
-    } else push('green', topic, `Averaged ${mean}/10 over ${plural(list.length, 'evening')}, ${lowIsBad ? 'never 3 or under' : 'never 6 or over'}`);
+      let text = `${phrases.bad} on ${badOnes.length} of ${plural(list.length, 'evening')}, ${lowIsBad ? 'lowest' : 'worst'} ${worst.v}/10 on ${fmtDayShort(worst.day)}`;
+      if (t && t.word === 'worse') text += `, and ${phrases.worse} from about ${one(t.a)}/10 to ${one(t.b)}/10`;
+      push('amber', topic, text + '.', badOnes.length === 1 && !(t && t.word === 'worse') ? `${topic.toLowerCase()} ${worst.v}/10 on ${fmtDayShort(worst.day)}` : null);
+    } else if (t && t.word === 'worse') push('amber', topic, `${topic} ${phrases.worse} from about ${one(t.a)}/10 in the first half of the period to ${one(t.b)}/10 in the second.`);
+    else fine.push(`${topic.toLowerCase()} (about ${one(mean)}/10)`);
   };
-  scale('sickness', 'Sickness', 6, '6 or more', false);
-  scale('appetite', 'Appetite', 3, '3 or under', true);
-  scale('energy', 'Energy', 3, '3 or under', true);
+  scale('sickness', 'Sickness', 6, false, { bad: 'Sickness 6 or more', worse: 'getting worse' });
+  scale('appetite', 'Appetite', 3, true, { bad: 'Little appetite (3 or under)', worse: 'has dropped' });
+  scale('energy', 'Energy', 3, true, { bad: 'Energy very low (3 or under)', worse: 'has dropped' });
 
   const sleeps = entries.filter((e) => e.type === 'sleep' && Number(e.value) > 0);
   if (sleeps.length) {
     const mean = avg(sleeps.map((e) => Number(e.value)));
     const short = sleeps.filter((e) => Number(e.value) < 300);
-    if (short.length) { const lo = minBy(short, (e) => Number(e.value)); push('amber', 'Sleep', `Under 5 hours on ${plural(short.length, 'night')} of ${sleeps.length}, shortest ${fmtHm(lo.value)} before ${when(lo)}; averaged ${fmtHm(mean)}`); }
-    else push('green', 'Sleep', `Averaged ${fmtHm(mean)} over ${plural(sleeps.length, 'night')}, none under 5 hours`);
+    if (short.length) { const lo = minBy(short, (e) => Number(e.value)); push('amber', 'Sleep', `Short nights: under 5 hours on ${short.length} of ${plural(sleeps.length, 'night')}, shortest ${fmtHm(lo.value)} before ${when(lo)}; averaging ${fmtHm(mean)}.`, short.length === 1 ? `a short night (${fmtHm(lo.value)}) before ${when(lo)}` : null); }
+    else fine.push(`sleep (${fmtHm(mean)} a night)`);
   }
 
   const weights = entries.filter((e) => e.type === 'weight' && Number(e.value) > 0).sort((a, b) => entryDate(a) - entryDate(b));
   if (weights.length >= 2) {
     const first = Number(weights[0].value), last = Number(weights[weights.length - 1].value), drop = first - last;
-    const span = `${first.toFixed(1)} kg on ${when(weights[0])} to ${last.toFixed(1)} kg on ${when(weights[weights.length - 1])}`;
-    if (drop >= 2) push(drop >= 4 ? 'red' : 'amber', 'Weight', `Down ${drop.toFixed(1)} kg, ${span}`);
-    else if (drop <= -2) push('teal', 'Weight', `Up ${(-drop).toFixed(1)} kg, ${span}`);
-    else push('green', 'Weight', `Steady, ${span}`);
-  } else if (weights.length === 1) push('teal', 'Weight', `One reading, ${Number(weights[0].value).toFixed(1)} kg on ${when(weights[0])}`);
+    if (drop >= 2) push(drop >= 4 ? 'red' : 'amber', 'Weight', `Weight down ${drop.toFixed(1)} kg, from ${first.toFixed(1)} kg on ${when(weights[0])} to ${last.toFixed(1)} kg on ${when(weights[weights.length - 1])}.`);
+    else if (drop <= -2) fine.push(`weight (up ${(-drop).toFixed(1)} kg to ${last.toFixed(1)} kg)`);
+    else fine.push(`weight (steady at about ${last.toFixed(1)} kg)`);
+  } else if (weights.length === 1) fine.push(`weight (${Number(weights[0].value).toFixed(1)} kg, one reading)`);
 
   /* Intake: only days that were actually logged, and not today, which is still going */
   const loggedDays = Object.keys(byDay).filter((d) => d < today).sort();
@@ -2899,39 +2951,58 @@ function glanceRows(entries, from, to) {
     const perDay = drinkDays.map((d) => byDay[d].filter((e) => e.type === 'drink').reduce((s, e) => s + (Number(e.value) || 0), 0));
     const low = perDay.filter((ml) => ml < 1000).length;
     const mean = fmtMl(Math.round(avg(perDay)));
-    if (low) push('amber', 'Drinks', `Under 1 litre on ${plural(low, 'day')} of the ${drinkDays.length} logged; averaged ${mean} a day`);
-    else push('green', 'Drinks', `Averaged ${mean} a day over ${plural(drinkDays.length, 'logged day')}, never under 1 litre`);
+    const lowDays = drinkDays.filter((d, i) => perDay[i] < 1000);
+    if (low) push('amber', 'Drinks', `Under 1 litre of drinks on ${low} of the ${plural(drinkDays.length, 'logged day')}; averaging ${mean} a day.`, low === 1 ? `under 1 litre of drinks on ${fmtDayShort(lowDays[0])}` : null);
+    else fine.push(`drinks (${mean} a day)`);
   }
   if (loggedDays.length) {
     const noFood = loggedDays.filter((d) => !byDay[d].some((e) => e.type === 'food'));
     const foods = entries.filter((e) => e.type === 'food' && e.day < today);
-    const perDay = foods.length / Math.max(1, loggedDays.length - noFood.length);
-    let text = noFood.length
-      ? `Nothing eaten logged on ${plural(noFood.length, 'day')} of the ${loggedDays.length} logged (${listDays(noFood)})`
-      : `Something eaten on all ${plural(loggedDays.length, 'logged day')}, about ${one(perDay)} entries a day`;
+    const eatingDays = Math.max(1, loggedDays.length - noFood.length);
     const macros = dayMacros(foods);
-    if (macros) text += `; estimated ${Math.round(macros.totals.kcal / Math.max(1, loggedDays.length - noFood.length))} kcal and ${Math.round(macros.totals.prot / Math.max(1, loggedDays.length - noFood.length))} g protein a day`;
-    push(noFood.length ? 'amber' : 'green', 'Eating', text);
+    const est = macros ? `about ${Math.round(macros.totals.kcal / eatingDays)} kcal and ${Math.round(macros.totals.prot / eatingDays)} g protein a day` : '';
+    if (noFood.length) push('amber', 'Eating', `Nothing eaten logged on ${plural(noFood.length, 'day')} of the ${loggedDays.length} logged (${listDays(noFood)})${est ? '; on the other days ' + est : ''}.`, noFood.length === 1 ? `nothing eaten logged on ${fmtDayShort(noFood[0])}` : null);
+    else fine.push(`eating (something every logged day${est ? ', ' + est : ''})`);
   }
 
   const moodDays = Object.keys(state.days).filter((d) => d >= from && d <= to && state.days[d].mood).sort();
   if (moodDays.length) {
     const low = moodDays.filter((d) => state.days[d].mood <= 2);
-    if (low.length) push('amber', 'Mood', `Rough or low on ${plural(low.length, 'day')} of the ${moodDays.length} recorded: ${listDays(low)}`);
-    else push('green', 'Mood', `OK or better on all ${plural(moodDays.length, 'recorded day')}`);
+    if (low.length) push('amber', 'Mood', `Mood rough or low on ${plural(low.length, 'day')} of the ${moodDays.length} recorded: ${listDays(low)}.`, low.length === 1 ? `a low mood day on ${fmtDayShort(low[0])}` : null);
+    else fine.push('mood');
   }
 
+  if (once.length === 1) rows.push({ level: 'amber', topic: once[0].topic, text: once[0].text });
+  else if (once.length > 1) rows.push({ level: 'amber', topic: 'One-offs', text: 'One-offs worth a mention: ' + once.map((o) => o.brief).join('; ') + '.' });
+
+  if (fine.length) {
+    const list = fine.length > 1 ? fine.slice(0, -1).join(', ') + ' and ' + fine[fine.length - 1] : fine[0];
+    push('green', 'Nothing of concern', list.charAt(0).toUpperCase() + list.slice(1) + ': nothing of concern.');
+  }
+
+  const prn = [];
+  let hitAny = false;
   activePrn().forEach((m) => {
     const perDay = {};
     entries.filter((e) => e.type === 'med' && e.medId === m.id).forEach((e) => { perDay[e.day] = (perDay[e.day] || 0) + 1; });
-    const days = Object.keys(perDay).sort();
+    const days = Object.keys(perDay);
     if (!days.length) return;
-    const most = days.reduce((a, b) => (perDay[b] > perDay[a] ? b : a));
-    const hitMax = m.maxPerDay && perDay[most] >= m.maxPerDay;
-    push(hitMax ? 'amber' : 'teal', m.name, `Needed on ${plural(days.length, 'day')} of ${daysBetween(from, to) + 1}, most on ${fmtDayShort(most)} (${plural(perDay[most], 'dose')}${hitMax ? ', the daily maximum' : ''})`);
+    const most = Math.max(...days.map((d) => perDay[d]));
+    const hitMax = m.maxPerDay && most >= m.maxPerDay;
+    if (hitMax) hitAny = true;
+    prn.push(`${m.name} on ${days.length} of ${daysBetween(from, to) + 1} days${most > 1 ? ` (up to ${most} doses a day${hitMax ? ', the maximum' : ''})` : ''}`);
   });
+  if (prn.length) push(hitAny ? 'amber' : 'teal', 'When-needed medicines', `When-needed medicines: ${prn.join('; ')}.`);
 
   return rows.sort((a, b) => LEVEL_RANK[a.level] - LEVEL_RANK[b.level]);
+}
+
+/* A document's explanation as the report shows it: the pasted "=== CARE LOG
+   DOCUMENT ===" header (title and date lines) is dropped, the explanation itself kept */
+function docSummary(d) {
+  let t = (d.explanation || '').trim();
+  if (/^=+\s*CARE LOG DOCUMENT/i.test(t)) { const i = t.indexOf('Explanation:'); if (i >= 0) t = t.slice(i + 'Explanation:'.length).trim(); }
+  return t;
 }
 
 function noteContext(e) {
@@ -2982,7 +3053,7 @@ async function loadQuestions() {
 
 /* from and to are the report's own range (inclusive), which need not end today */
 function buildNotesReport(entries, questionsAll, from, to, rangeLabel) {
-  const glance = glanceRows(entries, from, to);
+  const glance = summaryRows(entries, from, to);
   const open = questionsAll.filter((q) => !q.answered).sort((a, b) => entryDate(a) - entryDate(b));
   const questions = open.map((q) => ({ id: q.id, text: q.note, who: q.addedBy || 'unknown', day: q.day }));
   const answered = questionsAll.filter((q) => q.answered && q.day >= from && q.day <= to).length;
@@ -3009,19 +3080,19 @@ function buildNotesReport(entries, questionsAll, from, to, rangeLabel) {
   const lines = [`Care Log notes from ${fmtDayNum(from)} to ${fmtDayNum(to)}.`, '', NOTES_PROMPT, '', 'Questions for the team:'];
   if (questions.length) questions.forEach((q, i) => lines.push(`${i + 1}. ${q.text} (${q.who}, ${fmtDayShort(q.day)})`));
   else lines.push('- No open questions.');
-  lines.push('', 'At a glance (simple checks by the app, worst reading and how many days, not a diagnosis):');
-  if (glance.length) glance.forEach((g) => lines.push(`- ${LEVEL_WORD[g.level]}, ${g.topic}: ${g.text}`));
+  lines.push('', 'Summary (simple checks by the app, not a diagnosis):');
+  if (glance.length) glance.forEach((g) => lines.push(`- ${LEVEL_WORD[g.level]}: ${g.text}`));
   else lines.push('- No readings logged in this period.');
   lines.push('', 'Letters and documents in this period:');
   if (docs.length) docs.forEach((d) => {
     lines.push('', `${fmtDayNum(d.docDate)}: ${d.title}${d.category === 'chemo' ? ' (chemo plan)' : ''}`);
-    lines.push((d.explanation || '').trim() || 'No explanation saved yet.');
+    lines.push(docSummary(d) || 'No explanation saved yet.');
   });
   else lines.push('- None saved for this period.');
-  lines.push('', 'Notes:');
+  lines.push('', 'Notes (who wrote each one, then the note):');
   if (days.length) days.forEach((d) => {
     lines.push('', `${fmtDayLong(d.day)} (${fmtDayNum(d.day)})`);
-    d.notes.forEach((n) => lines.push(`- ${n.time} ${n.who}${n.context ? ' (' + n.context + ')' : ''}: ${n.text}`));
+    d.notes.forEach((n) => lines.push(`- ${n.who}, ${n.time}${n.context ? ' (' + n.context + ')' : ''}: ${n.text}`));
   });
   else lines.push('- No written notes in this period.');
   return { questions, answered, glance, docs, days, rangeLabel, text: lines.join('\n') };
@@ -3055,14 +3126,14 @@ async function renderNotesReport() {
 
   $('notes-flags').replaceChildren(...report.glance.map((g) => h('div', { class: 'flag is-' + g.level },
     h('span', { class: 'pill pill-' + g.level, text: LEVEL_WORD[g.level] }),
-    h('span', { class: 'flag-text' }, h('span', { class: 'flag-topic', text: g.topic + ' ' }), g.text)
+    h('span', { class: 'flag-text', text: g.text })
   )));
   if (!report.glance.length) $('notes-flags').append(h('p', { class: 'muted', text: 'No readings logged in this period.' }));
 
   $('notes-docs').replaceChildren(...report.docs.map((d) => h('div', { class: 'card' },
     h('div', { class: 'docitem-title', text: d.title }),
     h('div', { class: 'docitem-sub', text: fmtDayNum(d.docDate) + (d.category === 'chemo' ? ' · Chemo plan' : '') }),
-    h('p', { class: ((d.explanation || '').trim() ? '' : 'muted'), text: excerpt(d.explanation, 260) || 'No explanation saved yet.' }),
+    h('p', { class: (docSummary(d) ? '' : 'muted'), text: excerpt(docSummary(d), 260) || 'No explanation saved yet.' }),
     h('button', { class: 'btn btn-link', type: 'button', onclick: () => { openDocs('notes'); openDocument(d.id); } }, 'Open the document')
   )));
   if (!report.docs.length) $('notes-docs').append(h('p', { class: 'muted', text: 'No letters or documents dated in this period.' }));
@@ -3073,8 +3144,8 @@ async function renderNotesReport() {
     h('ul', { class: 'timeline' }, ...d.notes.map((n) => h('li', { class: 'entry type-note' },
       h('span', { class: 'entry-time', text: n.time }),
       h('div', { class: 'entry-main' },
-        h('div', { class: 'entry-title', text: n.text }),
-        h('div', { class: 'entry-sub', text: [n.context, 'by ' + n.who].filter(Boolean).join(' · ') })
+        h('div', { class: 'entry-sub' }, h('span', { class: 'note-who', text: n.who }), ' · ' + n.time + (n.context ? ' · ' + n.context : '')),
+        h('div', { class: 'entry-title', text: n.text })
       )
     )))
   )));
