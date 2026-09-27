@@ -433,6 +433,7 @@ body.is-viewer .cal-cell { pointer-events: none; }
    as plain information rather than being removed. */
 body.is-readonly .qa,
 body.is-readonly #pain-now,
+body.is-readonly #question-now,
 body.is-readonly #meds-manage,
 body.is-readonly .med-actions,
 body.is-readonly #meds-doc-add,
@@ -565,6 +566,8 @@ body.is-readonly #calls-edit { display: none; }
   font-weight: 600; font-size: 18px; color: var(--warm-dark);
 }
 .painbtn .icon { width: 24px; height: 24px; color: var(--warm); }
+.painbtn.is-teal { color: var(--teal-dark); margin-bottom: var(--s-2); }
+.painbtn.is-teal .icon { color: var(--teal); }
 
 /* Check-in flow: one question per screen */
 .wiz-day { display: flex; gap: var(--s-2); margin-bottom: var(--s-3); }
@@ -647,6 +650,7 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 .entry.type-sleep { --cat: var(--cat-sleep); }
 .entry.type-checkin { --cat: var(--teal); }
 .entry.type-pain { --cat: var(--warm); }
+.entry.type-question { --cat: var(--teal); }
 /* Only new rows animate in; rows already on screen stay put when data updates */
 .entry.is-new, .cheer.is-new, .docitem.is-new { animation: block-in var(--t-slow) var(--ease-out) both; animation-delay: calc(var(--i, 0) * 60ms); }
 .stages { margin-top: var(--s-1); }
@@ -874,6 +878,10 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 .flag::before { content: ""; position: absolute; left: 9px; top: 14px; bottom: 14px; width: 3px; border-radius: 2px; background: var(--cat); }
 .flag.is-amber { --cat: var(--warning); }
 .flag.is-red { --cat: var(--danger); }
+.flag.is-green { --cat: var(--success); }
+.flag-topic { font-weight: 700; }
+.question .question-text { font-weight: 600; margin-bottom: 4px; }
+.question .btn-link { padding-left: 0; margin-top: 4px; }
 .flag .pill { flex: none; }
 .flag-text { min-width: 0; overflow-wrap: anywhere; }
 
