@@ -447,6 +447,7 @@ body.is-readonly #doc-paste-summary,
 body.is-readonly #doc-save-explanation,
 body.is-readonly #doc-delete,
 body.is-readonly #more-meals,
+body.is-readonly #settings-food,
 body.is-readonly #calls-edit { display: none; }
 
 /* ---------- Tab bar ---------- */
@@ -830,6 +831,37 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 .nutri-value small { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.04em; color: var(--text-muted); text-transform: uppercase; }
 .nutri-cell.is-zero .nutri-value { color: var(--text-muted); }
 
+/* Calorie and macro estimates (More > Settings > Food). All of it is gated
+   in the JS on profile/main.detailedNutrition, so none of these elements
+   exist on the page while the setting is off. */
+.diary-macros { color: var(--text-secondary); font-size: 15px; margin: 0 0 var(--s-2); font-family: var(--font-mono); letter-spacing: 0.01em; }
+.macros { color: var(--text-secondary); font-size: 14px; margin-top: 4px; font-family: var(--font-mono); letter-spacing: 0.01em; }
+.macrosbox { margin: var(--s-3) 0 var(--s-2); }
+.macrosbox > .hint { margin-top: 0; margin-bottom: var(--s-2); }
+.macro-row { padding: var(--s-3) 0; border-top: 1px solid var(--border-subtle); }
+.macro-row .presets { margin-bottom: 6px; }
+.macro-row .hint { margin-top: 0; font-size: 15px; }
+.macro-row .btn-link { padding-left: 0; }
+.macro-row-label { margin: 0 0 var(--s-2); font-weight: 600; }
+.macro-row-label small { display: block; font-weight: 400; color: var(--text-muted); font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; margin-top: 2px; }
+.override { margin-top: var(--s-2); padding: var(--s-3) 14px; border-radius: var(--r-md); background: var(--surface-sunken); box-shadow: var(--elev-sunken); }
+.override .field-row { margin-bottom: 0; }
+.override .btnrow { margin-top: var(--s-2); }
+.macro-total { margin: var(--s-3) 0 0; padding: var(--s-3) 14px; border-radius: var(--r-md); background: var(--teal-light); color: var(--teal-dark); font-weight: 600; }
+
+/* More > Settings */
+.settings-group { margin-top: var(--s-2); }
+.settings-sub { margin: 0 0 var(--s-2); font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); }
+.settings-toggle { margin-bottom: 0; }
+.settings-group .hint { margin-top: var(--s-2); }
+
+/* Reports: five range buttons (7/14/30/90 and Custom) have to sit on one line on a phone */
+#view-food .seg, #view-notes .seg { white-space: nowrap; font-size: 15px; padding-left: 4px; padding-right: 4px; }
+/* Reports: custom From and To range */
+.custom-range { margin-top: var(--s-3); }
+.custom-range .field { margin-bottom: 0; }
+.hint-warn { color: var(--warning); font-weight: 600; }
+
 /* Notes for the team: flagged readings */
 .flags { display: flex; flex-direction: column; gap: var(--s-2); margin-top: 10px; }
 .flag { position: relative; display: flex; align-items: flex-start; gap: 10px; background: var(--grad-raised); border-radius: var(--r-md); padding: var(--s-3) 14px var(--s-3) var(--s-5); box-shadow: var(--elev-raised); --cat: var(--teal); }
@@ -847,7 +879,7 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
   .tag, .diary-donut, .diary-legend .sw { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .tag:not(.is-veg):not(.is-protein):not(.is-carb):not(.is-watch) { border: 1px solid #C8D0D3; background: #fff; }
   .diary-donut::after { background: #fff; }
-  .unmatched { display: none; }
+  .unmatched, .custom-range, .hint-warn { display: none; }
   .diary-day { break-inside: avoid; }
 }
 .check { display: flex; align-items: center; gap: var(--s-3); min-height: var(--tap); font-weight: 600; margin-bottom: var(--s-2); }

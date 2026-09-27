@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '41';
+const APP_VERSION = '42';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -178,6 +178,7 @@ function pad2(n) { return String(n).padStart(2, '0'); }
 function dayStr(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; }
 function parseDay(s) { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); }
 function addDays(s, n) { const d = parseDay(s); d.setDate(d.getDate() + n); return dayStr(d); }
+function daysBetween(a, b) { return Math.round((parseDay(b) - parseDay(a)) / 86400000); }
 function todayStr() { return dayStr(new Date()); }
 function fmtTime(d) { return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`; }
 function fmtDayLong(s) { return parseDay(s).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }); }
@@ -337,6 +338,12 @@ const state = {
   trendRange: 7,
   foodRange: 14,
   notesRange: 14,
+  foodRangeMode: 'preset',
+  notesRangeMode: 'preset',
+  foodCustomFrom: null,
+  foodCustomTo: null,
+  notesCustomFrom: null,
+  notesCustomTo: null,
   notesText: '',
   notesPdf: null,
   foodPdf: null,
@@ -662,6 +669,7 @@ function startDemoData() {
   renderExercise();
   toast('Preview mode: made-up example data, nothing you do here is saved.');
   renderCalls();
+  syncSettings();
 }
 
 async function seedMedicinesIfEmpty() {
@@ -741,8 +749,27 @@ function watchProfile() {
     state.profile = snap.exists() ? snap.data() : { calls: [] };
     renderCalls();
     renderExercise();
+    syncSettings();
   }, (e) => console.error(e));
 }
+
+/* ---- Settings (More > Settings): the Food toggle, shared in profile/main ---- */
+function syncSettings() {
+  const on = detailedNutritionOn();
+  const box = $('settings-nutrition');
+  if (box.checked !== on) box.checked = on;
+  /* Today's timeline reads the setting when it draws, so redraw it, and any open report */
+  renderToday();
+  if (!$('view-food').hidden) renderFoodDiary();
+  if (!$('view-notes').hidden) renderNotesReport();
+}
+
+$('settings-nutrition').addEventListener('change', async (ev) => {
+  const detailedNutrition = ev.target.checked;
+  if (state.demo) { state.profile = { ...state.profile, detailedNutrition }; syncSettings(); toast(detailedNutrition ? 'Estimates on' : 'Estimates off'); return; }
+  try { await setDoc(doc(db, 'profile', 'main'), { detailedNutrition }, { merge: true }); toast(detailedNutrition ? 'Estimates on' : 'Estimates off'); }
+  catch (e) { console.error(e); toast('Could not save the setting'); ev.target.checked = !detailedNutrition; }
+});
 
 function watchDays() {
   state.unsub.days = onSnapshot(collection(db, 'days'), (snap) => {
@@ -937,7 +964,17 @@ function renderDayLabel() {
   });
 }
 
+function detailedNutritionOn() { return Boolean(state.profile && state.profile.detailedNutrition); }
+
+/* Today's timeline is drawn synchronously, so the food table is fetched in
+   the background the first time it is needed and the list redrawn once. */
+function ensureFoodIndexForToday() {
+  if (!detailedNutritionOn() || foodIndex) return;
+  loadFoodTable().then((idx) => { if (idx) renderToday(); });
+}
+
 function renderToday() {
+  ensureFoodIndexForToday();
   renderTiles();
   renderCheckins();
   renderMeds();
@@ -979,6 +1016,10 @@ function entrySub(e) {
   if (e.type === 'temp' && e.note) bits.push(e.note);
   if (e.type === 'food' && e.amount) bits.push(e.amount);
   if (e.type === 'food' && e.detail) bits.push(e.detail);
+  if (e.type === 'food' && detailedNutritionOn() && foodIndex) {
+    const m = entryMacros(foodIndex, e);
+    if (m.any) bits.push('about ' + Math.round(m.totals.kcal) + ' kcal, ' + Math.round(m.totals.prot) + ' g protein');
+  }
   if (e.type === 'sleep') {
     if (e.bedAt || e.wokeAt) bits.push((e.bedAt || '?') + ' to ' + (e.wokeAt || '?'));
     const s = sleepStages(e); if (s) bits.push(s);
@@ -1112,11 +1153,131 @@ function openAdd(type, editEntry) {
     what.addEventListener('change', applyMeal);
     const mealButtons = meals.length ? presets(meals.map((m) => m.name), what, '') : null;
     if (mealButtons) mealButtons.addEventListener('click', applyMeal);
+
+    /* Portion sizes and macro estimates, only when the Food setting is on.
+       portionsState is keyed by component (see macroComponentKey) and holds
+       { size: 'S'|'M'|'L', override: null | { kcal, prot, carb, fat, per, grams } }.
+       Rows are rebuilt when the text or amount changes; typing inside an
+       override row only refreshes the totals line, so focus is never lost. */
+    const macroOn = Boolean(state.profile && state.profile.detailedNutrition);
+    let portionsState = macroOn && editEntry && editEntry.portions ? JSON.parse(JSON.stringify(editEntry.portions)) : {};
+    let lastComponents = [];
+    const macrosBox = h('div', { class: 'macrosbox' });
+    const rowsWrap = h('div', null);
+    const totalsEl = h('p', { class: 'macro-total' });
+    const draft = () => ({ note: what.value, detail: parts.value, amount: amount.value, portions: portionsState });
+    const refreshTotals = () => {
+      if (!foodIndex) return;
+      const m = entryMacros(foodIndex, draft());
+      if (!lastComponents.length) { totalsEl.textContent = ''; totalsEl.hidden = true; return; }
+      totalsEl.hidden = false;
+      totalsEl.textContent = m.any
+        ? 'Estimated: ' + fmtMacroLine(m.totals) + (m.excluded.length ? '. Not counted: ' + m.excluded.join(', ') : '')
+        : 'Nothing here is in the food table yet, so there is nothing to estimate. Use "Enter from the packet" to add it by hand.';
+    };
+    const overridePanel = (c, portion, rebuild) => {
+      const ov = portion.override;
+      const perBtns = [
+        h('button', { class: 'preset', type: 'button', text: 'Per portion' }),
+        h('button', { class: 'preset', type: 'button', text: 'Per 100 g' })
+      ];
+      const markPer = () => { perBtns[0].classList.toggle('is-active', ov.per !== '100g'); perBtns[1].classList.toggle('is-active', ov.per === '100g'); grams.parentElement.hidden = ov.per !== '100g'; };
+      perBtns[0].addEventListener('click', () => { ov.per = 'portion'; markPer(); refreshTotals(); });
+      perBtns[1].addEventListener('click', () => { ov.per = '100g'; markPer(); refreshTotals(); });
+      const grams = h('input', { type: 'number', inputmode: 'numeric', min: '0', step: '1', placeholder: '0', value: ov.grams != null ? String(ov.grams) : '' });
+      grams.addEventListener('input', () => { ov.grams = grams.value === '' ? null : parseFloat(grams.value); refreshTotals(); });
+      const num = (label, key, step) => {
+        const inp = h('input', { type: 'number', inputmode: 'decimal', min: '0', step: step || '0.1', placeholder: '0', value: ov[key] != null ? String(ov[key]) : '' });
+        inp.addEventListener('input', () => { ov[key] = inp.value === '' ? null : parseFloat(inp.value); refreshTotals(); });
+        return field(label, inp);
+      };
+      const gramsField = field('Weight eaten (g)', grams);
+      const panel = h('div', { class: 'override' },
+        h('p', { class: 'macro-row-label', text: 'From the packet' }),
+        h('div', { class: 'presets' }, ...perBtns),
+        gramsField,
+        h('div', { class: 'field-row' }, num('Calories (kcal)', 'kcal', '1'), num('Protein (g)', 'prot')),
+        h('div', { class: 'field-row' }, num('Carbs (g)', 'carb'), num('Fat (g)', 'fat')),
+        h('div', { class: 'btnrow' },
+          h('button', { class: 'btn btn-secondary btn-small', type: 'button', onclick: async () => {
+            const g = ov.per === '100g' ? 100 : (parseFloat(grams.value) || 0);
+            if (!g) { grams.parentElement.hidden = false; grams.focus(); toast('Add the weight eaten so it can be saved per 100 g'); return; }
+            const f = 100 / g;
+            const per100 = { kcal: (ov.kcal || 0) * f, prot: (ov.prot || 0) * f, carb: (ov.carb || 0) * f, fat: (ov.fat || 0) * f };
+            await saveCustomFood(c.phrase, per100);
+            toast(`"${c.phrase}" saved to My foods`);
+          } }, 'Save to my foods'),
+          h('button', { class: 'btn btn-link btn-small', type: 'button', onclick: () => { portion.override = null; rebuild(); } }, 'Use the table estimate')
+        ),
+        h('p', { class: 'hint', text: 'Per portion means the whole amount eaten; per 100 g is scaled by the weight above. Saving to My foods keeps the per 100 g figures under this name for next time.' })
+      );
+      markPer();
+      return panel;
+    };
+    const componentRow = (c, rebuild) => {
+      const portion = portionsState[c.key] || (portionsState[c.key] = { size: 'M', override: null });
+      const scale = amountScale(amount.value);
+      const custom = customFoodByName(c.phrase);
+      const group = c.food ? portionGroupFor(c.food) : { label: 'Anything else', sizes: [60, 120, 200] };
+      const label = c.food ? c.food.n : c.phrase;
+      const sub = custom ? 'From My foods' : c.food ? 'Typical portion, estimate' : 'Not in the food table';
+      const row = h('div', { class: 'macro-row' },
+        h('p', { class: 'macro-row-label' }, label, h('small', { text: sub }))
+      );
+      if (portion.override) { row.append(overridePanel(c, portion, rebuild)); return row; }
+      if (c.food || custom) {
+        row.append(
+          h('div', { class: 'presets' }, ...['S', 'M', 'L'].map((size) => h('button', {
+            class: 'preset' + (portion.size === size ? ' is-active' : ''), type: 'button',
+            onclick: () => { portion.size = size; rebuild(); }
+          }, `${PORTION_SIZE_NAME[size]} ${portionGrams(c.food, size, scale)} g`))),
+          h('p', { class: 'hint', text: group.label + (scale < 1 ? `, scaled for "${amount.value.toLowerCase()}"` : '') })
+        );
+      } else {
+        row.append(h('p', { class: 'hint', text: 'No figures for this, so it is left out of the estimate unless entered from the packet.' }));
+      }
+      row.append(h('button', { class: 'btn btn-link btn-small', type: 'button', onclick: () => {
+        portion.override = { kcal: null, prot: null, carb: null, fat: null, per: 'portion', grams: portionGrams(c.food, portion.size, scale) };
+        rebuild();
+      } }, 'Enter from the packet'));
+      return row;
+    };
+    const rebuildMacros = () => {
+      if (!macroOn) return;
+      if (!foodIndex) { rowsWrap.replaceChildren(h('p', { class: 'hint', text: 'Loading the food table.' })); return; }
+      const m = entryMacros(foodIndex, draft());
+      lastComponents = m.components;
+      const keep = new Set(m.components.map((c) => c.key));
+      Object.keys(portionsState).forEach((k) => { if (!keep.has(k)) delete portionsState[k]; });
+      rowsWrap.replaceChildren(...(m.components.length
+        ? m.components.map((c) => componentRow(c, rebuildMacros))
+        : [h('p', { class: 'hint', text: 'Type what was eaten to see portion sizes and an estimate.' })]));
+      refreshTotals();
+    };
+    if (macroOn) {
+      macrosBox.append(
+        h('p', { class: 'fieldlabel', text: 'Portions and estimate' }),
+        h('p', { class: 'hint', text: 'Typical portions, estimate. Pick a size for each food, or enter it from the packet.' }),
+        rowsWrap, totalsEl
+      );
+      what.addEventListener('input', rebuildMacros);
+      what.addEventListener('change', rebuildMacros); // after applyMeal has filled in the parts
+      parts.addEventListener('input', rebuildMacros);
+      amountPresets.addEventListener('click', rebuildMacros);
+      if (mealButtons) mealButtons.addEventListener('click', () => {
+        const m = findMeal(what.value);
+        if (m && m.portions) portionsState = JSON.parse(JSON.stringify(m.portions));
+        rebuildMacros();
+      });
+      loadFoodTable().then(rebuildMacros);
+    }
+
     body.append(
       field('Food', what), names,
       mealButtons || h('p', { class: 'hint', text: 'Meals you log are remembered and appear here as quick buttons.' }),
       field('What is in it (optional)', parts),
       h('p', { class: 'field' }, h('span', { text: 'How much' })), amountPresets,
+      macroOn ? macrosBox : null,
       field('Time', time),
       h('label', { class: 'check' }, remember, h('span', { text: 'Remember this meal for next time' })),
       warn
@@ -1137,12 +1298,16 @@ function openAdd(type, editEntry) {
         parts.focus();
         return { hold: true };
       }
+      /* Only the components still on screen are kept; nothing about portions is stored when the setting is off */
+      const portions = macroOn && lastComponents.length ? Object.fromEntries(lastComponents.map((c) => [c.key, portionsState[c.key] || { size: 'M', override: null }])) : null;
       if (remember.checked) {
         const existing = findMeal(name);
-        if (!existing || (existing.parts || '') !== detail) saveMeal(existing ? existing.id : null, existing ? existing.name : name, detail);
+        const portionsChanged = portions && JSON.stringify(existing && existing.portions ? existing.portions : null) !== JSON.stringify(portions);
+        if (!existing || (existing.parts || '') !== detail || portionsChanged) saveMeal(existing ? existing.id : null, existing ? existing.name : name, detail, portions);
       }
       const data = { type: 'food', note: name, amount: amount.value };
       if (detail) data.detail = detail;
+      if (portions) data.portions = portions;
       return data;
     };
   }
@@ -1343,15 +1508,18 @@ function sortedMeals() {
   return state.meals.slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 }
 
-function saveMeal(id, name, parts) {
+/* portions is the optional per-component map from the Food sheet (see openAdd);
+   left alone when not passed, so editing a meal's name or parts never drops it */
+function saveMeal(id, name, parts, portions) {
   if (state.demo) {
     const m = id ? state.meals.find((x) => x.id === id) : null;
-    if (m) { m.name = name; m.parts = parts; }
-    else state.meals.push({ id: fakeId('meal'), name, parts, addedBy: state.name });
+    if (m) { m.name = name; m.parts = parts; if (portions) m.portions = portions; }
+    else state.meals.push({ id: fakeId('meal'), name, parts, portions: portions || null, addedBy: state.name });
     return Promise.resolve();
   }
   const ref = id ? doc(db, 'meals', id) : doc(collection(db, 'meals'));
   const data = { name, parts, updatedAt: serverTimestamp() };
+  if (portions) data.portions = portions;
   if (!id) { data.addedBy = state.name; data.createdAt = serverTimestamp(); }
   return setDoc(ref, data, { merge: true }).catch((e) => { console.error(e); toast('Could not save the meal'); });
 }
@@ -1417,11 +1585,67 @@ $('rep-notes').addEventListener('click', () => openReport('notes', 'vitals'));
 $('rep-docs').addEventListener('click', () => openDocs('vitals'));
 $('food-back').addEventListener('click', () => showTab(state.reportReturn || 'vitals'));
 $('food-print').addEventListener('click', () => window.print());
-document.querySelectorAll('#view-food .seg').forEach((b) => b.addEventListener('click', () => {
-  state.foodRange = parseInt(b.dataset.range, 10);
-  document.querySelectorAll('#view-food .seg').forEach((x) => x.classList.toggle('is-active', x === b));
-  renderFoodDiary();
-}));
+/* ---- Report ranges: the 7/14/30/90 day presets, or a custom From and To ----
+   Appointments do not fall on neat boundaries, so a custom range lets a
+   report run from the last appointment to the next one. The last custom
+   range is kept in state for the session only, never written to Firestore.
+   Both reports (Food diary, Notes for the team) share this wiring; `kind`
+   is 'food' or 'notes' and matches the element ids and state keys. */
+const CUSTOM_RANGE_MAX_DAYS = 180;
+
+function reportRange(kind) {
+  const to = todayStr();
+  if (state[kind + 'RangeMode'] === 'custom' && state[kind + 'CustomFrom'] && state[kind + 'CustomTo']) {
+    return { from: state[kind + 'CustomFrom'], to: state[kind + 'CustomTo'], custom: true };
+  }
+  return { from: addDays(to, -(state[kind + 'Range'] - 1)), to, custom: false };
+}
+
+/* The on-screen header: custom ranges read "From ... to ...", presets keep their existing wording */
+function reportRangeLabel(kind, range) {
+  return range.custom
+    ? `From ${fmtDayNum(range.from)} to ${fmtDayNum(range.to)}`
+    : `Last ${state[kind + 'Range']} days, from ${fmtDayNum(range.from)}`;
+}
+
+function wireReportRange(kind, render) {
+  const view = $('view-' + kind);
+  const box = $(kind + '-custom'), fromEl = $(kind + '-custom-from'), toEl = $(kind + '-custom-to'), msg = $(kind + '-custom-msg');
+  const showMsg = (text) => { msg.textContent = text; msg.hidden = !text; };
+  const apply = () => {
+    const from = fromEl.value, to = toEl.value;
+    if (!from || !to) { showMsg('Choose both a From and a To date.'); return; }
+    if (to < from) { showMsg('The To date cannot be before the From date.'); return; }
+    if (daysBetween(from, to) + 1 > CUSTOM_RANGE_MAX_DAYS) { showMsg(`Custom ranges are limited to ${CUSTOM_RANGE_MAX_DAYS} days. Pick a shorter period.`); return; }
+    showMsg('');
+    state[kind + 'CustomFrom'] = from;
+    state[kind + 'CustomTo'] = to;
+    render();
+  };
+  fromEl.addEventListener('change', apply);
+  toEl.addEventListener('change', apply);
+  view.querySelectorAll('.seg').forEach((b) => b.addEventListener('click', () => {
+    view.querySelectorAll('.seg').forEach((x) => x.classList.toggle('is-active', x === b));
+    if (b.dataset.range === 'custom') {
+      state[kind + 'RangeMode'] = 'custom';
+      /* To defaults to today and From to 14 days earlier, unless a range was picked earlier this session */
+      if (!state[kind + 'CustomTo']) { state[kind + 'CustomTo'] = todayStr(); state[kind + 'CustomFrom'] = addDays(todayStr(), -14); }
+      fromEl.value = state[kind + 'CustomFrom']; toEl.value = state[kind + 'CustomTo'];
+      fromEl.max = todayStr(); toEl.max = todayStr();
+      box.hidden = false;
+      showMsg('');
+      render();
+      return;
+    }
+    state[kind + 'RangeMode'] = 'preset';
+    state[kind + 'Range'] = parseInt(b.dataset.range, 10);
+    box.hidden = true;
+    showMsg('');
+    render();
+  }));
+}
+wireReportRange('food', () => renderFoodDiary());
+wireReportRange('notes', () => renderNotesReport());
 
 function fmtMl(ml) {
   return ml >= 1000 ? (ml / 1000).toFixed(2).replace(/0+$/, '').replace(/\.$/, '') + ' L' : ml + ' ml';
@@ -2127,6 +2351,179 @@ function entryNutrition(index, entry) {
   return { tags: FOOD_TAG_ORDER.filter((t) => set.has(t)), matches, unmatched };
 }
 
+/* ---- Stage 2: optional calorie and macro estimates ----
+   Gated throughout on profile/main.detailedNutrition (account-wide, the
+   same shared document the exercise goals already live in). Off by
+   default: nothing below runs, nothing is stored, and the app looks
+   exactly as it did before this was added.
+
+   Portion sizes are "typical portion, estimate" grams, Small/Medium/Large,
+   chosen per CoFID group. A few groups do not map cleanly onto the
+   requested categories, so the nearest is used: herbs and spices (group H)
+   as Fats, oils and spreads; soft drinks, coffee and juice concentrate
+   (group P) and alcoholic drinks (group Q) as Milk and milk-based drinks;
+   a hand-added food with no CoFID group at all (today, only the whey
+   protein powder in ADDED_FOODS) as Anything else. */
+
+/* How much of the served portion was actually eaten, from the existing
+   "how much" answer already collected on every food entry */
+const FOOD_AMOUNT_SCALE = { 'A few mouthfuls': 0.25, 'About half': 0.5, 'Most of it': 0.75, 'All of it': 1 };
+function amountScale(amount) { return FOOD_AMOUNT_SCALE[amount] != null ? FOOD_AMOUNT_SCALE[amount] : 0.5; }
+
+/* Small / Medium / Large grams for a matched CoFID (or ADDED_FOODS) row, by food group */
+function portionGroupFor(food) {
+  const g = (food && food.g) || '', n = ((food && food.n) || '').toLowerCase();
+  if (/^(AF|AG)/.test(g)) return { label: 'Bread and rolls', sizes: [36, 72, 108] };
+  if (/^(AC|AD|AT)/.test(g) || /^DA/.test(g)) return { label: 'Rice, pasta, potatoes and other starchy, cooked weight', sizes: [120, 180, 250] };
+  if (/^(AM|AN|AO|AP|AS)/.test(g)) return { label: 'Cakes, biscuits, confectionery and snacks', sizes: [30, 50, 80] };
+  if (/^S/.test(g)) {
+    return /sugar|jam|honey|preserve|marmalade|treacle|syrup/.test(n)
+      ? { label: 'Sugars and preserves', sizes: [10, 20, 30] }
+      : { label: 'Cakes, biscuits, confectionery and snacks', sizes: [30, 50, 80] };
+  }
+  if (/^A/.test(g)) return { label: 'Cereals and breakfast cereals', sizes: [30, 45, 60] };
+  if (/^M/.test(g)) return { label: 'Meat, poultry and meat products', sizes: [80, 120, 180] };
+  if (/^J/.test(g)) return { label: 'Fish and fish products', sizes: [80, 120, 170] };
+  if (/^C/.test(g)) return { label: 'Eggs and egg dishes', sizes: [50, 100, 150] };
+  if (/^BL/.test(g) || (/^B/.test(g) && /cheese/.test(n))) return { label: 'Cheese', sizes: [25, 40, 60] };
+  if (/^(BN|BP|BR)/.test(g)) return { label: 'Yoghurt and dairy desserts', sizes: [100, 150, 200] };
+  if (/^B/.test(g)) return { label: 'Milk and milk-based drinks', sizes: [150, 250, 400] };
+  if (/^D/.test(g)) return { label: 'Vegetables and vegetable dishes', sizes: [50, 80, 120] };
+  if (/^F/.test(g)) return { label: 'Fruit', sizes: [80, 120, 180] };
+  if (/^G/.test(g)) return { label: 'Nuts and seeds', sizes: [25, 40, 50] };
+  if (/^O/.test(g)) return { label: 'Fats, oils and spreads', sizes: [5, 10, 15] };
+  if (/^H/.test(g)) return { label: 'Fats, oils and spreads (nearest match, herbs and spices)', sizes: [5, 10, 15] };
+  if (/^WA/.test(g)) return { label: 'Soup', sizes: [200, 300, 400] };
+  if (/^W/.test(g)) return { label: 'Sauces, gravies and dressings', sizes: [30, 50, 80] };
+  if (/^[PQ]/.test(g)) return { label: 'Milk and milk-based drinks (nearest match, other drinks)', sizes: [150, 250, 400] };
+  return { label: 'Anything else', sizes: [60, 120, 200] };
+}
+const PORTION_SIZE_INDEX = { S: 0, M: 1, L: 2 };
+const PORTION_SIZE_NAME = { S: 'Small', M: 'Medium', L: 'Large' };
+
+/* Grams for one component: its own group's Small/Medium/Large default, times how much of the meal was actually eaten */
+function portionGrams(food, size, scale) {
+  const group = food ? portionGroupFor(food) : { label: 'Anything else', sizes: [60, 120, 200] };
+  return Math.round(group.sizes[PORTION_SIZE_INDEX[size] ?? 1] * scale);
+}
+
+/* A component is either a matched CoFID/ADDED_FOODS row (its own food code) or
+   an unmatched typed phrase (nothing else identifies it), so portions and
+   manual overrides are keyed on whichever of those applies to it */
+function macroComponentKey(food, phrase) { return food ? 'c:' + food.c : 'u:' + phrase; }
+
+function scaleMacro(per100, grams) {
+  const f = (grams || 0) / 100;
+  return { kcal: (per100.kcal || 0) * f, prot: (per100.prot || 0) * f, carb: (per100.carb || 0) * f, fat: (per100.fat || 0) * f };
+}
+
+/* Foods added by hand from a packet, kept in profile/main.customFoods (name
+   plus per 100 g values), matched next time by the same name that was
+   typed. Kept separate from ADDED_FOODS (scripts.js, code-only, curated)
+   and from the CoFID matching used for tags: this is a personal shortcut
+   for macros only, and never earns nutrition tags of its own. */
+function customFoodByName(name) {
+  const key = String(name || '').trim().toLowerCase();
+  if (!key) return null;
+  const list = (state.profile && state.profile.customFoods) || [];
+  return list.find((f) => (f.name || '').trim().toLowerCase() === key) || null;
+}
+
+function saveCustomFood(name, per100) {
+  const key = String(name || '').trim().toLowerCase();
+  if (!key) return Promise.resolve();
+  const entry = {
+    name: name.trim(),
+    kcal: Math.round((per100.kcal || 0) * 10) / 10,
+    prot: Math.round((per100.prot || 0) * 10) / 10,
+    carb: Math.round((per100.carb || 0) * 10) / 10,
+    fat: Math.round((per100.fat || 0) * 10) / 10,
+    addedBy: state.name
+  };
+  const current = ((state.profile && state.profile.customFoods) || []).slice();
+  const i = current.findIndex((f) => (f.name || '').trim().toLowerCase() === key);
+  if (i >= 0) current[i] = entry; else current.push(entry);
+  if (state.demo) { state.profile = { ...state.profile, customFoods: current }; return Promise.resolve(); }
+  return setDoc(doc(db, 'profile', 'main'), { customFoods: current }, { merge: true }).catch((e) => { console.error(e); toast('Could not save to My foods'); });
+}
+
+/* Macro figures for one component: a manual "from the packet" override
+   always wins, then a saved custom food matched by name, then the CoFID or
+   ADDED_FOODS row itself; null (excluded, counted separately) only when
+   none of those have anything to go on. */
+function componentMacros(phrase, food, portion, scale) {
+  const size = (portion && portion.size) || 'M';
+  const grams = portionGrams(food, size, scale);
+  if (portion && portion.override) {
+    const ov = portion.override;
+    const num = (v) => (v === null || v === undefined || v === '' ? null : Number(v));
+    const vals = { kcal: num(ov.kcal), prot: num(ov.prot), carb: num(ov.carb), fat: num(ov.fat) };
+    if (vals.kcal == null && vals.prot == null && vals.carb == null && vals.fat == null) return null;
+    const z = (v) => v || 0;
+    const per100 = { kcal: z(vals.kcal), prot: z(vals.prot), carb: z(vals.carb), fat: z(vals.fat) };
+    if (ov.per === '100g') return scaleMacro(per100, num(ov.grams) || grams);
+    return per100; // stated per portion: already the totals for what was actually eaten
+  }
+  const custom = customFoodByName(phrase);
+  if (custom) return scaleMacro({ kcal: custom.kcal || 0, prot: custom.prot || 0, carb: custom.carb || 0, fat: custom.fat || 0 }, grams);
+  if (food) return scaleMacro({ kcal: food.kcal || 0, prot: food.prot || 0, carb: food.carb || 0, fat: food.fat || 0 }, grams);
+  return null;
+}
+
+/* The comma, "and", "with" and "on" separated pieces of the text that matched
+   nothing at all. The tag matcher joins the whole text into one phrase once
+   commas are cleaned away, so one unknown ingredient beside known ones would
+   otherwise vanish silently; for an estimate it has to be listed as not
+   counted. Pieces the whole-text match already covered (a multi-word alias
+   such as "toad in the hole") are left alone. */
+function unmatchedChunks(index, text, matches) {
+  const out = [];
+  String(text || '').toLowerCase().split(/,|;|\/|&|\+|\s+(?:and|with|on|in|plus|or)\s+/).forEach((raw) => {
+    const clean = foodClean(raw);
+    if (!clean) return;
+    const phrase = clean.split(' ').filter((w) => !FOOD_STOP.has(w) && !COOKING_WORDS.has(w) || ['peas', 'oats', 'beans', 'nuts', 'roast', 'whole'].includes(w)).join(' ').trim();
+    if (!phrase || out.includes(phrase)) return;
+    if (matches.some((m) => clean.includes(m.phrase) || m.phrase.includes(clean))) return;
+    if (!matchFoodText(index, raw).matches.length) out.push(phrase);
+  });
+  return out;
+}
+
+/* Per entry: estimated totals from every component that has something to go
+   on, plus which ones (matched or not) could not be counted. Sits beside
+   entryNutrition() and reuses its same matches/unmatched, so the tag logic
+   above is completely untouched by any of this. */
+function entryMacros(index, entry) {
+  const nutrition = entryNutrition(index, entry);
+  const portions = entry.portions || {};
+  const scale = amountScale(entry.amount);
+  const totals = { kcal: 0, prot: 0, carb: 0, fat: 0 };
+  const excluded = [];
+  const components = [];
+  const seen = new Set();
+  const add = (food, phrase) => {
+    const key = macroComponentKey(food, phrase);
+    if (seen.has(key)) return;
+    seen.add(key);
+    components.push({ key, phrase, food });
+  };
+  nutrition.matches.forEach((m) => add(m.food, m.phrase));
+  nutrition.unmatched.forEach((phrase) => add(null, phrase));
+  unmatchedChunks(index, [entry.note, entry.detail].filter(Boolean).join(', '), nutrition.matches).forEach((phrase) => add(null, phrase));
+  let counted = 0;
+  components.forEach((c) => {
+    const macros = componentMacros(c.phrase, c.food, portions[c.key], scale);
+    if (!macros) { excluded.push(c.phrase); return; }
+    counted++;
+    totals.kcal += macros.kcal; totals.prot += macros.prot; totals.carb += macros.carb; totals.fat += macros.fat;
+  });
+  return { any: counted > 0, totals, excluded, components };
+}
+
+function fmtMacroLine(totals) {
+  return `${Math.round(totals.kcal)} kcal · ${Math.round(totals.prot)} g protein · ${Math.round(totals.carb)} g carbs · ${Math.round(totals.fat)} g fat`;
+}
+
 /* Per day: how many entries carried each tag */
 function tagCounts(entriesNutrition) {
   const counts = {};
@@ -2149,11 +2546,14 @@ function loadFoodTable() {
 
 async function renderFoodDiary() {
   const today = todayStr();
-  const from = addDays(today, -(state.foodRange - 1));
-  $('food-sub').textContent = `Last ${state.foodRange} days, from ${fmtDayNum(from)}`;
-  const entries = await loadEntriesFrom(from);
-  if (!entries) return;
+  const range = reportRange('food');
+  const { from, to } = range;
+  $('food-sub').textContent = reportRangeLabel('food', range);
+  const loaded = await loadEntriesFrom(from);
+  if (!loaded) return;
+  const entries = loaded.filter((e) => e.day <= to);
   const index = await loadFoodTable();
+  const macrosOn = detailedNutritionOn() && Boolean(index);
   const byDay = {};
   entries.forEach((e) => {
     if (e.type !== 'food' && e.type !== 'drink') return;
@@ -2165,8 +2565,8 @@ async function renderFoodDiary() {
   const daysWith = {};
   let dayCount = 0;
   if (logged.length) {
-    /* Every day from the first logged one to today, so a day with nothing eaten still shows */
-    for (let day = today; day >= logged[0]; day = addDays(day, -1)) {
+    /* Every day from the first logged one to the end of the range, so a day with nothing eaten still shows */
+    for (let day = to; day >= logged[0]; day = addDays(day, -1)) {
       const list = (byDay[day] || []).slice().sort((a, b) => entryDate(a) - entryDate(b));
       const foods = list.filter((e) => e.type === 'food');
       const drinks = list.filter((e) => e.type === 'drink');
@@ -2180,6 +2580,11 @@ async function renderFoodDiary() {
       const tagLine = FOOD_TAG_ORDER.filter((t) => counts[t]).map((t) => t + ' ' + counts[t]).join(' · ');
       const groups = nutriGroupCounts(nutri);
       const gradient = donutGradient(groups);
+      /* Estimated totals for the day and each entry, only with the Food setting on */
+      const macros = macrosOn ? foods.map((e) => entryMacros(index, e)) : [];
+      const dayTotal = macrosOn ? dayMacros(foods) : null;
+      const macroLine = dayTotal ? 'Estimate ' + fmtMacroLine(dayTotal.totals) + (dayTotal.excluded ? ` (${plural(dayTotal.excluded, 'item')} not counted)` : '') : '';
+      const entryMacroText = (i) => (macros[i] && macros[i].any ? 'About ' + fmtMacroLine(macros[i].totals) : '');
       dayCount++;
       Object.keys(counts).forEach((t) => { daysWith[t] = (daysWith[t] || 0) + 1; });
       sections.push(h('section', { class: 'diary-day' },
@@ -2192,12 +2597,13 @@ async function renderFoodDiary() {
           ))
         ) : null,
         tagLine ? h('p', { class: 'diary-tags', text: tagLine }) : null,
-        foods.length ? h('ul', { class: 'timeline' }, ...foods.map((e, i) => diaryRow(e, nutri[i]))) : null
+        macroLine ? h('p', { class: 'diary-macros', text: macroLine }) : null,
+        foods.length ? h('ul', { class: 'timeline' }, ...foods.map((e, i) => diaryRow(e, nutri[i], entryMacroText(i)))) : null
       ));
-      blocks.push({ kind: 'sub', text: `${fmtDayLong(day)} (${fmtDayNum(day)})` }, { kind: 'muted', text: sum + (tagLine ? ' · ' + tagLine : '') });
+      blocks.push({ kind: 'sub', text: `${fmtDayLong(day)} (${fmtDayNum(day)})` }, { kind: 'muted', text: sum + (tagLine ? ' · ' + tagLine : '') + (macroLine ? ' · ' + macroLine : '') });
       if (gradient) blocks.push({ kind: 'donut', groups });
       if (foods.length) blocks.push({ kind: 'table', head: ['What was eaten', 'Nutrition'], rows: foods.map((e, i) => [
-        `${fmtTime(entryDate(e))}  ${e.note || 'Food'}${e.amount ? ', ' + e.amount.toLowerCase() : ''}${e.detail ? ' (' + e.detail + ')' : ''}, by ${e.addedBy || 'unknown'}`,
+        `${fmtTime(entryDate(e))}  ${e.note || 'Food'}${e.amount ? ', ' + e.amount.toLowerCase() : ''}${e.detail ? ' (' + e.detail + ')' : ''}, by ${e.addedBy || 'unknown'}${entryMacroText(i) ? '. ' + entryMacroText(i) : ''}`,
         nutri[i] && nutri[i].tags.length ? nutri[i].tags.map((t) => ({ label: t, group: NUTRI_GROUP[t] })) : (nutri[i] && !nutri[i].matches.length ? 'Not in the food table' : '')
       ]) });
     }
@@ -2210,23 +2616,25 @@ async function renderFoodDiary() {
       h('span', { class: 'tile-label', text: t }),
       h('span', { class: 'nutri-value' }, String(daysWith[t] || 0), h('small', { text: ' of ' + dayCount + ' days' }))
     ))));
-    blocks.unshift({ kind: 'muted', text: 'Days with: ' + FOOD_TAG_ORDER.map((t) => `${t} ${daysWith[t] || 0} of ${dayCount}`).join(' · ') + '. Tags follow UK food label rules per 100 g of each food named, from the McCance and Widdowson food table. Not portion sizes, not medical advice.' });
+    blocks.unshift({ kind: 'muted', text: 'Days with: ' + FOOD_TAG_ORDER.map((t) => `${t} ${daysWith[t] || 0} of ${dayCount}`).join(' · ') + '. Tags follow UK food label rules per 100 g of each food named, from the McCance and Widdowson food table. Not portion sizes, not medical advice.' + (macrosOn ? ' Calorie and macro figures are estimates from typical portion sizes, scaled by how much was eaten, or entered from the packet.' : '') });
   } else { overview.hidden = true; overview.replaceChildren(); }
   $('food-days').replaceChildren(...sections);
   $('food-empty').hidden = sections.length > 0;
-  state.foodPdf = { filename: 'care-log-food-diary-' + today + '.pdf', title: 'Food diary', subtitle: `${fmtDayNum(from)} to ${fmtDayNum(today)}, printed ${fmtDayNum(today)}`, blocks };
+  state.foodPdf = { filename: 'care-log-food-diary-' + to + '.pdf', title: 'Food diary', subtitle: `${fmtDayNum(from)} to ${fmtDayNum(to)}, printed ${fmtDayNum(today)}`, blocks };
 }
 
 $('food-pdf').addEventListener('click', () => { if (state.foodPdf) savePdf(state.foodPdf.filename, state.foodPdf.title, state.foodPdf.subtitle, state.foodPdf.blocks); });
 $('food-preview').addEventListener('click', () => { if (state.foodPdf) previewPdf(state.foodPdf.title, state.foodPdf.subtitle, state.foodPdf.blocks); });
 
-function diaryRow(e, nutri) {
+/* macroText is the entry's estimate line, or '' (the setting off, or nothing to go on) */
+function diaryRow(e, nutri, macroText) {
   return h('li', { class: 'entry type-food' },
     h('span', { class: 'entry-time', text: fmtTime(entryDate(e)) }),
     h('div', { class: 'entry-main' },
       h('div', { class: 'entry-title', text: e.note || 'Food' }),
       h('div', { class: 'entry-sub', text: [e.amount, e.detail, 'by ' + (e.addedBy || 'unknown')].filter(Boolean).join(' · ') }),
       nutri && nutri.tags.length ? h('div', { class: 'tags' }, ...nutri.tags.map((t) => h('span', { class: 'tag is-' + NUTRI_GROUP[t], text: t }))) : null,
+      macroText ? h('div', { class: 'macros', text: macroText }) : null,
       nutri && !nutri.matches.length ? h('div', { class: 'unmatched', text: 'Not in the food table yet' })
         : nutri && nutri.unmatched.length ? h('div', { class: 'unmatched', text: 'Not recognised: ' + nutri.unmatched.join(', ') }) : null
     ),
@@ -2247,11 +2655,7 @@ const NOTES_PROMPT = 'Please turn these care notes into a short, clear list of q
 
 $('notes-back').addEventListener('click', () => showTab(state.reportReturn || 'vitals'));
 $('notes-print').addEventListener('click', () => window.print());
-document.querySelectorAll('#view-notes .seg').forEach((b) => b.addEventListener('click', () => {
-  state.notesRange = parseInt(b.dataset.range, 10);
-  document.querySelectorAll('#view-notes .seg').forEach((x) => x.classList.toggle('is-active', x === b));
-  renderNotesReport();
-}));
+/* The range buttons (presets and Custom) are wired by wireReportRange('notes', ...) with the Food diary's */
 
 $('notes-share').addEventListener('click', async () => {
   const text = state.notesText;
@@ -2304,8 +2708,10 @@ function plural(n, word) { return n + ' ' + word + (n === 1 ? '' : 's'); }
 
 /* Plain-language threshold checks. Red and amber follow the app's temperature
    colours; teal is context worth passing on rather than a concern. */
-function vitalsFlags(entries, rangeDays, today) {
+function vitalsFlags(entries, from, to) {
   const flags = [];
+  const rangeDays = daysBetween(from, to) + 1;
+  const today = todayStr();
   const when = (e) => fmtDayShort(e.day) + ' at ' + fmtTime(entryDate(e));
   const sorted = entries.slice().sort((a, b) => entryDate(a) - entryDate(b));
 
@@ -2371,7 +2777,7 @@ function vitalsFlags(entries, rangeDays, today) {
     flags.push({ level: hitMax ? 'amber' : 'teal', text: `${m.name} needed on ${days.length} of ${rangeDays} days, most on ${fmtDayShort(most)} (${plural(perDay[most], 'dose')}${hitMax ? ', the daily maximum' : ''})` });
   });
 
-  const lowMood = Object.keys(state.days).filter((d) => d >= addDays(today, -(rangeDays - 1)) && d <= today && state.days[d].mood && state.days[d].mood <= 2).sort();
+  const lowMood = Object.keys(state.days).filter((d) => d >= from && d <= to && state.days[d].mood && state.days[d].mood <= 2).sort();
   if (lowMood.length) flags.push({ level: 'amber', text: `Felt rough or low on ${plural(lowMood.length, 'day')}: ${listDays(lowMood)}` });
 
   const rank = { red: 0, amber: 1, teal: 2 };
@@ -2426,9 +2832,27 @@ function dayReadings(list) {
   if (spots.length) bits.push('Extra pain readings ' + spots.map((e) => e.value).join(', '));
   const ml = list.filter((e) => e.type === 'drink').reduce((s, e) => s + (Number(e.value) || 0), 0);
   if (ml) bits.push('Drinks ' + fmtMl(ml));
-  const food = list.filter((e) => e.type === 'food').length;
-  if (food) bits.push(food === 1 ? '1 food entry' : food + ' food entries');
+  const foods = list.filter((e) => e.type === 'food');
+  if (foods.length) bits.push(foods.length === 1 ? '1 food entry' : foods.length + ' food entries');
+  const macros = dayMacros(foods);
+  if (macros) bits.push('Food estimate ' + fmtMacroLine(macros.totals) + (macros.excluded ? ` (${plural(macros.excluded, 'item')} not counted)` : ''));
   return bits.join(' · ');
+}
+
+/* A day's estimated totals across its food entries, when the setting is on
+   and the food table is loaded; null otherwise, so callers add nothing */
+function dayMacros(foods) {
+  if (!detailedNutritionOn() || !foodIndex || !foods.length) return null;
+  const totals = { kcal: 0, prot: 0, carb: 0, fat: 0 };
+  let any = false, excluded = 0;
+  foods.forEach((e) => {
+    const m = entryMacros(foodIndex, e);
+    excluded += m.excluded.length;
+    if (!m.any) return;
+    any = true;
+    totals.kcal += m.totals.kcal; totals.prot += m.totals.prot; totals.carb += m.totals.carb; totals.fat += m.totals.fat;
+  });
+  return any ? { totals, excluded } : null;
 }
 
 function dayPrn(list) {
@@ -2440,13 +2864,13 @@ function dayPrn(list) {
   return Object.keys(counts).map((n) => n + ' x' + counts[n]).join(', ');
 }
 
-function buildNotesReport(entries, from, today) {
-  const rangeDays = state.notesRange;
-  const flags = vitalsFlags(entries, rangeDays, today);
+/* from and to are the report's own range (inclusive), which need not end today */
+function buildNotesReport(entries, from, to) {
+  const flags = vitalsFlags(entries, from, to);
   const byDay = {};
   entries.forEach((e) => { (byDay[e.day] = byDay[e.day] || []).push(e); });
   const days = [];
-  for (let day = from; day <= today; day = addDays(day, 1)) {
+  for (let day = from; day <= to; day = addDays(day, 1)) {
     const list = (byDay[day] || []).slice().sort((a, b) => entryDate(a) - entryDate(b));
     const info = state.days[day] || {};
     const notes = list.filter((e) => e.type === 'note' || (e.note && ['temp', 'weight', 'vitals', 'med', 'pain'].includes(e.type)))
@@ -2464,10 +2888,11 @@ function buildNotesReport(entries, from, today) {
     days.push({ day, mood, good: info.good || '', readings, prn, notes });
   }
 
-  const docs = state.documents.filter((d) => d.category !== 'exemption' && d.docDate && d.docDate >= from && d.docDate <= today)
+  const docs = state.documents.filter((d) => d.category !== 'exemption' && d.docDate && d.docDate >= from && d.docDate <= to)
     .sort((a, b) => (a.docDate || '').localeCompare(b.docDate || ''));
 
-  const lines = [NOTES_PROMPT, '', `Care Log notes, ${fmtDayNum(from)} to ${fmtDayNum(today)}`, '', 'Worth mentioning from the readings:'];
+  /* The range is the first line, so whoever reads it (Claude included) knows the period before anything else */
+  const lines = [`Care Log notes from ${fmtDayNum(from)} to ${fmtDayNum(to)}.`, '', NOTES_PROMPT, '', 'Worth mentioning from the readings:'];
   if (flags.length) flags.forEach((f) => lines.push('- ' + f.text));
   else lines.push('- Nothing out of the ordinary in the readings for this period.');
   lines.push('', 'Letters and documents in this period:');
@@ -2489,13 +2914,16 @@ function buildNotesReport(entries, from, today) {
 
 async function renderNotesReport() {
   const today = todayStr();
-  const from = addDays(today, -(state.notesRange - 1));
-  $('notes-sub').textContent = `Last ${state.notesRange} days, from ${fmtDayNum(from)}`;
-  const entries = await loadEntriesFrom(from);
-  if (!entries) return;
-  const report = buildNotesReport(entries, from, today);
+  const range = reportRange('notes');
+  const { from, to } = range;
+  $('notes-sub').textContent = reportRangeLabel('notes', range);
+  const loaded = await loadEntriesFrom(from);
+  if (!loaded) return;
+  const entries = loaded.filter((e) => e.day <= to);
+  if (detailedNutritionOn()) await loadFoodTable(); // so the per-day readings line can carry the food estimate
+  const report = buildNotesReport(entries, from, to);
   state.notesText = report.text;
-  state.notesPdf = { filename: 'care-log-notes-' + today + '.pdf', title: 'Notes for the team', subtitle: `${fmtDayNum(from)} to ${fmtDayNum(today)}, printed ${fmtDayNum(today)}`, blocks: notesPdfBlocks(report) };
+  state.notesPdf = { filename: 'care-log-notes-' + to + '.pdf', title: 'Notes for the team', subtitle: `${fmtDayNum(from)} to ${fmtDayNum(to)}, printed ${fmtDayNum(today)}`, blocks: notesPdfBlocks(report) };
 
   const levelWord = { red: 'Check', amber: 'Mention', teal: 'Context' };
   $('notes-flags').replaceChildren(...report.flags.map((f) => h('div', { class: 'flag is-' + f.level },
