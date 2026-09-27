@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '47';
+const APP_VERSION = '48';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -46,7 +46,7 @@ const CLAUDE_INTRO = 'Please explain this medical document in plain English for 
   'Tell us what it says, what it means for day-to-day care, anything we need to act on, and any questions we might want to ask the medical team. ' +
   'Keep it calm and clear.';
 
-const CLAUDE_FORMAT = 'Reply using exactly this format, so it can be pasted straight back into Care Log:\n\n' +
+const CLAUDE_FORMAT = 'Reply using exactly this format, so it can be pasted straight back into Daybook:\n\n' +
   '=== CARE LOG DOCUMENT ===\n' +
   'Title: <a short title for this document>\n' +
   'Date: <the date on the document, YYYY-MM-DD>\n' +
@@ -305,7 +305,7 @@ function atFromInputs(day, timeValue) {
 const CONFIG = window.CARE_LOG_CONFIG;
 if (!CONFIG || !CONFIG.firebase || !CONFIG.firebase.apiKey || CONFIG.firebase.apiKey === 'YOUR_API_KEY') {
   $('noconfig').hidden = false;
-  throw new Error('Care Log: config.js missing or incomplete');
+  throw new Error('Daybook: config.js missing or incomplete');
 }
 
 const app = initializeApp(CONFIG.firebase);
@@ -415,7 +415,7 @@ onAuthStateChanged(auth, async (user) => {
   const account = user ? await loadAccount(user) : null;
   if (user && !account) {
     await signOut(auth);
-    $('signin-error').textContent = 'This account is not set up for Care Log yet.';
+    $('signin-error').textContent = 'This account is not set up for Daybook yet.';
     $('signin-error').hidden = false;
     return;
   }
@@ -871,8 +871,8 @@ document.querySelectorAll('.tab').forEach((btn) => {
    pages and the Chemo tab no longer need a heading of their own */
 const PAGE_TITLES = { today: 'Today', meds: 'Medicines', vitals: 'Trends', chemo: 'Chemo plan', exercise: 'Exercise', more: 'More', food: 'Food diary', notes: 'Team notes', docs: 'Documents', settings: 'Settings' };
 function setBrand(page) {
-  $('brand').replaceChildren('Care Log', page ? h('span', { class: 'brand-page', text: ': ' + page }) : null);
-  document.title = page ? 'Care Log: ' + page : 'Care Log';
+  $('brand').replaceChildren('Daybook', page ? h('span', { class: 'brand-page', text: ': ' + page }) : null);
+  document.title = page ? 'Daybook: ' + page : 'Daybook';
 }
 
 function showTab(name) {
@@ -1127,6 +1127,45 @@ function renderTiles() {
 
 /* Quick add */
 document.querySelectorAll('.qa').forEach((b) => b.addEventListener('click', () => openAdd(b.dataset.add)));
+
+
+/* ---- Speech to text: a big "Tap to speak" button under a text box ----
+   Uses the browser's own speech recognition (Safari on iPhone: Apple's, on
+   device where the phone supports it; Chrome: Google's), so nothing of ours
+   sits in between, no key and no cost. Words appear in the box as they are
+   recognised and can be edited afterwards like anything typed. The button is
+   not shown where the browser has no support; the keyboard's own microphone
+   still works in every box. */
+const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition || null;
+function speakButton(target) {
+  if (!SpeechRec) return null;
+  const label = h('span', { class: 'speakbtn-label', text: 'Tap to speak' });
+  const btn = h('button', { class: 'speakbtn', type: 'button', 'aria-pressed': 'false' }, icon('mic'), label);
+  let rec = null;
+  const setState = (on) => { btn.classList.toggle('is-listening', on); btn.setAttribute('aria-pressed', on ? 'true' : 'false'); label.textContent = on ? 'Listening, tap to stop' : 'Tap to speak'; };
+  btn.addEventListener('click', () => {
+    if (rec) { try { rec.stop(); } catch (e) { /* already stopping */ } return; }
+    const base = target.value.trim();
+    const join = (t) => (base ? base + ' ' : '') + t.trim();
+    rec = new SpeechRec();
+    rec.lang = 'en-GB';
+    rec.interimResults = true;
+    rec.continuous = true;
+    rec.onresult = (ev) => {
+      let text = '';
+      for (let i = 0; i < ev.results.length; i++) text += ev.results[i][0].transcript + (ev.results[i].isFinal ? ' ' : '');
+      target.value = join(text);
+      target.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    rec.onerror = (ev) => {
+      if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') toast('Allow the microphone for this site to speak your notes');
+      else if (ev.error !== 'aborted' && ev.error !== 'no-speech') toast('Could not hear that. Try again, or type it.');
+    };
+    rec.onend = () => { rec = null; setState(false); target.focus(); };
+    try { rec.start(); setState(true); } catch (e) { rec = null; toast('Speech is not available here. The keyboard microphone still works.'); }
+  });
+  return btn;
+}
 
 function openAdd(type, editEntry) {
   const day = editEntry ? editEntry.day : state.selectedDay;
@@ -1418,7 +1457,7 @@ function openAdd(type, editEntry) {
   if (type === 'note') {
     const text = h('textarea', { rows: '4', placeholder: 'How things are, symptoms, anything worth remembering' });
     if (editEntry) text.value = editEntry.note || '';
-    body.append(field('Note', text), field('Time', time));
+    body.append(field('Note', text), speakButton(text) || '', field('Time', time));
     getData = () => {
       if (!text.value.trim()) return null;
       return { type: 'note', note: text.value.trim() };
@@ -1432,7 +1471,7 @@ function openAdd(type, editEntry) {
     if (editEntry) text.value = editEntry.note || '';
     body.append(
       h('p', { class: 'hint', text: 'Goes to the top of Notes for the team, and stays there until it is marked as answered.' }),
-      field('Question', text), field('Time', time)
+      field('Question', text), speakButton(text) || '', field('Time', time)
     );
     getData = () => {
       if (!text.value.trim()) return null;
@@ -1702,7 +1741,7 @@ function buildPdfBlob(title, subtitle, blocks) {
   let y = M;
   const footer = () => {
     pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9); pdf.setTextColor(120);
-    pdf.text(`Care Log · ${title} · page ${pdf.getNumberOfPages()}`, M, H - 24);
+    pdf.text(`Daybook · ${title} · page ${pdf.getNumberOfPages()}`, M, H - 24);
   };
   const write = (text, size, style, color, gapAfter) => {
     pdf.setFont('helvetica', style); pdf.setFontSize(size); pdf.setTextColor(color);
@@ -2757,7 +2796,7 @@ $('notes-share').addEventListener('click', async () => {
     return;
   }
   try {
-    await navigator.share({ title: 'Care Log notes', text });
+    await navigator.share({ title: 'Daybook notes', text });
   } catch (e) {
     if (e && e.name !== 'AbortError') { await copyText(text); toast('Could not share. Copied instead.'); }
   }
@@ -3077,7 +3116,7 @@ function buildNotesReport(entries, questionsAll, from, to, rangeLabel) {
     .sort((a, b) => (a.docDate || '').localeCompare(b.docDate || ''));
 
   /* The range is the first line, so whoever reads it (Claude included) knows the period before anything else */
-  const lines = [`Care Log notes from ${fmtDayNum(from)} to ${fmtDayNum(to)}.`, '', NOTES_PROMPT, '', 'Questions for the team:'];
+  const lines = [`Daybook notes from ${fmtDayNum(from)} to ${fmtDayNum(to)}.`, '', NOTES_PROMPT, '', 'Questions for the team:'];
   if (questions.length) questions.forEach((q, i) => lines.push(`${i + 1}. ${q.text} (${q.who}, ${fmtDayShort(q.day)})`));
   else lines.push('- No open questions.');
   lines.push('', 'Summary (simple checks by the app, not a diagnosis):');
@@ -3270,7 +3309,7 @@ function openCheckin(slot, initialDay) {
       if (q.kind === 'text') {
         const ta = h('textarea', { rows: '3', placeholder: q.ph || '' });
         ta.value = answers[q.key] || '';
-        wrap.append(h('p', { class: 'wiz-hint', text: 'Optional. Skip if there is nothing to say.' }), ta);
+        wrap.append(h('p', { class: 'wiz-hint', text: 'Optional. Skip if there is nothing to say.' }), ta, speakButton(ta) || '');
         getVal = () => ta.value.trim();
       } else {
         const sl = sliderBlock(q, answers[q.key]);
@@ -4465,6 +4504,7 @@ function openDaySheet(key) {
 /* Cheer board */
 $('cheer-post').addEventListener('click', postCheer);
 $('cheer-text').addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); postCheer(); } });
+{ const speak = speakButton($('cheer-text')); if (speak) $('cheer-text').closest('.cheer-add').after(speak); }
 
 async function postCheer() {
   const input = $('cheer-text');

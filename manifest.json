@@ -1,7 +1,7 @@
 {
-  "name": "Care Log",
-  "short_name": "Care Log",
-  "description": "Private shared health tracker",
+  "name": "Daybook",
+  "short_name": "Daybook",
+  "description": "Your companion between appointments",
   "start_url": "/Mark_Medical/",
   "scope": "/Mark_Medical/",
   "display": "standalone",

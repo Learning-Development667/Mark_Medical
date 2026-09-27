@@ -885,6 +885,16 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 .flag.is-red { --cat: var(--danger); }
 .flag.is-green { --cat: var(--success); }
 .note-who { font-weight: 700; color: var(--teal-dark); }
+
+/* Speech to text: the big button under a text box (see speakButton in the JS) */
+.speakbtn { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; min-height: 56px; margin: 6px 0 14px; border: 2px solid var(--teal); border-radius: var(--r-lg); background: var(--teal-light); color: var(--teal-dark); font-weight: 700; font-size: 18px; cursor: pointer; transition: background var(--t-base) ease, border-color var(--t-base) ease, color var(--t-base) ease; }
+.speakbtn .icon { width: 24px; height: 24px; }
+.speakbtn:active { transform: translateY(1px); }
+.speakbtn.is-listening { background: var(--warm-light); border-color: var(--warm); color: var(--warm-dark); animation: speak-pulse 1.2s ease-in-out infinite; }
+@keyframes speak-pulse { 0%, 100% { box-shadow: 0 0 0 0 var(--warm-light); } 50% { box-shadow: 0 0 0 10px transparent; } }
+@media (prefers-reduced-motion: reduce) { .speakbtn.is-listening { animation: none; } }
+.cheer-add + .speakbtn { margin-top: var(--s-2); }
+.strapline { margin: 2px 0 var(--s-3); color: var(--teal); font-weight: 600; font-size: var(--fs-md); }
 .food-toggle { margin: var(--s-2) 0 0; }
 .question .question-text { font-weight: 600; margin-bottom: 4px; }
 .question .btn-link { padding-left: 0; margin-top: 4px; }

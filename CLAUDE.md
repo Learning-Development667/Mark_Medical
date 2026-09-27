@@ -1,7 +1,11 @@
-# Care Log
+# Daybook
 
 Private, shared health tracker for Mark and Shelley. Hosted on GitHub Pages from `main`, root.
 Live: https://learning-development667.github.io/Mark_Medical/
+
+Named Daybook since v48 (it was Care Log until then; the repository, the Pages path and older notes below keep the old name). Strapline, on the sign-in screen and for any store listing: "Your companion between appointments." The name appears in the topbar (`setBrand()`), the sign-in and no-config screens, `manifest.json`, the Home Screen title, the PDF footer, the share title and the first line of the copied notes. The pasted-document header `=== CARE LOG DOCUMENT ===` is a data format and deliberately unchanged.
+
+Speech to text (since v48): `speakButton(textarea)` adds a big "Tap to speak" button under a text box, using the browser's own speech recognition (`SpeechRecognition`/`webkitSpeechRecognition`: Apple's on iPhone, Google's in Chrome; nothing of ours in between, no key, no cost). Words appear in the box as recognised and can be edited like typed text; it turns warm and reads "Listening, tap to stop" while active. Wired under the Note sheet, the Question sheet, every check-in text step and the cheer board. Not rendered where the browser has no support, where the keyboard's own microphone still works.
 
 ## COST RULE (amended 2026-09-24, by Mark)
 - Runs on free tiers: the Firebase Spark plan, GitHub Pages and one Cloudflare Worker on the Workers free plan (`worker/`, the "bridge"). Nothing with a monthly charge.
