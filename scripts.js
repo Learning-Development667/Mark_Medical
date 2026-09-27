@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '50';
+const APP_VERSION = '51';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -364,6 +364,7 @@ const state = {
   days: {},
   cheers: [],
   exercise: {},
+  nutrition: {},
   exerciseDay: todayStr(),
   chemoMonth: todayStr().slice(0, 7),
   demo: false,
@@ -511,6 +512,7 @@ async function startData() {
   watchProfile();
   watchCheers();
   watchExercise();
+  watchNutrition();
   watchMeals();
 }
 
@@ -797,6 +799,23 @@ function watchExercise() {
     state.exercise = ex;
     renderExercise();
   }, (e) => console.error(e));
+}
+
+/* Day totals from a food app: nutrition/{day} ({ kcal, prot, carb, fat, source }),
+   written by the bridge from Apple Health or typed in from the Food diary.
+   Where a day has one, it is used instead of the app's own estimate. */
+function watchNutrition() {
+  state.unsub.nutrition = onSnapshot(collection(db, 'nutrition'), (snap) => {
+    const n = {};
+    snap.docs.forEach((d) => { n[d.id] = d.data(); });
+    state.nutrition = n;
+    if (!$('view-food').hidden) renderFoodDiary();
+    if (!$('view-notes').hidden) renderNotesReport();
+  }, (e) => console.error(e));
+}
+function loggedTotals(day) {
+  const n = state.nutrition[day];
+  return n && Number(n.kcal) > 0 ? { kcal: Number(n.kcal) || 0, prot: Number(n.prot) || 0, carb: Number(n.carb) || 0, fat: Number(n.fat) || 0, source: n.source || 'manual' } : null;
 }
 
 function watchMeals() {
@@ -2722,8 +2741,9 @@ async function renderFoodDiary() {
       const gradient = donutGradient(groups);
       /* Estimated totals for the day and each entry, only with the Food setting on */
       const macros = macrosOn ? foods.map((e) => entryMacros(index, e)) : [];
-      const dayTotal = macrosOn ? dayMacros(foods) : null;
-      const macroLine = dayTotal ? 'Estimate ' + fmtMacroLine(dayTotal.totals) + (proteinTargetText(dayTotal.totals.prot) ? ' · ' + proteinTargetText(dayTotal.totals.prot) : '') + (dayTotal.excluded ? ` (${plural(dayTotal.excluded, 'item')} not counted)` : '') : '';
+      const dayLogged = loggedTotals(day);
+      const dayTotal = dayLogged ? { totals: dayLogged, excluded: 0, logged: true } : (macrosOn ? dayMacros(foods) : null);
+      const macroLine = dayTotal ? (dayTotal.logged ? (dayLogged.source === 'apple-health' ? 'From Apple Health ' : 'From your food app ') : 'Estimate ') + fmtMacroLine(dayTotal.totals) + (proteinTargetText(dayTotal.totals.prot) ? ' · ' + proteinTargetText(dayTotal.totals.prot) : '') + (dayTotal.excluded ? ` (${plural(dayTotal.excluded, 'item')} not counted)` : '') : '';
       const entryMacroText = (i) => (macros[i] && macros[i].any ? 'About ' + fmtMacroLine(macros[i].totals) : '');
       dayCount++;
       Object.keys(counts).forEach((t) => { daysWith[t] = (daysWith[t] || 0) + 1; });
@@ -2764,6 +2784,40 @@ async function renderFoodDiary() {
 }
 
 $('food-pdf').addEventListener('click', () => { if (state.foodPdf) savePdf(state.foodPdf.filename, state.foodPdf.title, state.foodPdf.subtitle, state.foodPdf.blocks); });
+
+/* Day totals typed in from a food app, for anyone without the Apple Health feed (Android, or no phone link) */
+$('food-totals').addEventListener('click', () => {
+  const dayInput = h('input', { type: 'date', value: todayStr(), max: todayStr() });
+  const num = (ph) => h('input', { type: 'number', inputmode: 'decimal', min: '0', step: '1', placeholder: ph });
+  const kcal = num('kcal'), prot = num('g'), carb = num('g'), fat = num('g');
+  const fill = () => {
+    const n = state.nutrition[dayInput.value];
+    kcal.value = n && n.kcal ? String(Math.round(n.kcal)) : '';
+    prot.value = n && n.prot ? String(Math.round(n.prot)) : '';
+    carb.value = n && n.carb ? String(Math.round(n.carb)) : '';
+    fat.value = n && n.fat ? String(Math.round(n.fat)) : '';
+  };
+  fill();
+  dayInput.addEventListener('change', fill);
+  const body = h('div', null,
+    h('p', { class: 'hint', text: 'Copy the day\'s totals from MyFitnessPal, Nutracheck or whichever app you use. They replace the estimate for that day in the diary and in Notes for the team.' }),
+    field('Day', dayInput),
+    h('div', { class: 'field-row' }, field('Calories (kcal)', kcal), field('Protein (g)', prot)),
+    h('div', { class: 'field-row' }, field('Carbs (g)', carb), field('Fat (g)', fat)),
+    h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
+      const day = dayInput.value;
+      const v = (i) => { const n = parseFloat(i.value); return isFinite(n) && n >= 0 ? Math.round(n) : 0; };
+      const data = { day, kcal: v(kcal), prot: v(prot), carb: v(carb), fat: v(fat), source: 'manual', addedBy: state.name };
+      if (!day || !data.kcal) { toast('Add at least the day\'s calories'); return; }
+      closeSheet();
+      if (state.demo) { state.nutrition[day] = data; renderFoodDiary(); toast('Day totals saved'); return; }
+      try { await setDoc(doc(db, 'nutrition', day), { ...data, updatedAt: serverTimestamp() }, { merge: true }); toast('Day totals saved'); }
+      catch (e) { console.error(e); toast('Could not save the totals'); }
+    } }, 'Save'),
+    h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Cancel')
+  );
+  openSheet('Day totals from your food app', body);
+});
 $('food-preview').addEventListener('click', () => { if (state.foodPdf) previewPdf(state.foodPdf.title, state.foodPdf.subtitle, state.foodPdf.blocks); });
 
 /* macroText is the entry's estimate line, or '' (the setting off, or nothing to go on) */
@@ -3005,18 +3059,23 @@ function summaryRows(entries, from, to) {
     else fine.push(`drinks (${mean} a day)`);
   }
   if (loggedDays.length) {
-    const noFood = loggedDays.filter((d) => !byDay[d].some((e) => e.type === 'food'));
-    const foods = entries.filter((e) => e.type === 'food' && e.day < today);
-    const eatingDays = Math.max(1, loggedDays.length - noFood.length);
-    const macros = dayMacros(foods);
-    const est = macros ? `about ${Math.round(macros.totals.kcal / eatingDays)} kcal and ${Math.round(macros.totals.prot / eatingDays)} g protein a day` : '';
+    const noFood = loggedDays.filter((d) => !byDay[d].some((e) => e.type === 'food') && !loggedTotals(d));
+    /* Each eating day's totals: from the food app where logged, else the app's own estimate */
+    const perDay = loggedDays.filter((d) => byDay[d].some((e) => e.type === 'food') || loggedTotals(d)).map((d) => {
+      const l = loggedTotals(d);
+      if (l) return { kcal: l.kcal, prot: l.prot, logged: true };
+      const m = dayMacros(byDay[d].filter((e) => e.type === 'food'));
+      return m ? { kcal: m.totals.kcal, prot: m.totals.prot, logged: false } : null;
+    }).filter(Boolean);
+    const macros = perDay.length > 0;
+    const anyLogged = perDay.some((p) => p.logged);
+    const est = macros ? `about ${Math.round(avg(perDay.map((p) => p.kcal)))} kcal and ${Math.round(avg(perDay.map((p) => p.prot)))} g protein a day${anyLogged ? (perDay.every((p) => p.logged) ? ' (from your food app)' : ' (from your food app where logged, estimated otherwise)') : ''}` : '';
     /* Against the dietitian's daily protein target, day by day, when one is set */
     const target = proteinTarget();
     let targetText = '', underDays = 0, targetDays = 0;
     if (macros && target) {
-      const perDay = loggedDays.filter((d) => byDay[d].some((e) => e.type === 'food')).map((d) => { const m = dayMacros(byDay[d].filter((e) => e.type === 'food')); return m ? m.totals.prot : 0; });
       targetDays = perDay.length;
-      underDays = perDay.filter((p) => p < target).length;
+      underDays = perDay.filter((p) => p.prot < target).length;
       targetText = `; against the ${target} g protein target, ${underDays ? 'under on ' + underDays + ' of ' + plural(targetDays, 'day') : 'met on every one of ' + plural(targetDays, 'day')}`;
     }
     if (noFood.length) push('amber', 'Eating', `Nothing eaten logged on ${plural(noFood.length, 'day')} of the ${loggedDays.length} logged (${listDays(noFood)})${est ? '; on the other days ' + est : ''}${targetText}.`, noFood.length === 1 && !underDays ? `nothing eaten logged on ${fmtDayShort(noFood[0])}` : null);
