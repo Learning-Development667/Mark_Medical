@@ -434,6 +434,7 @@ body.is-viewer .cal-cell { pointer-events: none; }
 body.is-readonly .qa,
 body.is-readonly #pain-now,
 body.is-readonly #question-now,
+body.is-readonly #food-nutrition-row,
 body.is-readonly #meds-manage,
 body.is-readonly .med-actions,
 body.is-readonly #meds-doc-add,
@@ -639,6 +640,9 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
   --cat: var(--teal);
 }
 .entry::before { content: ""; position: absolute; left: 9px; top: 14px; bottom: 14px; width: 3px; border-radius: 2px; background: var(--cat); }
+/* Each row is tinted a couple of shades of its own category colour (the bar stays), light enough that every text token keeps its contrast */
+.entry { background: color-mix(in srgb, var(--cat) 9%, var(--surface)); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .entry { background: color-mix(in srgb, var(--cat) 16%, var(--surface)); } }
 .entry.type-temp { --cat: var(--success); }
 .entry.type-temp.is-amber { --cat: var(--warning); }
 .entry.type-temp.is-red { --cat: var(--danger); }
@@ -879,7 +883,8 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 .flag.is-amber { --cat: var(--warning); }
 .flag.is-red { --cat: var(--danger); }
 .flag.is-green { --cat: var(--success); }
-.flag-topic { font-weight: 700; }
+.note-who { font-weight: 700; color: var(--teal-dark); }
+.food-toggle { margin: var(--s-2) 0 0; }
 .question .question-text { font-weight: 600; margin-bottom: 4px; }
 .question .btn-link { padding-left: 0; margin-top: 4px; }
 .flag .pill { flex: none; }
