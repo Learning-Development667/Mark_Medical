@@ -1,0 +1,56 @@
+# Writes one users/{uid} account record in Firestore from a form on the Actions
+# tab (Actions > Seed a user record > Run workflow), using the bridge's service
+# account secret. Run it once per person. Safe to re-run: it updates in place.
+name: Seed a user record
+
+on:
+  workflow_dispatch:
+    inputs:
+      uid:
+        description: "User UID (copy from Authentication > Users, 28 characters)"
+        required: true
+        type: string
+      name:
+        description: "First name shown in the app"
+        required: true
+        type: string
+      role:
+        description: "Access"
+        required: true
+        type: choice
+        default: family
+        options:
+          - family
+          - readonly
+          - viewer
+      relation:
+        description: "Who they are (optional)"
+        required: false
+        type: choice
+        default: none
+        options:
+          - none
+          - patient
+          - carer
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Write the record
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          USER_UID: ${{ inputs.uid }}
+          NAME: ${{ inputs.name }}
+          ROLE: ${{ inputs.role }}
+          RELATION: ${{ inputs.relation == 'none' && '' || inputs.relation }}
+        run: |
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
+            echo "::error::The FIREBASE_SERVICE_ACCOUNT repository secret is not set."
+            exit 1
+          fi
+          node tools/seed_user.mjs
