@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '42';
+const APP_VERSION = '43';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -56,7 +56,7 @@ const CLAUDE_FORMAT = 'Reply using exactly this format, so it can be pasted stra
 
 const NOT_MEDICAL_ADVICE = 'This explanation is for context only. It is not medical advice. Always check changes with the medical team.';
 
-/* Mood scale for the Chemo Party Plan, 1 (rough) to 5 (great). */
+/* Mood scale for the Chemo plan, 1 (rough) to 5 (great). */
 const MOODS = [
   { label: 'Rough' },
   { label: 'Low' },
@@ -864,13 +864,23 @@ document.querySelectorAll('.tab').forEach((btn) => {
   btn.addEventListener('click', () => showTab(btn.dataset.tab));
 });
 
+/* The topbar carries the page name ("Care Log: Food diary"), so the report
+   pages and the Chemo tab no longer need a heading of their own */
+const PAGE_TITLES = { today: 'Today', meds: 'Medicines', vitals: 'Trends', chemo: 'Chemo plan', exercise: 'Exercise', more: 'More', food: 'Food diary', notes: 'Team notes', docs: 'Documents', settings: 'Settings' };
+function setBrand(page) {
+  $('brand').replaceChildren('Care Log', page ? h('span', { class: 'brand-page', text: ': ' + page }) : null);
+  document.title = page ? 'Care Log: ' + page : 'Care Log';
+}
+
 function showTab(name) {
   /* Report pages highlight the tab they were opened from (Documents can be reached from a report too) */
   let highlight = name;
   if (name === 'docs') highlight = state.docsReturn || 'more';
+  if (name === 'settings') highlight = 'more';
   if (highlight === 'food' || highlight === 'notes') highlight = state.reportReturn || 'vitals';
   document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('is-active', b.dataset.tab === highlight));
   document.querySelectorAll('.view').forEach((v) => { v.hidden = v.dataset.view !== name; });
+  setBrand(PAGE_TITLES[name] || '');
   window.scrollTo(0, 0);
   enterView(document.querySelector('.view[data-view="' + name + '"]'));
   moveTabIndicator();
@@ -903,6 +913,8 @@ function moveTabIndicator() {
 }
 window.addEventListener('resize', moveTabIndicator);
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(moveTabIndicator);
+/* Today is the view showing before any tab is tapped, so the topbar starts with its name */
+setBrand(PAGE_TITLES.today);
 
 /* Only rows that are new to the screen animate in; rows already shown stay put on data updates */
 const seenIds = { entries: new Set(), cheers: new Set(), docs: new Set() };
@@ -1530,6 +1542,8 @@ function deleteMeal(id) {
 }
 
 $('more-meals').addEventListener('click', openManageMeals);
+$('more-settings').addEventListener('click', () => showTab('settings'));
+$('settings-back').addEventListener('click', () => showTab('more'));
 
 function openManageMeals() {
   const list = h('div', { class: 'medlist' });
@@ -2017,6 +2031,8 @@ const FOOD_ALIASES = {
   'brussels sprouts': [[/^brussels sprouts, boiled in unsalted water/i]],
   'green beans': [[/^green beans\/french beans, .*boiled in unsalted water|^beans, green.*boiled|^french beans, .*boiled/i, /^green beans/i]],
   'sweetcorn': [[/^sweetcorn kernels, canned in water, drained/i]],
+  'corn on the cob': [[/^sweetcorn, kernels, boiled 'on the cob' in unsalted water$/i]],
+  'corn': [[/^sweetcorn, kernels, boiled 'on the cob' in unsalted water$/i]],
   'spinach': [[/^spinach, mature, boiled in unsalted water/i, /^spinach, baby, raw/i]],
   'onion': [[/^onions, raw$/i, /^onions, fried in/i]],
   'onions': [[/^onions, raw$/i, /^onions, fried in/i]],
@@ -4150,7 +4166,7 @@ $('doc-delete').addEventListener('click', async () => {
 });
 
 /* ------------------------------------------------------------------ */
-/* Chemo Party Plan: calendar, mood, cheer board                         */
+/* Chemo plan: calendar, mood, cheer board                               */
 /* ------------------------------------------------------------------ */
 
 function renderChemo() {

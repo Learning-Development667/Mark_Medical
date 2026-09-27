@@ -834,7 +834,7 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 /* Calorie and macro estimates (More > Settings > Food). All of it is gated
    in the JS on profile/main.detailedNutrition, so none of these elements
    exist on the page while the setting is off. */
-.diary-macros { color: var(--text-secondary); font-size: 15px; margin: 0 0 var(--s-2); font-family: var(--font-mono); letter-spacing: 0.01em; }
+.diary-macros { display: inline-block; color: var(--teal-dark); background: var(--teal-light); border-radius: var(--r-sm); padding: 5px 10px; font-size: 15px; margin: 0 0 var(--s-2); font-family: var(--font-mono); letter-spacing: 0.01em; }
 .macros { color: var(--text-secondary); font-size: 14px; margin-top: 4px; font-family: var(--font-mono); letter-spacing: 0.01em; }
 .macrosbox { margin: var(--s-3) 0 var(--s-2); }
 .macrosbox > .hint { margin-top: 0; margin-bottom: var(--s-2); }
@@ -849,11 +849,17 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 .override .btnrow { margin-top: var(--s-2); }
 .macro-total { margin: var(--s-3) 0 0; padding: var(--s-3) 14px; border-radius: var(--r-md); background: var(--teal-light); color: var(--teal-dark); font-weight: 600; }
 
-/* More > Settings */
+/* More: a short menu of rows (the check-in row look), Settings is its own screen */
+.menu { display: flex; flex-direction: column; gap: var(--s-2); margin-top: var(--s-3); }
+.menu-row .checkin-title { font-size: 21px; }
 .settings-group { margin-top: var(--s-2); }
-.settings-sub { margin: 0 0 var(--s-2); font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); }
 .settings-toggle { margin-bottom: 0; }
 .settings-group .hint { margin-top: var(--s-2); }
+
+/* The topbar names the page: "Care Log" then a lighter ": Food diary" */
+.brand { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: clamp(22px, 7vw, var(--fs-2xl)); }
+.brand-page { color: var(--text-secondary); font-size: 0.8em; }
+.topbar-right { flex: none; }
 
 /* Reports: five range buttons (7/14/30/90 and Custom) have to sit on one line on a phone */
 #view-food .seg, #view-notes .seg { white-space: nowrap; font-size: 15px; padding-left: 4px; padding-right: 4px; }

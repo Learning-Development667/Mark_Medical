@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=42">
+  <link rel="stylesheet" href="styles.css?v=43">
 </head>
 <body>
 
@@ -77,7 +77,7 @@
   <!-- App -->
   <div id="app" class="app" hidden>
     <header class="topbar">
-      <h1 class="brand">Care Log</h1>
+      <h1 id="brand" class="brand">Care Log</h1>
       <div class="topbar-right">
         <span id="guest-pill" class="pill pill-teal" hidden>Preview</span>
         <span id="viewer-pill" class="pill pill-teal" hidden>View only</span>
@@ -245,9 +245,8 @@
         </div>
       </section>
 
-      <!-- CHEMO PARTY PLAN -->
+      <!-- CHEMO PLAN -->
       <section id="view-chemo" class="view" data-view="chemo" hidden>
-        <h1 class="page-title">Chemo Party Plan</h1>
         <div class="card" id="chemo-progress">
           <div class="progress-head"><span class="tile-label">Sessions</span><span class="mono" id="chemo-count">0 of 0 done</span></div>
           <div class="progress-bar"><div id="chemo-bar"></div></div>
@@ -343,7 +342,6 @@
           <button id="food-back" class="btn btn-link" type="button">&#8249; Back</button>
           <button id="food-print" class="btn btn-secondary btn-small" type="button">Print</button>
         </div>
-        <h2 class="page-title">Food diary</h2>
         <p id="food-sub" class="muted"></p>
         <p class="hint">Each food gets simple tags from the UK food table (McCance and Widdowson), matched on the words typed in and following UK food label rules per 100 g. They say what a food is like, not how much was eaten. A guide for the conversation, not medical advice.</p>
         <div id="food-overview" class="status food-overview" aria-label="Days with each kind of food" hidden></div>
@@ -373,7 +371,6 @@
           <button id="notes-back" class="btn btn-link" type="button">&#8249; Back</button>
           <button id="notes-print" class="btn btn-secondary btn-small" type="button">Print</button>
         </div>
-        <h2 class="page-title">Notes for the team</h2>
         <p id="notes-sub" class="muted"></p>
         <div class="segmented" role="group" aria-label="Range">
           <button class="seg" type="button" data-range="7">7 days</button>
@@ -412,29 +409,48 @@
           <p class="muted">Signed in as</p>
           <p id="more-user" class="big"></p>
         </div>
-        <h2 class="section-title">Documents</h2>
-        <button id="more-docs" class="btn btn-primary btn-block" type="button">Letters, results and paperwork</button>
-        <h2 class="section-title">Food</h2>
-        <button id="more-meals" class="btn btn-secondary btn-block" type="button">Saved meals</button>
+        <div class="menu">
+          <button id="more-docs" class="checkin-row menu-row" type="button">
+            <svg class="icon checkin-icon" aria-hidden="true"><use href="#i-doc"/></svg>
+            <span class="checkin-main"><span class="checkin-title">Letters, results and paperwork</span><span class="checkin-sub">Documents, the chemo plan and the exemption certificate</span></span>
+            <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
+          </button>
+          <button id="more-meals" class="checkin-row menu-row" type="button">
+            <svg class="icon checkin-icon" aria-hidden="true"><use href="#i-food"/></svg>
+            <span class="checkin-main"><span class="checkin-title">Saved meals</span><span class="checkin-sub">The quick buttons offered when logging food</span></span>
+            <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
+          </button>
+          <button id="more-settings" class="checkin-row menu-row" type="button">
+            <svg class="icon checkin-icon" aria-hidden="true"><use href="#i-list"/></svg>
+            <span class="checkin-main"><span class="checkin-title">Settings</span><span class="checkin-sub">Food estimates, the app and its version</span></span>
+            <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
+          </button>
+        </div>
         <p class="hint">The Food diary and Notes for the team are under Trends.</p>
-        <h2 class="section-title">Settings</h2>
+        <h2 class="section-title">Who to call</h2>
+        <div id="calls" class="cards"></div>
+        <button id="calls-edit" class="btn btn-secondary btn-block" type="button">Edit numbers</button>
+        <button id="signout" class="btn btn-danger btn-block" type="button">Sign out</button>
+      </section>
+
+      <!-- SETTINGS (reached from More) -->
+      <section id="view-settings" class="view" data-view="settings" hidden>
+        <div class="diary-head">
+          <button id="settings-back" class="btn btn-link" type="button">&#8249; Back</button>
+        </div>
+        <h2 class="section-title">Food</h2>
         <div id="settings-food" class="card settings-group">
-          <p class="settings-sub">Food</p>
           <label class="check settings-toggle">
             <input id="settings-nutrition" type="checkbox">
             <span>Show calorie and macro estimates</span>
           </label>
-          <p class="hint">Adds typical portion sizes to the Food sheet, and rough calorie, protein, carb and fat figures to Today, the Food diary and Notes for the team. Estimates only, for both of you, not medical advice.</p>
+          <p class="hint">Adds typical portion sizes to the Food sheet, and rough calorie, protein, carb and fat figures to Today, the Food diary and Notes for the team. Estimates only, shared by everyone on this account, not medical advice.</p>
         </div>
-        <h2 class="section-title">Who to call</h2>
-        <div id="calls" class="cards"></div>
-        <button id="calls-edit" class="btn btn-secondary btn-block" type="button">Edit numbers</button>
         <h2 class="section-title">App</h2>
         <div class="card">
           <p>Add Care Log to the Home Screen from the Share menu in Safari to use it like an app.</p>
           <p class="muted mono" id="app-version"></p>
         </div>
-        <button id="signout" class="btn btn-danger btn-block" type="button">Sign out</button>
       </section>
 
     </main>
@@ -470,6 +486,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=42"></script>
+  <script type="module" src="scripts.js?v=43"></script>
 </body>
 </html>
