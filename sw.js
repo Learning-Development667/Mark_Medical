@@ -1,4 +1,4 @@
-/* Care Log service worker.
+/* Daybook service worker.
    Rule: NETWORK-FIRST, ALWAYS. Never cache-first.
    - install: skipWaiting so a new worker takes over immediately
    - activate: delete every cache so stale files can never be served
