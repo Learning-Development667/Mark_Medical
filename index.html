@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=41">
+  <link rel="stylesheet" href="styles.css?v=42">
 </head>
 <body>
 
@@ -352,7 +352,13 @@
           <button class="seg is-active" type="button" data-range="14">14 days</button>
           <button class="seg" type="button" data-range="30">30 days</button>
           <button class="seg" type="button" data-range="90">90 days</button>
+          <button class="seg" type="button" data-range="custom">Custom</button>
         </div>
+        <div id="food-custom" class="field-row custom-range" hidden>
+          <label class="field"><span>From</span><input id="food-custom-from" type="date"></label>
+          <label class="field"><span>To</span><input id="food-custom-to" type="date"></label>
+        </div>
+        <p id="food-custom-msg" class="hint hint-warn" hidden></p>
         <div class="btnrow">
           <button id="food-preview" class="btn btn-secondary" type="button">Preview</button>
           <button id="food-pdf" class="btn btn-secondary" type="button">Save as PDF</button>
@@ -374,7 +380,13 @@
           <button class="seg is-active" type="button" data-range="14">14 days</button>
           <button class="seg" type="button" data-range="30">30 days</button>
           <button class="seg" type="button" data-range="90">90 days</button>
+          <button class="seg" type="button" data-range="custom">Custom</button>
         </div>
+        <div id="notes-custom" class="field-row custom-range" hidden>
+          <label class="field"><span>From</span><input id="notes-custom-from" type="date"></label>
+          <label class="field"><span>To</span><input id="notes-custom-to" type="date"></label>
+        </div>
+        <p id="notes-custom-msg" class="hint hint-warn" hidden></p>
         <div class="btnrow">
           <button id="notes-share" class="btn btn-primary" type="button">Send to Claude</button>
           <button id="notes-copy" class="btn btn-secondary" type="button">Copy for Claude</button>
@@ -405,6 +417,15 @@
         <h2 class="section-title">Food</h2>
         <button id="more-meals" class="btn btn-secondary btn-block" type="button">Saved meals</button>
         <p class="hint">The Food diary and Notes for the team are under Trends.</p>
+        <h2 class="section-title">Settings</h2>
+        <div id="settings-food" class="card settings-group">
+          <p class="settings-sub">Food</p>
+          <label class="check settings-toggle">
+            <input id="settings-nutrition" type="checkbox">
+            <span>Show calorie and macro estimates</span>
+          </label>
+          <p class="hint">Adds typical portion sizes to the Food sheet, and rough calorie, protein, carb and fat figures to Today, the Food diary and Notes for the team. Estimates only, for both of you, not medical advice.</p>
+        </div>
         <h2 class="section-title">Who to call</h2>
         <div id="calls" class="cards"></div>
         <button id="calls-edit" class="btn btn-secondary btn-block" type="button">Edit numbers</button>
@@ -449,6 +470,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=41"></script>
+  <script type="module" src="scripts.js?v=42"></script>
 </body>
 </html>
