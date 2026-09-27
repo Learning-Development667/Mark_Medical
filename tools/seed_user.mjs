@@ -17,7 +17,7 @@ if (!sa.client_email || !sa.private_key || !sa.project_id) {
 const uid = (process.env.USER_UID || '').trim();
 const name = (process.env.NAME || '').trim();
 const role = (process.env.ROLE || '').trim();
-const relation = (process.env.RELATION || '').trim();
+const relation = (process.env.RELATION || '').trim().replace(/^none$/i, ''); // the form's "none" choice means no relation
 if (!/^[A-Za-z0-9]{20,40}$/.test(uid)) { console.error('UID must be the 28-character id from Authentication > Users, got: ' + JSON.stringify(uid)); process.exit(1); }
 if (!name) { console.error('NAME is required'); process.exit(1); }
 if (!['family', 'readonly', 'viewer'].includes(role)) { console.error('ROLE must be family, readonly or viewer'); process.exit(1); }
