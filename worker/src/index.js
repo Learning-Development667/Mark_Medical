@@ -50,7 +50,10 @@ async function handleHealth(request, env) {
   await fs.set('bridge/last', { receivedAt: nowTs(), sample: strVal(JSON.stringify(body).slice(0, 20000)) });
 
   const metrics = (body.data && Array.isArray(body.data.metrics)) ? body.data.metrics : [];
-  const result = { steps: 0, sleep: 0, skipped: [] };
+  const result = { steps: 0, sleep: 0, nutrition: 0, skipped: [] };
+  /* Food totals per day from whatever app writes them into Apple Health (MyFitnessPal, Nutracheck, Apple's own):
+     gathered across the four metrics first, then written once per day */
+  const foodDays = {};
 
   for (const m of metrics) {
     const name = String(m.name || '').toLowerCase();
@@ -100,9 +103,26 @@ async function handleHealth(request, env) {
         await fs.merge('entries/' + day + '_sleep', fields);
         result.sleep++;
       }
+    } else if (NUTRITION[name]) {
+      const key = NUTRITION[name];
+      const units = String(m.units || '').toLowerCase();
+      for (const r of rows) {
+        const day = dayOf(r.date);
+        let qty = Number(r.qty);
+        if (!day || !isFinite(qty) || qty <= 0) continue;
+        if (key === 'kcal' && units === 'kj') qty = qty / 4.184; // Apple Health stores kcal; the export may be set to kJ
+        foodDays[day] = foodDays[day] || {};
+        foodDays[day][key] = (foodDays[day][key] || 0) + qty;
+      }
     } else {
       result.skipped.push(name || '(unnamed metric)');
     }
+  }
+  for (const [day, totals] of Object.entries(foodDays)) {
+    const fields = { day: strVal(day), source: strVal('apple-health'), addedBy: strVal('Apple Health'), updatedAt: nowTs() };
+    for (const k of ['kcal', 'prot', 'carb', 'fat']) if (totals[k] > 0) fields[k] = doubleVal(Math.round(totals[k] * 10) / 10);
+    await fs.merge('nutrition/' + day, fields);
+    result.nutrition++;
   }
   await fs.merge('bridge/last', { result: strVal(JSON.stringify(result)) });
   return json({ ok: true, ...result });
@@ -186,6 +206,9 @@ function b64url(bytes) {
 /* Firestore's typed JSON */
 const strVal = (v) => ({ stringValue: String(v) });
 const intVal = (v) => ({ integerValue: String(Math.round(v)) });
+const doubleVal = (v) => ({ doubleValue: Number(v) });
+/* Health Auto Export metric names for the day's food totals, and the field each lands in (nutrition/{day}) */
+const NUTRITION = { dietary_energy: 'kcal', active_energy_dietary: 'kcal', protein: 'prot', carbohydrates: 'carb', total_fat: 'fat' };
 const tsVal = (iso) => ({ timestampValue: new Date(iso).toISOString() });
 const nowTs = () => ({ timestampValue: new Date().toISOString() });
 

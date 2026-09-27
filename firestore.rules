@@ -96,6 +96,13 @@ service cloud.firestore {
       allow write: if isFamily();
     }
 
+    // Day totals from a food app: one document per day ({ kcal, prot, carb, fat, source }),
+    // written by the bridge from Apple Health, or typed in by hand from the Food diary
+    match /nutrition/{dayId} {
+      allow read: if isFamily() || isReadOnly();
+      allow write: if isFamily();
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }
