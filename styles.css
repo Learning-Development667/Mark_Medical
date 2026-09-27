@@ -229,6 +229,7 @@ code { font-family: var(--font-mono); font-size: 0.95em; }
   line-height: 1;
 }
 .section-title:first-child { margin-top: 0; }
+#meds-docs-section .section-title { margin-top: var(--s-6); } /* first child of its own wrapper, so the usual first-child rule would remove the gap after Manage medicines */
 .error { color: var(--danger); font-weight: 500; }
 .hint { color: var(--text-secondary); font-size: var(--fs-md); margin: var(--s-2) 0 0; }
 
@@ -866,7 +867,7 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 
 /* The topbar names the page: "Care Log" then a lighter ": Food diary" */
 .brand { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: clamp(22px, 7vw, var(--fs-2xl)); }
-.brand-page { color: var(--text-secondary); font-size: 0.8em; }
+.brand-page { color: var(--text-secondary); }
 .topbar-right { flex: none; }
 
 /* Reports: five range buttons (7/14/30/90 and Custom) have to sit on one line on a phone */
@@ -976,8 +977,8 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 
 /* ---------- Chemo: cheer board ---------- */
 .cheer-add { display: flex; gap: var(--s-2); margin-top: var(--s-2); }
-.cheer-add input { flex: 1; min-width: 0; min-height: 52px; padding: var(--s-3) 14px; border-radius: var(--r-sm); border: 2px solid var(--border-subtle); background: var(--surface); font-size: 18px; outline: none; transition: border-color var(--t-base) ease, box-shadow var(--t-base) ease; }
-.cheer-add input:focus { border-color: var(--teal); box-shadow: 0 0 0 4px var(--teal-light); }
+.cheer-add textarea { flex: 1; min-width: 0; min-height: 52px; resize: none; line-height: 1.35; font-family: inherit; padding: var(--s-3) 14px; border-radius: var(--r-sm); border: 2px solid var(--border-subtle); background: var(--surface); font-size: 18px; outline: none; transition: border-color var(--t-base) ease, box-shadow var(--t-base) ease; }
+.cheer-add textarea:focus { border-color: var(--teal); box-shadow: 0 0 0 4px var(--teal-light); }
 .cheer-add .btn { margin-top: 0; flex: none; }
 .cheers { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-2); }
 .cheer { background: var(--grad-raised); border-radius: var(--r-md); box-shadow: var(--elev-raised); padding: var(--s-3) 14px; display: flex; gap: 10px; align-items: flex-start; }
