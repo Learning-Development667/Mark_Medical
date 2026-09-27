@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '48';
+const APP_VERSION = '49';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -317,18 +317,10 @@ const db = initializeFirestore(app, {
 /* Accounts are data, not code (since v44): users/{uid} in Firestore holds
    { name, role, relation }. role is "family" (full access), "readonly" (sees
    everything, writes nothing) or "viewer" (a narrow read-only slice);
-   relation is "patient", "carer" or "". Records are created in the Firebase
-   console, never by the app, and the rules gate every collection on them, so
-   no email address needs to live in the code or on the site.
-   The old config.js users map (email to a name, or { name, role }) is still
-   read as a fallback while the users documents are being set up; it goes
-   away in the next release. */
-const USERS = {};
-for (const [email, entry] of Object.entries(CONFIG.users || {})) {
-  const key = email.toLowerCase();
-  USERS[key] = typeof entry === 'string' ? { name: entry, role: 'family' } : { name: entry.name, role: entry.role || 'family' };
-}
-
+   relation is "patient", "carer" or "". Records are written from the Actions
+   tab ("Seed a user record") or in the console, never by the app, and the
+   rules gate every collection on them, so no email address lives in the
+   code or on the site. */
 async function loadAccount(user) {
   try {
     const snap = await getDoc(doc(db, 'users', user.uid));
@@ -336,9 +328,8 @@ async function loadAccount(user) {
       const d = snap.data();
       return { name: d.name || (user.email || '').split('@')[0] || 'Unknown', role: d.role || 'family', relation: d.relation || '' };
     }
-  } catch (e) { /* no record yet, or the rules do not allow it yet: try the config map below */ }
-  const key = (user.email || '').toLowerCase();
-  return USERS[key] ? { ...USERS[key], relation: '' } : null;
+  } catch (e) { console.error(e); }
+  return null;
 }
 
 const state = {
