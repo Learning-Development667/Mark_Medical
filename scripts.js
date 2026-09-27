@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '43';
+const APP_VERSION = '44';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -314,17 +314,36 @@ const db = initializeFirestore(app, {
   localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
 });
 
-/* config.js users map: a value is either a plain name (full family access) or
-   { name, role: "viewer" } for someone with read-only access to Meds, Chemo
-   and Trends only. Never anything else, and never a write. */
+/* Accounts are data, not code (since v44): users/{uid} in Firestore holds
+   { name, role, relation }. role is "family" (full access), "readonly" (sees
+   everything, writes nothing) or "viewer" (a narrow read-only slice);
+   relation is "patient", "carer" or "". Records are created in the Firebase
+   console, never by the app, and the rules gate every collection on them, so
+   no email address needs to live in the code or on the site.
+   The old config.js users map (email to a name, or { name, role }) is still
+   read as a fallback while the users documents are being set up; it goes
+   away in the next release. */
 const USERS = {};
 for (const [email, entry] of Object.entries(CONFIG.users || {})) {
   const key = email.toLowerCase();
   USERS[key] = typeof entry === 'string' ? { name: entry, role: 'family' } : { name: entry.name, role: entry.role || 'family' };
 }
 
+async function loadAccount(user) {
+  try {
+    const snap = await getDoc(doc(db, 'users', user.uid));
+    if (snap.exists()) {
+      const d = snap.data();
+      return { name: d.name || (user.email || '').split('@')[0] || 'Unknown', role: d.role || 'family', relation: d.relation || '' };
+    }
+  } catch (e) { /* no record yet, or the rules do not allow it yet: try the config map below */ }
+  const key = (user.email || '').toLowerCase();
+  return USERS[key] ? { ...USERS[key], relation: '' } : null;
+}
+
 const state = {
   user: null,
+  account: null,
   name: '',
   selectedDay: todayStr(),
   medicines: [],
@@ -366,26 +385,6 @@ const state = {
 /* Auth                                                                 */
 /* ------------------------------------------------------------------ */
 
-function nameFor(email) {
-  const key = (email || '').toLowerCase();
-  if (USERS[key]) return USERS[key].name;
-  return key.split('@')[0] || 'Unknown';
-}
-
-function isViewerEmail(email) {
-  const key = (email || '').toLowerCase();
-  return Boolean(USERS[key]) && USERS[key].role === 'viewer';
-}
-
-function isReadOnlyEmail(email) {
-  const key = (email || '').toLowerCase();
-  return Boolean(USERS[key]) && USERS[key].role === 'readonly';
-}
-
-function isAllowed(email) {
-  return Boolean(email) && Object.prototype.hasOwnProperty.call(USERS, email.toLowerCase());
-}
-
 $('signin-form').addEventListener('submit', async (ev) => {
   ev.preventDefault();
   const btn = $('signin-button'), err = $('signin-error');
@@ -413,23 +412,25 @@ function friendlyAuthError(e) {
 }
 
 onAuthStateChanged(auth, async (user) => {
-  if (user && !isAllowed(user.email)) {
+  const account = user ? await loadAccount(user) : null;
+  if (user && !account) {
     await signOut(auth);
-    $('signin-error').textContent = 'This account is not permitted to use Care Log.';
+    $('signin-error').textContent = 'This account is not set up for Care Log yet.';
     $('signin-error').hidden = false;
     return;
   }
   if (user) {
     state.user = user;
-    state.name = nameFor(user.email);
+    state.account = account;
+    state.name = account.name;
     state.demo = false;
-    state.viewer = isViewerEmail(user.email);
-    state.readOnly = isReadOnlyEmail(user.email);
+    state.viewer = account.role === 'viewer';
+    state.readOnly = account.role === 'readonly';
     $('signin').hidden = true;
     $('app').hidden = false;
     requestAnimationFrame(moveTabIndicator);
     $('user-chip').textContent = state.name;
-    $('more-user').textContent = `${state.name} (${user.email})`;
+    $('more-user').textContent = `${state.name}${account.relation ? ', ' + account.relation : ''} (${user.email})`;
     $('guest-pill').hidden = true;
     $('viewer-pill').hidden = !state.viewer;
     $('readonly-pill').hidden = !state.readOnly;
@@ -441,6 +442,7 @@ onAuthStateChanged(auth, async (user) => {
   } else if (!state.demo) {
     stopData();
     state.user = null;
+    state.account = null;
     state.viewer = false;
     state.readOnly = false;
     setViewerMode(false);
