@@ -47,7 +47,7 @@ jobs:
           USER_UID: ${{ inputs.uid }}
           NAME: ${{ inputs.name }}
           ROLE: ${{ inputs.role }}
-          RELATION: ${{ inputs.relation == 'none' && '' || inputs.relation }}
+          RELATION: ${{ inputs.relation }}
         run: |
           if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
             echo "::error::The FIREBASE_SERVICE_ACCOUNT repository secret is not set."
