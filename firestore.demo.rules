@@ -1,0 +1,22 @@
+rules_version = '2';
+
+// Rules for the SEPARATE demo project only (never for the real one, whose rules are in
+// firestore.rules). The demo has one sign-in, the guest, whose details are public by design,
+// and its data is made up and wiped every night by .github/workflows/reset-demo.yml.
+// Anyone signed in as that guest can read and write everything, which is the point of a demo
+// people can actually use. Publish this in the demo project's console (Firestore Database > Rules).
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function pageSizeOk() {
+      return request.resource.data.data is string
+        && request.resource.data.data.size() < 950000;
+    }
+    match /documents/{docId}/pages/{pageNo} {
+      allow read, delete: if request.auth != null;
+      allow create, update: if request.auth != null && pageSizeOk();
+    }
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}
