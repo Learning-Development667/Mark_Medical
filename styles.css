@@ -2,7 +2,7 @@
 
    Three visual levels, so a glance says what is tappable:
    SUNKEN   read-only information (.status, segmented track): inset shadow, a touch darker than the page, no border
-   RAISED   cards you can interact with (.card, .entry, .qa, .report, .checkin-row, .docitem, .goal, .cheer):
+   RAISED   cards you can interact with (.card, .entry, .qa, .report, .checkin-row, .docitem, .goal):
             white, soft two-layer shadow, a 1px lighter top edge
    FLOATING primary actions and open sheets (.btn-primary, .checkin-row.is-due, .sheet-panel): stronger shadow, gradient fill */
 
@@ -256,7 +256,6 @@ code { font-family: var(--font-mono); font-size: 0.95em; }
   --art-doc: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 72 72' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M22 12h20l10 10v36a3 3 0 0 1-3 3H22a3 3 0 0 1-3-3V15a3 3 0 0 1 3-3z'/%3E%3Cpath d='M42 12v10h10'/%3E%3Cpath d='M27 32h18M27 40h18M27 48h10'/%3E%3Cpath d='M10 26v-8M6 22h8'/%3E%3C/svg%3E");
   --art-call: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 72 72' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M24 14h-6a3 3 0 0 0-3 3c0 22 18 40 40 40a3 3 0 0 0 3-3v-7l-10-4-5 5c-8-4-13-9-17-17l5-5z'/%3E%3Cpath d='M42 20a10 10 0 0 1 10 10M42 12a18 18 0 0 1 18 18'/%3E%3C/svg%3E");
   --art-food: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 72 72' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 34h48c0 14-10 24-24 24S12 48 12 34z'/%3E%3Cpath d='M22 58h28'/%3E%3Cpath d='M28 26c0-4 3-4 3-8M36 26c0-4 3-4 3-8M44 26c0-4 3-4 3-8'/%3E%3C/svg%3E");
-  --art-cheer: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 72 72' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M16 18h34a4 4 0 0 1 4 4v20a4 4 0 0 1-4 4H30l-10 9v-9h-4a4 4 0 0 1-4-4V22a4 4 0 0 1 4-4z'/%3E%3Cpath d='M24 30h18M24 37h12'/%3E%3Cpath d='M60 10v6M57 13h6M62 30v4M60 32h4'/%3E%3C/svg%3E");
   --art-pill: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 72 72' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='14' y='27' width='44' height='18' rx='9' transform='rotate(-40 36 36)'/%3E%3Cpath d='M29 29l14 14'/%3E%3Cpath d='M12 56l4 4M10 60l6-6'/%3E%3C/svg%3E");
   --art-day: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 72 72' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 50h48'/%3E%3Cpath d='M22 50a14 14 0 0 1 28 0'/%3E%3Cpath d='M36 22v6M18 30l4 4M54 30l-4 4M10 42h5M57 42h5'/%3E%3Cpath d='M20 58h32'/%3E%3C/svg%3E");
   --art-meal: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 72 72' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='36' cy='38' r='18'/%3E%3Ccircle cx='36' cy='38' r='9'/%3E%3Cpath d='M10 20v12a4 4 0 0 0 8 0V20M14 20v40'/%3E%3Cpath d='M60 20c-4 4-4 12 0 16v24'/%3E%3C/svg%3E");
@@ -264,7 +263,6 @@ code { font-family: var(--font-mono); font-size: 0.95em; }
 .empty[data-art="doc"]::before { --art: var(--art-doc); }
 .empty[data-art="call"]::before { --art: var(--art-call); }
 .empty[data-art="food"]::before { --art: var(--art-food); }
-.empty[data-art="cheer"]::before { --art: var(--art-cheer); }
 .empty[data-art="pill"]::before { --art: var(--art-pill); }
 .empty[data-art="day"]::before { --art: var(--art-day); }
 .empty[data-art="meal"]::before { --art: var(--art-meal); }
@@ -430,7 +428,7 @@ body.is-viewer #trends-reports,
 body.is-viewer #vitals-log,
 body.is-viewer #meds-manage,
 body.is-viewer .med-actions,
-body.is-viewer #chemo-cheer-section,
+body.is-viewer #chemo-cycle-section,
 body.is-viewer #chemo-docs-section,
 body.is-viewer #meds-docs-section { display: none; }
 body.is-viewer .cal-cell { pointer-events: none; }
@@ -446,7 +444,6 @@ body.is-readonly #meds-manage,
 body.is-readonly .med-actions,
 body.is-readonly #meds-doc-add,
 body.is-readonly #vitals-log,
-body.is-readonly .cheer-add,
 body.is-readonly #chemo-doc-add,
 body.is-readonly #ex-steps-edit,
 body.is-readonly #ex-goals-edit,
@@ -654,7 +651,7 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 .entry.type-pain { --cat: var(--warm); }
 .entry.type-question { --cat: var(--teal); }
 /* Only new rows animate in; rows already on screen stay put when data updates */
-.entry.is-new, .cheer.is-new, .docitem.is-new { animation: block-in var(--t-slow) var(--ease-out) both; animation-delay: calc(var(--i, 0) * 60ms); }
+.entry.is-new, .docitem.is-new { animation: block-in var(--t-slow) var(--ease-out) both; animation-delay: calc(var(--i, 0) * 60ms); }
 .stages { margin-top: var(--s-1); }
 .entry-time { font-family: var(--font-mono); font-size: 16px; font-weight: 500; color: var(--text-secondary); letter-spacing: 0.02em; }
 .entry-main { min-width: 0; }
@@ -921,7 +918,6 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 @keyframes speak-pulse { 0%, 100% { box-shadow: 0 0 0 0 var(--warm-light); } 50% { box-shadow: 0 0 0 10px transparent; } }
 @media (prefers-reduced-motion: reduce) { .speakbtn.is-listening { animation: none; } }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .speakbtn, :root:not([data-theme="light"]) .note-who, :root:not([data-theme="light"]) .diary-macros, :root:not([data-theme="light"]) .macro-total { color: var(--teal); } }
-.cheer-add + .speakbtn { margin-top: var(--s-2); }
 .strapline { margin: 2px 0 var(--s-3); color: var(--teal); font-weight: 600; font-size: var(--fs-md); }
 .food-toggle { margin: var(--s-2) 0 0; }
 .question .question-text { font-weight: 600; margin-bottom: 4px; }
@@ -1016,18 +1012,13 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 .key-mood .cal-face:last-of-type { margin-right: 3px; }
 .key-mood .cal-face { width: 10px; height: 10px; }
 
-/* ---------- Chemo: cheer board ---------- */
-.cheer-add { display: flex; gap: var(--s-2); margin-top: var(--s-2); }
-.cheer-add textarea { flex: 1; min-width: 0; min-height: 52px; resize: none; line-height: 1.35; font-family: inherit; padding: var(--s-3) 14px; border-radius: var(--r-sm); border: 2px solid var(--border-subtle); background: var(--surface); font-size: 18px; outline: none; transition: border-color var(--t-base) ease, box-shadow var(--t-base) ease; }
-.cheer-add textarea:focus { border-color: var(--teal); box-shadow: 0 0 0 4px var(--teal-light); }
-.cheer-add .btn { margin-top: 0; flex: none; }
-.cheers { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-2); }
-.cheer { background: var(--grad-raised); border-radius: var(--r-md); box-shadow: var(--elev-raised); padding: var(--s-3) 14px; display: flex; gap: 10px; align-items: flex-start; }
-.cheer-body { flex: 1; min-width: 0; }
-.cheer-text { overflow-wrap: anywhere; }
-.cheer-meta { font-size: 13px; color: var(--text-muted); margin-top: var(--s-1); font-family: var(--font-mono); letter-spacing: 0.02em; }
-.cheer-del { width: var(--tap); height: var(--tap); border: 0; border-radius: 50%; background: none; font-size: 24px; color: var(--text-muted); cursor: pointer; flex: none; transition: background var(--t-base) ease; }
-.cheer-del:active { background: var(--surface-sunken); }
+/* ---------- Chemo: the cycle and the carer's view ---------- */
+.tiles-1 { grid-template-columns: 1fr; }
+#chemo-cycle-section .status { margin-top: var(--s-2); }
+#carer-card { margin-top: var(--s-3); }
+.segmented-wrap { flex-wrap: wrap; gap: 2px; }
+.segmented-wrap .seg { flex: 1 1 30%; }
+.cycle-note { margin: var(--s-3) 0 var(--s-2); color: var(--text-primary); font-size: 17px; line-height: 1.4; }
 
 /* ---------- Exercise ---------- */
 .goals { display: flex; flex-direction: column; gap: var(--s-2); }
@@ -1053,6 +1044,6 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 /* ---------- Reduced motion: nothing moves, everything still changes state ---------- */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
-  .view.is-entering > *, .entry.is-new, .cheer.is-new, .docitem.is-new { animation: none !important; opacity: 1; transform: none; }
+  .view.is-entering > *, .entry.is-new, .docitem.is-new { animation: none !important; opacity: 1; transform: none; }
   .tab-indicator { transition: none; }
 }

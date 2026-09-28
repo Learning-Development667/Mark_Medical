@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '58';
+const APP_VERSION = '59';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -401,11 +401,14 @@ const state = {
   docsReturn: 'more',
   reportReturn: 'vitals',
   days: {},
-  cheers: [],
   exercise: {},
   nutrition: {},
   exerciseDay: todayStr(),
   chemoMonth: todayStr().slice(0, 7),
+  cycleMeasure: 'energy',
+  cycleEntries: null,
+  cycleFrom: null,
+  cycleFetched: 0,
   demo: false,
   demoPages: {},
   viewer: false,
@@ -596,30 +599,42 @@ async function exitLiveDemo() {
   $('signin').hidden = false;
 }
 /* The same made-up data the preview uses, written once into the demo project when it is empty */
+function demoClean(v) {
+  if (v && typeof v === 'object' && typeof v.toDate === 'function') return Timestamp.fromDate(v.toDate());
+  if (Array.isArray(v)) return v.map(demoClean);
+  if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, demoClean(x)]));
+  return v;
+}
+async function writeDemo(writes) {
+  for (let i = 0; i < writes.length; i += 400) {
+    const batch = writeBatch(db);
+    writes.slice(i, i + 400).forEach(([col, id, data]) => batch.set(doc(db, col, id), demoClean(data)));
+    await batch.commit();
+  }
+}
+/* A demo seeded before the carer's view existed gets the check-ins and sessions of the cycle chart added once */
+async function topUpDemo() {
+  const carer = await getDocs(query(collection(db, 'entries'), where('slot', '==', 'carer'), limit(1)));
+  if (!carer.empty) return;
+  const fixture = buildDemoFixture();
+  const writes = [];
+  fixture.entries.filter((e) => e.type === 'checkin').forEach((e) => { const { id, ...data } = e; writes.push(['entries', id, data]); });
+  Object.entries(fixture.days).forEach(([k, d]) => { if (d.chemo) writes.push(['days', k, d]); });
+  await writeDemo(writes);
+}
 async function seedDemoIfEmpty() {
   const snap = await getDocs(collection(db, 'medicines'));
-  if (!snap.empty) return;
+  if (!snap.empty) { await topUpDemo(); return; }
   const fixture = buildDemoFixture();
-  const clean = (v) => {
-    if (v && typeof v === 'object' && typeof v.toDate === 'function') return Timestamp.fromDate(v.toDate());
-    if (Array.isArray(v)) return v.map(clean);
-    if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, clean(x)]));
-    return v;
-  };
   const writes = [];
   SEED_MEDICINES.forEach((m, i) => { const { id, ...data } = m; writes.push(['medicines', id, { ...data, active: true, order: i + 1 }]); });
   fixture.entries.forEach((e) => { const { id, ...data } = e; writes.push(['entries', id, data]); });
   fixture.documents.forEach((d) => { const { id, ...data } = d; writes.push(['documents', id, { ...data, pageCount: 0 }]); });
   Object.entries(fixture.days).forEach(([k, d]) => writes.push(['days', k, d]));
-  fixture.cheers.forEach((c) => { const { id, ...data } = c; writes.push(['cheers', id, data]); });
   Object.entries(fixture.exercise).forEach(([k, d]) => writes.push(['exercise', k, { ...d, addedBy: 'Mark' }]));
   fixture.meals.forEach((m) => { const { id, ...data } = m; writes.push(['meals', id, data]); });
   writes.push(['profile', 'main', fixture.profile]);
-  for (let i = 0; i < writes.length; i += 400) {
-    const batch = writeBatch(db);
-    writes.slice(i, i + 400).forEach(([col, id, data]) => batch.set(doc(db, col, id), clean(data)));
-    await batch.commit();
-  }
+  await writeDemo(writes);
 }
 
 $('signout').addEventListener('click', async () => {
@@ -647,7 +662,6 @@ async function startData() {
   if (!state.readOnly) await seedMedicinesIfEmpty(); // a write; read-only sees whatever is already there
   watchDocuments();
   watchProfile();
-  watchCheers();
   watchExercise();
   watchNutrition();
   watchMeals();
@@ -685,7 +699,7 @@ function buildDemoFixture() {
     id: fakeId('entry'), day: day(offset), at: demoTs(at(offset, hhmm)), addedBy: who, createdAt: demoTs(at(offset, hhmm)), note: '', ...fields
   });
   const ci = (offset, slot, fields) => {
-    const when = at(offset, slot === 'morning' ? '08:30' : '21:00');
+    const when = at(offset, slot === 'morning' ? '08:30' : slot === 'carer' ? '20:30' : '21:00');
     return { id: day(offset) + '_' + slot, type: 'checkin', slot, day: day(offset), at: demoTs(when), addedBy: 'Mark', createdAt: demoTs(when), updatedAt: demoTs(when), ...fields };
   };
 
@@ -699,6 +713,14 @@ function buildDemoFixture() {
     e(0, '07:55', 'Mark', { type: 'sleep', value: 428, deep: 70, rem: 53, core: 305, awake: 25, bedAt: '22:10', wokeAt: '07:05' }),
     e(-9, '09:00', 'Mark', { type: 'vitals', heartRate: 76 }),
     e(-9, '07:30', 'Mark', { type: 'weight', value: 78.8 }),
+    e(-17, '12:30', 'Shelley', { type: 'food', note: 'Cheese and crackers', detail: 'cheddar, water biscuits', amount: 'About half' }),
+    e(-16, '13:00', 'Shelley', { type: 'food', note: 'Soup', amount: 'A few mouthfuls' }),
+    e(-15, '18:00', 'Shelley', { type: 'food', note: 'Toast', amount: 'About half' }),
+    e(-14, '12:30', 'Mark', { type: 'food', note: 'Soup', amount: 'Most of it' }),
+    e(-13, '18:30', 'Shelley', { type: 'food', note: 'Homity pie', detail: 'peas, mash, gravy', amount: 'All of it' }),
+    e(-12, '08:00', 'Mark', { type: 'food', note: 'Porridge', detail: 'honey and banana', amount: 'All of it' }),
+    e(-11, '18:30', 'Mark', { type: 'food', note: 'Fish and chips', amount: 'Most of it' }),
+    e(-9, '13:00', 'Shelley', { type: 'food', note: 'Soup', amount: 'About half' }),
     e(-8, '10:00', 'Shelley', { type: 'drink', value: 300, note: 'Water' }),
     e(-8, '08:00', 'Mark', { type: 'food', note: 'Porridge', detail: 'honey and banana', amount: 'All of it' }),
     e(-8, '18:30', 'Shelley', { type: 'food', note: 'Homity pie', detail: 'peas, mash, gravy', amount: 'About half' }),
@@ -730,6 +752,35 @@ function buildDemoFixture() {
     e(0, '08:25', 'Mark', { type: 'note', note: 'Slept well, a little tired by afternoon.' }),
     e(-2, '15:30', 'Mark', { type: 'pain', value: 7, note: 'Back, worse sitting' }),
     e(0, '11:40', 'Mark', { type: 'pain', value: 4 }),
+    /* Three weekly cycles (sessions on -17, -10 and -3): energy and appetite dip on days 1 and 2, sickness peaks, all back by day 4 or 5 */
+    ci(-17, 'evening', { pain: 3, mood: 6, worstPain: 4, sickness: 4, appetite: 4, energy: 5, symptoms: '', settled: '', goodThing: 'Session went smoothly' }),
+    ci(-16, 'morning', { sleep: 5, sleepHours: 5.5, pain: 3, mood: 5, symptoms: '', lookingForward: '' }),
+    ci(-16, 'evening', { pain: 4, mood: 4, worstPain: 5, sickness: 6, appetite: 3, energy: 3, symptoms: 'Queasy from mid morning', settled: '', goodThing: 'A nap that actually helped' }),
+    ci(-16, 'carer', { addedBy: 'Shelley', energy: 3, sickness: 6, appetite: 2, pain: 4, mood: 4, noticed: 'Very pale, slept most of the afternoon' }),
+    ci(-15, 'morning', { sleep: 4, sleepHours: 5, pain: 4, mood: 4, symptoms: 'Sick twice in the night', lookingForward: '' }),
+    ci(-15, 'evening', { pain: 4, mood: 4, worstPain: 5, sickness: 7, appetite: 2, energy: 2, symptoms: 'Sick again after lunch', settled: '', goodThing: 'Hayley rang' }),
+    ci(-15, 'carer', { addedBy: 'Shelley', energy: 2, sickness: 7, appetite: 2, pain: 4, mood: 3, noticed: 'Hardly ate, kept water down in the evening' }),
+    ci(-14, 'evening', { pain: 3, mood: 5, worstPain: 4, sickness: 5, appetite: 3, energy: 3, symptoms: '', settled: 'Sickness easing', goodThing: 'Sat outside for ten minutes' }),
+    ci(-13, 'morning', { sleep: 6, sleepHours: 7, pain: 3, mood: 6, symptoms: '', lookingForward: 'Feeling more like myself' }),
+    ci(-13, 'evening', { pain: 3, mood: 6, worstPain: 4, sickness: 3, appetite: 5, energy: 5, symptoms: '', settled: 'Appetite coming back', goodThing: 'Ate a proper dinner' }),
+    ci(-13, 'carer', { addedBy: 'Shelley', energy: 5, sickness: 3, appetite: 5, pain: 3, mood: 6, noticed: 'Colour back, cleared his plate' }),
+    ci(-12, 'evening', { pain: 2, mood: 7, worstPain: 3, sickness: 2, appetite: 6, energy: 6, symptoms: '', settled: '', goodThing: 'Walk to the end of the road' }),
+    ci(-12, 'carer', { addedBy: 'Shelley', energy: 6, sickness: 2, appetite: 6, pain: 2, mood: 7, noticed: '' }),
+    ci(-11, 'evening', { pain: 2, mood: 7, worstPain: 3, sickness: 2, appetite: 7, energy: 7, symptoms: '', settled: '', goodThing: 'Best day of the week' }),
+    ci(-10, 'evening', { pain: 3, mood: 6, worstPain: 4, sickness: 4, appetite: 4, energy: 5, symptoms: '', settled: '', goodThing: 'Watched a film with Shelley' }),
+    ci(-9, 'morning', { sleep: 5, sleepHours: 6, pain: 3, mood: 5, symptoms: '', lookingForward: '' }),
+    ci(-9, 'evening', { pain: 4, mood: 4, worstPain: 5, sickness: 6, appetite: 3, energy: 3, symptoms: 'Queasy again, like last time', settled: '', goodThing: 'Ginger tea helped' }),
+    ci(-9, 'carer', { addedBy: 'Shelley', energy: 3, sickness: 6, appetite: 3, pain: 4, mood: 4, noticed: 'Same pattern as the last cycle, day one is the hard one' }),
+    ci(-8, 'morning', { sleep: 4, sleepHours: 5, pain: 4, mood: 4, symptoms: '', lookingForward: '' }),
+    ci(-8, 'evening', { pain: 4, mood: 4, worstPain: 5, sickness: 6, appetite: 2, energy: 3, symptoms: '', settled: '', goodThing: 'Shelley made soup' }),
+    ci(-8, 'carer', { addedBy: 'Shelley', energy: 3, sickness: 6, appetite: 2, pain: 4, mood: 4, noticed: 'Managed half the soup' }),
+    ci(-7, 'evening', { pain: 4, mood: 5, worstPain: 5, sickness: 5, appetite: 3, energy: 3, symptoms: 'Shivery after lunch, temperature 37.7', settled: '', goodThing: '' }),
+    ci(-6, 'carer', { addedBy: 'Shelley', energy: 4, sickness: 3, appetite: 5, pain: 4, mood: 6, noticed: 'Brighter today, wanted to go out' }),
+    ci(-5, 'carer', { addedBy: 'Shelley', energy: 5, sickness: 2, appetite: 6, pain: 3, mood: 7, noticed: '' }),
+    ci(-4, 'evening', { pain: 3, mood: 7, worstPain: 4, sickness: 2, appetite: 6, energy: 6, symptoms: '', settled: '', goodThing: 'Pub lunch, most of it' }),
+    ci(-3, 'evening', { pain: 3, mood: 6, worstPain: 4, sickness: 4, appetite: 4, energy: 5, symptoms: '', settled: '', goodThing: 'Short walk in the garden' }),
+    ci(-2, 'carer', { addedBy: 'Shelley', energy: 3, sickness: 6, appetite: 2, pain: 6, mood: 4, noticed: 'Back pain worse than the last two cycles, sick most of the afternoon' }),
+    ci(-1, 'carer', { addedBy: 'Shelley', energy: 4, sickness: 3, appetite: 5, pain: 4, mood: 6, noticed: 'Better than yesterday, sat out in the sun' }),
     ci(-6, 'morning', { sleep: 6, sleepHours: 6.5, pain: 3, mood: 6, symptoms: '', lookingForward: 'A walk if the weather holds' }),
     ci(-6, 'evening', { pain: 4, mood: 6, worstPain: 5, sickness: 3, appetite: 5, energy: 4, symptoms: '', settled: '', goodThing: 'Fish and chips on the bench' }),
     ci(-5, 'morning', { sleep: 7, sleepHours: 7, pain: 2, mood: 7, symptoms: '', lookingForward: '' }),
@@ -746,22 +797,17 @@ function buildDemoFixture() {
     id: fakeId('doc'), category: 'general', kind: 'text',
     title: 'Oncology clinic letter (example)', docDate: day(-6),
     text: 'Dear Dr Example,\n\nThank you for reviewing this patient in clinic today. The recent CT scan shows stable disease with no new areas of concern. Bloods are within an acceptable range. We will continue the current treatment plan and review again after the next cycle.\n\nKind regards,\nDr Example',
-    explanation: 'This is a sample explanation, showing what a pasted reply from Claude might look like.\n\nIn plain English, this letter says the recent scan looked the same as before, which is good news, it means things have not got worse since the last check. Bloods were fine too. Nothing needs to change with treatment right now, and the next check-in will be after the next round.\n\nWorth asking the team: what would a change on the next scan actually mean for the plan.',
+    explanation: 'This is a sample explanation, showing what a pasted reply from an AI app might look like.\n\nIn plain English, this letter says the recent scan looked the same as before, which is good news, it means things have not got worse since the last check. Bloods were fine too. Nothing needs to change with treatment right now, and the next check-in will be after the next round.\n\nWorth asking the team: what would a change on the next scan actually mean for the plan.',
     addedBy: 'Shelley', addedAt: demoTs(at(-6, '11:00')), updatedAt: demoTs(at(-6, '11:20'))
   }];
 
   const days = {};
+  days[day(-17)] = { chemo: true, chemoDone: true, mood: 3, good: 'Session went smoothly', updatedBy: 'Mark', updatedAt: demoTs(at(-17, '18:00')) };
   days[day(-10)] = { chemo: true, chemoDone: true, mood: 4, good: 'Watched a film with Shelley', updatedBy: 'Mark', updatedAt: demoTs(at(-10, '18:00')) };
   days[day(-7)] = { mood: 2, good: 'Shelley made soup', updatedBy: 'Mark', updatedAt: demoTs(at(-7, '19:00')) };
   days[day(-3)] = { chemo: true, chemoDone: true, mood: 3, good: 'Short walk in the garden', updatedBy: 'Mark', updatedAt: demoTs(at(-3, '18:00')) };
   days[day(4)] = { chemo: true, chemoDone: false, updatedBy: 'Mark', updatedAt: demoTs(at(-1, '09:00')) };
   days[day(0)] = { mood: 4, good: 'Cup of tea in the sun with Shelley', updatedBy: 'Mark', updatedAt: demoTs(at(0, '08:30')) };
-
-  const cheers = [
-    { id: fakeId('cheer'), text: 'Proud of you for today, ice cream later?', addedBy: 'Shelley', createdAt: demoTs(at(0, '09:15')) },
-    { id: fakeId('cheer'), text: 'Feeling good today, thank you for the company yesterday x', addedBy: 'Mark', createdAt: demoTs(at(-1, '19:00')) },
-    { id: fakeId('cheer'), text: 'That walk in the garden was lovely. Same again tomorrow?', addedBy: 'Shelley', createdAt: demoTs(at(-3, '17:30')) }
-  ];
 
   const doneAll = { pressups: true, situps: true, plank: true, squats: true };
   const exercise = {};
@@ -781,7 +827,7 @@ function buildDemoFixture() {
     { id: fakeId('meal'), name: 'Cheese and crackers', parts: 'cheddar, water biscuits', addedBy: 'Shelley' }
   ];
 
-  return { entries, documents, days, cheers, exercise, profile, meals };
+  return { entries, documents, days, exercise, profile, meals };
 }
 
 function startDemoData() {
@@ -794,7 +840,6 @@ function startDemoData() {
   state.documents = fixture.documents;
   state.demoPages = {};
   state.days = fixture.days;
-  state.cheers = fixture.cheers;
   state.exercise = fixture.exercise;
   state.profile = fixture.profile;
   state.meals = fixture.meals;
@@ -925,13 +970,6 @@ function watchDays() {
     snap.docs.forEach((d) => { days[d.id] = d.data(); });
     state.days = days;
     renderChemo();
-  }, (e) => console.error(e));
-}
-
-function watchCheers() {
-  state.unsub.cheers = onSnapshot(query(collection(db, 'cheers'), orderBy('createdAt', 'desc'), limit(50)), (snap) => {
-    state.cheers = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    renderCheers();
   }, (e) => console.error(e));
 }
 
@@ -1082,7 +1120,7 @@ if (document.fonts && document.fonts.ready) document.fonts.ready.then(moveTabInd
 setBrand(PAGE_TITLES.today);
 
 /* Only rows that are new to the screen animate in; rows already shown stay put on data updates */
-const seenIds = { entries: new Set(), cheers: new Set(), docs: new Set() };
+const seenIds = { entries: new Set(), docs: new Set() };
 function markNew(el, set, id, i) {
   if (!set.has(id)) { set.add(id); el.classList.add('is-new'); el.style.setProperty('--i', String(Math.min(i, 10))); }
   return el;
@@ -1172,7 +1210,7 @@ function entryTitle(e) {
     case 'drink': return [h('span', { text: e.note || 'Drink' }), e.value ? h('span', { class: 'val', text: '  ' + e.value + ' ml' }) : null];
     case 'food': return [h('span', { text: e.note || 'Food' })];
     case 'sleep': return [h('span', { class: 'val', text: fmtHm(e.value) }), h('span', { text: ' asleep' })];
-    case 'checkin': return [h('span', { text: slotWord(e.slot) + ' check-in' })];
+    case 'checkin': return [h('span', { text: checkinTitle(e.slot) })];
     case 'pain': return [h('span', { class: 'val', text: 'Pain ' + e.value + '/10' })];
     case 'question': return [h('span', { text: e.note || 'Question' })];
     case 'weight': return [h('span', { class: 'val', text: Number(e.value).toFixed(1) + ' kg' })];
@@ -3235,7 +3273,7 @@ function diaryRow(e, nutri, macroText) {
 /* ------------------------------------------------------------------ */
 /* Notes for the team: every note collated by day, with mood, readings   */
 /* and when-needed doses for context, plus simple checks on the vitals.  */
-/* Sent to Claude to be turned into questions for the oncologist/nurse.  */
+/* Sent to the person's AI app to be turned into questions for the oncologist/nurse.  */
 /* ------------------------------------------------------------------ */
 
 const NOTES_PROMPT = 'Please turn these care notes into a short, clear list of questions to ask my oncologist or specialist nurse at the next appointment. ' +
@@ -3265,13 +3303,13 @@ $('notes-share').addEventListener('click', async () => {
 $('notes-copy').addEventListener('click', async () => {
   if (!state.notesText) return;
   await copyText(state.notesText);
-  toast('Copied. Paste it into the Claude app.');
+  toast('Copied. Paste it into your AI app.');
 });
 
 $('notes-pdf').addEventListener('click', () => { if (state.notesPdf) savePdf(state.notesPdf.filename, state.notesPdf.title, state.notesPdf.subtitle, state.notesPdf.blocks); });
 $('notes-preview').addEventListener('click', () => { if (state.notesPdf) previewPdf(state.notesPdf.title, state.notesPdf.subtitle, state.notesPdf.blocks); });
 
-/* The PDF is for people (the clinic, the folder), so it carries the report without the request to Claude */
+/* The PDF is for people (the clinic, the folder), so it carries the report without the request to the AI app */
 function notesPdfBlocks(report) {
   const blocks = [{ kind: 'heading', text: 'Questions for the team' }];
   if (report.questions.length) report.questions.forEach((q, i) => blocks.push({ kind: 'question', n: i + 1, text: q.text, who: q.who, day: q.day }));
@@ -3390,7 +3428,7 @@ function summaryRows(entries, from, to) {
     else fine.push(`oxygen (lowest ${Math.round(lo.oxygen)}%)`);
   }
 
-  const checkins = entries.filter((e) => e.type === 'checkin');
+  const checkins = entries.filter(isPatientCheckin);
   const painScores = [];
   checkins.forEach((e) => { if (e.pain != null) painScores.push({ v: Number(e.pain), day: e.day }); if (e.worstPain != null) painScores.push({ v: Number(e.worstPain), day: e.day }); });
   entries.filter((e) => e.type === 'pain' && e.value != null).forEach((e) => painScores.push({ v: Number(e.value), day: e.day }));
@@ -3554,6 +3592,7 @@ function dayMacros(foods) {
 
 /* Only the check-in answers a clinician would want; wellbeing answers stay in the app */
 const REPORT_CHECKIN_KEYS = [['symptoms', 'New or worse symptoms'], ['settled', 'Settled since yesterday']];
+const REPORT_CARER_KEYS = [['noticed', 'What the carer noticed']];
 
 /* Questions for the team: entries of type "question", open ones from any date
    (an unanswered question from before the range still needs asking) */
@@ -3579,8 +3618,9 @@ function buildNotesReport(entries, questionsAll, from, to, rangeLabel) {
     const notes = list.filter((e) => e.type === 'note' || (e.note && ['temp', 'weight', 'vitals', 'med', 'pain'].includes(e.type)))
       .map((e) => ({ time: fmtTime(entryDate(e)), who: e.addedBy || 'unknown', text: e.note, context: e.type === 'note' ? '' : noteContext(e) }));
     list.filter((e) => e.type === 'checkin').forEach((e) => {
-      REPORT_CHECKIN_KEYS.forEach(([k, label]) => {
-        if (e[k]) notes.push({ time: fmtTime(entryDate(e)), who: e.addedBy || 'unknown', text: label + ': ' + e[k], context: e.slot + ' check-in' });
+      const keys = e.slot === 'carer' ? REPORT_CARER_KEYS : REPORT_CHECKIN_KEYS;
+      keys.forEach(([k, label]) => {
+        if (e[k]) notes.push({ time: fmtTime(entryDate(e)), who: e.addedBy || 'unknown', text: label + ': ' + e[k], context: e.slot === 'carer' ? "carer's view" : e.slot + ' check-in' });
       });
     });
     notes.sort((a, b) => a.time.localeCompare(b.time));
@@ -3590,7 +3630,7 @@ function buildNotesReport(entries, questionsAll, from, to, rangeLabel) {
   const docs = state.documents.filter((d) => d.category !== 'exemption' && d.docDate && d.docDate >= from && d.docDate <= to)
     .sort((a, b) => (a.docDate || '').localeCompare(b.docDate || ''));
 
-  /* The range is the first line, so whoever reads it (Claude included) knows the period before anything else */
+  /* The range is the first line, so whoever reads it (an AI app included) knows the period before anything else */
   const lines = [`Daybook notes from ${fmtDayNum(from)} to ${fmtDayNum(to)}.`, '', NOTES_PROMPT, '', 'Questions for the team:'];
   if (questions.length) questions.forEach((q, i) => lines.push(`${i + 1}. ${q.text} (${q.who}, ${fmtDayShort(q.day)})`));
   else lines.push('- No open questions.');
@@ -3694,20 +3734,33 @@ const CHECKIN_QUESTIONS = {
     { key: 'symptoms', kind: 'text', q: 'Any new or worse symptoms today?', ph: 'e.g. felt sick after lunch, back worse' },
     { key: 'settled', kind: 'text', q: 'Anything that has settled since yesterday?', ph: 'e.g. the sickness has eased' },
     { key: 'goodThing', kind: 'text', q: 'One good thing about today', ph: 'e.g. sat in the garden for an hour' }
+  ],
+  /* The carer's view: the same scores from the outside, once a day, on the Chemo tab. Kept out of
+     every patient statistic, chart and tile; shown only on the cycle chart (dashed) and, the text, in Notes for the team. */
+  carer: [
+    { key: 'energy', kind: 'slider', q: 'Energy today, as you see it', low: '1 wiped out', high: '10 plenty' },
+    { key: 'sickness', kind: 'pain', q: 'Sickness today, as you see it', low: '1 none', high: '10 severe' },
+    { key: 'appetite', kind: 'slider', q: 'Eating today, as you see it', low: '1 nothing', high: '10 normal' },
+    { key: 'pain', kind: 'pain', q: 'Pain today, as you see it', low: '1 none', high: '10 worst' },
+    { key: 'mood', kind: 'slider', q: 'Mood today, as you see it', low: '1 rough', high: '10 great' },
+    { key: 'noticed', kind: 'text', q: 'What did you notice today?', ph: 'e.g. slept most of the afternoon, colour better than yesterday' }
   ]
 };
 const CHECKIN_LABELS = {
   sleep: 'Sleep', sleepHours: 'Hours slept', pain: 'Pain now', mood: 'Mood', symptoms: 'New or worse symptoms',
   lookingForward: 'Looking forward to', worstPain: 'Worst pain', sickness: 'Sickness', appetite: 'Appetite',
-  energy: 'Energy', settled: 'Settled since yesterday', goodThing: 'One good thing'
+  energy: 'Energy', settled: 'Settled since yesterday', goodThing: 'One good thing', noticed: 'What you noticed'
 };
+/* A patient check-in, as opposed to the carer's view */
+function isPatientCheckin(e) { return e.type === 'checkin' && e.slot !== 'carer'; }
+function checkinTitle(slot) { return slot === 'carer' ? "Carer's view" : slotWord(slot) + ' check-in'; }
 function checkinId(day, slot) { return day + '_' + slot; }
 function findCheckin(day, slot) {
   const id = checkinId(day, slot);
   return state.dayEntries.find((e) => e.id === id) || state.recentEntries.find((e) => e.id === id) || null;
 }
 function dueSlot() { return new Date().getHours() < 15 ? 'morning' : 'evening'; }
-function slotWord(slot) { return slot === 'morning' ? 'Morning' : 'Evening'; }
+function slotWord(slot) { return slot === 'morning' ? 'Morning' : slot === 'evening' ? 'Evening' : "Carer's view"; }
 
 function checkinSummary(e) {
   const bits = [];
@@ -3853,20 +3906,20 @@ function openCheckin(slot, initialDay) {
     if (panel) panel.scrollTop = 0;
   }
   render();
-  openSheet(slotWord(slot) + ' check-in', body);
+  openSheet(checkinTitle(slot), body);
 }
 
 async function saveCheckin(slot, day, answers, existing) {
   const id = checkinId(day, slot);
   const today = todayStr();
-  const at = existing ? entryDate(existing) : atFromInputs(day, day === today ? fmtTime(new Date()) : (slot === 'morning' ? '09:00' : '21:00'));
+  const at = existing ? entryDate(existing) : atFromInputs(day, day === today ? fmtTime(new Date()) : (slot === 'morning' ? '09:00' : slot === 'carer' ? '20:00' : '21:00'));
   const data = { type: 'checkin', slot, day, addedBy: state.name };
   CHECKIN_QUESTIONS[slot].forEach((q) => { data[q.key] = answers[q.key]; });
   if (slot === 'morning') data.sleepHours = answers.sleepHours;
   const mirror = {};
-  if (data.mood != null) mirror.mood = Math.max(1, Math.min(5, Math.ceil(data.mood / 2)));
+  if (slot !== 'carer' && data.mood != null) mirror.mood = Math.max(1, Math.min(5, Math.ceil(data.mood / 2)));
   if (slot === 'evening' && data.goodThing) mirror.good = data.goodThing;
-  const label = slotWord(slot) + ' check-in ' + (existing ? 'updated' : 'saved');
+  const label = checkinTitle(slot) + (existing ? ' updated' : ' saved');
 
   if (state.demo) {
     const now = new Date();
@@ -3889,6 +3942,8 @@ async function saveCheckin(slot, day, answers, existing) {
       updatedAt: serverTimestamp()
     });
     if (Object.keys(mirror).length) await setDoc(doc(db, 'days', day), { ...mirror, updatedBy: state.name, updatedAt: serverTimestamp() }, { merge: true });
+    state.cycleFetched = 0;
+    if (!$('view-chemo').hidden) renderChemo();
     toast(label);
   } catch (e) { console.error(e); toast('Could not save the check-in'); }
 }
@@ -4253,13 +4308,13 @@ function renderVitalsLatest(entries) {
   if (hr) { countTo($('vt-heart-value'), Math.round(hr.heartRate), { unit: 'bpm' }); $('vt-heart-sub').textContent = whenLabel(hr); }
   else { clearCount($('vt-heart-value'), '--'); $('vt-heart-sub').textContent = 'none yet'; }
 
-  const pn = latest((e) => (e.type === 'checkin' && e.pain != null) || e.type === 'pain');
+  const pn = latest((e) => (isPatientCheckin(e) && e.pain != null) || e.type === 'pain');
   if (pn) {
     countTo($('vt-pain-value'), Number(pn.type === 'pain' ? pn.value : pn.pain), { unit: '/10' });
     $('vt-pain-sub').textContent = whenLabel(pn) + (pn.type === 'pain' ? ' reading' : ' check-in');
   } else { clearCount($('vt-pain-value'), '--'); $('vt-pain-sub').textContent = 'none yet'; }
 
-  const md = latest((e) => e.type === 'checkin' && e.mood != null);
+  const md = latest((e) => isPatientCheckin(e) && e.mood != null);
   if (md) { countTo($('vt-mood-value'), Number(md.mood), { unit: '/10' }); $('vt-mood-sub').textContent = whenLabel(md) + ' check-in'; }
   else { clearCount($('vt-mood-value'), '--'); $('vt-mood-sub').textContent = 'none yet'; }
 
@@ -4417,7 +4472,7 @@ async function renderVitals() {
   });
 
   /* Pain: the check-in scores make the line; extra readings are hollow warm points. A calm scale, no red. */
-  const ciPain = entries.filter((e) => e.type === 'checkin' && e.pain != null).map((e) => ({ x: entryDate(e).getTime(), y: Number(e.pain) }));
+  const ciPain = entries.filter((e) => isPatientCheckin(e) && e.pain != null).map((e) => ({ x: entryDate(e).getTime(), y: Number(e.pain) }));
   const spotPain = entries.filter((e) => e.type === 'pain').map((e) => ({ x: entryDate(e).getTime(), y: Number(e.value) }));
   const tenScale = () => Object.assign(yAxisBase(T), { min: 0, max: 10, ticks: Object.assign(yAxisBase(T).ticks, { stepSize: 2, maxTicksLimit: 6 }) });
   makeChart('pain', {
@@ -4429,7 +4484,7 @@ async function renderVitals() {
     options: lineOptions(tenScale(), { title: pointTitle, label: (item) => item.dataset.label + ': ' + item.raw.y + '/10' }, true, ciPain.length)
   });
 
-  const ciMood = entries.filter((e) => e.type === 'checkin' && e.mood != null).map((e) => ({ x: entryDate(e).getTime(), y: Number(e.mood) }));
+  const ciMood = entries.filter((e) => isPatientCheckin(e) && e.mood != null).map((e) => ({ x: entryDate(e).getTime(), y: Number(e.mood) }));
   makeChart('mood', {
     type: 'line',
     data: { datasets: [lineSeries(T, T.teal, ciMood, { label: 'Mood' })] },
@@ -4622,7 +4677,7 @@ function renderDocsList() {
 $('doc-add').addEventListener('click', () => openAddDocument('general'));
 $('meds-doc-add').addEventListener('click', () => openAddDocument('exemption'));
 
-/* One-screen add: choose photos or a PDF, give a title and date, paste Claude's
+/* One-screen add: choose photos or a PDF, give a title and date, paste the AI app's
    summary (smart-filling title, date and explanation when it is in the Care Log
    block format), then save the document and its pages together in one batch. */
 function openAddDocument(category) {
@@ -4640,7 +4695,7 @@ function openAddDocument(category) {
   const title = h('input', { type: 'text', placeholder: 'e.g. Oncology letter', required: true, value: category === 'exemption' ? 'NHS Medical Exemption Certificate' : '' });
   const date = h('input', { type: 'date', value: todayStr() });
 
-  const explanation = h('textarea', { rows: '8', placeholder: 'Paste Claude’s explanation here, or use Paste summary above' });
+  const explanation = h('textarea', { rows: '8', placeholder: 'Paste the explanation here, or use Paste summary above' });
   const pasteBtn = h('button', { class: 'btn btn-secondary btn-block', type: 'button' }, 'Paste summary');
 
   const save = h('button', { class: 'btn btn-primary btn-block', type: 'button', disabled: true }, 'Save');
@@ -4924,9 +4979,9 @@ $('doc-share').addEventListener('click', async () => {
 $('doc-copy').addEventListener('click', async () => {
   const d = currentDocRecord();
   if (!d) return;
-  const text = d.kind === 'text' ? promptFor(d) + '\n\n' + (d.text || '') : promptFor(d) + '\n\n(Attach the page photos in Claude.)';
+  const text = d.kind === 'text' ? promptFor(d) + '\n\n' + (d.text || '') : promptFor(d) + '\n\n(Attach the page photos in your AI app.)';
   await copyText(text);
-  toast('Copied. Paste it into the Claude app.');
+  toast('Copied. Paste it into your AI app.');
 });
 
 async function copyText(text) {
@@ -4981,14 +5036,164 @@ $('doc-delete').addEventListener('click', async () => {
 });
 
 /* ------------------------------------------------------------------ */
-/* Chemo plan: calendar, mood, cheer board                               */
+/* Chemo plan: calendar, mood, the cycle and the carer's view              */
 /* ------------------------------------------------------------------ */
 
 function renderChemo() {
   renderChemoProgress();
   renderCalendar();
-  renderCheers();
+  renderCycleTile();
+  renderCarerRow();
+  renderCycleChart();
   renderChemoDocs();
+}
+
+/* ---- The cycle: day 0 is a session day, counted from the most recent session on or before the day ---- */
+function chemoDays() { return Object.keys(state.days).filter((k) => state.days[k].chemo).sort(); }
+function cycleFor(day) {
+  const starts = chemoDays().filter((k) => k <= day);
+  if (!starts.length) return null;
+  const start = starts[starts.length - 1];
+  return { start, n: Math.round((parseDay(day) - parseDay(start)) / 864e5) };
+}
+function renderCycleTile() {
+  const val = $('cycle-value'), sub = $('cycle-sub');
+  if (!val) return;
+  const today = todayStr(), c = cycleFor(today);
+  if (!c) { val.textContent = '--'; sub.textContent = 'No sessions marked yet'; return; }
+  val.textContent = c.n === 0 ? 'Chemo day' : 'Day ' + c.n;
+  let text = c.n === 0 ? 'Session today' : 'after the session on ' + fmtDayShort(c.start);
+  const next = chemoDays().find((k) => k > today);
+  if (next) { const gap = Math.round((parseDay(next) - parseDay(today)) / 864e5); text += ', next ' + (gap === 1 ? 'tomorrow' : 'in ' + gap + ' days'); }
+  sub.textContent = text;
+}
+
+/* The carer's row: today's carer's view, like the check-in rows on Today (the flow itself offers Yesterday) */
+function renderCarerRow() {
+  const row = $('checkin-carer'), sub = $('checkin-carer-sub');
+  if (!row) return;
+  const c = findCheckin(todayStr(), 'carer');
+  row.classList.remove('is-due', 'is-done');
+  row.disabled = state.readOnly;
+  if (c) {
+    row.classList.add('is-done');
+    sub.replaceChildren(h('span', { class: 'checkin-done' }, icon('check'), 'Done ' + fmtTime(entryDate(c)) + (c.addedBy ? ' by ' + c.addedBy : '')));
+  } else if (new Date().getHours() >= 15) { row.classList.add('is-due'); sub.textContent = state.readOnly ? 'Due this evening' : 'Due this evening, about a minute'; }
+  else sub.textContent = state.readOnly ? 'Not filled in yet' : 'Later today, or tap to fill in yesterday';
+}
+$('checkin-carer').addEventListener('click', () => openCheckin('carer', todayStr()));
+
+/* ---- By day after chemo: every check-in score averaged by its day in the cycle, across every cycle ---- */
+const CYCLE_MEASURES = [
+  { key: 'energy', label: 'Energy', highGood: true, slots: ['evening'], carer: true },
+  { key: 'sickness', label: 'Sickness', highGood: false, slots: ['evening'], carer: true },
+  { key: 'appetite', label: 'Appetite', highGood: true, slots: ['evening'], carer: true },
+  { key: 'pain', label: 'Pain', highGood: false, slots: ['morning', 'evening'], carer: true },
+  { key: 'mood', label: 'Mood', highGood: true, slots: ['morning', 'evening'], carer: true },
+  { key: 'sleep', label: 'Sleep', highGood: true, slots: ['morning'], carer: false }
+];
+const CYCLE_MAX_DAY = 28;
+const CYCLE_LOOKBACK_DAYS = 180;
+
+/* Every check-in since the first session (at most 180 days back). One query by type, filtered by day
+   here, so no composite index is needed and no other entry is read. Cached for a minute. */
+async function cycleEntries() {
+  const starts = chemoDays();
+  if (!starts.length) return [];
+  const floor = addDays(todayStr(), -CYCLE_LOOKBACK_DAYS);
+  const from = starts[0] < floor ? floor : starts[0];
+  if (state.demo) return state.recentEntries.filter((e) => e.type === 'checkin' && e.day >= from);
+  if (state.cycleEntries && state.cycleFrom === from && Date.now() - state.cycleFetched < 60000) return state.cycleEntries;
+  try {
+    const snap = await getDocs(query(collection(db, 'entries'), where('type', '==', 'checkin')));
+    state.cycleEntries = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((e) => e.day >= from);
+    state.cycleFrom = from;
+    state.cycleFetched = Date.now();
+    return state.cycleEntries;
+  } catch (e) { console.error(e); return null; }
+}
+
+function cycleSeries(entries, m) {
+  const today = todayStr();
+  const starts = chemoDays().filter((k) => k <= today);
+  const byDay = {};
+  entries.forEach((e) => { (byDay[e.day] = byDay[e.day] || []).push(e); });
+  const mean = (list) => list.reduce((s, v) => s + v, 0) / list.length;
+  const sums = {}, carerSums = {}, cycles = new Set();
+  starts.forEach((start, i) => {
+    const end = i + 1 < starts.length ? starts[i + 1] : addDays(today, 1);
+    for (let d = start, n = 0; d < end && d <= today && n <= CYCLE_MAX_DAY; d = addDays(d, 1), n++) {
+      const list = byDay[d] || [];
+      const pv = list.filter((e) => e.slot !== 'carer' && m.slots.includes(e.slot) && e[m.key] != null).map((e) => Number(e[m.key]));
+      const cv = m.carer ? list.filter((e) => e.slot === 'carer' && e[m.key] != null).map((e) => Number(e[m.key])) : [];
+      if (pv.length) { const s = sums[n] || (sums[n] = { sum: 0, n: 0 }); s.sum += mean(pv); s.n++; cycles.add(start); }
+      if (cv.length) { const s = carerSums[n] || (carerSums[n] = { sum: 0, n: 0 }); s.sum += mean(cv); s.n++; cycles.add(start); }
+    }
+  });
+  const maxDay = Math.max(-1, ...Object.keys(sums).map(Number), ...Object.keys(carerSums).map(Number));
+  const labels = [], patient = [], carer = [];
+  for (let n = 0; n <= maxDay; n++) {
+    labels.push(n);
+    patient.push(sums[n] ? Math.round((sums[n].sum / sums[n].n) * 10) / 10 : null);
+    carer.push(carerSums[n] ? Math.round((carerSums[n].sum / carerSums[n].n) * 10) / 10 : null);
+  }
+  return { labels, patient, carer, cycles: cycles.size, carerAny: carer.some((v) => v != null) };
+}
+
+function cycleDayWord(d) { return d === 0 ? 'chemo day' : 'day ' + d; }
+function cycleSentence(m, s) {
+  if (!s.cycles) return 'No check-ins since a session yet. The pattern appears after the first cycle.';
+  const base = s.cycles === 1 ? 'Based on 1 cycle so far; the pattern gets clearer with each one.' : 'Based on ' + s.cycles + ' cycles.';
+  const pts = s.patient.map((v, i) => (v == null ? null : { d: i, v })).filter(Boolean);
+  if (pts.length < 2) return base;
+  const lo = pts.reduce((a, b) => (b.v < a.v ? b : a)), hi = pts.reduce((a, b) => (b.v > a.v ? b : a));
+  if (hi.v - lo.v < 1) return m.label + ' is much the same through the cycle. ' + base;
+  const text = m.highGood
+    ? m.label + ' is usually lowest on ' + cycleDayWord(lo.d) + ' and best on ' + cycleDayWord(hi.d) + '.'
+    : m.label + ' is usually worst on ' + cycleDayWord(hi.d) + ' and easiest on ' + cycleDayWord(lo.d) + '.';
+  return text + ' ' + base;
+}
+
+function renderCycleChips() {
+  const box = $('cycle-measures');
+  box.replaceChildren(...CYCLE_MEASURES.map((m) => h('button', {
+    class: 'seg' + (m.key === state.cycleMeasure ? ' is-active' : ''), type: 'button', 'aria-pressed': m.key === state.cycleMeasure ? 'true' : 'false',
+    onclick: () => { state.cycleMeasure = m.key; renderCycleChart(); }
+  }, m.label)));
+}
+
+async function renderCycleChart() {
+  if (!$('cycle-card') || $('view-chemo').hidden || state.viewer) return;
+  renderCycleChips();
+  const m = CYCLE_MEASURES.find((x) => x.key === state.cycleMeasure) || CYCLE_MEASURES[0];
+  const entries = await cycleEntries();
+  if (!entries) return;
+  const s = cycleSeries(entries, m);
+  $('cycle-note').textContent = cycleSentence(m, s);
+  $('cycle-wrap').hidden = !s.cycles;
+  if (!s.cycles) { if (state.charts.cycle) { state.charts.cycle.destroy(); delete state.charts.cycle; } return; }
+  try { await loadScript(CDN.chart); } catch (e) { return; }
+  const T = chartTheme();
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const datasets = [lineSeries(T, T.teal, s.patient, { label: 'Check-ins', spanGaps: true })];
+  if (s.carerAny) datasets.push({ label: "Carer's view", data: s.carer, borderColor: T.warm, borderWidth: 2.5, borderDash: [6, 4], borderCapStyle: 'round', tension: 0.3, cubicInterpolationMode: 'monotone', fill: false, spanGaps: true, pointRadius: 3, pointHoverRadius: 7, pointHitRadius: 12, pointBackgroundColor: T.warm, pointBorderColor: 'transparent' });
+  makeChart('cycle', {
+    type: 'line',
+    data: { labels: s.labels, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false, layout: { padding: { top: 8, right: 10 } },
+      interaction: { mode: 'index', intersect: false },
+      animation: reduced ? false : drawIn(s.labels.length),
+      scales: {
+        x: Object.assign(xAxisBase(T), { ticks: Object.assign(xAxisBase(T).ticks, { maxTicksLimit: 8, callback: (v, i) => (i === 0 ? 'Chemo' : String(s.labels[i])) }), title: { display: true, text: 'Days after chemo', color: T.muted, font: { family: T.mono, size: 11 } } }),
+        y: Object.assign(yAxisBase(T), { min: 0, max: 10, ticks: Object.assign(yAxisBase(T).ticks, { stepSize: 2, maxTicksLimit: 6 }) })
+      },
+      plugins: { legend: s.carerAny ? legendStyle(T) : { display: false }, tooltip: Object.assign(tooltipStyle(T), { callbacks: {
+        title: (items) => items.length ? (items[0].dataIndex === 0 ? 'Chemo day' : 'Day ' + items[0].dataIndex + ' after chemo') : '',
+        label: (i) => i.raw == null ? '' : i.dataset.label + ': ' + i.raw + '/10'
+      } }) }
+    }
+  });
 }
 
 function renderChemoProgress() {
@@ -5099,50 +5304,6 @@ function openDaySheet(key) {
     h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Cancel')
   );
   openSheet(fmtDayLong(key), body);
-}
-
-/* Cheer board */
-$('cheer-post').addEventListener('click', postCheer);
-$('cheer-text').addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); postCheer(); } });
-{ const speak = speakButton($('cheer-text')); if (speak) $('cheer-text').closest('.cheer-add').after(speak); }
-
-async function postCheer() {
-  const input = $('cheer-text');
-  const text = input.value.trim();
-  if (!text) return;
-  input.value = '';
-  if (state.demo) {
-    state.cheers.unshift({ id: fakeId('cheer'), text, addedBy: state.name, createdAt: demoTs(new Date()) });
-    renderCheers();
-    return;
-  }
-  try {
-    await setDoc(doc(collection(db, 'cheers')), { text, addedBy: state.name, createdAt: serverTimestamp() });
-  } catch (e) { console.error(e); toast('Could not post'); }
-}
-
-function renderCheers() {
-  const list = $('cheers');
-  let fresh = 0;
-  list.replaceChildren(...state.cheers.map((c) => markNew(cheerRow(c), seenIds.cheers, c.id, seenIds.cheers.has(c.id) ? 0 : fresh++)));
-  $('cheers-empty').hidden = state.cheers.length > 0;
-}
-
-function cheerRow(c) {
-  {
-    const when = c.createdAt && typeof c.createdAt.toDate === 'function'
-      ? c.createdAt.toDate().toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
-      : 'just now';
-    return h('li', { class: 'cheer' },
-      h('div', { class: 'cheer-body' },
-        h('div', { class: 'cheer-text', text: c.text }),
-        h('div', { class: 'cheer-meta', text: (c.addedBy || '') + ' · ' + when })
-      ),
-      (c.addedBy === state.name && !state.readOnly) ? h('button', { class: 'cheer-del', type: 'button', 'aria-label': 'Remove note', onclick: async () => {
-        if (await confirmSheet('Remove note', 'Take this note off the board?', 'Remove', true)) deleteDoc(doc(db, 'cheers', c.id));
-      } }, '×') : null
-    );
-  }
 }
 
 /* A short, calm confetti burst when a session is marked done. Skipped for reduced motion. */
