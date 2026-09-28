@@ -1025,7 +1025,9 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 
 /* ---------- Chemo: the cycle and the carer's view ---------- */
 .tiles-1 { grid-template-columns: 1fr; }
+#chemo-cycle-section .section-title, #chemo-docs-section .section-title { margin-top: var(--s-6); } /* first children of their own wrappers, like the Meds documents section */
 #chemo-cycle-section .status { margin-top: var(--s-2); }
+#cycle-tile .tile-sub { white-space: normal; overflow: visible; text-overflow: clip; } /* "after the session on 25 Sep, next in 12 days" may take two lines */
 #carer-card { margin-top: var(--s-3); }
 .segmented-wrap { flex-wrap: wrap; gap: 2px; }
 .segmented-wrap .seg { flex: 1 1 30%; }

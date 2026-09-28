@@ -423,7 +423,7 @@ async function handleExplain(request, env) {
   }
 
   let body;
-  try { body = await request.json(); } catch (e) { return json({ error: 'bad-request', message: 'Nothing to explain.' }, 400); }
+  try { body = await request.json(); } catch (e) { return json({ error: 'bad-request', message: 'Could not read what was sent. Try again.' }, 400); }
   const kind = body.kind === 'notes' ? 'notes' : 'document';
   const text = String(body.text || '').slice(0, EXPLAIN_MAX_TEXT_CHARS);
   const pages = Array.isArray(body.pages) ? body.pages.slice(0, EXPLAIN_MAX_PAGES).filter((p) => typeof p === 'string' && p.length > 100 && p.length <= EXPLAIN_MAX_PAGE_CHARS) : [];
