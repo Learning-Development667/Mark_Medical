@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '60';
+const APP_VERSION = '61';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -4975,7 +4975,7 @@ async function saveDocumentBatch({ category, title, docDate, explanation, kind, 
 async function openDocument(id) {
   const d = state.documents.find((x) => x.id === id);
   if (!d) return;
-  state.currentDoc = { id, pages: [] };
+  state.currentDoc = { id, pages: [], loading: null };
   $('docs-list-wrap').hidden = true;
   $('doc-detail').hidden = false;
   $('doc-title').textContent = d.title;
@@ -4999,16 +4999,42 @@ async function openDocument(id) {
     if (!state.currentDoc.pages.length) pagesEl.append(h('p', { class: 'empty', 'data-art': 'doc', text: 'No pages found.' }));
     return;
   }
-  try {
-    const snap = await getDocs(query(collection(db, 'documents', id, 'pages'), orderBy('n')));
-    if (!state.currentDoc || state.currentDoc.id !== id) return;
-    state.currentDoc.pages = snap.docs.map((p) => p.data());
-    pagesEl.replaceChildren(...state.currentDoc.pages.map((p, i) => h('img', { src: 'data:image/jpeg;base64,' + p.data, alt: `Page ${i + 1}`, width: p.width, height: p.height, loading: 'lazy' })));
-    if (!state.currentDoc.pages.length) pagesEl.append(h('p', { class: 'empty', 'data-art': 'doc', text: 'No pages found.' }));
-  } catch (e) {
-    console.error(e);
-    pagesEl.replaceChildren(h('p', { class: 'error', text: 'Could not load the pages.' }));
-  }
+  const current = state.currentDoc;
+  current.loading = (async () => {
+    try {
+      const snap = await getDocs(query(collection(db, 'documents', id, 'pages'), orderBy('n')));
+      if (state.currentDoc !== current) return;
+      current.pages = snap.docs.map((p) => p.data());
+      pagesEl.replaceChildren(...current.pages.map((p, i) => h('img', { src: 'data:image/jpeg;base64,' + p.data, alt: `Page ${i + 1}`, width: p.width, height: p.height, loading: 'lazy' })));
+      if (!current.pages.length) pagesEl.append(h('p', { class: 'empty', 'data-art': 'doc', text: 'No pages found.' }));
+    } catch (e) {
+      console.error(e);
+      if (state.currentDoc === current) pagesEl.replaceChildren(h('p', { class: 'error', text: 'Could not load the pages.' }));
+    }
+  })();
+  await current.loading;
+}
+
+/* A page photo shrunk for the AI service: at most 1568 px on the long edge (the service scales
+   larger images down anyway) and JPEG at 0.8, so five pages travel as about 1 MB rather than 5.
+   Falls back to the stored page if the browser cannot decode it. */
+function shrinkPage(b64) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const max = 1568, scale = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+        const c = document.createElement('canvas');
+        c.width = Math.max(1, Math.round(img.naturalWidth * scale));
+        c.height = Math.max(1, Math.round(img.naturalHeight * scale));
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        const out = c.toDataURL('image/jpeg', 0.8).split(',')[1];
+        resolve(out && out.length < b64.length ? out : b64);
+      } catch (e) { resolve(b64); }
+    };
+    img.onerror = () => resolve(b64);
+    img.src = 'data:image/jpeg;base64,' + b64;
+  });
 }
 
 function currentDocRecord() {
@@ -5080,11 +5106,17 @@ $('doc-explain').addEventListener('click', async () => {
   const btn = $('doc-explain');
   if ($('doc-explanation').value.trim() && !(await confirmSheet('Explain again', 'This will replace the explanation already saved for this document.', 'Explain again', false))) return;
   try {
-    const reply = await withBusy(btn, 'Explaining, about half a minute', () => bridgeExplain({
-      kind: 'document', title: d.title, date: fmtDayNum(d.docDate || ''),
-      text: d.kind === 'text' ? (d.text || '') : '',
-      pages: d.kind === 'text' ? [] : (state.currentDoc ? state.currentDoc.pages.map((p) => p.data) : [])
-    }));
+    const reply = await withBusy(btn, 'Explaining, about half a minute', async () => {
+      let pages = [];
+      if (d.kind !== 'text') {
+        if (state.currentDoc && state.currentDoc.loading) await state.currentDoc.loading;
+        const stored = state.currentDoc ? state.currentDoc.pages.map((p) => p.data).filter(Boolean) : [];
+        if (!stored.length) throw new Error('The pages have not loaded yet. Wait a moment and try again.');
+        pages = [];
+        for (const p of stored.slice(0, 8)) pages.push(await shrinkPage(p));
+      } else if (!(d.text || '').trim()) throw new Error('This document has no text to explain.');
+      return bridgeExplain({ kind: 'document', title: d.title, date: fmtDayNum(d.docDate || ''), text: d.kind === 'text' ? (d.text || '') : '', pages });
+    });
     const text = reply.text + (reply.cut ? '\n\n(The explanation was cut short. Tap Explain in Daybook again for another go.)' : '') + '\n\n' + NOT_MEDICAL_ADVICE;
     $('doc-explanation').value = text;
     if (state.demo) { d.explanation = text; renderDocsList(); }
