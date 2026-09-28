@@ -26,6 +26,10 @@
 //   password: "the guest password"
 // };
 
+/* Optional: medicine reminders as push notifications. Run node tools/vapid_keys.mjs once: the public
+   key goes here, the private key in the VAPID_PRIVATE_KEY repository secret for the bridge. */
+// window.DAYBOOK_PUSH = { publicKey: "..." };
+
 window.CARE_LOG_CONFIG = {
   firebase: {
     apiKey: "YOUR_API_KEY",

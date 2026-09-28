@@ -29,10 +29,28 @@ export default {
         try { sample = JSON.parse(f.sample && f.sample.stringValue || 'null'); } catch (e) { sample = f.sample && f.sample.stringValue; }
         return json({ receivedAt: f.receivedAt && f.receivedAt.timestampValue, result: f.result && f.result.stringValue, sample });
       }
+      /* Sends a test notification to every phone with reminders on: ?key=<BRIDGE_KEY> */
+      if (url.pathname === '/push-test' && request.method === 'GET') {
+        if (!env.BRIDGE_KEY || url.searchParams.get('key') !== env.BRIDGE_KEY) return json({ error: 'Unauthorised' }, 401);
+        const fs = await firestore(env);
+        const subs = await fs.list('pushSubs');
+        const results = [];
+        for (const d of subs) results.push(await sendPush(env, fs, d, { title: 'Daybook', body: 'Reminders are working on this phone.', tag: 'test', url: appUrl('meds') }));
+        return json({ phones: subs.length, results });
+      }
+      /* Runs the reminder check by hand: ?key=<BRIDGE_KEY> */
+      if (url.pathname === '/remind-now' && request.method === 'GET') {
+        if (!env.BRIDGE_KEY || url.searchParams.get('key') !== env.BRIDGE_KEY) return json({ error: 'Unauthorised' }, 401);
+        return json(await runReminders(env));
+      }
       return withCors(request, json({ error: 'Not found' }, 404));
     } catch (e) {
       return withCors(request, json({ error: String(e && e.message || e) }, 500));
     }
+  },
+  /* Cron (wrangler.toml, every five minutes): medicine reminders as push notifications */
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(runReminders(env).catch((e) => console.error('reminders', e)));
   }
 };
 
@@ -165,6 +183,33 @@ async function firestore(env) {
     async set(path, fields) {
       const r = await fetch(base + path, { method: 'PATCH', headers, body: JSON.stringify({ fields }) });
       if (!r.ok) throw new Error('Firestore set ' + path + ': ' + r.status + ' ' + await r.text());
+    },
+    async remove(path) {
+      const r = await fetch(base + path, { method: 'DELETE', headers });
+      if (!r.ok && r.status !== 404) throw new Error('Firestore delete ' + path + ': ' + r.status + ' ' + await r.text());
+    },
+    /* Every document in a collection (a few hundred at most here), as { id, fields } */
+    async list(collection) {
+      const out = [];
+      let pageToken = '';
+      do {
+        const r = await fetch(base + collection + '?pageSize=300' + (pageToken ? '&pageToken=' + encodeURIComponent(pageToken) : ''), { headers });
+        if (r.status === 404) return out;
+        if (!r.ok) throw new Error('Firestore list ' + collection + ': ' + r.status + ' ' + await r.text());
+        const body = await r.json();
+        (body.documents || []).forEach((d) => out.push({ id: d.name.split('/').pop(), fields: d.fields || {} }));
+        pageToken = body.nextPageToken || '';
+      } while (pageToken);
+      return out;
+    },
+    /* Documents matching equality filters, e.g. query('entries', { day: '2026-09-28', type: 'med' }) */
+    async query(collection, where) {
+      const filters = Object.entries(where).map(([field, value]) => ({ fieldFilter: { field: { fieldPath: field }, op: 'EQUAL', value: { stringValue: String(value) } } }));
+      const structuredQuery = { from: [{ collectionId: collection }], where: filters.length === 1 ? filters[0] : { compositeFilter: { op: 'AND', filters } }, limit: 500 };
+      const r = await fetch(base.replace(/\/$/, '') + ':runQuery', { method: 'POST', headers, body: JSON.stringify({ structuredQuery }) });
+      if (!r.ok) throw new Error('Firestore query ' + collection + ': ' + r.status + ' ' + await r.text());
+      const rows = await r.json();
+      return rows.filter((x) => x.document).map((x) => ({ id: x.document.name.split('/').pop(), fields: x.document.fields || {} }));
     }
   };
 }
@@ -201,6 +246,119 @@ function b64url(bytes) {
   let s = '';
   for (const b of bytes) s += String.fromCharCode(b);
   return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+/* ------------------------------------------------------------------ */
+/* Medicine reminders: push notifications at the times set in the app    */
+/* ------------------------------------------------------------------ */
+
+const APP_ORIGIN = 'https://learning-development667.github.io';
+const appUrl = (tab) => APP_ORIGIN + '/Mark_Medical/' + (tab ? '?tab=' + tab : '');
+const TZ = 'Europe/London';
+const REMINDER_WINDOW_MIN = 20;   // a time is "due" for this long after it (cron runs every five minutes)
+const NUDGE_AFTER_MIN = 30;       // one more notification if still not logged this long after the time
+const LOGGED_BEFORE_MIN = 60;     // a dose logged this long before the time counts as taken
+
+/* Local wall-clock time in London as { day: 'YYYY-MM-DD', minutes: since midnight } */
+function londonNow(date) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(date || new Date()).map((p) => [p.type, p.value]));
+  return { day: `${parts.year}-${parts.month}-${parts.day}`, minutes: (parseInt(parts.hour, 10) % 24) * 60 + parseInt(parts.minute, 10) };
+}
+const toMinutes = (hhmm) => { const m = String(hhmm || '').match(/^(\d{1,2}):(\d{2})$/); return m ? parseInt(m[1], 10) * 60 + parseInt(m[2], 10) : null; };
+const f = (fields, k) => { const v = fields[k]; if (!v) return null; return v.stringValue ?? v.integerValue ?? v.doubleValue ?? v.booleanValue ?? v.timestampValue ?? (v.arrayValue ? (v.arrayValue.values || []).map((x) => x.stringValue ?? x.integerValue ?? x.doubleValue) : null); };
+
+async function runReminders(env) {
+  if (!env.VAPID_PRIVATE_KEY) return { skipped: 'VAPID_PRIVATE_KEY is not set' };
+  const fs = await firestore(env);
+  const subs = await fs.list('pushSubs');
+  if (!subs.length) return { skipped: 'no phones have reminders on' };
+  const now = londonNow();
+  const logDoc = await fs.get('bridge/reminderLog');
+  const lf = logDoc ? logDoc.fields : {};
+  const sent = f(lf, 'day') === now.day && lf.sent && lf.sent.mapValue ? Object.keys(lf.sent.mapValue.fields || {}) : [];
+  const sentSet = new Set(sent);
+  const medicines = (await fs.list('medicines')).filter((m) => f(m.fields, 'active') !== false && f(m.fields, 'kind') !== 'prn' && (!f(m.fields, 'courseEnd') || f(m.fields, 'courseEnd') >= now.day));
+  const doses = await fs.query('entries', { day: now.day, type: 'med' });
+  const doseMinutes = (medId) => doses.filter((d) => f(d.fields, 'medId') === medId).map((d) => londonNow(new Date(f(d.fields, 'at'))).minutes);
+  const out = [];
+  const send = async (key, payload) => {
+    for (const sub of subs) out.push({ key, phone: sub.id, result: await sendPush(env, fs, sub, payload) });
+    sentSet.add(key);
+  };
+  for (const m of medicines) {
+    const times = (f(m.fields, 'times') || []).map(toMinutes).filter((t) => t != null);
+    const name = f(m.fields, 'name') || 'Medicine', dose = f(m.fields, 'dose') || '';
+    const taken = doseMinutes(m.id);
+    for (const t of times) {
+      const key = `${m.id}|${t}`;
+      const takenSince = taken.some((x) => x >= t - LOGGED_BEFORE_MIN);
+      if (!sentSet.has(key) && now.minutes >= t && now.minutes < t + REMINDER_WINDOW_MIN && !takenSince) {
+        await send(key, { title: 'Daybook', body: `${name} ${dose} is due`.trim(), tag: key, url: appUrl('meds') });
+      }
+      const nudgeKey = key + '|nudge';
+      if (!sentSet.has(nudgeKey) && now.minutes >= t + NUDGE_AFTER_MIN && now.minutes < t + NUDGE_AFTER_MIN + REMINDER_WINDOW_MIN && !takenSince) {
+        await send(nudgeKey, { title: 'Daybook', body: `Still to take: ${name} ${dose}`.trim(), tag: nudgeKey, url: appUrl('meds') });
+      }
+    }
+  }
+  /* One-off reminders from the app ("Remind me in 15 minutes" after a meal) */
+  const oneOffs = await fs.list('reminders');
+  for (const r of oneOffs) {
+    if (f(r.fields, 'sent') === true) { if (new Date(f(r.fields, 'at')).getTime() < Date.now() - 86400000) await fs.remove('reminders/' + r.id); continue; }
+    if (new Date(f(r.fields, 'at')).getTime() > Date.now()) continue;
+    await send('oneoff|' + r.id, { title: 'Daybook', body: `Reminder: ${f(r.fields, 'medName') || 'medicine'} ${f(r.fields, 'dose') || ''}`.trim(), tag: 'oneoff|' + r.id, url: appUrl('meds') });
+    await fs.merge('reminders/' + r.id, { sent: { booleanValue: true } });
+  }
+  await fs.set('bridge/reminderLog', { day: strVal(now.day), at: { timestampValue: new Date().toISOString() }, sent: { mapValue: { fields: Object.fromEntries([...sentSet].map((k) => [k, { booleanValue: true }])) } } });
+  return { day: now.day, minutes: now.minutes, phones: subs.length, medicines: medicines.length, sent: out };
+}
+
+/* Web Push (RFC 8030, 8291, 8292) with nothing but WebCrypto: VAPID signature, aes128gcm payload */
+const b64urlDecode = (s) => { const b = atob(String(s).replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((s.length + 3) % 4)); const out = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) out[i] = b.charCodeAt(i); return out; };
+const concat = (...arrs) => { const out = new Uint8Array(arrs.reduce((n, a) => n + a.length, 0)); let o = 0; for (const a of arrs) { out.set(a, o); o += a.length; } return out; };
+async function hkdf(salt, ikm, info, len) {
+  const key = await crypto.subtle.importKey('raw', ikm, 'HKDF', false, ['deriveBits']);
+  return new Uint8Array(await crypto.subtle.deriveBits({ name: 'HKDF', hash: 'SHA-256', salt, info }, key, len * 8));
+}
+async function vapidHeader(env, endpoint) {
+  const jwk = JSON.parse(env.VAPID_PRIVATE_KEY);
+  const pub = b64url(concat(new Uint8Array([4]), b64urlDecode(jwk.x), b64urlDecode(jwk.y)));
+  const key = await crypto.subtle.importKey('jwk', jwk, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
+  const enc = (o) => b64url(new TextEncoder().encode(JSON.stringify(o)));
+  const unsigned = enc({ typ: 'JWT', alg: 'ES256' }) + '.' + enc({ aud: new URL(endpoint).origin, exp: Math.floor(Date.now() / 1000) + 12 * 3600, sub: APP_ORIGIN + '/Mark_Medical/' });
+  const sig = new Uint8Array(await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, key, new TextEncoder().encode(unsigned)));
+  return `vapid t=${unsigned}.${b64url(sig)}, k=${pub}`;
+}
+async function encryptPayload(sub, text) {
+  const clientPub = b64urlDecode(sub.p256dh), auth = b64urlDecode(sub.auth);
+  const local = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
+  const localPub = new Uint8Array(await crypto.subtle.exportKey('raw', local.publicKey));
+  const clientKey = await crypto.subtle.importKey('raw', clientPub, { name: 'ECDH', namedCurve: 'P-256' }, false, []);
+  const shared = new Uint8Array(await crypto.subtle.deriveBits({ name: 'ECDH', public: clientKey }, local.privateKey, 256));
+  const te = new TextEncoder();
+  const ikm = await hkdf(auth, shared, concat(te.encode('WebPush: info\0'), clientPub, localPub), 32);
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const cek = await hkdf(salt, ikm, te.encode('Content-Encoding: aes128gcm\0'), 16);
+  const nonce = await hkdf(salt, ikm, te.encode('Content-Encoding: nonce\0'), 12);
+  const aes = await crypto.subtle.importKey('raw', cek, 'AES-GCM', false, ['encrypt']);
+  const record = concat(te.encode(text), new Uint8Array([2]));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv: nonce }, aes, record));
+  const header = concat(salt, new Uint8Array([0, 0, 16, 0]), new Uint8Array([localPub.length]), localPub);
+  return concat(header, ct);
+}
+/* Sends one notification; a dead subscription (404, 410) is removed so it is not tried again */
+async function sendPush(env, fs, subDoc, payload) {
+  const endpoint = f(subDoc.fields, 'endpoint');
+  const keys = subDoc.fields.keys && subDoc.fields.keys.mapValue ? subDoc.fields.keys.mapValue.fields : {};
+  const sub = { endpoint, p256dh: f(keys, 'p256dh'), auth: f(keys, 'auth') };
+  if (!endpoint || !sub.p256dh || !sub.auth) return 'incomplete subscription';
+  try {
+    const body = await encryptPayload(sub, JSON.stringify(payload));
+    const r = await fetch(endpoint, { method: 'POST', headers: { Authorization: await vapidHeader(env, endpoint), 'Content-Encoding': 'aes128gcm', 'Content-Type': 'application/octet-stream', TTL: '3600', Urgency: 'high' }, body });
+    if (r.status === 404 || r.status === 410) { await fs.remove('pushSubs/' + subDoc.id); return 'gone, removed'; }
+    if (!r.ok) return 'push service ' + r.status + ' ' + (await r.text()).slice(0, 120);
+    return 'sent';
+  } catch (e) { return 'error ' + (e && e.message || e); }
 }
 
 /* Firestore's typed JSON */

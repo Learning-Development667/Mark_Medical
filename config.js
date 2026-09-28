@@ -24,3 +24,7 @@ window.DAYBOOK_DEMO = {
   email: "guest@daybook.demo",
   password: "Password"
 };
+
+/* Medicine reminders: the public half of the Web Push key (public by design). The private half is
+   the VAPID_PRIVATE_KEY repository secret, handed to the bridge by the deploy workflow. */
+window.DAYBOOK_PUSH = { publicKey: "BJ33RgWZAU7jOB8esjGKGMB2yPSXU42KmFEQX3Tn1DgntHaZDT16xKz6HdTAvVZyV1Bu0oX_A_TWVBf20Q93xMs" };

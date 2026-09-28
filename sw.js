@@ -3,7 +3,8 @@
    - install: skipWaiting so a new worker takes over immediately
    - activate: delete every cache so stale files can never be served
    - fetch: go to the network; only if the network fails, fall back to a
-     copy saved from an earlier successful response (offline safety net) */
+     copy saved from an earlier successful response (offline safety net)
+   - push: medicine reminders sent by the bridge (see "Reminders" in CLAUDE.md) */
 
 const RUNTIME_CACHE = 'care-log-runtime';
 
@@ -43,4 +44,31 @@ self.addEventListener('fetch', function (event) {
         });
       })
   );
+});
+
+/* A reminder from the bridge: { title, body, tag, url } */
+self.addEventListener('push', function (event) {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch (e) { data = { body: event.data ? event.data.text() : '' }; }
+  const title = data.title || 'Daybook';
+  event.waitUntil(self.registration.showNotification(title, {
+    body: data.body || 'Medicine reminder',
+    tag: data.tag || 'daybook',
+    renotify: true,
+    icon: './icons/icon-192.png',
+    badge: './icons/icon-192.png',
+    data: { url: data.url || './' }
+  }));
+});
+
+/* Tapping the notification opens Daybook on the Meds tab (an open window is reused) */
+self.addEventListener('notificationclick', function (event) {
+  event.notification.close();
+  const target = (event.notification.data && event.notification.data.url) || './';
+  event.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (list) {
+    for (const client of list) {
+      if ('focus' in client) { client.navigate(target).catch(function () {}); return client.focus(); }
+    }
+    return self.clients.openWindow(target);
+  }));
 });
