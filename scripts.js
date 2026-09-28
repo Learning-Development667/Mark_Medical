@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '52';
+const APP_VERSION = '53';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -246,7 +246,7 @@ function toast(text, action) {
   }
   t.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(hideToast, action ? 6000 : 3000);
+  toastTimer = setTimeout(hideToast, action ? 10000 : 4000);
 }
 function hideToast() { $('toast').hidden = true; }
 
@@ -258,26 +258,36 @@ function openSheet(title, body, onClose) {
   $('sheet').hidden = false;
   document.body.style.overflow = 'hidden';
   /* Runs (fire-and-forget, same as the rest of the app's save calls) however the sheet is
-     closed: Done, the round X, or tapping the backdrop, not just a screen's own Save button. */
+     closed: Done, the round X, tapping the backdrop or Escape, not just a screen's own Save button. */
   state.sheetOnClose = onClose || null;
+  /* A dialog for everyone (WCAG 2.4.3): the page behind is inert while it is open, focus moves
+     into it, and goes back to whatever opened it when it closes. On phones focus lands on the
+     title rather than the first field, so the keyboard does not pop up uninvited. */
+  state.sheetOpener = document.activeElement && document.activeElement !== document.body ? document.activeElement : null;
+  for (const el of document.querySelectorAll('.skip-link, .topbar, #main, #tabs')) el.inert = true;
   const first = b.querySelector('input:not([type=hidden]), textarea');
   if (first && first.type !== 'file' && window.matchMedia('(min-width: 700px)').matches) first.focus();
+  else $('sheet-title').focus({ preventScroll: true });
 }
 function closeSheet() {
   if (state.sheetOnClose) { const fn = state.sheetOnClose; state.sheetOnClose = null; fn(); }
   $('sheet').hidden = true;
   $('sheet-body').replaceChildren();
   document.body.style.overflow = '';
+  for (const el of document.querySelectorAll('.skip-link, .topbar, #main, #tabs')) el.inert = false;
+  const back = state.sheetOpener; state.sheetOpener = null;
+  if (back && document.contains(back) && typeof back.focus === 'function') back.focus({ preventScroll: true });
 }
-
+document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && !$('sheet').hidden) { ev.preventDefault(); closeSheet(); } });
 function confirmSheet(title, message, okLabel, danger) {
   return new Promise((resolve) => {
+    let result = false; // closing any other way (the X, the backdrop, Escape) counts as Cancel
     const body = h('div', null,
       h('p', { text: message }),
-      h('button', { class: 'btn btn-block ' + (danger ? 'btn-danger' : 'btn-primary'), type: 'button', onclick: () => { closeSheet(); resolve(true); } }, okLabel),
-      h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => { closeSheet(); resolve(false); } }, 'Cancel')
+      h('button', { class: 'btn btn-block ' + (danger ? 'btn-danger' : 'btn-primary'), type: 'button', onclick: () => { result = true; closeSheet(); } }, okLabel),
+      h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Cancel')
     );
-    openSheet(title, body);
+    openSheet(title, body, () => resolve(result));
   });
 }
 
@@ -939,7 +949,7 @@ function showTab(name) {
   if (name === 'docs') highlight = state.docsReturn || 'more';
   if (name === 'settings') highlight = 'more';
   if (highlight === 'food' || highlight === 'notes') highlight = state.reportReturn || 'vitals';
-  document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('is-active', b.dataset.tab === highlight));
+  document.querySelectorAll('.tab').forEach((b) => { const on = b.dataset.tab === highlight; b.classList.toggle('is-active', on); if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
   document.querySelectorAll('.view').forEach((v) => { v.hidden = v.dataset.view !== name; });
   setBrand(PAGE_TITLES[name] || '');
   window.scrollTo(0, 0);
@@ -2790,7 +2800,7 @@ async function renderFoodDiary() {
         h('h3', { class: 'diary-title' }, fmtDayLong(day), h('small', { text: day === today ? 'Today' : fmtDayNum(day) })),
         h('p', { class: 'diary-sum', text: sum }),
         gradient ? h('div', { class: 'diary-donut-row' },
-          h('div', { class: 'diary-donut', style: 'background: ' + gradient + ';' }),
+          h('div', { class: 'diary-donut', style: 'background: ' + gradient + ';', 'aria-hidden': 'true' }),
           h('div', { class: 'diary-legend' }, ...NUTRI_GROUP_ORDER.filter((g) => groups[g]).map((g) =>
             h('div', { class: 'row' }, h('span', { class: 'sw is-' + g }), NUTRI_GROUP_LABEL[g], h('span', { class: 'n', text: String(groups[g]) }))
           ))
@@ -4046,6 +4056,18 @@ function makeChart(key, cfg) {
   if (state.charts[key]) { state.charts[key].destroy(); }
   const canvas = $('chart-' + key);
   state.charts[key] = new window.Chart(canvas.getContext('2d'), cfg);
+  /* The canvas gets a text alternative: the card's own heading and note, plus the range of the
+     plotted values, so a screen reader hears what the chart shows rather than "graphic". */
+  const card = canvas.closest('.chart-card');
+  const heading = card && card.querySelector('.section-title') ? card.querySelector('.section-title').textContent.trim() : key;
+  const note = card && card.querySelector('.legend-note') ? card.querySelector('.legend-note').textContent.trim() : '';
+  const values = [];
+  for (const ds of (cfg.data && cfg.data.datasets) || []) for (const v of ds.data || []) { const n = v && typeof v === 'object' ? v.y : v; if (typeof n === 'number' && isFinite(n)) values.push(n); }
+  const labels = (cfg.data && cfg.data.labels) || [];
+  const span = labels.length ? `${labels[0]} to ${labels[labels.length - 1]}` : '';
+  const range = values.length ? `Values from ${Math.min(...values)} to ${Math.max(...values)}, ${values.length} readings${span ? ', ' + span : ''}.` : 'No readings in this range.';
+  canvas.setAttribute('role', 'img');
+  canvas.setAttribute('aria-label', `${heading} chart. ${range} ${note}`.trim());
 }
 
 /* ------------------------------------------------------------------ */
@@ -4109,7 +4131,7 @@ function docItemEl(d) {
       h('div', { class: 'docitem-title', text: d.title }),
       h('div', { class: 'docitem-sub', text: [fmtDayNum(d.docDate || ''), d.category === 'chemo' ? 'Chemo plan' : d.category === 'exemption' ? 'Exemption certificate' : null, d.kind === 'text' ? 'Text' : (d.pageCount === 1 ? '1 page' : d.pageCount + ' pages'), d.explanation ? 'Explained' : 'No explanation yet'].filter(Boolean).join(' \u00B7 ') })
     ),
-    h('span', { class: 'pill ' + (d.explanation ? 'pill-green' : 'pill-amber'), 'aria-label': d.explanation ? 'Explained' : 'No explanation yet' }, d.explanation ? icon('check') : '?')
+    h('span', { class: 'pill ' + (d.explanation ? 'pill-green' : 'pill-amber'), role: 'img', 'aria-label': d.explanation ? 'Explained' : 'No explanation yet' }, d.explanation ? icon('check') : '?')
   );
 }
 
