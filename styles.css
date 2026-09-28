@@ -373,7 +373,15 @@ textarea { line-height: 1.5; resize: vertical; }
   min-height: 100vh;
   display: flex; align-items: center; justify-content: center;
   padding: var(--s-6) var(--s-4) calc(var(--s-6) + var(--safe-b));
+  /* The watercolour (icons/signin-bg.jpg) sits behind the card only; every word on this screen is
+     inside the opaque card, so the picture never carries text. A wash of the page colour keeps it soft. */
+  position: relative; isolation: isolate;
+  background: var(--bg) url("icons/signin-bg.jpg") center / cover no-repeat;
 }
+.signin::before { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(180deg, color-mix(in srgb, var(--bg) 30%, transparent), color-mix(in srgb, var(--bg) 62%, transparent)); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .signin::before { background: linear-gradient(180deg, color-mix(in srgb, var(--bg) 55%, transparent), color-mix(in srgb, var(--bg) 80%, transparent)); } }
+:root[data-theme="dark"] .signin::before { background: linear-gradient(180deg, color-mix(in srgb, var(--bg) 55%, transparent), color-mix(in srgb, var(--bg) 80%, transparent)); }
+.signin-card { backdrop-filter: blur(2px); }
 .signin-card {
   width: 100%; max-width: 420px;
   background: var(--grad-raised);
