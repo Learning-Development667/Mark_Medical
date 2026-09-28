@@ -105,6 +105,17 @@ service cloud.firestore {
 
     // Medicine reminders: one document per phone with reminders on (its push subscription),
     // and one-off "remind me in 15 minutes" requests; both read by the bridge's service account
+    // Recorded answers to questions for the team (since v64): the clinician's spoken answer, stored
+    // as base64 chunks in parts, the same way document pages are, with the same size guard
+    match /recordings/{recId} {
+      allow read: if isFamily() || isReadOnly();
+      allow write: if isFamily();
+      match /parts/{partNo} {
+        allow read: if isFamily() || isReadOnly();
+        allow delete: if isFamily();
+        allow create, update: if isFamily() && pageSizeOk();
+      }
+    }
     match /pushSubs/{subId} {
       allow read, write: if isFamily();
     }
