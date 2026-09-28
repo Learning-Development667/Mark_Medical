@@ -103,6 +103,15 @@ service cloud.firestore {
       allow write: if isFamily();
     }
 
+    // Medicine reminders: one document per phone with reminders on (its push subscription),
+    // and one-off "remind me in 15 minutes" requests; both read by the bridge's service account
+    match /pushSubs/{subId} {
+      allow read, write: if isFamily();
+    }
+    match /reminders/{reminderId} {
+      allow read, write: if isFamily();
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

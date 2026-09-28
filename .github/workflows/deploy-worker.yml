@@ -54,3 +54,20 @@ jobs:
         env:
           BRIDGE_KEY: ${{ secrets.BRIDGE_KEY }}
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      # Medicine reminders need the Web Push signing key too; the bridge simply skips
+      # reminders until this secret exists (tools/vapid_keys.mjs makes the pair).
+      - name: Set the push key
+        if: steps.check.outputs.ready == 'true' && env.VAPID != ''
+        uses: cloudflare/wrangler-action@v3
+        env:
+          VAPID: ${{ secrets.VAPID_PRIVATE_KEY }}
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: worker
+          wranglerVersion: '4'
+          command: deploy
+          secrets: |
+            VAPID_PRIVATE_KEY

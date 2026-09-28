@@ -8,3 +8,9 @@ workers_dev = true
 # Secrets (set by the deploy workflow from GitHub repository secrets, never committed):
 #   BRIDGE_KEY               shared key Health Auto Export sends in the X-Care-Log-Key header
 #   FIREBASE_SERVICE_ACCOUNT the Firebase service account JSON (Project settings > Service accounts)
+#   VAPID_PRIVATE_KEY        the Web Push signing key as JWK JSON (tools/vapid_keys.mjs); its public
+#                            half is window.DAYBOOK_PUSH.publicKey in config.js
+
+# Medicine reminders: the check runs every five minutes (free plan allows cron triggers)
+[triggers]
+crons = ["*/5 * * * *"]

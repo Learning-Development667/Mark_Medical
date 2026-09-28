@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '57';
+const APP_VERSION = '58';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -483,7 +483,10 @@ async function enterApp(user) {
     setViewerMode(state.viewer);
     setReadOnlyMode(state.readOnly);
     if (!state.viewer) showTab('today'); // always a known landing tab, even right after a viewer session on the same device
+    const wanted = new URLSearchParams(location.search).get('tab');
+    if (wanted && PAGE_TITLES[wanted] && !state.viewer) { showTab(wanted); history.replaceState(null, '', location.pathname + location.hash); }
     await startData();
+    syncReminders();
   } else if (!state.demo) {
     stopData();
     state.user = null;
@@ -531,6 +534,7 @@ function enterPreview() {
   $('more-user').textContent = 'Guest (preview, nothing saved)';
   $('guest-pill').hidden = false;
   startDemoData();
+  syncReminders();
 }
 $('guest-button').addEventListener('click', () => (DEMO ? enterLiveDemo() : enterPreview()));
 if (DEMO) $('guest-hint').textContent = 'Try the app for real on a shared demo with example data. No sign-in needed. Anything you add can be seen by other visitors and is wiped every night, so no real details please.';
@@ -1820,6 +1824,7 @@ function openAdd(type, editEntry) {
     for (const d of list) { d.at = at; ids.push(await addEntry(d)); }
     toast(titles[type] + ' saved', { label: 'Undo', onClick: () => ids.forEach((id) => deleteEntry(id)) });
     if (!$('view-food').hidden) renderFoodDiary();
+    if (type === 'food') promptMealMeds(at);
   });
   body.append(save, h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Cancel'));
   openSheet(titles[type], body);
@@ -2894,9 +2899,10 @@ const PIECE_WEIGHTS = {
 };
 const PIECE_KEYS = Object.keys(PIECE_WEIGHTS).sort((a, b) => b.length - a.length);
 const singular = (w) => w.replace(/ies$/, 'y').replace(/(ch|sh|s|x|z)es$/, '$1').replace(/oes$/, 'o').replace(/s$/, '');
-/* The piece entry for a component, from the words typed first, then the table food's own name */
+/* The piece entry for a component, from the words typed only: the table food's own name would
+   turn "Soup" (matched to "Soup, carrot and orange") into an orange */
 function pieceInfo(phrase, food) {
-  const texts = [phrase, food && food.n].filter(Boolean).map((t) => ' ' + t.toLowerCase().replace(/[^a-z ]+/g, ' ').split(/\s+/).filter(Boolean).map(singular).join(' ') + ' ');
+  const texts = [phrase].filter(Boolean).map((t) => ' ' + t.toLowerCase().replace(/[^a-z ]+/g, ' ').split(/\s+/).filter(Boolean).map(singular).join(' ') + ' ');
   for (const t of texts) for (const k of PIECE_KEYS) if (t.includes(' ' + k.split(' ').map(singular).join(' ') + ' ')) { const [each, one, many] = PIECE_WEIGHTS[k]; return { key: k, each, one, many, tiny: each < 5 }; }
   return null;
 }
@@ -4024,6 +4030,101 @@ function logMedAtTime(m) {
 /* Manage medicines */
 $('meds-manage').addEventListener('click', openManageMeds);
 
+/* A medicine taken with food: the box in the editor, or, for medicines saved before it existed,
+   "meal" in the how-and-when text (Creon's "With each meal") */
+function medWithMeals(m) {
+  if (!m) return false;
+  if (m.withMeals === true || m.withMeals === false) return m.withMeals;
+  return /\bmeal/i.test(m.how || '');
+}
+/* After a meal is saved: for each with-meals medicine not logged within 45 minutes of it, ask */
+const MEAL_MED_WINDOW_MS = 45 * 60 * 1000;
+function promptMealMeds(mealAt) {
+  if (state.readOnly || state.viewer) return;
+  const day = dayStr(mealAt);
+  const due = state.medicines.filter((m) => m.active !== false && m.kind !== 'prn' && medWithMeals(m) && (!m.courseEnd || m.courseEnd >= day))
+    .filter((m) => !state.recentEntries.some((e) => e.type === 'med' && e.medId === m.id && Math.abs(entryDate(e) - mealAt) <= MEAL_MED_WINDOW_MS));
+  if (!due.length) return;
+  const blocks = h('div', null);
+  const finish = () => { if (!blocks.childElementCount) closeSheet(); };
+  due.forEach((m) => {
+    const block = h('div', { class: 'mealmed' },
+      h('p', { class: 'wiz-q', text: `Did you take ${m.name} with this meal?` }),
+      h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
+        block.remove(); finish();
+        const id = await addEntry({ type: 'med', medId: m.id, medName: m.name, dose: m.dose || '', note: '', at: mealAt });
+        toast(`${m.name} logged at ${fmtTime(mealAt)}`, { label: 'Undo', onClick: () => deleteEntry(id) });
+      } }, `Yes, ${m.dose || 'taken'} at ${fmtTime(mealAt)}`),
+      state.pushEnabled ? h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: async () => {
+        block.remove(); finish();
+        const at = new Date(Date.now() + 15 * 60 * 1000);
+        if (state.demo) { toast('Reminders are not sent from the preview'); return; }
+        try { await setDoc(doc(collection(db, 'reminders')), { at: Timestamp.fromDate(at), medId: m.id, medName: m.name, dose: m.dose || '', sent: false, addedBy: state.name, createdAt: serverTimestamp() }); toast(`Reminder set for ${fmtTime(at)}`); }
+        catch (e) { console.error(e); toast('Could not set the reminder'); }
+      } }, 'Remind me in 15 minutes') : null,
+      h('button', { class: 'btn btn-link btn-block', type: 'button', onclick: () => { block.remove(); finish(); } }, 'Not this time')
+    );
+    blocks.append(block);
+  });
+  openSheet('With this meal', blocks);
+}
+
+/* ------------------------------------------------------------------ */
+/* Reminders on this phone: a Web Push subscription the bridge sends to  */
+/* ------------------------------------------------------------------ */
+
+const PUSH = window.DAYBOOK_PUSH && window.DAYBOOK_PUSH.publicKey ? window.DAYBOOK_PUSH : null;
+function pushSupported() {
+  return Boolean(PUSH && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window);
+}
+function pushSubId(endpoint) {
+  let h1 = 5381;
+  for (let i = 0; i < endpoint.length; i++) h1 = ((h1 * 33) ^ endpoint.charCodeAt(i)) >>> 0;
+  return 'p' + h1.toString(16) + endpoint.slice(-24).replace(/[^A-Za-z0-9]/g, '');
+}
+function urlBase64ToUint8Array(s) {
+  const b = atob((s + '='.repeat((4 - s.length % 4) % 4)).replace(/-/g, '+').replace(/_/g, '/'));
+  return Uint8Array.from(b, (c) => c.charCodeAt(0));
+}
+/* Reflects this phone's state in Settings: on, off, unsupported, or blocked */
+async function syncReminders() {
+  const group = $('settings-reminders-group'), box = $('settings-reminders'), hint = $('settings-reminders-hint');
+  if (!group) return;
+  const standalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  const demo = state.demo || state.demoLive;
+  group.hidden = state.readOnly || state.viewer;
+  if (demo) { box.checked = false; box.disabled = true; hint.textContent = 'Not available in the demo.'; state.pushEnabled = false; return; }
+  if (!pushSupported()) { box.checked = false; box.disabled = true; hint.textContent = standalone ? 'This browser cannot show notifications.' : 'On iPhone, add Daybook to the Home Screen first (Share, then Add to Home Screen), then turn this on from there.'; state.pushEnabled = false; return; }
+  box.disabled = false;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    state.pushEnabled = Boolean(sub);
+    box.checked = Boolean(sub);
+    hint.textContent = sub ? 'This phone gets a notification at each medicine\'s reminder times, and one nudge 30 minutes later if the dose is still not logged.' : (Notification.permission === 'denied' ? 'Notifications are blocked for Daybook in this phone\'s settings. Allow them there, then turn this on.' : 'A notification at each medicine\'s reminder times (set under Manage medicines), only on phones where this is on.');
+  } catch (e) { console.warn(e); box.disabled = true; hint.textContent = 'Could not check notifications on this phone.'; }
+}
+async function setReminders(on) {
+  const box = $('settings-reminders');
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const existing = await reg.pushManager.getSubscription();
+    if (!on) {
+      if (existing) { await deleteDoc(doc(db, 'pushSubs', pushSubId(existing.endpoint))).catch(() => {}); await existing.unsubscribe(); }
+      toast('Reminders off on this phone');
+    } else {
+      const perm = await Notification.requestPermission();
+      if (perm !== 'granted') { box.checked = false; toast('Notifications were not allowed'); await syncReminders(); return; }
+      const sub = existing || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(PUSH.publicKey) });
+      const j = sub.toJSON();
+      await setDoc(doc(db, 'pushSubs', pushSubId(sub.endpoint)), { endpoint: sub.endpoint, keys: { p256dh: j.keys.p256dh, auth: j.keys.auth }, addedBy: state.name, uid: state.user ? state.user.uid : null, agent: navigator.userAgent.slice(0, 120), addedAt: serverTimestamp() }, { merge: true });
+      toast('Reminders on for this phone');
+    }
+  } catch (e) { console.error(e); toast('Could not change reminders on this phone'); }
+  await syncReminders();
+}
+$('settings-reminders').addEventListener('change', (ev) => setReminders(ev.target.checked));
+
 function openManageMeds() {
   const list = h('div', { class: 'medlist' });
   state.medicines.forEach((m) => {
@@ -4057,7 +4158,22 @@ function openEditMed(m) {
   const active = h('input', { type: 'checkbox' });
   active.checked = m.active !== false;
 
-  const schedFields = h('div', null, field('Doses per day', perDay), field('Course ends (optional)', courseEnd));
+  /* Reminder times (a push notification at each, from the bridge) and the with-meals prompt */
+  const times = (m.times || []).slice().sort();
+  const timeChips = h('div', { class: 'presets timechips' });
+  const timeInputEl = h('input', { type: 'time' });
+  const drawTimes = () => timeChips.replaceChildren(...times.map((t) => h('button', { class: 'preset is-active', type: 'button', 'aria-label': 'Remove ' + t, onclick: () => { times.splice(times.indexOf(t), 1); drawTimes(); } }, t + ' \u00d7')),
+    ...(times.length ? [] : [h('span', { class: 'hint', text: 'No reminders yet' })]));
+  drawTimes();
+  const addTime = h('button', { class: 'btn btn-secondary btn-small', type: 'button', onclick: () => { const v = timeInputEl.value; if (!v) return; if (!times.includes(v)) times.push(v); times.sort(); timeInputEl.value = ''; drawTimes(); } }, 'Add time');
+  const withMeals = h('input', { type: 'checkbox' });
+  withMeals.checked = medWithMeals(m);
+  const schedFields = h('div', null, field('Doses per day', perDay), field('Course ends (optional)', courseEnd),
+    h('p', { class: 'fieldlabel', text: 'Reminder times (optional)' }), timeChips,
+    h('div', { class: 'field-row timeadd' }, timeInputEl, addTime),
+    h('p', { class: 'hint', text: 'A notification on each phone that has reminders on (More > Settings). Nothing is sent if the dose is already logged.' }),
+    h('label', { class: 'check' }, withMeals, h('span', { text: 'Ask after every meal' })),
+    h('p', { class: 'hint', text: 'After food is logged, Daybook asks whether this was taken with it.' }));
   const prnFields = h('div', null, field('Minimum hours between doses', minGap), field('Maximum doses per day', maxPerDay));
   const sync = () => { schedFields.hidden = kind.value !== 'scheduled'; prnFields.hidden = kind.value !== 'prn'; };
   kind.addEventListener('change', sync);
@@ -4078,10 +4194,13 @@ function openEditMed(m) {
         data.perDay = Math.max(1, parseInt(perDay.value, 10) || 1);
         data.courseEnd = courseEnd.value || null;
         data.minGapHours = null; data.maxPerDay = null;
+        data.times = times.slice();
+        data.withMeals = withMeals.checked;
       } else {
         data.minGapHours = parseFloat(minGap.value) || null;
         data.maxPerDay = parseInt(maxPerDay.value, 10) || null;
         data.perDay = null; data.courseEnd = null;
+        data.times = []; data.withMeals = false;
       }
       closeSheet();
       if (state.demo) {

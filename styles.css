@@ -862,6 +862,12 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 .stepper .unit { color: var(--text-secondary); font-size: 16px; min-width: 0; }
 .qtyrows .macro-row:first-child { border-top: 0; padding-top: 0; }
 .qtyrows .presets { margin-bottom: var(--s-2); }
+.timechips { min-height: var(--tap); align-items: center; }
+.timeadd { align-items: center; margin-bottom: var(--s-2); }
+.timeadd input { flex: 1 1 140px; }
+.timeadd .btn { flex: 0 0 auto; }
+.mealmed { padding: var(--s-2) 0 var(--s-3); border-bottom: 1px solid var(--border-subtle); margin-bottom: var(--s-3); }
+.mealmed:last-child { border-bottom: 0; }
 .macrosbox > .hint { margin-top: 0; margin-bottom: var(--s-2); }
 .macro-row { padding: var(--s-3) 0; border-top: 1px solid var(--border-subtle); }
 .macro-row .presets { margin-bottom: 6px; }
