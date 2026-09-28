@@ -28,3 +28,6 @@ window.DAYBOOK_DEMO = {
 /* Medicine reminders: the public half of the Web Push key (public by design). The private half is
    the VAPID_PRIVATE_KEY repository secret, handed to the bridge by the deploy workflow. */
 window.DAYBOOK_PUSH = { publicKey: "BJ33RgWZAU7jOB8esjGKGMB2yPSXU42KmFEQX3Tn1DgntHaZDT16xKz6HdTAvVZyV1Bu0oX_A_TWVBf20Q93xMs" };
+
+/* The bridge, for Explain in Daybook (see worker/) */
+window.DAYBOOK_BRIDGE = { url: "https://care-log-bridge.markbrown667.workers.dev" };

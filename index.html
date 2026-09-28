@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=59">
+  <link rel="stylesheet" href="styles.css?v=60">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -343,12 +343,13 @@
           <div id="doc-pages" class="pages"></div>
           <pre id="doc-text" class="doctext" hidden></pre>
           <button id="doc-edit" class="btn btn-link" type="button">Edit title, date or category</button>
+          <h3 class="section-title">Plain English explanation</h3>
+          <button id="doc-explain" class="btn btn-primary btn-block" type="button" hidden>Explain in Daybook</button>
           <div class="btnrow">
-            <button id="doc-share" class="btn btn-primary" type="button">Send to my AI app</button>
+            <button id="doc-share" class="btn btn-secondary" type="button">Send to my AI app</button>
             <button id="doc-copy" class="btn btn-secondary" type="button">Copy for my AI app</button>
           </div>
-          <p class="hint">Send opens the share sheet. Choose your AI app (Claude, ChatGPT, Copilot, Gemini or your phone's own Writing Tools), ask for an explanation, then paste the reply below. The letter leaves your phone and goes to that company's servers, so leave out anything you would not want sent.</p>
-          <h3 class="section-title">Explanation</h3>
+          <p class="hint" id="doc-explain-hint">Two ways to get a plain English explanation. <b>Explain in Daybook</b> sends the letter to Daybook's own AI service and puts the reply below, no account needed. <b>Send to my AI app</b> opens the share sheet for Claude, ChatGPT, Copilot, Gemini or your phone's own Writing Tools; paste the reply below. Either way the letter leaves your phone and goes to an AI company's servers. Daybook's route is not used for training and nothing is kept after the reply, but no route is as private as keeping it to yourself. Leave out anything you would not want sent.</p>
           <button id="doc-paste-summary" class="btn btn-secondary btn-block" type="button">Paste summary</button>
           <textarea id="doc-explanation" rows="8" placeholder="Paste the explanation here, or use Paste summary above"></textarea>
           <p class="hint">This explanation is for context only. It is not medical advice. Always check changes with the medical team.</p>
@@ -410,15 +411,16 @@
           <label class="field"><span>To</span><input id="notes-custom-to" type="date"></label>
         </div>
         <p id="notes-custom-msg" class="hint hint-warn" hidden></p>
+        <button id="notes-explain" class="btn btn-primary btn-block" type="button" hidden>Suggest questions to ask</button>
         <div class="btnrow">
-            <button id="notes-share" class="btn btn-primary" type="button">Send to my AI app</button>
+          <button id="notes-share" class="btn btn-secondary" type="button">Send to my AI app</button>
           <button id="notes-copy" class="btn btn-secondary" type="button">Copy for my AI app</button>
         </div>
         <div class="btnrow">
           <button id="notes-preview" class="btn btn-secondary" type="button">Preview</button>
           <button id="notes-pdf" class="btn btn-secondary" type="button">Save as PDF</button>
         </div>
-        <p class="hint">Short enough for the appointment: your questions first, then a summary of the period, letters, and the written notes with who wrote them. The detail for any one day stays in the app. Send or copy adds a request to your AI app to turn it into questions, and the notes go to that company's servers; Save as PDF makes a copy for the clinic without it.</p>
+        <p class="hint">Short enough for the appointment: your questions first, then a summary of the period, letters, and the written notes with who wrote them. The detail for any one day stays in the app. <b>Suggest questions to ask</b> sends these notes to Daybook's own AI service and offers questions you can add to the list above with one tap. Send or copy does the same through your own AI app. Either way the notes go to an AI company's servers, so leave out anything you would not want sent. Save as PDF makes a copy for the clinic without any of that.</p>
         <h3 class="section-title">Questions for the team</h3>
         <div id="notes-questions" class="cards"></div>
         <h3 class="section-title">Summary</h3>
@@ -528,6 +530,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=59"></script>
+  <script type="module" src="scripts.js?v=60"></script>
 </body>
 </html>

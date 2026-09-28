@@ -12,6 +12,16 @@ Endpoints:
   (MyFitnessPal, Nutracheck, Apple's own). Add those four metrics to the same Health Auto Export automation.
   Also stores the last raw payload at `bridge/last` for checking the shape.
 - `GET /ping` health check.
+- `POST /explain` with header `Authorization: Bearer <Firebase ID token>` and JSON
+  `{ kind: "document" | "notes", title?, date?, text?, pages?: [base64 JPEG] }`. "Explain in Daybook":
+  asks Claude (the Messages API over plain fetch, model `claude-opus-5`, the `ANTHROPIC_API_KEY` secret)
+  for a plain English explanation of a letter, or for a numbered list of questions to ask from the
+  Notes for the team text, and returns `{ text, model, usage }`. The token is checked against Google's
+  public keys; the real project needs a `users/{uid}` record with role family, the shared demo
+  (`DEMO_PROJECT_ID` in wrangler.toml) any signed-in guest. A daily count in `bridge/explainLog`
+  (40 real, 12 demo) caps what a day can spend; the letter itself is never stored. Answers
+  `503 not-set-up` until the key exists, `429 limit` when the day is used up, `422 refused` if the
+  model declines.
 
 Deployed by `.github/workflows/deploy-worker.yml` from four GitHub repository secrets:
 `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `BRIDGE_KEY`, `FIREBASE_SERVICE_ACCOUNT`.
