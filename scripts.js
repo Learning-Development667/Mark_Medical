@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '61';
+const APP_VERSION = '62';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -5718,6 +5718,51 @@ $('calls-edit').addEventListener('click', () => {
 /* ------------------------------------------------------------------ */
 
 $('app-version').textContent = 'Version ' + APP_VERSION;
+
+/* ---- Opener: the loading page. Shown on every cold start while the account check runs. The Mark 1
+   Apps film plays through only on a phone's first visit (localStorage daybook.opener.seen); later
+   starts show its last frame just for as long as loading takes, half a second at least so it never
+   flashes. A tap, the Skip button, a decode error or 5.5 seconds ends the film; the page leaves once
+   the app or the sign-in screen is ready, and after fifteen seconds regardless. Reduced motion: no film. ---- */
+(function opener() {
+  const el = $('opener'), video = $('opener-video'), skip = $('opener-skip');
+  if (!el || !video) return;
+  $('opener-version').textContent = 'Version ' + APP_VERSION;
+  const KEY = 'daybook.opener.seen';
+  let seen = false;
+  try { seen = localStorage.getItem(KEY) === '1'; } catch (e) { seen = true; }
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const start = Date.now(), minMs = 500;
+  let appReady = false, filmDone = seen || reduced, gone = false;
+  const leave = () => {
+    if (gone) return;
+    gone = true;
+    try { localStorage.setItem(KEY, '1'); } catch (e) { /* private mode: the film plays next time too */ }
+    el.classList.add('is-leaving');
+    setTimeout(() => { el.hidden = true; try { video.pause(); } catch (e) { /* ignore */ } }, 440);
+  };
+  const maybe = () => {
+    if (!appReady || !filmDone || gone) return;
+    const wait = minMs - (Date.now() - start);
+    if (wait > 0) setTimeout(leave, wait); else leave();
+  };
+  const ready = () => ['app', 'signin', 'noconfig'].some((id) => { const s = $(id); return s && !s.hidden; });
+  const check = () => { if (!appReady && ready()) { appReady = true; maybe(); } };
+  new MutationObserver(check).observe(document.body, { attributes: true, subtree: true, attributeFilter: ['hidden'] });
+  check();
+  const endFilm = () => { if (filmDone) return; filmDone = true; skip.hidden = true; maybe(); };
+  if (!filmDone) {
+    skip.hidden = false;
+    skip.addEventListener('click', endFilm);
+    el.addEventListener('click', endFilm);
+    video.addEventListener('ended', endFilm);
+    video.addEventListener('error', endFilm);
+    setTimeout(endFilm, 5500);
+    const p = video.play();
+    if (p && typeof p.catch === 'function') p.catch(endFilm);
+  }
+  setTimeout(leave, 15000);
+})();
 
 function updateOnline() { $('offline-pill').hidden = navigator.onLine; }
 window.addEventListener('online', updateOnline);
