@@ -141,9 +141,9 @@
     --text-primary: #E6ECEE;
     --text-secondary: #A7B5BA;
     --text-muted: #8FA0A6;
-    --teal: #4FA3BC;
+    --teal: #5FB0C8; /* 4.6:1 even on the tinted note rows; #4FA3BC was 3.9:1 there */
     --teal-dark: #3B8AA1;
-    --teal-light: #1C3A45;
+    --teal-light: #142B34; /* 5.1:1 under --teal text; #1C3A45 was 4.2:1 and failed WCAG AA */
     --teal-ink: #0E1A1E;
     --warm: #D98A5A;
     --warm-dark: #E7A57C;
@@ -189,7 +189,12 @@
 
 /* ---------- Base ---------- */
 * { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; }
+html { -webkit-text-size-adjust: 100%; scroll-padding-bottom: calc(110px + var(--safe-b, 0px)); }
+/* Keyboard focus (WCAG 2.4.7): one ring everywhere, only for keyboard and switch users, never on tap */
+:focus-visible { outline: 3px solid var(--teal); outline-offset: 2px; }
+:focus:not(:focus-visible) { outline: none; }
+.skip-link { position: absolute; left: 8px; top: -60px; z-index: 100; padding: 10px 16px; border-radius: var(--r-sm); background: var(--teal); color: #fff; font-weight: 700; text-decoration: none; }
+.skip-link:focus { top: 8px; }
 body {
   margin: 0;
   font-family: var(--font-body);
@@ -343,7 +348,9 @@ code { font-family: var(--font-mono); font-size: 0.95em; }
 .field input:focus, .field textarea:focus, .field select:focus, textarea:focus { border-color: var(--teal); box-shadow: 0 0 0 4px var(--teal-light); }
 .field input[type="number"], .field input[type="time"], .field input[type="date"] { font-family: var(--font-mono); }
 textarea { line-height: 1.5; resize: vertical; }
-.field-row { display: flex; gap: 10px; }
+.field-row { display: flex; flex-wrap: wrap; gap: 10px; }
+.field-row > .field { flex: 1 1 130px; min-width: 0; }
+.field input, .field select { min-width: 0; }
 .field-row .field { flex: 1; }
 .presets { display: flex; flex-wrap: wrap; gap: var(--s-2); margin: 2px 0 14px; }
 .preset {
@@ -694,7 +701,7 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 .med-name { font-size: var(--fs-lg); font-weight: 700; line-height: 1.2; }
 .med-dose { font-family: var(--font-mono); color: var(--text-secondary); font-size: 16px; margin-top: 2px; }
 .med-how { color: var(--text-secondary); font-size: 16px; }
-.med-purpose { display: inline-flex; align-items: center; min-height: 30px; background: var(--surface-sunken); border-radius: var(--r-pill); padding: 2px 12px; font-size: 15px; font-weight: 600; color: var(--text-secondary); white-space: nowrap; }
+.med-purpose { display: inline-flex; align-items: center; min-height: 30px; background: var(--surface-sunken); border-radius: var(--r-pill); padding: 2px 12px; font-size: 15px; font-weight: 600; color: var(--text-secondary); text-align: center; min-width: 0; flex-shrink: 1; }
 .med-status { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .dots { display: flex; gap: 6px; }
 .dot { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--border-subtle); background: var(--surface-sunken); transition: background var(--t-slow) ease, border-color var(--t-slow) ease, transform var(--t-base) var(--ease-out); }
@@ -874,6 +881,10 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 
 /* Reports: five range buttons (7/14/30/90 and Custom) have to sit on one line on a phone */
 #view-food .seg, #view-notes .seg { white-space: nowrap; font-size: 15px; padding-left: 4px; padding-right: 4px; }
+@media (max-width: 359px) {
+  #view-food .segmented, #view-notes .segmented { flex-wrap: wrap; }
+  #view-food .seg, #view-notes .seg { flex: 1 1 30%; }
+}
 /* Reports: custom From and To range */
 .custom-range { margin-top: var(--s-3); }
 .custom-range .field { margin-bottom: 0; }
@@ -895,6 +906,7 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 .speakbtn.is-listening { background: var(--warm-light); border-color: var(--warm); color: var(--warm-dark); animation: speak-pulse 1.2s ease-in-out infinite; }
 @keyframes speak-pulse { 0%, 100% { box-shadow: 0 0 0 0 var(--warm-light); } 50% { box-shadow: 0 0 0 10px transparent; } }
 @media (prefers-reduced-motion: reduce) { .speakbtn.is-listening { animation: none; } }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .speakbtn, :root:not([data-theme="light"]) .note-who, :root:not([data-theme="light"]) .painbtn.is-teal, :root:not([data-theme="light"]) .diary-macros, :root:not([data-theme="light"]) .macro-total { color: var(--teal); } }
 .cheer-add + .speakbtn { margin-top: var(--s-2); }
 .strapline { margin: 2px 0 var(--s-3); color: var(--teal); font-weight: 600; font-size: var(--fs-md); }
 .food-toggle { margin: var(--s-2) 0 0; }
@@ -952,7 +964,7 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 .cal-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 6px; }
 .cal-title { flex: 1; min-height: var(--tap); border: 0; background: none; font-family: var(--font-head); font-size: var(--fs-xl); letter-spacing: 0.04em; color: var(--text-primary); cursor: pointer; }
 .cal-dow { display: grid; grid-template-columns: repeat(7, 1fr); text-align: center; font-family: var(--font-mono); font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); margin-bottom: var(--s-1); }
-.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
 .cal-cell {
   position: relative; min-height: 48px; aspect-ratio: 1; padding: 0;
   border: 0; border-radius: var(--r-sm); background: var(--surface-sunken); color: var(--text-primary);
@@ -968,6 +980,8 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 .cal-cell.is-selected { background: var(--teal); color: var(--teal-ink); font-weight: 600; }
 .cal-cell.is-today.is-selected { box-shadow: inset 0 0 0 2px var(--teal-ink); }
 .cal-cell:disabled { opacity: 0.35; cursor: default; }
+/* Seven squares must fit a 320px screen (WCAG 1.4.10): the 48px minimum gives way to the width available, still well over the 24px target minimum */
+@media (max-width: 359px) { .cal-grid { gap: 2px; } .cal-cell { min-height: 0; } }
 /* Mood on a day: a small dot (good) or ring (rough) on a calm teal-to-warm scale */
 .cal-face { width: 10px; height: 10px; display: block; }
 .cal-face .mood-fill { fill: var(--mood-c); stroke: none; }
