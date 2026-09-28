@@ -581,6 +581,7 @@ body.is-readonly #calls-edit { display: none; }
 
 /* Check-in flow: one question per screen */
 .wiz-day { display: flex; gap: var(--s-2); margin-bottom: var(--s-3); }
+.treat-chips { flex-wrap: wrap; margin: var(--s-2) 0 var(--s-3); } /* four kinds of treatment do not fit one row on a phone */
 .wiz-progress { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; font-family: var(--font-mono); font-size: 13px; color: var(--text-muted); letter-spacing: 0.08em; text-transform: uppercase; }
 .wiz-progress .progress-bar { flex: 1; margin-top: 0; }
 .wiz-step { animation: stepin var(--t-base) var(--ease-out); }

@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '65';
+const APP_VERSION = '66';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -5667,7 +5667,7 @@ function openDaySheet(key) {
   cbDone.checked = !!info.chemoDone;
   const doneRow = h('label', { class: 'check' }, cbDone, h('span', { text: 'Session done' }));
   let treatment = treatmentOf(info).key;
-  const typeRow = h('div', { class: 'wiz-day', role: 'group', 'aria-label': 'Kind of treatment' });
+  const typeRow = h('div', { class: 'wiz-day treat-chips', role: 'group', 'aria-label': 'Kind of treatment' });
   const drawTypes = () => typeRow.replaceChildren(...TREATMENTS.map((t) => h('button', { class: 'preset' + (t.key === treatment ? ' is-active' : ''), type: 'button', 'aria-pressed': t.key === treatment ? 'true' : 'false', onclick: () => { treatment = t.key; drawTypes(); } }, t.label)));
   drawTypes();
   const syncDone = () => { doneRow.hidden = !cbChemo.checked; typeRow.hidden = !cbChemo.checked; if (!cbChemo.checked) cbDone.checked = false; };
