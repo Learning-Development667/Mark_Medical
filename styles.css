@@ -8,6 +8,10 @@
 
 /* ---------- Design tokens ---------- */
 :root {
+  /* The opener and the Mark 1 Apps mark: the film's own near-black navy, the same in both schemes */
+  --opener-bg: #010015;
+  --opener-fg: #FFFFFF;
+  --opener-muted: rgba(255, 255, 255, 0.68);
   /* Colour: surfaces */
   --surface: #FFFFFF;
   --surface-raised: #FFFFFF;
@@ -1013,6 +1017,20 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 .key-mood .cal-face + .cal-face { margin-left: -1px; }
 .key-mood .cal-face:last-of-type { margin-right: 3px; }
 .key-mood .cal-face { width: 10px; height: 10px; }
+
+/* ---------- Opener (loading page) ---------- */
+.opener { position: fixed; inset: 0; z-index: 50; background: var(--opener-bg); color: var(--opener-fg); display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: max(32px, env(safe-area-inset-top)) 24px max(24px, env(safe-area-inset-bottom)); transition: opacity 420ms ease; }
+.opener.is-leaving { opacity: 0; pointer-events: none; }
+.opener[hidden] { display: none; }
+.opener-top { text-align: center; margin-top: 4vh; }
+.opener-brand { display: block; font-family: var(--font-head); font-size: clamp(44px, 13vw, 64px); letter-spacing: 0.06em; line-height: 1; color: var(--opener-fg); }
+.opener-strap { display: block; margin-top: 10px; color: var(--opener-muted); font-size: 17px; }
+.opener-video { width: min(100%, 560px); aspect-ratio: 16 / 9; object-fit: cover; background: var(--opener-bg); display: block; }
+.opener-foot { display: flex; flex-direction: column; align-items: center; gap: var(--s-2); }
+.opener-skip { color: var(--opener-fg); min-height: var(--tap); padding: 0 var(--s-4); font-size: 17px; }
+.opener-version { color: var(--opener-muted); font-size: 13px; letter-spacing: 0.1em; text-transform: uppercase; }
+.madeby { display: flex; align-items: center; gap: var(--s-3); margin-top: var(--s-3); padding-top: var(--s-3); border-top: 1px solid var(--border-subtle); color: var(--text-secondary); }
+.madeby img { width: 88px; height: auto; border-radius: var(--r-sm); background: var(--opener-bg); flex: none; }
 
 /* ---------- Suggested questions (Explain in Daybook) ---------- */
 .suggested { display: flex; flex-direction: column; gap: var(--s-2); margin-top: var(--s-3); }
