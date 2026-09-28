@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=58">
+  <link rel="stylesheet" href="styles.css?v=59">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -34,6 +34,7 @@
     <symbol id="i-food" viewBox="0 0 24 24"><path d="M6 3v6a2.5 2.5 0 0 0 5 0V3"/><path d="M8.5 3v18"/><path d="M17.5 3c-2.5 2.2-2.5 8 0 10.5V21"/></symbol>
     <symbol id="i-scale" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="3"/><path d="M8 11a4 4 0 0 1 8 0"/><path d="M12 11l1.8-2.6"/><path d="M7 16.5h10"/></symbol>
     <symbol id="i-note" viewBox="0 0 24 24"><path d="M4 20h16"/><path d="M14.5 3.5l4 4L8 18H4v-4z"/><path d="M12.5 5.5l4 4"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12s3.5-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.5 6.5-9.5 6.5S2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/></symbol>
     <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a7.5 7.5 0 1 0 10.5 10.5z"/></symbol>
     <symbol id="i-list" viewBox="0 0 24 24"><rect x="5.5" y="4" width="13" height="17" rx="2"/><path d="M9.5 3.5h5v2.5h-5z"/><path d="M9 11h6M9 14.5h6M9 18h3"/></symbol>
     <symbol id="i-doc" viewBox="0 0 24 24"><path d="M6.5 3h7.5l4.5 4.5V21h-12z"/><path d="M14 3v5h4.5"/><path d="M9.5 13h5M9.5 17h5"/></symbol>
@@ -268,22 +269,38 @@
           <p class="cal-key"><span class="key-dot key-chemo"></span> Chemo day <span class="key-dot key-done"></span> Done <span class="key-mood"><svg class="cal-face mood-5" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="5" class="mood-fill"/></svg><svg class="cal-face mood-3" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="5" class="mood-fill"/></svg><svg class="cal-face mood-1" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="4" class="mood-ring"/></svg> Mood, good to rough</span></p>
         </div>
 
-        <div id="chemo-cheer-section">
-          <h2 class="section-title">Cheer board</h2>
-          <p class="hint">Notes to each other. A good line on a rough day goes a long way.</p>
-          <div class="cheer-add">
-            <textarea id="cheer-text" rows="2" placeholder="Leave a note for the board" maxlength="200"></textarea>
-            <button id="cheer-post" class="btn btn-primary" type="button">Post</button>
+        <div id="chemo-cycle-section">
+          <h2 class="section-title">Chemo days and after</h2>
+          <div class="status" role="group" aria-label="Where this cycle is">
+            <div class="tiles tiles-1">
+              <div class="tile" id="cycle-tile">
+                <span class="tile-label">Chemo cycle</span>
+                <span class="tile-value" id="cycle-value">--</span>
+                <span class="tile-sub" id="cycle-sub">No sessions marked yet</span>
+              </div>
+            </div>
           </div>
-          <ul id="cheers" class="cheers"></ul>
-          <p id="cheers-empty" class="empty" data-art="cheer" hidden>Nothing on the board yet. Be the first.</p>
+          <div class="checkins" id="carer-card">
+            <button class="checkin-row" id="checkin-carer" type="button" data-slot="carer">
+              <svg class="icon checkin-icon" aria-hidden="true"><use href="#i-eye"/></svg>
+              <span class="checkin-main"><span class="checkin-title">Carer's view</span><span class="checkin-sub" id="checkin-carer-sub"></span></span>
+              <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
+            </button>
+          </div>
+          <div class="card chart-card" id="cycle-card">
+            <h2 class="section-title">By day after chemo</h2>
+            <div class="segmented segmented-wrap" role="group" aria-label="Measure" id="cycle-measures"></div>
+            <p class="cycle-note" id="cycle-note"></p>
+            <div class="chart-wrap" id="cycle-wrap"><canvas id="chart-cycle"></canvas></div>
+            <p class="legend-note">Each point is the average of every cycle so far, day 0 being the session itself. Your check-ins make the solid line, the carer's view the dashed one.</p>
+          </div>
         </div>
 
         <div id="chemo-docs-section">
           <h2 class="section-title">Plan documents</h2>
           <button id="chemo-doc-add" class="btn btn-secondary btn-block" type="button">Add the chemo plan</button>
           <ul id="chemo-docs" class="doclist"></ul>
-          <p id="chemo-docs-empty" class="empty" data-art="doc" hidden>No plan uploaded yet. Add it here when you get it, then send it to Claude for a plain English walk-through.</p>
+          <p id="chemo-docs-empty" class="empty" data-art="doc" hidden>No plan uploaded yet. Add it here when you get it, then get a plain English walk-through from your AI app.</p>
         </div>
       </section>
 
@@ -327,13 +344,13 @@
           <pre id="doc-text" class="doctext" hidden></pre>
           <button id="doc-edit" class="btn btn-link" type="button">Edit title, date or category</button>
           <div class="btnrow">
-            <button id="doc-share" class="btn btn-primary" type="button">Send to Claude</button>
-            <button id="doc-copy" class="btn btn-secondary" type="button">Copy for Claude</button>
+            <button id="doc-share" class="btn btn-primary" type="button">Send to my AI app</button>
+            <button id="doc-copy" class="btn btn-secondary" type="button">Copy for my AI app</button>
           </div>
-          <p class="hint">Send opens the share sheet. Choose the Claude app, ask for an explanation, then paste the reply below.</p>
+          <p class="hint">Send opens the share sheet. Choose your AI app (Claude, ChatGPT, Copilot, Gemini or your phone's own Writing Tools), ask for an explanation, then paste the reply below. The letter leaves your phone and goes to that company's servers, so leave out anything you would not want sent.</p>
           <h3 class="section-title">Explanation</h3>
           <button id="doc-paste-summary" class="btn btn-secondary btn-block" type="button">Paste summary</button>
-          <textarea id="doc-explanation" rows="8" placeholder="Paste Claude's explanation here, or use Paste summary above"></textarea>
+          <textarea id="doc-explanation" rows="8" placeholder="Paste the explanation here, or use Paste summary above"></textarea>
           <p class="hint">This explanation is for context only. It is not medical advice. Always check changes with the medical team.</p>
           <button id="doc-save-explanation" class="btn btn-primary btn-block" type="button">Save explanation</button>
           <button id="doc-delete" class="btn btn-danger btn-block" type="button">Delete this document</button>
@@ -394,14 +411,14 @@
         </div>
         <p id="notes-custom-msg" class="hint hint-warn" hidden></p>
         <div class="btnrow">
-          <button id="notes-share" class="btn btn-primary" type="button">Send to Claude</button>
-          <button id="notes-copy" class="btn btn-secondary" type="button">Copy for Claude</button>
+            <button id="notes-share" class="btn btn-primary" type="button">Send to my AI app</button>
+          <button id="notes-copy" class="btn btn-secondary" type="button">Copy for my AI app</button>
         </div>
         <div class="btnrow">
           <button id="notes-preview" class="btn btn-secondary" type="button">Preview</button>
           <button id="notes-pdf" class="btn btn-secondary" type="button">Save as PDF</button>
         </div>
-        <p class="hint">Short enough for the appointment: your questions first, then a summary of the period, letters, and the written notes with who wrote them. The detail for any one day stays in the app. Send or copy adds a request to Claude to turn it into questions; Save as PDF makes a copy for the clinic without it.</p>
+        <p class="hint">Short enough for the appointment: your questions first, then a summary of the period, letters, and the written notes with who wrote them. The detail for any one day stays in the app. Send or copy adds a request to your AI app to turn it into questions, and the notes go to that company's servers; Save as PDF makes a copy for the clinic without it.</p>
         <h3 class="section-title">Questions for the team</h3>
         <div id="notes-questions" class="cards"></div>
         <h3 class="section-title">Summary</h3>
@@ -511,6 +528,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=58"></script>
+  <script type="module" src="scripts.js?v=59"></script>
 </body>
 </html>
