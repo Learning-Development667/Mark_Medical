@@ -854,10 +854,14 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 .pickrow .icon { width: 20px; height: 20px; color: var(--text-muted); flex: none; }
 .chosen { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); padding: var(--s-3) 14px; border-radius: var(--r-md); background: var(--surface-sunken); margin-bottom: var(--s-3); }
 .chosen-name { margin: 0; font-family: var(--font-head); font-size: 24px; letter-spacing: 0.03em; line-height: 1.05; min-width: 0; overflow-wrap: anywhere; }
-.estline { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); width: 100%; text-align: left; min-height: 52px; padding: var(--s-2) 14px; border: 0; border-radius: var(--r-md); background: var(--teal-light); color: var(--teal-dark); font-weight: 600; font-size: 16px; cursor: pointer; }
-.estline .icon { width: 20px; height: 20px; flex: none; transition: transform var(--t-base) ease; }
-.estline[aria-expanded="true"] .icon { transform: rotate(90deg); }
 .timeline-note { display: flex; align-items: center; gap: var(--s-2); min-height: var(--tap); margin: var(--s-2) 0 0; }
+/* Quantity rows: minus, number, plus */
+.stepper { display: flex; align-items: center; gap: var(--s-2); margin: 0 0 var(--s-2); }
+.stepper input { width: 96px; min-height: var(--tap); text-align: center; font-family: var(--font-mono); font-size: 22px; padding: 4px 8px; border-radius: var(--r-sm); border: 2px solid var(--border-subtle); background: var(--surface); -moz-appearance: textfield; }
+.stepper input::-webkit-outer-spin-button, .stepper input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.stepper .unit { color: var(--text-secondary); font-size: 16px; min-width: 0; }
+.qtyrows .macro-row:first-child { border-top: 0; padding-top: 0; }
+.qtyrows .presets { margin-bottom: var(--s-2); }
 .macrosbox > .hint { margin-top: 0; margin-bottom: var(--s-2); }
 .macro-row { padding: var(--s-3) 0; border-top: 1px solid var(--border-subtle); }
 .macro-row .presets { margin-bottom: 6px; }
@@ -910,7 +914,7 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 .speakbtn.is-listening { background: var(--warm-light); border-color: var(--warm); color: var(--warm-dark); animation: speak-pulse 1.2s ease-in-out infinite; }
 @keyframes speak-pulse { 0%, 100% { box-shadow: 0 0 0 0 var(--warm-light); } 50% { box-shadow: 0 0 0 10px transparent; } }
 @media (prefers-reduced-motion: reduce) { .speakbtn.is-listening { animation: none; } }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .speakbtn, :root:not([data-theme="light"]) .note-who, :root:not([data-theme="light"]) .diary-macros, :root:not([data-theme="light"]) .macro-total, :root:not([data-theme="light"]) .estline { color: var(--teal); } }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .speakbtn, :root:not([data-theme="light"]) .note-who, :root:not([data-theme="light"]) .diary-macros, :root:not([data-theme="light"]) .macro-total { color: var(--teal); } }
 .cheer-add + .speakbtn { margin-top: var(--s-2); }
 .strapline { margin: 2px 0 var(--s-3); color: var(--teal); font-weight: 600; font-size: var(--fs-md); }
 .food-toggle { margin: var(--s-2) 0 0; }
@@ -920,6 +924,7 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 .flag-text { min-width: 0; overflow-wrap: anywhere; }
 
 @media print {
+  .question { padding-bottom: 26mm; border-bottom: 1px solid var(--border-subtle); margin-bottom: 6mm; } /* room to write the answer in clinic */
   body { background: #fff; }
   .topbar, .tabs, .btn, .segmented, .toast, .sheet, .quickadd, .confetti, #toast, .entry-menu { display: none !important; }
   .main { padding: 0; }

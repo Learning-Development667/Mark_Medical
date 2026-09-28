@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '54';
+const APP_VERSION = '55';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -1099,7 +1099,7 @@ function entrySub(e) {
   if (e.type === 'med' && e.dose) bits.push(e.dose);
   if (e.type === 'med' && e.note) bits.push(e.note);
   if (e.type === 'temp' && e.note) bits.push(e.note);
-  if (e.type === 'food' && e.amount) bits.push(e.amount);
+  if (e.type === 'food') { const q = quantityText(e); if (q) bits.push(q); else if (e.amount) bits.push(e.amount); }
   if (e.type === 'food' && e.detail) bits.push(e.detail);
   if (e.type === 'food' && detailedNutritionOn() && foodIndex) {
     const m = entryMacros(foodIndex, e);
@@ -1252,14 +1252,17 @@ function openAdd(type, editEntry) {
     const ml = h('input', { type: 'number', inputmode: 'numeric', min: '0', step: '10', value: mlDefault });
     const whatPresets = presets(['Water', 'Tea', 'Coffee', 'Squash', 'Juice', 'Milk', 'Supplement drink'], what, whatDefault);
     const mlPresets = presets(['50', '100', '150', '200', '250', { value: '300', label: '300 cup' }, { value: '568', label: '568 pint' }, { value: '900', label: '900 bottle' }], ml, mlDefault);
+    const howMany = stepper(1, 1, 1, 'How many');
     body.append(
       field('Drink', what), whatPresets,
-      field('Amount (ml)', ml), mlPresets,
+      field('Amount of each (ml)', ml), mlPresets,
+      h('p', { class: 'fieldlabel', text: 'How many' }), howMany.el,
       field('Time', time)
     );
     getData = () => {
       const v = parseInt(ml.value, 10);
-      return { type: 'drink', value: isNaN(v) ? 0 : v, note: what.value.trim() || 'Drink' };
+      const n = howMany.value();
+      return { type: 'drink', value: isNaN(v) ? 0 : Math.round(v * n), note: what.value.trim() || 'Drink' };
     };
   }
 
@@ -1273,35 +1276,29 @@ function openAdd(type, editEntry) {
     const parts = h('input', { type: 'text', placeholder: 'e.g. peas, mash, gravy', value: (editEntry && editEntry.detail) || '' });
     const amount = h('input', { type: 'hidden', value: amountDefault });
     const amountPresets = presets(['A few mouthfuls', 'About half', 'Most of it', 'All of it'], amount, amountDefault);
+    const amountBlock = h('div', null, h('p', { class: 'field' }, h('span', { text: 'How much was eaten' })), amountPresets);
 
-    /* Portion sizes and macro estimates, only when the Food setting is on.
-       portionsState is keyed by component (see macroComponentKey) and holds
-       { size: 'S'|'M'|'L', override: null | { kcal, prot, carb, fat, per, grams } }.
-       Rows are rebuilt when the text or amount changes; typing inside an
-       override row only refreshes the totals line, so focus is never lost. */
+    /* Quantities and estimates. portionsState is keyed by component (see macroComponentKey) and holds
+       { size: 'S'|'M'|'L', qty: null | { unit: 'piece'|'g', n, each?, name, many? }, override: null | { kcal, prot, carb, fat, per, grams } }.
+       Pieces and grams are stored whatever the Food setting says (they are amounts, not estimates);
+       sizes, overrides and the estimate itself only matter with the setting on. Rows are rebuilt
+       when the text changes; typing inside a row only refreshes the totals line, so focus is never lost. */
     const macroOn = Boolean(state.profile && state.profile.detailedNutrition);
-    let portionsState = macroOn && editEntry && editEntry.portions ? JSON.parse(JSON.stringify(editEntry.portions)) : {};
+    let portionsState = editEntry && editEntry.portions ? JSON.parse(JSON.stringify(editEntry.portions)) : {};
     let lastComponents = [];
-    const macrosBox = h('div', { class: 'macrosbox' });
-    const rowsWrap = h('div', null);
-    rowsWrap.hidden = true;
+    let pendingCount = null; // a count parsed out of the name ("2 x kiwi"), applied to the first countable row
+    const rowsWrap = h('div', { class: 'qtyrows' });
     const totalsEl = h('p', { class: 'macro-total' });
-    /* One line, closed by default: the estimate, and a tap opens the portion rows under it */
-    const estText = h('span', { text: 'Loading the food table' });
-    const estLine = h('button', { class: 'estline', type: 'button', 'aria-expanded': 'false' }, estText, icon('chevron'));
-    estLine.addEventListener('click', () => { rowsWrap.hidden = !rowsWrap.hidden; estLine.setAttribute('aria-expanded', rowsWrap.hidden ? 'false' : 'true'); });
+    totalsEl.hidden = true;
     const draft = () => ({ note: what.value, detail: parts.value, amount: amount.value, portions: portionsState });
     const refreshTotals = () => {
-      if (!foodIndex) return;
+      if (!macroOn || !foodIndex) return;
       const m = entryMacros(foodIndex, draft());
-      if (!lastComponents.length) { totalsEl.textContent = ''; totalsEl.hidden = true; estText.textContent = 'Type what was eaten to see an estimate'; return; }
+      if (!lastComponents.length) { totalsEl.hidden = true; return; }
       totalsEl.hidden = false;
       totalsEl.textContent = m.any
         ? 'Estimated: ' + fmtMacroLine(m.totals) + (m.excluded.length ? '. Not counted: ' + m.excluded.join(', ') : '')
-        : 'Nothing here is in the food table yet, so there is nothing to estimate. Use "Enter from the packet" to add it by hand.';
-      estText.textContent = m.any
-        ? `About ${Math.round(m.totals.kcal)} kcal, ${Math.round(m.totals.prot)} g protein${m.excluded.length ? ', part not counted' : ''}. Adjust portions`
-        : 'No estimate for this yet. Enter from the packet';
+        : 'No estimate for this yet. Enter it from the packet if you want one.';
     };
     const overridePanel = (c, portion, rebuild) => {
       const ov = portion.override;
@@ -1342,18 +1339,28 @@ function openAdd(type, editEntry) {
       markPer();
       return panel;
     };
+    /* One row per component: How many (pieces), How much (grams) or Small/Medium/Large, plus the packet override */
     const componentRow = (c, rebuild) => {
-      const portion = portionsState[c.key] || (portionsState[c.key] = { size: 'M', override: null });
+      const portion = portionsState[c.key] || (portionsState[c.key] = { size: 'M', override: null, qty: defaultQty(c.phrase, c.food, what.value + ', ' + parts.value) });
+      if (portion.qty === undefined) portion.qty = defaultQty(c.phrase, c.food, what.value + ', ' + parts.value);
       const scale = amountScale(amount.value);
       const custom = customFoodByName(c.phrase);
       const group = c.food ? portionGroupFor(c.food) : { label: 'Anything else', sizes: [60, 120, 200] };
       const label = c.food ? c.food.n : c.phrase;
-      const sub = custom ? 'From My foods' : c.food ? 'Typical portion, estimate' : 'Not in the food table';
-      const row = h('div', { class: 'macro-row' },
-        h('p', { class: 'macro-row-label' }, label, h('small', { text: sub }))
-      );
+      const known = Boolean(c.food || custom);
+      const sub = portion.qty ? (portion.qty.unit === 'piece' ? `about ${portion.qty.each} g each, estimate` : 'weighed') : custom ? 'From My foods' : c.food ? 'Typical portion, estimate' : 'Not in the food table';
+      const row = h('div', { class: 'macro-row' }, h('p', { class: 'macro-row-label' }, label, h('small', { text: sub })));
       if (portion.override) { row.append(overridePanel(c, portion, rebuild)); return row; }
-      if (c.food || custom) {
+      if (portion.qty && portion.qty.unit === 'piece') {
+        const q = portion.qty;
+        const st = stepper(q.n, 0.5, 1, 'How many ' + q.many, (v) => { q.n = v; st.unitEl.textContent = v === 1 ? q.name : q.many; refreshTotals(); }, q.n === 1 ? q.name : q.many);
+        row.append(h('p', { class: 'fieldlabel', text: 'How many' }), st.el);
+      } else if (portion.qty && portion.qty.unit === 'g') {
+        const q = portion.qty;
+        const st = stepper(q.n, 0, 10, 'How much in grams', (v) => { q.n = v; refreshTotals(); }, 'g');
+        row.append(h('p', { class: 'fieldlabel', text: 'How much' }), st.el,
+          h('div', { class: 'presets' }, ...[['20', 'small handful 20 g'], ['30', 'handful 30 g'], ['50', '50 g'], ['100', '100 g']].map(([v, l]) => h('button', { class: 'preset', type: 'button', text: l, onclick: () => st.set(parseFloat(v)) }))));
+      } else if (known && macroOn) {
         row.append(
           h('div', { class: 'presets' }, ...['S', 'M', 'L'].map((size) => h('button', {
             class: 'preset' + (portion.size === size ? ' is-active' : ''), type: 'button',
@@ -1361,42 +1368,43 @@ function openAdd(type, editEntry) {
           }, `${PORTION_SIZE_NAME[size]} ${portionGrams(c.food, size, scale)} g`))),
           h('p', { class: 'hint', text: group.label + (scale < 1 ? `, scaled for "${amount.value.toLowerCase()}"` : '') })
         );
-      } else {
+      } else if (macroOn) {
         row.append(h('p', { class: 'hint', text: 'No figures for this, so it is left out of the estimate unless entered from the packet.' }));
       }
-      row.append(h('button', { class: 'btn btn-link btn-small', type: 'button', onclick: () => {
-        portion.override = { kcal: null, prot: null, carb: null, fat: null, per: 'portion', grams: portionGrams(c.food, portion.size, scale) };
+      if (macroOn) row.append(h('button', { class: 'btn btn-link btn-small', type: 'button', onclick: () => {
+        portion.override = { kcal: null, prot: null, carb: null, fat: null, per: 'portion', grams: portionGrams(c.food, portion.size, scale, portion.qty) };
         rebuild();
       } }, 'Enter from the packet'));
       return row;
     };
-    const rebuildMacros = () => {
-      if (!macroOn) return;
-      if (!foodIndex) { rowsWrap.replaceChildren(h('p', { class: 'hint', text: 'Loading the food table.' })); return; }
+    const rebuildRows = () => {
+      if (!foodIndex) { rowsWrap.replaceChildren(); return; }
       const m = entryMacros(foodIndex, draft());
       lastComponents = m.components;
       const keep = new Set(m.components.map((c) => c.key));
       Object.keys(portionsState).forEach((k) => { if (!keep.has(k)) delete portionsState[k]; });
-      rowsWrap.replaceChildren(...(m.components.length
-        ? m.components.map((c) => componentRow(c, rebuildMacros))
-        : [h('p', { class: 'hint', text: 'Type what was eaten to see portion sizes and an estimate.' })]), totalsEl);
+      if (pendingCount != null) {
+        for (const c of m.components) {
+          const portion = portionsState[c.key] || (portionsState[c.key] = { size: 'M', override: null, qty: defaultQty(c.phrase, c.food, what.value + ', ' + parts.value) });
+          if (portion.qty && portion.qty.unit === 'piece') { portion.qty.n = pendingCount; break; }
+        }
+        pendingCount = null;
+      }
+      const rows = m.components.map((c) => componentRow(c, rebuildRows)).filter((r) => r.childElementCount > 1);
+      rowsWrap.replaceChildren(...rows);
+      /* "How much was eaten" only matters when something is sized rather than counted or weighed */
+      const needsAmount = !m.components.length || m.components.some((c) => !(portionsState[c.key] && portionsState[c.key].qty && !portionsState[c.key].override));
+      amountBlock.hidden = !needsAmount;
       refreshTotals();
     };
-    if (macroOn) {
-      macrosBox.append(
-        h('p', { class: 'fieldlabel', text: 'Estimate' }),
-        estLine,
-        rowsWrap
-      );
-      parts.addEventListener('input', rebuildMacros);
-      amountPresets.addEventListener('click', rebuildMacros);
-      loadFoodTable().then(rebuildMacros);
-    }
+    parts.addEventListener('input', rebuildRows);
+    amountPresets.addEventListener('click', rebuildRows); // the S/M/L grams scale with how much was eaten
+    loadFoodTable().then(() => { if (!details.hidden) rebuildRows(); });
 
     /* Stage one, pick: the search box with Recent and the meals usually logged at this
        time of day under it, replaced by live matches (saved meals, My foods, the UK food
        table) as soon as typing starts. Stage two, details: the chosen meal at the top,
-       what is in it, how much, the estimate line, and the time tucked away until needed. */
+       what is in it, one quantity row per food, the estimate, and the time tucked away. */
     const pick = h('div', { class: 'pick' });
     const list = h('div', { class: 'picklist' });
     const details = h('div', { class: 'fooddetails' });
@@ -1406,18 +1414,23 @@ function openAdd(type, editEntry) {
     const pickRow = (title, sub, onPick) => h('button', { class: 'pickrow', type: 'button', onclick: onPick },
       h('span', { class: 'pickrow-main' }, h('span', { class: 'pickrow-title', text: title }), sub ? h('span', { class: 'pickrow-sub', text: sub }) : null),
       icon('chevron'));
+    let pickedRawName = null; // a saved meal chosen under an old name with a number in it, renamed on save
     const showDetails = () => {
       chosenName.textContent = what.value.trim();
       pick.hidden = true;
       details.hidden = false;
-      rebuildMacros();
+      rebuildRows();
     };
-    const choose = (name, meal) => {
-      what.value = name;
+    const choose = (rawName, meal) => {
+      const parsed = parseQuantityName(rawName);
+      pickedRawName = meal && parsed.name.toLowerCase() !== String(meal.name || '').toLowerCase() ? meal.name : null;
+      what.value = parsed.name;
+      pendingCount = parsed.count;
       if (meal) parts.value = meal.parts || '';
-      if (macroOn) portionsState = meal && meal.portions ? JSON.parse(JSON.stringify(meal.portions)) : {};
+      portionsState = meal && meal.portions ? JSON.parse(JSON.stringify(meal.portions)) : {};
       showDetails();
     };
+    const cleanName = (n) => parseQuantityName(n).name;
     const renderPick = () => {
       const q = what.value.trim().toLowerCase();
       const rows = [];
@@ -1426,38 +1439,40 @@ function openAdd(type, editEntry) {
         const seen = new Set(recent.map((r) => r.name.toLowerCase()));
         if (recent.length) {
           rows.push(heading('Recent'));
-          recent.forEach((r) => rows.push(pickRow(r.name, r.parts || '', () => choose(r.name, r))));
+          recent.forEach((r) => rows.push(pickRow(cleanName(r.name), r.parts || '', () => choose(r.name, r))));
         }
         const slot = mealSlot(time.value);
         const often = usualMeals(slot, seen, 4);
         if (often.length) {
           rows.push(heading(MEAL_SLOT_LABEL[slot]));
-          often.forEach((m) => rows.push(pickRow(m.name, m.parts || '', () => choose(m.name, m))));
+          often.forEach((m) => rows.push(pickRow(cleanName(m.name), m.parts || '', () => choose(m.name, m))));
         }
         if (!rows.length) rows.push(h('p', { class: 'hint', text: 'Type what was eaten. Meals you log are remembered and offered here next time.' }));
       } else {
-        const exact = findMeal(q);
         const typed = what.value.trim();
-        const mealHits = state.meals.filter((m) => (m.name || '').toLowerCase().includes(q))
+        const cleaned = parseQuantityName(typed);
+        const exact = findMeal(typed) || findMeal(cleaned.name);
+        const mealHits = state.meals.filter((m) => (m.name || '').toLowerCase().includes(q) || cleanName(m.name).toLowerCase().includes(cleaned.name.toLowerCase()))
           .sort((a, b) => Number((b.name || '').toLowerCase().startsWith(q)) - Number((a.name || '').toLowerCase().startsWith(q)) || (a.name || '').localeCompare(b.name || ''))
           .slice(0, 5);
-        if (!exact) rows.push(pickRow(`Log "${typed}"`, 'As typed', () => choose(typed, null)));
-        mealHits.forEach((m) => rows.push(pickRow(m.name, m.parts || 'Saved meal', () => choose(m.name, m))));
+        if (!exact) rows.push(pickRow(cleaned.count ? `Log ${fmtQtyNumber(cleaned.count)} ${cleaned.name}` : `Log "${typed}"`, 'As typed', () => choose(typed, null)));
+        mealHits.forEach((m) => rows.push(pickRow(cleanName(m.name), m.parts || 'Saved meal', () => choose(cleaned.count ? `${cleaned.count} x ${m.name}` : m.name, m))));
         const customHits = ((state.profile && state.profile.customFoods) || []).filter((f) => (f.name || '').toLowerCase().includes(q)).slice(0, 3);
         customHits.forEach((f) => rows.push(pickRow(f.name, 'My foods', () => choose(f.name, null))));
-        if (foodIndex && q.length >= 2) {
+        const tq = cleaned.name.toLowerCase();
+        if (foodIndex && tq.length >= 2) {
           const taken = new Set([...mealHits.map((m) => m.name.toLowerCase()), ...customHits.map((f) => f.name.toLowerCase())]);
-          const tableHits = foodIndex.foods.filter((f) => f.n && f.n.toLowerCase().includes(q) && !taken.has(f.n.toLowerCase()))
-            .map((f) => ({ f, rank: f.n.toLowerCase().startsWith(q) ? 0 : new RegExp('\\b' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).test(f.n.toLowerCase()) ? 1 : 2 }))
+          const tableHits = foodIndex.foods.filter((f) => f.n && f.n.toLowerCase().includes(tq) && !taken.has(f.n.toLowerCase()))
+            .map((f) => ({ f, rank: f.n.toLowerCase().startsWith(tq) ? 0 : new RegExp('\\b' + tq.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).test(f.n.toLowerCase()) ? 1 : 2 }))
             .sort((a, b) => a.rank - b.rank || a.f.n.length - b.f.n.length)
             .slice(0, 6);
-          if (tableHits.length) { rows.push(heading('UK food table')); tableHits.forEach(({ f }) => rows.push(pickRow(f.n, '', () => choose(f.n, null)))); }
+          if (tableHits.length) { rows.push(heading('UK food table')); tableHits.forEach(({ f }) => rows.push(pickRow(f.n, '', () => choose(cleaned.count ? `${cleaned.count} x ${f.n}` : f.n, null)))); }
         }
       }
       list.replaceChildren(...rows);
     };
     what.addEventListener('input', renderPick);
-    what.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' && what.value.trim()) { ev.preventDefault(); choose(what.value.trim(), findMeal(what.value)); } });
+    what.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' && what.value.trim()) { ev.preventDefault(); choose(what.value.trim(), findMeal(what.value) || findMeal(cleanName(what.value))); } });
     loadFoodTable().then(() => { if (!pick.hidden) renderPick(); });
     pick.append(field('Food', what), list);
 
@@ -1473,8 +1488,9 @@ function openAdd(type, editEntry) {
       h('div', { class: 'chosen' }, chosenName,
         h('button', { class: 'btn btn-link btn-small', type: 'button', onclick: () => { details.hidden = true; pick.hidden = false; renderPick(); what.focus(); } }, 'Change')),
       field('What is in it (optional)', parts),
-      h('p', { class: 'field' }, h('span', { text: 'How much' })), amountPresets,
-      macroOn ? macrosBox : null,
+      rowsWrap,
+      amountBlock,
+      totalsEl,
       timeLine, timeField,
       warn
     );
@@ -1484,7 +1500,7 @@ function openAdd(type, editEntry) {
     getData = () => {
       if (details.hidden) { /* still on the pick stage: take what was typed */
         if (!what.value.trim()) return null;
-        choose(what.value.trim(), findMeal(what.value));
+        choose(what.value.trim(), findMeal(what.value) || findMeal(cleanName(what.value)));
         return { hold: true };
       }
       const name = what.value.trim();
@@ -1502,11 +1518,15 @@ function openAdd(type, editEntry) {
         parts.focus();
         return { hold: true };
       }
-      /* Only the components still on screen are kept; nothing about portions is stored when the setting is off */
-      const portions = macroOn && lastComponents.length ? Object.fromEntries(lastComponents.map((c) => [c.key, portionsState[c.key] || { size: 'M', override: null }])) : null;
-      /* Every meal is remembered, with when it is usually eaten, so it can be offered first next time */
-      const existing = findMeal(name);
-      saveMeal(existing ? existing.id : null, existing ? existing.name : name, detail, portions, mealSlot(time.value), existing);
+      /* Only the components still on screen are kept. Pieces and grams are stored whatever the setting;
+         sizes and overrides only mean something with it on, so with it off only rows with a quantity are kept. */
+      const kept = lastComponents.map((c) => [c.key, portionsState[c.key]]).filter(([, p]) => p && (macroOn || (p.qty && p.qty.n > 0)));
+      const portions = kept.length ? Object.fromEntries(kept.map(([k, p]) => [k, { size: p.size || 'M', override: p.override || null, qty: p.qty || null }])) : null;
+      if (amountBlock.hidden) amount.value = 'All of it';
+      /* Every meal is remembered, with when it is usually eaten; a meal chosen under an old
+         name with a number in it ("2 x kiwi") is renamed to the clean one */
+      const existing = findMeal(name) || (pickedRawName ? findMeal(pickedRawName) : null);
+      saveMeal(existing ? existing.id : null, name, detail, portions, mealSlot(time.value), existing);
       const data = { type: 'food', note: name, amount: amount.value };
       if (detail) data.detail = detail;
       if (portions) data.portions = portions;
@@ -1714,6 +1734,20 @@ function openAdd(type, editEntry) {
   });
   body.append(save, h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Cancel'));
   openSheet(titles[type], body);
+}
+
+/* A minus / number / plus control. step is the button step; the number can also be typed (halves are fine) */
+function stepper(initial, min, step, label, onChange, unit) {
+  const input = h('input', { type: 'number', inputmode: 'decimal', min: String(min), step: 'any', value: String(initial), 'aria-label': label });
+  const set = (v) => { input.value = fmtQtyNumber(Math.max(min, v)); if (onChange) onChange(parseFloat(input.value)); };
+  const unitEl = unit ? h('span', { class: 'unit', text: unit }) : null;
+  const el = h('div', { class: 'stepper' },
+    h('button', { class: 'iconbtn', type: 'button', 'aria-label': 'Fewer', onclick: () => { const v = parseFloat(input.value) || 0; set(v - step < min && v > min ? min : v - step); } }, '\u2212'),
+    input, unitEl,
+    h('button', { class: 'iconbtn', type: 'button', 'aria-label': 'More', onclick: () => set((parseFloat(input.value) || 0) + step) }, '+')
+  );
+  input.addEventListener('input', () => { if (onChange) onChange(parseFloat(input.value) || 0); });
+  return { el, unitEl, value: () => parseFloat(input.value) || 0, set };
 }
 
 /* Each value is a string, or { value, label } when the button should read differently from what it fills in */
@@ -2064,13 +2098,17 @@ function buildPdfBlob(title, subtitle, blocks) {
     const size = 11.5, lh = size * 1.35, x = M + 22;
     const lines = pdf.splitTextToSize(`${b.n}. ${b.text}`, maxW - 22);
     const rh = (lines.length + 1) * lh + 6;
-    if (y + rh > H - 48) { footer(); pdf.addPage(); y = M; }
+    if (y + rh + 33 > H - 48) { footer(); pdf.addPage(); y = M; }
     pdf.setDrawColor(120); pdf.setLineWidth(0.8); pdf.rect(M + 2, y + 3, 11, 11);
     pdf.setFont('helvetica', 'bold'); pdf.setFontSize(size); pdf.setTextColor(0);
     lines.forEach((ln, k) => pdf.text(ln, x, y + size + k * lh));
     pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9.5); pdf.setTextColor(110);
     pdf.text(`Asked by ${b.who}, ${fmtDayShort(b.day)}`, x, y + size + lines.length * lh);
     y += rh;
+    /* Three faint lines to write the answer on in clinic */
+    pdf.setDrawColor(205); pdf.setLineWidth(0.3);
+    for (let k = 0; k < 3; k++) { y += 9; pdf.line(x, y, M + maxW, y); }
+    y += 6;
   };
   /* A written note: who wrote it (bold), when and in what context, then the note itself */
   const note = (b) => {
@@ -2730,7 +2768,8 @@ const PORTION_SIZE_INDEX = { S: 0, M: 1, L: 2 };
 const PORTION_SIZE_NAME = { S: 'Small', M: 'Medium', L: 'Large' };
 
 /* Grams for one component: its own group's Small/Medium/Large default, times how much of the meal was actually eaten */
-function portionGrams(food, size, scale) {
+function portionGrams(food, size, scale, qty) {
+  if (qty && qty.n > 0) return qty.unit === 'piece' ? Math.round(qty.n * (qty.each || 0)) : Math.round(qty.n);
   const group = food ? portionGroupFor(food) : { label: 'Anything else', sizes: [60, 120, 200] };
   return Math.round(group.sizes[PORTION_SIZE_INDEX[size] ?? 1] * scale);
 }
@@ -2739,6 +2778,84 @@ function portionGrams(food, size, scale) {
    an unmatched typed phrase (nothing else identifies it), so portions and
    manual overrides are keyed on whichever of those applies to it */
 function macroComponentKey(food, phrase) { return food ? 'c:' + food.c : 'u:' + phrase; }
+
+/* Typical weight of one piece, for foods people count rather than weigh: [grams each, one, many].
+   Anything under 5 g a piece (nuts, grapes, berries) is weighed in grams instead, with quick chips.
+   Estimates, not measurements. Multi-word keys are tried first. */
+const PIECE_WEIGHTS = {
+  'cherry tomato': [15, 'cherry tomato', 'cherry tomatoes'], 'new potato': [40, 'new potato', 'new potatoes'], 'fish finger': [28, 'fish finger', 'fish fingers'],
+  'jaffa cake': [12, 'jaffa cake', 'jaffa cakes'], 'rich tea': [8, 'rich tea biscuit', 'rich tea biscuits'], 'rice cake': [9, 'rice cake', 'rice cakes'],
+  'sausage roll': [60, 'sausage roll', 'sausage rolls'], 'pork pie': [140, 'pork pie', 'pork pies'], 'spring roll': [40, 'spring roll', 'spring rolls'],
+  'chicken breast': [150, 'chicken breast', 'chicken breasts'], 'chicken thigh': [90, 'chicken thigh', 'chicken thighs'], 'fish cake': [90, 'fish cake', 'fish cakes'],
+  'shredded wheat': [22, 'shredded wheat', 'shredded wheat'], 'ice cream': [60, 'scoop of ice cream', 'scoops of ice cream'], 'cheese slice': [25, 'slice of cheese', 'slices of cheese'],
+  kiwi: [75, 'kiwi', 'kiwis'], banana: [120, 'banana', 'bananas'], apple: [150, 'apple', 'apples'], pear: [160, 'pear', 'pears'], orange: [160, 'orange', 'oranges'],
+  satsuma: [70, 'satsuma', 'satsumas'], clementine: [70, 'clementine', 'clementines'], tangerine: [70, 'tangerine', 'tangerines'], mandarin: [70, 'mandarin', 'mandarins'],
+  plum: [55, 'plum', 'plums'], peach: [150, 'peach', 'peaches'], nectarine: [140, 'nectarine', 'nectarines'], apricot: [40, 'apricot', 'apricots'],
+  strawberry: [12, 'strawberry', 'strawberries'], cherry: [8, 'cherry', 'cherries'], date: [24, 'date', 'dates'], prune: [10, 'prune', 'prunes'], fig: [50, 'fig', 'figs'],
+  grape: [5, 'grape', 'grapes'], raspberry: [4, 'raspberry', 'raspberries'], blueberry: [1.5, 'blueberry', 'blueberries'],
+  egg: [50, 'egg', 'eggs'], toast: [36, 'slice of toast', 'slices of toast'], bread: [36, 'slice of bread', 'slices of bread'], crumpet: [40, 'crumpet', 'crumpets'],
+  muffin: [60, 'muffin', 'muffins'], scone: [50, 'scone', 'scones'], cracker: [8, 'cracker', 'crackers'], biscuit: [12, 'biscuit', 'biscuits'], digestive: [15, 'digestive', 'digestives'],
+  hobnob: [15, 'hobnob', 'hobnobs'], oatcake: [10, 'oatcake', 'oatcakes'], pitta: [60, 'pitta', 'pittas'], tortilla: [40, 'tortilla', 'tortillas'], wrap: [60, 'wrap', 'wraps'],
+  roll: [60, 'roll', 'rolls'], bagel: [85, 'bagel', 'bagels'], croissant: [60, 'croissant', 'croissants'], pancake: [40, 'pancake', 'pancakes'], waffle: [35, 'waffle', 'waffles'],
+  weetabix: [19, 'weetabix', 'weetabix'], sausage: [50, 'sausage', 'sausages'], bacon: [25, 'rasher of bacon', 'rashers of bacon'], nugget: [18, 'nugget', 'nuggets'],
+  burger: [100, 'burger', 'burgers'], samosa: [60, 'samosa', 'samosas'], potato: [175, 'potato', 'potatoes'], tomato: [85, 'tomato', 'tomatoes'], carrot: [60, 'carrot', 'carrots'],
+  yoghurt: [125, 'pot of yoghurt', 'pots of yoghurt'], yogurt: [125, 'pot of yogurt', 'pots of yogurt'], ham: [25, 'slice of ham', 'slices of ham'], crisps: [25, 'packet of crisps', 'packets of crisps'],
+  almond: [1.2, 'almond', 'almonds'], walnut: [3, 'walnut', 'walnuts'], brazil: [5, 'brazil nut', 'brazil nuts'], cashew: [1.5, 'cashew', 'cashews'], peanut: [0.7, 'peanut', 'peanuts'],
+  hazelnut: [1.3, 'hazelnut', 'hazelnuts'], pecan: [2, 'pecan', 'pecans'], pistachio: [0.7, 'pistachio', 'pistachios'], nut: [1.5, 'nut', 'nuts']
+};
+const PIECE_KEYS = Object.keys(PIECE_WEIGHTS).sort((a, b) => b.length - a.length);
+const singular = (w) => w.replace(/ies$/, 'y').replace(/(ch|sh|s|x|z)es$/, '$1').replace(/oes$/, 'o').replace(/s$/, '');
+/* The piece entry for a component, from the words typed first, then the table food's own name */
+function pieceInfo(phrase, food) {
+  const texts = [phrase, food && food.n].filter(Boolean).map((t) => ' ' + t.toLowerCase().replace(/[^a-z ]+/g, ' ').split(/\s+/).filter(Boolean).map(singular).join(' ') + ' ');
+  for (const t of texts) for (const k of PIECE_KEYS) if (t.includes(' ' + k.split(' ').map(singular).join(' ') + ' ')) { const [each, one, many] = PIECE_WEIGHTS[k]; return { key: k, each, one, many, tiny: each < 5 }; }
+  return null;
+}
+/* What a component's quantity control should be before anyone touches it: pieces, grams, or the S/M/L sizes */
+function defaultQty(phrase, food, text) {
+  const p = pieceInfo(phrase, food);
+  if (!p) return null;
+  if (p.tiny) return { unit: 'g', n: 30, name: p.many };
+  return { unit: 'piece', n: countInText(text || '', p.key) || 1, each: p.each, name: p.one, many: p.many };
+}
+/* "two eggs, wholemeal toast" -> 2 for the egg key; nothing found -> null */
+function countInText(text, key) {
+  const t = String(text || '').toLowerCase();
+  const re = /(\d+(?:[.,]\d+)?|½|half an?|a|an|one|two|three|four|five|six|seven|eight|nine|ten)\s*(?:x|×)?\s+([a-z][a-z ]{0,30})/g;
+  let m;
+  while ((m = re.exec(t))) {
+    const words = m[2].trim().split(' ').map(singular);
+    for (let i = 1; i <= Math.min(3, words.length); i++) { if (words.slice(0, i).join(' ') === key.split(' ').map(singular).join(' ')) { const w = m[1].replace(/^half an?$/, 'half'); const n = WORD_NUMBERS[w] != null ? WORD_NUMBERS[w] : parseFloat(w.replace(',', '.')); if (n > 0) return n; } }
+  }
+  return null;
+}
+const WORD_NUMBERS = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, half: 0.5, '½': 0.5 };
+/* "2 x kiwi", "2 kiwis", "kiwi x2", "two eggs", "half a banana" -> { name: "Kiwi", count: 2 }; anything else -> { name, count: null } */
+function parseQuantityName(text) {
+  let t = String(text || '').trim().replace(/\s+/g, ' ');
+  let count = null;
+  let m = t.match(/^(\d+(?:[.,]\d+)?|½|half an?|a|an|one|two|three|four|five|six|seven|eight|nine|ten)\s*(?:x|×)?\s+(.+)$/i);
+  if (m) { const w = m[1].toLowerCase().replace(/^half an?$/, 'half'); count = WORD_NUMBERS[w] != null ? WORD_NUMBERS[w] : parseFloat(w.replace(',', '.')); t = m[2]; }
+  else if ((m = t.match(/^(.+?)\s*(?:x|×)\s*(\d+(?:[.,]\d+)?)$/i))) { count = parseFloat(m[2].replace(',', '.')); t = m[1]; }
+  if (count != null) {
+    t = t.replace(/^(?:slices?|pieces?|rashers?|pots?|packets?|scoops?|bowls?|cups?) of /i, '');
+    const words = t.split(' ');
+    const last = words[words.length - 1];
+    if (PIECE_WEIGHTS[singular(last.toLowerCase())] && !PIECE_WEIGHTS[last.toLowerCase()]) words[words.length - 1] = singular(last);
+    t = words.join(' ');
+  }
+  t = t.trim();
+  return { name: t ? t[0].toUpperCase() + t.slice(1) : '', count: count && count > 0 ? count : null };
+}
+const fmtQtyNumber = (n) => (Math.round(n * 10) / 10).toString().replace(/\.0$/, '');
+/* "2 kiwis · 30 g almonds" from an entry's stored quantities, for the timeline, the diary and the PDF */
+function quantityText(entry) {
+  const portions = entry && entry.portions;
+  if (!portions) return '';
+  return Object.values(portions).map((p) => p && p.qty).filter((q) => q && q.n > 0)
+    .map((q) => q.unit === 'piece' ? `${fmtQtyNumber(q.n)} ${q.n === 1 ? q.name : (q.many || q.name)}` : `${fmtQtyNumber(q.n)} g ${q.name || ''}`.trim())
+    .join(' · ');
+}
 
 function scaleMacro(per100, grams) {
   const f = (grams || 0) / 100;
@@ -2781,7 +2898,7 @@ function saveCustomFood(name, per100) {
    none of those have anything to go on. */
 function componentMacros(phrase, food, portion, scale) {
   const size = (portion && portion.size) || 'M';
-  const grams = portionGrams(food, size, scale);
+  const grams = portionGrams(food, size, scale, portion && portion.qty);
   if (portion && portion.override) {
     const ov = portion.override;
     const num = (v) => (v === null || v === undefined || v === '' ? null : Number(v));
@@ -2838,6 +2955,11 @@ function entryMacros(index, entry) {
   nutrition.matches.forEach((m) => add(m.food, m.phrase));
   nutrition.unmatched.forEach((phrase) => add(null, phrase));
   unmatchedChunks(index, [entry.note, entry.detail].filter(Boolean).join(', '), nutrition.matches).forEach((phrase) => add(null, phrase));
+  /* The same countable thing named twice ("scrambled egg on toast" plus "two eggs, wholemeal toast")
+     is one component, not two: keep the first of each piece key, so nothing is counted double */
+  const pieceSeen = new Set();
+  const deduped = components.filter((c) => { const p = pieceInfo(c.phrase, c.food); if (!p) return true; if (pieceSeen.has(p.key)) return false; pieceSeen.add(p.key); return true; });
+  components.length = 0; components.push(...deduped);
   let counted = 0;
   components.forEach((c) => {
     const macros = componentMacros(c.phrase, c.food, portions[c.key], scale);
@@ -2942,7 +3064,7 @@ async function renderFoodDiary() {
       blocks.push({ kind: 'sub', text: `${fmtDayLong(day)} (${fmtDayNum(day)})` }, { kind: 'muted', text: sum + (tagLine ? ' · ' + tagLine : '') + (macroLine ? ' · ' + macroLine : '') });
       if (gradient) blocks.push({ kind: 'donut', groups });
       if (foods.length) blocks.push({ kind: 'table', head: ['What was eaten', 'Nutrition'], rows: foods.map((e, i) => [
-        `${fmtTime(entryDate(e))}  ${e.note || 'Food'}${e.amount ? ', ' + e.amount.toLowerCase() : ''}${e.detail ? ' (' + e.detail + ')' : ''}, by ${e.addedBy || 'unknown'}${entryMacroText(i) ? '. ' + entryMacroText(i) : ''}`,
+        `${fmtTime(entryDate(e))}  ${e.note || 'Food'}${quantityText(e) ? ', ' + quantityText(e) : (e.amount ? ', ' + e.amount.toLowerCase() : '')}${e.detail ? ' (' + e.detail + ')' : ''}, by ${e.addedBy || 'unknown'}${entryMacroText(i) ? '. ' + entryMacroText(i) : ''}`,
         nutri[i] && nutri[i].tags.length ? nutri[i].tags.map((t) => ({ label: t, group: NUTRI_GROUP[t] })) : (nutri[i] && !nutri[i].matches.length ? 'Not in the food table' : '')
       ]) });
     }
@@ -3005,7 +3127,7 @@ function diaryRow(e, nutri, macroText) {
     h('span', { class: 'entry-time', text: fmtTime(entryDate(e)) }),
     h('div', { class: 'entry-main' },
       h('div', { class: 'entry-title', text: e.note || 'Food' }),
-      h('div', { class: 'entry-sub', text: [e.amount, e.detail, 'by ' + (e.addedBy || 'unknown')].filter(Boolean).join(' · ') }),
+      h('div', { class: 'entry-sub', text: [quantityText(e) || e.amount, e.detail, 'by ' + (e.addedBy || 'unknown')].filter(Boolean).join(' · ') }),
       nutri && nutri.tags.length ? h('div', { class: 'tags' }, ...nutri.tags.map((t) => h('span', { class: 'tag is-' + NUTRI_GROUP[t], text: t }))) : null,
       macroText ? h('div', { class: 'macros', text: macroText }) : null,
       nutri && !nutri.matches.length ? h('div', { class: 'unmatched', text: 'Not in the food table yet' })
