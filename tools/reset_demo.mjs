@@ -57,16 +57,17 @@ async function deleteAll(names) {
   }
 }
 
-/* Subcollections first (document pages), then the collections. users is left alone: the guest's record, if any. */
+/* Subcollections first (document pages, recording parts), then the collections. users is left alone: the guest's record, if any. */
 let total = 0;
-const docNames = await listNames('documents');
-for (const name of docNames) {
-  const id = name.split('/').pop();
-  const pages = await listNames(`documents/${id}/pages`);
-  await deleteAll(pages);
-  total += pages.length;
+for (const [parent, sub] of [['documents', 'pages'], ['recordings', 'parts']]) {
+  for (const name of await listNames(parent)) {
+    const id = name.split('/').pop();
+    const children = await listNames(`${parent}/${id}/${sub}`);
+    await deleteAll(children);
+    total += children.length;
+  }
 }
-for (const col of ['entries', 'medicines', 'documents', 'profile', 'days', 'cheers', 'exercise', 'meals', 'nutrition', 'bridge']) {
+for (const col of ['entries', 'medicines', 'documents', 'recordings', 'profile', 'days', 'cheers', 'exercise', 'meals', 'nutrition', 'bridge', 'pushSubs', 'reminders']) {
   const names = await listNames(col);
   await deleteAll(names);
   total += names.length;
