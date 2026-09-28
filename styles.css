@@ -440,8 +440,6 @@ body.is-viewer .cal-cell { pointer-events: none; }
    carry live status (check-ins, chemo calendar days) stay tappable or visible
    as plain information rather than being removed. */
 body.is-readonly .qa,
-body.is-readonly #pain-now,
-body.is-readonly #question-now,
 body.is-readonly #food-nutrition-row,
 body.is-readonly #food-totals,
 body.is-readonly #meds-manage,
@@ -536,12 +534,12 @@ body.is-readonly #calls-edit { display: none; }
 
 /* Raised: everything here is tappable, with a light gradient and a lit top edge */
 .actions { margin-top: var(--s-4); display: flex; flex-direction: column; gap: 10px; }
-.raise, .qa, .report, .checkin-row, .painbtn {
+.raise, .qa, .report, .checkin-row {
   background: var(--grad-raised);
   box-shadow: var(--elev-raised);
   transition: transform var(--t-fast) ease, box-shadow var(--t-base) ease, background var(--t-base) ease, color var(--t-base) ease;
 }
-.qa:active, .report:active, .checkin-row:active, .painbtn:active {
+.qa:active, .report:active, .checkin-row:active {
   transform: translateY(1px);
   box-shadow: var(--elev-raised-pressed);
 }
@@ -569,15 +567,6 @@ body.is-readonly #calls-edit { display: none; }
 .checkin-row.is-done .checkin-icon { color: var(--success); }
 .checkin-done { display: inline-flex; align-items: center; gap: var(--s-1); color: var(--success); font-weight: 600; }
 .checkin-done .icon { width: 18px; height: 18px; stroke-width: 2.4; }
-
-.painbtn {
-  display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%;
-  border: 0; border-radius: var(--r-md); min-height: 56px; padding: 10px 14px; cursor: pointer;
-  font-weight: 600; font-size: 18px; color: var(--warm-dark);
-}
-.painbtn .icon { width: 24px; height: 24px; color: var(--warm); }
-.painbtn.is-teal { color: var(--teal-dark); margin-bottom: var(--s-2); }
-.painbtn.is-teal .icon { color: var(--teal); }
 
 /* Check-in flow: one question per screen */
 .wiz-day { display: flex; gap: var(--s-2); margin-bottom: var(--s-3); }
@@ -854,6 +843,21 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 .diary-macros { display: inline-block; color: var(--teal-dark); background: var(--teal-light); border-radius: var(--r-sm); padding: 5px 10px; font-size: 15px; margin: 0 0 var(--s-2); font-family: var(--font-mono); letter-spacing: 0.01em; }
 .macros { color: var(--text-secondary); font-size: 14px; margin-top: 4px; font-family: var(--font-mono); letter-spacing: 0.01em; }
 .macrosbox { margin: var(--s-3) 0 var(--s-2); }
+/* Food sheet: pick a meal first, then the details */
+.pick-head { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); margin: var(--s-3) 0 var(--s-1); }
+.picklist { display: flex; flex-direction: column; gap: var(--s-2); }
+.pickrow { display: flex; align-items: center; gap: var(--s-3); width: 100%; text-align: left; min-height: 56px; padding: var(--s-2) 14px; border: 2px solid var(--border-subtle); border-radius: var(--r-md); background: var(--surface); color: var(--text-primary); cursor: pointer; font-size: 17px; }
+.pickrow:active { background: var(--surface-sunken); }
+.pickrow-main { flex: 1; min-width: 0; }
+.pickrow-title { display: block; font-weight: 600; }
+.pickrow-sub { display: block; color: var(--text-secondary); font-size: 15px; margin-top: 2px; }
+.pickrow .icon { width: 20px; height: 20px; color: var(--text-muted); flex: none; }
+.chosen { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); padding: var(--s-3) 14px; border-radius: var(--r-md); background: var(--surface-sunken); margin-bottom: var(--s-3); }
+.chosen-name { margin: 0; font-family: var(--font-head); font-size: 24px; letter-spacing: 0.03em; line-height: 1.05; min-width: 0; overflow-wrap: anywhere; }
+.estline { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); width: 100%; text-align: left; min-height: 52px; padding: var(--s-2) 14px; border: 0; border-radius: var(--r-md); background: var(--teal-light); color: var(--teal-dark); font-weight: 600; font-size: 16px; cursor: pointer; }
+.estline .icon { width: 20px; height: 20px; flex: none; transition: transform var(--t-base) ease; }
+.estline[aria-expanded="true"] .icon { transform: rotate(90deg); }
+.timeline-note { display: flex; align-items: center; gap: var(--s-2); min-height: var(--tap); margin: var(--s-2) 0 0; }
 .macrosbox > .hint { margin-top: 0; margin-bottom: var(--s-2); }
 .macro-row { padding: var(--s-3) 0; border-top: 1px solid var(--border-subtle); }
 .macro-row .presets { margin-bottom: 6px; }
@@ -906,7 +910,7 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 .speakbtn.is-listening { background: var(--warm-light); border-color: var(--warm); color: var(--warm-dark); animation: speak-pulse 1.2s ease-in-out infinite; }
 @keyframes speak-pulse { 0%, 100% { box-shadow: 0 0 0 0 var(--warm-light); } 50% { box-shadow: 0 0 0 10px transparent; } }
 @media (prefers-reduced-motion: reduce) { .speakbtn.is-listening { animation: none; } }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .speakbtn, :root:not([data-theme="light"]) .note-who, :root:not([data-theme="light"]) .painbtn.is-teal, :root:not([data-theme="light"]) .diary-macros, :root:not([data-theme="light"]) .macro-total { color: var(--teal); } }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .speakbtn, :root:not([data-theme="light"]) .note-who, :root:not([data-theme="light"]) .diary-macros, :root:not([data-theme="light"]) .macro-total, :root:not([data-theme="light"]) .estline { color: var(--teal); } }
 .cheer-add + .speakbtn { margin-top: var(--s-2); }
 .strapline { margin: 2px 0 var(--s-3); color: var(--teal); font-weight: 600; font-size: var(--fs-md); }
 .food-toggle { margin: var(--s-2) 0 0; }

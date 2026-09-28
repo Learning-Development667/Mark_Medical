@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=53">
+  <link rel="stylesheet" href="styles.css?v=54">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -133,22 +133,18 @@
               <span class="checkin-main"><span class="checkin-title">Evening check-in</span><span class="checkin-sub" id="checkin-evening-sub"></span></span>
               <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
             </button>
+            <button class="checkin-row" id="question-now" type="button">
+              <svg class="icon checkin-icon" aria-hidden="true"><use href="#i-question"/></svg>
+              <span class="checkin-main"><span class="checkin-title">Question for the team</span><span class="checkin-sub" id="question-sub"></span></span>
+              <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
+            </button>
           </div>
-
-          <button class="painbtn is-teal" id="question-now" type="button">
-            <svg class="icon" aria-hidden="true"><use href="#i-question"/></svg>
-            Question for the team
-          </button>
-          <button class="painbtn" id="pain-now" type="button">
-            <svg class="icon" aria-hidden="true"><use href="#i-bolt"/></svg>
-            <span>Log pain now</span>
-          </button>
 
           <div class="quickadd">
             <button class="qa" type="button" data-add="vitals"><svg class="icon qa-icon" aria-hidden="true"><use href="#i-vitals"/></svg>Vitals</button>
+            <button class="qa" type="button" data-add="pain"><svg class="icon qa-icon" aria-hidden="true"><use href="#i-bolt"/></svg>Pain</button>
             <button class="qa" type="button" data-add="drink"><svg class="icon qa-icon" aria-hidden="true"><use href="#i-cup"/></svg>Drink</button>
             <button class="qa" type="button" data-add="food"><svg class="icon qa-icon" aria-hidden="true"><use href="#i-food"/></svg>Food</button>
-            <button class="qa" type="button" data-add="weight"><svg class="icon qa-icon" aria-hidden="true"><use href="#i-scale"/></svg>Weight</button>
             <button class="qa" type="button" data-add="note"><svg class="icon qa-icon" aria-hidden="true"><use href="#i-note"/></svg>Note</button>
             <button class="qa" type="button" data-add="sleep"><svg class="icon qa-icon" aria-hidden="true"><use href="#i-moon"/></svg>Sleep</button>
           </div>
@@ -469,6 +465,7 @@
         <h2 class="section-title">App</h2>
         <div class="card">
           <p>Add Daybook to the Home Screen from the Share menu in Safari to use it like an app.</p>
+          <p>Meets WCAG 2.2 level AA, the web accessibility standard. Checked 28 September 2026.</p>
           <p class="muted mono" id="app-version"></p>
         </div>
       </section>
@@ -506,6 +503,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=53"></script>
+  <script type="module" src="scripts.js?v=54"></script>
 </body>
 </html>

@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '53';
+const APP_VERSION = '54';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -558,6 +558,7 @@ async function startData() {
   watchExercise();
   watchNutrition();
   watchMeals();
+  watchQuestions();
 }
 
 function stopData() {
@@ -1264,25 +1265,14 @@ function openAdd(type, editEntry) {
 
   if (type === 'food') {
     loadFoodTable();
-    const meals = sortedMeals();
     const warn = h('div', { class: 'nudge' });
     warn.hidden = true;
     let nudged = false;
     const amountDefault = (editEntry && editEntry.amount) || 'About half';
-    const what = h('input', { type: 'text', placeholder: 'What was eaten?', required: true, list: 'meal-names', autocomplete: 'off', value: (editEntry && editEntry.note) || '' });
-    const names = h('datalist', { id: 'meal-names' }, ...meals.map((m) => h('option', { value: m.name })));
+    const what = h('input', { type: 'text', placeholder: 'What was eaten?', required: true, autocomplete: 'off', value: (editEntry && editEntry.note) || '' });
     const parts = h('input', { type: 'text', placeholder: 'e.g. peas, mash, gravy', value: (editEntry && editEntry.detail) || '' });
     const amount = h('input', { type: 'hidden', value: amountDefault });
     const amountPresets = presets(['A few mouthfuls', 'About half', 'Most of it', 'All of it'], amount, amountDefault);
-    const remember = h('input', { type: 'checkbox' });
-    remember.checked = true;
-    /* Typing or tapping a saved meal fills in what goes with it; the meal
-       buttons set the input first, then this runs on the bubbled click. */
-    const applyMeal = () => { const m = findMeal(what.value); if (m) parts.value = m.parts || ''; };
-    what.addEventListener('input', applyMeal);
-    what.addEventListener('change', applyMeal);
-    const mealButtons = meals.length ? presets(meals.map((m) => m.name), what, '') : null;
-    if (mealButtons) mealButtons.addEventListener('click', applyMeal);
 
     /* Portion sizes and macro estimates, only when the Food setting is on.
        portionsState is keyed by component (see macroComponentKey) and holds
@@ -1294,16 +1284,24 @@ function openAdd(type, editEntry) {
     let lastComponents = [];
     const macrosBox = h('div', { class: 'macrosbox' });
     const rowsWrap = h('div', null);
+    rowsWrap.hidden = true;
     const totalsEl = h('p', { class: 'macro-total' });
+    /* One line, closed by default: the estimate, and a tap opens the portion rows under it */
+    const estText = h('span', { text: 'Loading the food table' });
+    const estLine = h('button', { class: 'estline', type: 'button', 'aria-expanded': 'false' }, estText, icon('chevron'));
+    estLine.addEventListener('click', () => { rowsWrap.hidden = !rowsWrap.hidden; estLine.setAttribute('aria-expanded', rowsWrap.hidden ? 'false' : 'true'); });
     const draft = () => ({ note: what.value, detail: parts.value, amount: amount.value, portions: portionsState });
     const refreshTotals = () => {
       if (!foodIndex) return;
       const m = entryMacros(foodIndex, draft());
-      if (!lastComponents.length) { totalsEl.textContent = ''; totalsEl.hidden = true; return; }
+      if (!lastComponents.length) { totalsEl.textContent = ''; totalsEl.hidden = true; estText.textContent = 'Type what was eaten to see an estimate'; return; }
       totalsEl.hidden = false;
       totalsEl.textContent = m.any
         ? 'Estimated: ' + fmtMacroLine(m.totals) + (m.excluded.length ? '. Not counted: ' + m.excluded.join(', ') : '')
         : 'Nothing here is in the food table yet, so there is nothing to estimate. Use "Enter from the packet" to add it by hand.';
+      estText.textContent = m.any
+        ? `About ${Math.round(m.totals.kcal)} kcal, ${Math.round(m.totals.prot)} g protein${m.excluded.length ? ', part not counted' : ''}. Adjust portions`
+        : 'No estimate for this yet. Enter from the packet';
     };
     const overridePanel = (c, portion, rebuild) => {
       const ov = portion.override;
@@ -1381,38 +1379,114 @@ function openAdd(type, editEntry) {
       Object.keys(portionsState).forEach((k) => { if (!keep.has(k)) delete portionsState[k]; });
       rowsWrap.replaceChildren(...(m.components.length
         ? m.components.map((c) => componentRow(c, rebuildMacros))
-        : [h('p', { class: 'hint', text: 'Type what was eaten to see portion sizes and an estimate.' })]));
+        : [h('p', { class: 'hint', text: 'Type what was eaten to see portion sizes and an estimate.' })]), totalsEl);
       refreshTotals();
     };
     if (macroOn) {
       macrosBox.append(
-        h('p', { class: 'fieldlabel', text: 'Portions and estimate' }),
-        h('p', { class: 'hint', text: 'Typical portions, estimate. Pick a size for each food, or enter it from the packet.' }),
-        rowsWrap, totalsEl
+        h('p', { class: 'fieldlabel', text: 'Estimate' }),
+        estLine,
+        rowsWrap
       );
-      what.addEventListener('input', rebuildMacros);
-      what.addEventListener('change', rebuildMacros); // after applyMeal has filled in the parts
       parts.addEventListener('input', rebuildMacros);
       amountPresets.addEventListener('click', rebuildMacros);
-      if (mealButtons) mealButtons.addEventListener('click', () => {
-        const m = findMeal(what.value);
-        if (m && m.portions) portionsState = JSON.parse(JSON.stringify(m.portions));
-        rebuildMacros();
-      });
       loadFoodTable().then(rebuildMacros);
     }
 
-    body.append(
-      field('Food', what), names,
-      mealButtons || h('p', { class: 'hint', text: 'Meals you log are remembered and appear here as quick buttons.' }),
+    /* Stage one, pick: the search box with Recent and the meals usually logged at this
+       time of day under it, replaced by live matches (saved meals, My foods, the UK food
+       table) as soon as typing starts. Stage two, details: the chosen meal at the top,
+       what is in it, how much, the estimate line, and the time tucked away until needed. */
+    const pick = h('div', { class: 'pick' });
+    const list = h('div', { class: 'picklist' });
+    const details = h('div', { class: 'fooddetails' });
+    details.hidden = true;
+    const chosenName = h('p', { class: 'chosen-name' });
+    const heading = (t) => h('p', { class: 'pick-head', text: t });
+    const pickRow = (title, sub, onPick) => h('button', { class: 'pickrow', type: 'button', onclick: onPick },
+      h('span', { class: 'pickrow-main' }, h('span', { class: 'pickrow-title', text: title }), sub ? h('span', { class: 'pickrow-sub', text: sub }) : null),
+      icon('chevron'));
+    const showDetails = () => {
+      chosenName.textContent = what.value.trim();
+      pick.hidden = true;
+      details.hidden = false;
+      rebuildMacros();
+    };
+    const choose = (name, meal) => {
+      what.value = name;
+      if (meal) parts.value = meal.parts || '';
+      if (macroOn) portionsState = meal && meal.portions ? JSON.parse(JSON.stringify(meal.portions)) : {};
+      showDetails();
+    };
+    const renderPick = () => {
+      const q = what.value.trim().toLowerCase();
+      const rows = [];
+      if (!q) {
+        const recent = recentFoods(5);
+        const seen = new Set(recent.map((r) => r.name.toLowerCase()));
+        if (recent.length) {
+          rows.push(heading('Recent'));
+          recent.forEach((r) => rows.push(pickRow(r.name, r.parts || '', () => choose(r.name, r))));
+        }
+        const slot = mealSlot(time.value);
+        const often = usualMeals(slot, seen, 4);
+        if (often.length) {
+          rows.push(heading(MEAL_SLOT_LABEL[slot]));
+          often.forEach((m) => rows.push(pickRow(m.name, m.parts || '', () => choose(m.name, m))));
+        }
+        if (!rows.length) rows.push(h('p', { class: 'hint', text: 'Type what was eaten. Meals you log are remembered and offered here next time.' }));
+      } else {
+        const exact = findMeal(q);
+        const typed = what.value.trim();
+        const mealHits = state.meals.filter((m) => (m.name || '').toLowerCase().includes(q))
+          .sort((a, b) => Number((b.name || '').toLowerCase().startsWith(q)) - Number((a.name || '').toLowerCase().startsWith(q)) || (a.name || '').localeCompare(b.name || ''))
+          .slice(0, 5);
+        if (!exact) rows.push(pickRow(`Log "${typed}"`, 'As typed', () => choose(typed, null)));
+        mealHits.forEach((m) => rows.push(pickRow(m.name, m.parts || 'Saved meal', () => choose(m.name, m))));
+        const customHits = ((state.profile && state.profile.customFoods) || []).filter((f) => (f.name || '').toLowerCase().includes(q)).slice(0, 3);
+        customHits.forEach((f) => rows.push(pickRow(f.name, 'My foods', () => choose(f.name, null))));
+        if (foodIndex && q.length >= 2) {
+          const taken = new Set([...mealHits.map((m) => m.name.toLowerCase()), ...customHits.map((f) => f.name.toLowerCase())]);
+          const tableHits = foodIndex.foods.filter((f) => f.n && f.n.toLowerCase().includes(q) && !taken.has(f.n.toLowerCase()))
+            .map((f) => ({ f, rank: f.n.toLowerCase().startsWith(q) ? 0 : new RegExp('\\b' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).test(f.n.toLowerCase()) ? 1 : 2 }))
+            .sort((a, b) => a.rank - b.rank || a.f.n.length - b.f.n.length)
+            .slice(0, 6);
+          if (tableHits.length) { rows.push(heading('UK food table')); tableHits.forEach(({ f }) => rows.push(pickRow(f.n, '', () => choose(f.n, null)))); }
+        }
+      }
+      list.replaceChildren(...rows);
+    };
+    what.addEventListener('input', renderPick);
+    what.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' && what.value.trim()) { ev.preventDefault(); choose(what.value.trim(), findMeal(what.value)); } });
+    loadFoodTable().then(() => { if (!pick.hidden) renderPick(); });
+    pick.append(field('Food', what), list);
+
+    /* The time is shown as a line, and only becomes a field when it needs changing */
+    const timeField = field('Time', time);
+    timeField.hidden = !editEntry;
+    const timeShown = h('b', { text: time.value });
+    time.addEventListener('input', () => { timeShown.textContent = time.value; });
+    const timeLine = h('p', { class: 'hint timeline-note' }, 'Time ', timeShown, ' ',
+      h('button', { class: 'btn btn-link btn-small', type: 'button', onclick: () => { timeLine.hidden = true; timeField.hidden = false; time.focus(); } }, 'Change'));
+    timeLine.hidden = Boolean(editEntry);
+    details.append(
+      h('div', { class: 'chosen' }, chosenName,
+        h('button', { class: 'btn btn-link btn-small', type: 'button', onclick: () => { details.hidden = true; pick.hidden = false; renderPick(); what.focus(); } }, 'Change')),
       field('What is in it (optional)', parts),
       h('p', { class: 'field' }, h('span', { text: 'How much' })), amountPresets,
       macroOn ? macrosBox : null,
-      field('Time', time),
-      h('label', { class: 'check' }, remember, h('span', { text: 'Remember this meal for next time' })),
+      timeLine, timeField,
       warn
     );
+    body.append(pick, details);
+    if (editEntry) showDetails(); else renderPick();
+
     getData = () => {
+      if (details.hidden) { /* still on the pick stage: take what was typed */
+        if (!what.value.trim()) return null;
+        choose(what.value.trim(), findMeal(what.value));
+        return { hold: true };
+      }
       const name = what.value.trim();
       if (!name) return null;
       const detail = parts.value.trim();
@@ -1430,15 +1504,24 @@ function openAdd(type, editEntry) {
       }
       /* Only the components still on screen are kept; nothing about portions is stored when the setting is off */
       const portions = macroOn && lastComponents.length ? Object.fromEntries(lastComponents.map((c) => [c.key, portionsState[c.key] || { size: 'M', override: null }])) : null;
-      if (remember.checked) {
-        const existing = findMeal(name);
-        const portionsChanged = portions && JSON.stringify(existing && existing.portions ? existing.portions : null) !== JSON.stringify(portions);
-        if (!existing || (existing.parts || '') !== detail || portionsChanged) saveMeal(existing ? existing.id : null, existing ? existing.name : name, detail, portions);
-      }
+      /* Every meal is remembered, with when it is usually eaten, so it can be offered first next time */
+      const existing = findMeal(name);
+      saveMeal(existing ? existing.id : null, existing ? existing.name : name, detail, portions, mealSlot(time.value), existing);
       const data = { type: 'food', note: name, amount: amount.value };
       if (detail) data.detail = detail;
       if (portions) data.portions = portions;
       return data;
+    };
+  }
+
+  if (type === 'pain') {
+    const sl = sliderBlock({ kind: 'pain', q: 'Pain right now', low: '1 none', high: '10 worst' }, editEntry ? editEntry.value : null);
+    const painNote = h('input', { type: 'text', placeholder: 'Where, or what helped (optional)', value: (editEntry && editEntry.note) || '' });
+    body.append(h('p', { class: 'wiz-q', text: 'Pain right now' }), ...sl.nodes, field('Time', time), field('Note', painNote));
+    getData = () => {
+      const v = sl.value();
+      if (v == null) { toast('Slide to a number first'); return { hold: true }; }
+      return { type: 'pain', value: v, note: painNote.value.trim() };
     };
   }
 
@@ -1568,6 +1651,8 @@ function openAdd(type, editEntry) {
     const sys = h('input', { type: 'number', inputmode: 'numeric', min: '50', max: '250', step: '1', placeholder: '0' });
     const dia = h('input', { type: 'number', inputmode: 'numeric', min: '30', max: '150', step: '1', placeholder: '0' });
     const o2 = h('input', { type: 'number', inputmode: 'numeric', min: '50', max: '100', step: '1', placeholder: '0' });
+    const lastW = state.recentEntries.find((e) => e.type === 'weight');
+    const wt = h('input', { type: 'number', step: '0.1', min: '20', max: '250', inputmode: 'decimal', placeholder: lastW ? Number(lastW.value).toFixed(1) : '0.0' });
     body.append(
       h('p', { class: 'hint', text: 'Fill in whichever readings you have. At least one is needed to save.' }),
       h('span', { class: 'fieldlabel', text: 'Temperature (\u00B0C)' }),
@@ -1580,6 +1665,7 @@ function openAdd(type, editEntry) {
       field('Heart rate (bpm)', hr),
       h('div', { class: 'field-row' }, field('Systolic', sys), field('Diastolic', dia)),
       field('Oxygen (%)', o2),
+      field('Weight (kg)', wt),
       field('Time', time), field('Note', note)
     );
     getData = () => {
@@ -1600,11 +1686,13 @@ function openAdd(type, editEntry) {
       if (!isNaN(sysV) && sysV > 0 && !isNaN(diaV) && diaV > 0) { data.systolic = sysV; data.diastolic = diaV; has = true; }
       if (!isNaN(o2V) && o2V > 0) { data.oxygen = o2V; has = true; }
       if (has) out.push(data);
+      const wV = parseFloat(wt.value);
+      if (!isNaN(wV) && wV > 0) out.push({ type: 'weight', value: Math.round(wV * 10) / 10, note: noteV });
       return out.length ? out : null;
     };
   }
 
-  const titles = { drink: 'Drink', food: 'Food', weight: 'Weight', note: 'Note', vitals: 'Vitals', sleep: 'Sleep', question: 'Question for the team' };
+  const titles = { drink: 'Drink', food: 'Food', weight: 'Weight', note: 'Note', vitals: 'Vitals', sleep: 'Sleep', question: 'Question for the team', pain: 'Log pain' };
   const save = h('button', { class: 'btn btn-primary btn-block', type: 'button' }, 'Save');
   save.addEventListener('click', async () => {
     const data = getData();
@@ -1653,17 +1741,59 @@ function sortedMeals() {
   return state.meals.slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 }
 
+/* Meal-time slots, from the time being logged: which saved meals to offer first */
+const MEAL_SLOT_LABEL = { breakfast: 'Usual for breakfast', lunch: 'Usual for lunch', dinner: 'Usual for dinner', snack: 'Usual snacks' };
+function mealSlot(hhmm) {
+  const hour = parseInt(String(hhmm || '').slice(0, 2), 10);
+  if (isNaN(hour)) return 'snack';
+  if (hour >= 5 && hour < 11) return 'breakfast';
+  if (hour >= 11 && hour < 15) return 'lunch';
+  if (hour >= 15 && hour < 21) return 'dinner';
+  return 'snack';
+}
+const mealMillis = (m) => (m.lastAt && typeof m.lastAt.toDate === 'function') ? m.lastAt.toDate().getTime() : (typeof m.lastAt === 'number' ? m.lastAt : 0);
+/* The last n distinct foods logged: the past two days first, then saved meals by when they were last used */
+function recentFoods(n) {
+  const out = [], seen = new Set();
+  for (const e of state.recentEntries) {
+    if (e.type !== 'food' || !e.note) continue;
+    const key = e.note.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const meal = findMeal(e.note);
+    out.push({ name: e.note, parts: e.detail || (meal ? meal.parts : ''), portions: e.portions || (meal ? meal.portions : null) });
+    if (out.length >= n) return out;
+  }
+  for (const m of state.meals.slice().sort((a, b) => mealMillis(b) - mealMillis(a))) {
+    if (!mealMillis(m) || seen.has((m.name || '').toLowerCase())) continue;
+    seen.add((m.name || '').toLowerCase());
+    out.push(m);
+    if (out.length >= n) break;
+  }
+  return out;
+}
+/* Saved meals most often logged in this slot, then the most used overall, then A to Z for meals never counted */
+function usualMeals(slot, exclude, n) {
+  const count = (m) => (m.slots && m.slots[slot]) || 0;
+  return state.meals.filter((m) => !exclude.has((m.name || '').toLowerCase()))
+    .sort((a, b) => count(b) - count(a) || (b.uses || 0) - (a.uses || 0) || (a.name || '').localeCompare(b.name || ''))
+    .slice(0, n);
+}
+
 /* portions is the optional per-component map from the Food sheet (see openAdd);
    left alone when not passed, so editing a meal's name or parts never drops it */
-function saveMeal(id, name, parts, portions) {
+function saveMeal(id, name, parts, portions, usedSlot, existing) {
+  /* usedSlot (breakfast, lunch, dinner, snack) means the meal was just logged: count it,
+     so the Food sheet can offer the right meals at the right time of day */
+  const usage = usedSlot ? { lastAt: state.demo ? Date.now() : serverTimestamp(), uses: ((existing && existing.uses) || 0) + 1, slots: { ...((existing && existing.slots) || {}), [usedSlot]: (((existing && existing.slots) || {})[usedSlot] || 0) + 1 } } : {};
   if (state.demo) {
     const m = id ? state.meals.find((x) => x.id === id) : null;
-    if (m) { m.name = name; m.parts = parts; if (portions) m.portions = portions; }
-    else state.meals.push({ id: fakeId('meal'), name, parts, portions: portions || null, addedBy: state.name });
+    if (m) { m.name = name; m.parts = parts; if (portions) m.portions = portions; Object.assign(m, usage); }
+    else state.meals.push({ id: fakeId('meal'), name, parts, portions: portions || null, addedBy: state.name, ...usage });
     return Promise.resolve();
   }
   const ref = id ? doc(db, 'meals', id) : doc(collection(db, 'meals'));
-  const data = { name, parts, updatedAt: serverTimestamp() };
+  const data = { name, parts, updatedAt: serverTimestamp(), ...usage };
   if (portions) data.portions = portions;
   if (!id) { data.addedBy = state.name; data.createdAt = serverTimestamp(); }
   return setDoc(ref, data, { merge: true }).catch((e) => { console.error(e); toast('Could not save the meal'); });
@@ -3389,6 +3519,27 @@ function renderCheckins() {
     else if (isToday) sub.textContent = 'Later today';
     else sub.textContent = state.readOnly ? 'Not filled in' : 'Not filled in, tap to add';
   });
+  renderQuestionRow();
+}
+/* Open questions for the team: a live list, so the Today row can say how many are waiting */
+function watchQuestions() {
+  state.unsub.questions = onSnapshot(query(collection(db, 'entries'), where('type', '==', 'question')), (snap) => {
+    state.questions = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    renderCheckins();
+  }, (e) => console.error(e));
+}
+function openQuestions() {
+  const all = state.demo ? state.recentEntries.filter((e) => e.type === 'question') : (state.questions || []);
+  return all.filter((q) => !q.answered);
+}
+function renderQuestionRow() {
+  const row = $('question-now'), sub = $('question-sub');
+  if (!row) return;
+  const open = openQuestions();
+  row.disabled = state.readOnly;
+  sub.textContent = open.length
+    ? `${open.length} waiting for the next appointment${state.readOnly ? '' : ', tap to add another'}`
+    : (state.readOnly ? 'Nothing waiting' : 'Nothing waiting, tap to add one');
 }
 $('checkin-morning').addEventListener('click', () => openCheckin('morning', state.selectedDay));
 $('checkin-evening').addEventListener('click', () => openCheckin('evening', state.selectedDay));
@@ -3528,27 +3679,6 @@ async function saveCheckin(slot, day, answers, existing) {
 /* Extra pain readings during the day: ordinary timestamped entries, separate from the check-in scores */
 $('question-now').addEventListener('click', () => openAdd('question'));
 
-$('pain-now').addEventListener('click', () => {
-  const day = state.selectedDay;
-  const time = timeInput(day);
-  const note = h('input', { type: 'text', placeholder: 'Where, or what helped (optional)' });
-  const sl = sliderBlock({ kind: 'pain', q: 'Pain right now', low: '1 none', high: '10 worst' }, null);
-  const body = h('div', null,
-    h('p', { class: 'wiz-q', text: 'Pain right now' }),
-    ...sl.nodes,
-    field('Time', time), field('Note', note),
-    h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
-      const v = sl.value();
-      if (v == null) { toast('Slide to a number first'); return; }
-      const at = atFromInputs(day, time.value);
-      closeSheet();
-      const id = await addEntry({ type: 'pain', value: v, note: note.value.trim(), at });
-      toast('Pain ' + v + '/10 logged', { label: 'Undo', onClick: () => deleteEntry(id) });
-    } }, 'Save'),
-    h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Cancel')
-  );
-  openSheet('Log pain', body);
-});
 
 /* ------------------------------------------------------------------ */
 /* Medicines                                                            */
