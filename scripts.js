@@ -4,16 +4,16 @@
 
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import {
-  getAuth, setPersistence, browserLocalPersistence, signInWithEmailAndPassword,
+  getAuth, setPersistence, browserLocalPersistence, inMemoryPersistence, signInWithEmailAndPassword,
   onAuthStateChanged, signOut
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import {
-  initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
+  initializeFirestore, persistentLocalCache, persistentMultipleTabManager, memoryLocalCache,
   collection, doc, setDoc, updateDoc, deleteDoc, getDoc, getDocs,
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '55';
+const APP_VERSION = '56';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -319,10 +319,18 @@ if (!CONFIG || !CONFIG.firebase || !CONFIG.firebase.apiKey || CONFIG.firebase.ap
 }
 
 const app = initializeApp(CONFIG.firebase);
-const auth = getAuth(app);
-const db = initializeFirestore(app, {
+const mainAuth = getAuth(app);
+const mainDb = initializeFirestore(app, {
   localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
 });
+/* Everything below reads auth and db at call time, so the Guest button can point them at the
+   separate demo project for the length of a demo session (see enterLiveDemo) and back again. */
+let auth = mainAuth;
+let db = mainDb;
+/* The shared, usable demo: a second Firebase project of its own, with a guest sign-in whose
+   details are public by design (window.DAYBOOK_DEMO in config.js). Without it, Guest is the
+   in-memory preview. Nothing here can reach the real project: different app, different database. */
+const DEMO = window.DAYBOOK_DEMO && window.DAYBOOK_DEMO.firebase && window.DAYBOOK_DEMO.firebase.apiKey ? window.DAYBOOK_DEMO : null;
 
 /* Accounts are data, not code (since v44): users/{uid} in Firestore holds
    { name, role, relation }. role is "family" (full access), "readonly" (sees
@@ -340,6 +348,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
    until v52 any error here signed the person out. A copy of the last good record is
    kept on the phone so a weak signal at start-up still opens the app straight away. */
 async function loadAccount(user) {
+  if (state.demoLive) return { name: 'Guest', role: 'family', relation: '' };
   const cacheKey = ACCOUNT_CACHE_KEY + user.uid;
   let cached = null;
   try { cached = JSON.parse(localStorage.getItem(cacheKey) || 'null'); } catch (e) { cached = null; }
@@ -523,7 +532,8 @@ function enterPreview() {
   $('guest-pill').hidden = false;
   startDemoData();
 }
-$('guest-button').addEventListener('click', enterPreview);
+$('guest-button').addEventListener('click', () => (DEMO ? enterLiveDemo() : enterPreview()));
+if (DEMO) $('guest-hint').textContent = 'Try the app for real on a shared demo with example data. No sign-in needed. Anything you add can be seen by other visitors and is wiped every night, so no real details please.';
 
 function exitPreview() {
   stopData();
@@ -533,9 +543,88 @@ function exitPreview() {
   $('signin').hidden = false;
 }
 
+/* Live demo: sign in to the demo project as its guest, seed it with the example data if it is
+   empty (the nightly reset only wipes), then run the app exactly as for a family member. */
+let demoApp = null, demoAuth = null, demoDb = null;
+async function enterLiveDemo() {
+  const btn = $('guest-button');
+  btn.disabled = true;
+  btn.textContent = 'Opening the demo';
+  try {
+    if (!demoApp) {
+      demoApp = initializeApp(DEMO.firebase, 'demo');
+      demoAuth = getAuth(demoApp);
+      demoDb = initializeFirestore(demoApp, { localCache: memoryLocalCache() });
+    }
+    await setPersistence(demoAuth, inMemoryPersistence);
+    const cred = await signInWithEmailAndPassword(demoAuth, DEMO.email, DEMO.password);
+    auth = demoAuth;
+    db = demoDb;
+    state.demoLive = true;
+    await seedDemoIfEmpty();
+    await enterApp(cred.user);
+    $('guest-pill').textContent = 'Demo';
+    $('guest-pill').hidden = false;
+    $('more-user').textContent = 'Guest (shared demo, wiped every night)';
+    toast('Shared demo: others can see what you add, and it is wiped every night. No real details please.');
+  } catch (e) {
+    console.error(e);
+    auth = mainAuth;
+    db = mainDb;
+    state.demoLive = false;
+    toast('The demo could not be opened. Check the signal and try again.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Guest';
+  }
+}
+async function exitLiveDemo() {
+  stopData();
+  try { await signOut(demoAuth); } catch (e) { /* already out */ }
+  auth = mainAuth;
+  db = mainDb;
+  state.demoLive = false;
+  state.user = null;
+  state.account = null;
+  $('guest-pill').hidden = true;
+  $('guest-pill').textContent = 'Preview';
+  $('app').hidden = true;
+  $('signin').hidden = false;
+}
+/* The same made-up data the preview uses, written once into the demo project when it is empty */
+async function seedDemoIfEmpty() {
+  const snap = await getDocs(collection(db, 'medicines'));
+  if (!snap.empty) return;
+  const fixture = buildDemoFixture();
+  const clean = (v) => {
+    if (v && typeof v === 'object' && typeof v.toDate === 'function') return Timestamp.fromDate(v.toDate());
+    if (Array.isArray(v)) return v.map(clean);
+    if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, clean(x)]));
+    return v;
+  };
+  const writes = [];
+  SEED_MEDICINES.forEach((m, i) => { const { id, ...data } = m; writes.push(['medicines', id, { ...data, active: true, order: i + 1 }]); });
+  fixture.entries.forEach((e) => { const { id, ...data } = e; writes.push(['entries', id, data]); });
+  fixture.documents.forEach((d) => { const { id, ...data } = d; writes.push(['documents', id, { ...data, pageCount: 0 }]); });
+  Object.entries(fixture.days).forEach(([k, d]) => writes.push(['days', k, d]));
+  fixture.cheers.forEach((c) => { const { id, ...data } = c; writes.push(['cheers', id, data]); });
+  Object.entries(fixture.exercise).forEach(([k, d]) => writes.push(['exercise', k, { ...d, addedBy: 'Mark' }]));
+  fixture.meals.forEach((m) => { const { id, ...data } = m; writes.push(['meals', id, data]); });
+  writes.push(['profile', 'main', fixture.profile]);
+  for (let i = 0; i < writes.length; i += 400) {
+    const batch = writeBatch(db);
+    writes.slice(i, i + 400).forEach(([col, id, data]) => batch.set(doc(db, col, id), clean(data)));
+    await batch.commit();
+  }
+}
+
 $('signout').addEventListener('click', async () => {
   if (state.demo) {
     if (await confirmSheet('Leave preview', 'Go back to the sign-in screen?', 'Leave preview', false)) exitPreview();
+    return;
+  }
+  if (state.demoLive) {
+    if (await confirmSheet('Leave the demo', 'Go back to the sign-in screen?', 'Leave the demo', false)) exitLiveDemo();
     return;
   }
   if (await confirmSheet('Sign out', 'You will need your password to sign back in.', 'Sign out', true)) signOut(auth);
@@ -2098,7 +2187,7 @@ function buildPdfBlob(title, subtitle, blocks) {
     const size = 11.5, lh = size * 1.35, x = M + 22;
     const lines = pdf.splitTextToSize(`${b.n}. ${b.text}`, maxW - 22);
     const rh = (lines.length + 1) * lh + 6;
-    if (y + rh + 33 > H - 48) { footer(); pdf.addPage(); y = M; }
+    if (y + rh + 66 > H - 48) { footer(); pdf.addPage(); y = M; }
     pdf.setDrawColor(120); pdf.setLineWidth(0.8); pdf.rect(M + 2, y + 3, 11, 11);
     pdf.setFont('helvetica', 'bold'); pdf.setFontSize(size); pdf.setTextColor(0);
     lines.forEach((ln, k) => pdf.text(ln, x, y + size + k * lh));
@@ -2107,7 +2196,7 @@ function buildPdfBlob(title, subtitle, blocks) {
     y += rh;
     /* Three faint lines to write the answer on in clinic */
     pdf.setDrawColor(205); pdf.setLineWidth(0.3);
-    for (let k = 0; k < 3; k++) { y += 9; pdf.line(x, y, M + maxW, y); }
+    for (let k = 0; k < 3; k++) { y += 20; pdf.line(x, y, M + maxW, y); }
     y += 6;
   };
   /* A written note: who wrote it (bold), when and in what context, then the note itself */

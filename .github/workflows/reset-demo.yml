@@ -1,0 +1,30 @@
+# Wipes the shared demo project every night (03:20 UTC) so visitors always start from the
+# example data, and by hand from the Actions tab. Needs one repository secret,
+# DEMO_SERVICE_ACCOUNT: the service account JSON of the DEMO project, never the real one
+# (tools/reset_demo.mjs refuses a service account whose project id matches REAL_PROJECT_ID).
+# Until the secret exists the job stops early with a notice rather than failing.
+name: Reset the demo
+
+on:
+  schedule:
+    - cron: "20 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  reset:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Wipe the demo data
+        env:
+          DEMO_SERVICE_ACCOUNT: ${{ secrets.DEMO_SERVICE_ACCOUNT }}
+          REAL_PROJECT_ID: care-log-3d05a
+        run: |
+          if [ -z "$DEMO_SERVICE_ACCOUNT" ]; then
+            echo "::notice::DEMO_SERVICE_ACCOUNT is not set yet, so there is no demo to reset."
+            exit 0
+          fi
+          node tools/reset_demo.mjs

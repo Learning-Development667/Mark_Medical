@@ -13,6 +13,19 @@
    needs no account and no config here, see the "Guest preview mode" note in CLAUDE.md.
    The Firebase web config is public by design. Access is controlled by Firebase Auth and firestore.rules. */
 
+/* Optional: a shared demo anyone can use for real (Guest on the sign-in screen). It is a
+   SEPARATE Firebase project with its own database, so nothing in it can touch the real one:
+   create a second project, turn on Email/Password sign-in, create one user (the guest), set
+   its Firestore rules to firestore.demo.rules, and paste its web config plus the guest's
+   email and password here. They are public by design: the demo is wiped every night by
+   .github/workflows/reset-demo.yml and reseeded with the example data on the next visit.
+   Leave this out and Guest is the in-memory preview instead. */
+// window.DAYBOOK_DEMO = {
+//   firebase: { apiKey: "...", authDomain: "...", projectId: "...", storageBucket: "...", messagingSenderId: "...", appId: "..." },
+//   email: "guest@example.com",
+//   password: "the guest password"
+// };
+
 window.CARE_LOG_CONFIG = {
   firebase: {
     apiKey: "YOUR_API_KEY",
