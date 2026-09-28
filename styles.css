@@ -1034,6 +1034,33 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 .madeby { display: flex; align-items: center; gap: var(--s-3); margin-top: var(--s-3); padding-top: var(--s-3); border-top: 1px solid var(--border-subtle); color: var(--text-secondary); }
 .madeby img { width: 88px; height: auto; border-radius: var(--r-sm); background: var(--opener-bg); flex: none; }
 
+/* ---------- Recorded answers ---------- */
+.answer-q { font-weight: 600; margin: 0 0 var(--s-2); line-height: 1.35; }
+.recbtn { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; min-height: 64px; margin: var(--s-3) 0 var(--s-2); border: 2px solid var(--warm); border-radius: var(--r-lg); background: var(--warm-light); color: var(--warm-dark); font-weight: 700; font-size: 19px; cursor: pointer; transition: background var(--t-base) ease, color var(--t-base) ease; }
+.recbtn .icon { width: 26px; height: 26px; }
+.recbtn.is-recording { background: var(--warm); color: var(--surface); border-color: var(--warm); }
+.recbtn.is-recording .icon { animation: rec-pulse 1.2s ease-in-out infinite; }
+.rec-time { font-size: 16px; letter-spacing: 0.06em; }
+.consent { background: var(--warm-light); border-radius: var(--r-md); padding: var(--s-4); margin: var(--s-3) 0 var(--s-2); }
+.consent-q { font-weight: 700; font-size: 19px; margin: 0; }
+.consent .btnrow { margin-top: var(--s-3); }
+.rec-status { min-height: 1.4em; }
+.reclist { display: flex; flex-direction: column; gap: var(--s-2); margin-top: var(--s-2); }
+.recrow { background: var(--surface-sunken); border-radius: var(--r-md); padding: var(--s-3) 14px; }
+.recrow-title { font-weight: 600; margin-bottom: var(--s-2); }
+.recrow-btns { display: flex; flex-wrap: wrap; gap: var(--s-2); }
+.recrow-btns .btn { margin-top: 0; }
+.rec-player audio { width: 100%; margin-top: var(--s-2); }
+.rec-none { margin: var(--s-2) 0; }
+.question-btns { display: flex; flex-wrap: wrap; gap: var(--s-2); align-items: center; margin-top: var(--s-2); }
+.question-btns .btn { margin-top: 0; }
+.question.is-answered { background: var(--surface-sunken); box-shadow: var(--elev-sunken); }
+.answer-text { margin: var(--s-2) 0 0; white-space: pre-wrap; }
+@keyframes rec-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { .recbtn.is-recording .icon { animation: none; } }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .recbtn { color: var(--warm); } }
+:root[data-theme="dark"] .recbtn { color: var(--warm); }
+
 /* ---------- Suggested questions (Explain in Daybook) ---------- */
 .suggested { display: flex; flex-direction: column; gap: var(--s-2); margin-top: var(--s-3); }
 .suggest-row { display: flex; align-items: center; gap: var(--s-3); background: var(--surface-sunken); border-radius: var(--r-md); padding: var(--s-3) 14px; }
