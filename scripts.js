@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '51';
+const APP_VERSION = '52';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -321,15 +321,35 @@ const db = initializeFirestore(app, {
    tab ("Seed a user record") or in the console, never by the app, and the
    rules gate every collection on them, so no email address lives in the
    code or on the site. */
+const ACCOUNT_CACHE_KEY = 'daybook.account.';
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/* Reads users/{uid}. Returns the account, or { missing: true } only when the server
+   itself says there is no record, or { error: true } when it could not be checked
+   (no signal, a timeout). A poor connection must never look like "not set up":
+   until v52 any error here signed the person out. A copy of the last good record is
+   kept on the phone so a weak signal at start-up still opens the app straight away. */
 async function loadAccount(user) {
-  try {
-    const snap = await getDoc(doc(db, 'users', user.uid));
-    if (snap.exists()) {
-      const d = snap.data();
-      return { name: d.name || (user.email || '').split('@')[0] || 'Unknown', role: d.role || 'family', relation: d.relation || '' };
-    }
-  } catch (e) { console.error(e); }
-  return null;
+  const cacheKey = ACCOUNT_CACHE_KEY + user.uid;
+  let cached = null;
+  try { cached = JSON.parse(localStorage.getItem(cacheKey) || 'null'); } catch (e) { cached = null; }
+  const delays = [0, 1500, 3000, 6000];
+  for (let attempt = 0; attempt < delays.length; attempt++) {
+    if (delays[attempt]) await sleep(delays[attempt]);
+    try {
+      const snap = await getDoc(doc(db, 'users', user.uid));
+      if (snap.exists()) {
+        const d = snap.data();
+        const account = { name: d.name || (user.email || '').split('@')[0] || 'Unknown', role: d.role || 'family', relation: d.relation || '' };
+        try { localStorage.setItem(cacheKey, JSON.stringify(account)); } catch (e) { /* storage full or blocked: nothing lost */ }
+        return account;
+      }
+      if (!snap.metadata || !snap.metadata.fromCache) return { missing: true }; // the server answered: no record
+      // "no record" from the local cache only means it was never fetched; treat as unknown
+    } catch (e) { console.error(e); }
+    if (cached && cached.name) return cached;
+  }
+  return { error: true };
 }
 
 const state = {
@@ -384,6 +404,7 @@ $('signin-form').addEventListener('submit', async (ev) => {
   btn.disabled = true;
   btn.textContent = 'Signing in';
   try {
+    if (auth.currentUser) { await enterApp(auth.currentUser); return; } // signed in, account check failed last time: try it again
     await setPersistence(auth, browserLocalPersistence);
     await signInWithEmailAndPassword(auth, $('signin-email').value.trim(), $('signin-password').value);
   } catch (e) {
@@ -403,12 +424,24 @@ function friendlyAuthError(e) {
   return 'Could not sign in. ' + (e && e.message ? e.message : '');
 }
 
-onAuthStateChanged(auth, async (user) => {
+onAuthStateChanged(auth, (user) => enterApp(user));
+
+/* Runs on every sign-in state change, and again from the Sign in button when a
+   signed-in person's account could not be checked the first time. */
+async function enterApp(user) {
   const account = user ? await loadAccount(user) : null;
-  if (user && !account) {
+  if (user && account && account.missing) {
     await signOut(auth);
     $('signin-error').textContent = 'This account is not set up for Daybook yet.';
     $('signin-error').hidden = false;
+    return;
+  }
+  if (user && account && account.error) {
+    // Still signed in; nothing is thrown away. Sign in tries the check again.
+    $('signin-error').textContent = 'Could not reach Daybook to check your account. Check the signal, then tap Sign in to try again.';
+    $('signin-error').hidden = false;
+    $('app').hidden = true;
+    $('signin').hidden = false;
     return;
   }
   if (user) {
@@ -418,6 +451,7 @@ onAuthStateChanged(auth, async (user) => {
     state.demo = false;
     state.viewer = account.role === 'viewer';
     state.readOnly = account.role === 'readonly';
+    $('signin-error').hidden = true;
     $('signin').hidden = true;
     $('app').hidden = false;
     requestAnimationFrame(moveTabIndicator);
@@ -442,7 +476,7 @@ onAuthStateChanged(auth, async (user) => {
     $('app').hidden = true;
     $('signin').hidden = false;
   }
-});
+}
 
 /* Viewer mode: read-only relatives see Meds, Chemo and Trends only, with every
    add/edit/delete control on those three hidden, and land on Meds rather than
@@ -519,6 +553,11 @@ async function startData() {
 function stopData() {
   for (const k of Object.keys(state.unsub)) { try { state.unsub[k](); } catch (e) { /* ignore */ } }
   state.unsub = {};
+  // watchRecent() skips resubscribing while recentFrom still matches, so clear it: until v52 a
+  // sign-out and sign-in without a reload left the recent-entries feed dead, hiding new entries.
+  state.recentFrom = null;
+  state.recentEntries = [];
+  state.dayEntries = [];
 }
 
 /* ------------------------------------------------------------------ */
