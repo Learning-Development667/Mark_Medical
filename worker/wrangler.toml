@@ -10,6 +10,13 @@ workers_dev = true
 #   FIREBASE_SERVICE_ACCOUNT the Firebase service account JSON (Project settings > Service accounts)
 #   VAPID_PRIVATE_KEY        the Web Push signing key as JWK JSON (tools/vapid_keys.mjs); its public
 #                            half is window.DAYBOOK_PUSH.publicKey in config.js
+#   ANTHROPIC_API_KEY        the key for "Explain in Daybook" (console.anthropic.com, a one-off credit);
+#                            without it the /explain route answers "not switched on yet"
+
+# Public settings. DEMO_PROJECT_ID is the shared demo's Firebase project (already public in
+# config.js); its guest sign-in may use Explain in Daybook with its own smaller daily limit.
+[vars]
+DEMO_PROJECT_ID = "daybook-demo-34eae"
 
 # Medicine reminders: the check runs every five minutes (free plan allows cron triggers)
 [triggers]

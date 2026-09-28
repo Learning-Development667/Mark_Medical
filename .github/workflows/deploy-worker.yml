@@ -71,3 +71,19 @@ jobs:
           command: deploy
           secrets: |
             VAPID_PRIVATE_KEY
+
+      # Explain in Daybook needs the Claude API key; the bridge answers "not switched on yet" until it exists.
+      - name: Set the AI key
+        if: steps.check.outputs.ready == 'true' && env.AIKEY != ''
+        uses: cloudflare/wrangler-action@v3
+        env:
+          AIKEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: worker
+          wranglerVersion: '4'
+          command: deploy
+          secrets: |
+            ANTHROPIC_API_KEY

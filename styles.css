@@ -449,6 +449,8 @@ body.is-readonly #ex-steps-edit,
 body.is-readonly #ex-goals-edit,
 body.is-readonly #doc-add,
 body.is-readonly #doc-edit,
+body.is-readonly #doc-explain,
+body.is-readonly #notes-explain,
 body.is-readonly #doc-paste-summary,
 body.is-readonly #doc-save-explanation,
 body.is-readonly #doc-delete,
@@ -1011,6 +1013,15 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 .key-mood .cal-face + .cal-face { margin-left: -1px; }
 .key-mood .cal-face:last-of-type { margin-right: 3px; }
 .key-mood .cal-face { width: 10px; height: 10px; }
+
+/* ---------- Suggested questions (Explain in Daybook) ---------- */
+.suggested { display: flex; flex-direction: column; gap: var(--s-2); margin-top: var(--s-3); }
+.suggest-row { display: flex; align-items: center; gap: var(--s-3); background: var(--surface-sunken); border-radius: var(--r-md); padding: var(--s-3) 14px; }
+.suggest-text { flex: 1; min-width: 0; margin: 0; line-height: 1.35; }
+.suggest-row .btn { margin-top: 0; flex: none; min-width: 84px; }
+.suggest-row .btn.is-added { color: var(--success); border-color: transparent; display: inline-flex; align-items: center; gap: 4px; justify-content: center; }
+.suggest-row .btn.is-added .icon { width: 18px; height: 18px; }
+.suggest-raw { white-space: pre-wrap; margin: var(--s-3) 0 0; line-height: 1.4; }
 
 /* ---------- Chemo: the cycle and the carer's view ---------- */
 .tiles-1 { grid-template-columns: 1fr; }

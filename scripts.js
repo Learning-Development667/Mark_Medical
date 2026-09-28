@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '59';
+const APP_VERSION = '60';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -3300,6 +3300,48 @@ $('notes-share').addEventListener('click', async () => {
   }
 });
 
+/* Suggest questions to ask: the notes go to the bridge, the reply comes back as a numbered list,
+   and each line can be added to Questions for the team with one tap (a question entry, like
+   typing it in). Nothing is added without that tap. */
+$('notes-explain').addEventListener('click', async () => {
+  if (!state.notesText || !explainAvailable()) return;
+  const btn = $('notes-explain');
+  const prompt = NOTES_PROMPT + '\n\n';
+  const text = state.notesText.indexOf(prompt) >= 0 ? state.notesText.replace(prompt, '') : state.notesText;
+  try {
+    const reply = await withBusy(btn, 'Thinking, about half a minute', () => bridgeExplain({ kind: 'notes', text }));
+    openSuggestedQuestions(reply.text);
+  } catch (e) { console.warn(e); toast(e.message || 'Could not suggest questions'); }
+});
+function parseNumberedList(text) {
+  const out = [];
+  String(text || '').split(/\r?\n/).forEach((line) => {
+    const m = /^\s*(?:\d+[.)]|[-*\u2022])\s+(.+?)\s*$/.exec(line);
+    if (m) out.push(m[1]);
+  });
+  return out;
+}
+function openSuggestedQuestions(text) {
+  const questions = parseNumberedList(text);
+  const body = h('div', null, h('p', { class: 'hint', text: questions.length ? 'Suggested from your notes. Tap Add to put one on your list for the team; change the wording afterwards if you like.' : 'The reply did not come back as a list, so here it is as written.' }));
+  if (!questions.length) body.append(h('p', { class: 'suggest-raw', text: text }));
+  const list = h('div', { class: 'suggested' });
+  questions.forEach((q) => {
+    const add = h('button', { class: 'btn btn-secondary', type: 'button' }, 'Add');
+    const row = h('div', { class: 'suggest-row' }, h('p', { class: 'suggest-text', text: q }), add);
+    add.addEventListener('click', async () => {
+      add.disabled = true;
+      await addEntry({ type: 'question', note: q, answered: false, at: new Date() });
+      add.replaceChildren(icon('check'), ' Added');
+      add.classList.add('is-added');
+    });
+    list.append(row);
+  });
+  body.append(list, h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: async () => { await copyText(text); toast('Copied'); } }, 'Copy the list'),
+    h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => { closeSheet(); renderNotesReport(); } }, 'Done'));
+  openSheet('Questions to ask', body, () => { renderNotesReport(); });
+}
+
 $('notes-copy').addEventListener('click', async () => {
   if (!state.notesText) return;
   await copyText(state.notesText);
@@ -3664,6 +3706,7 @@ async function renderNotesReport() {
   if (detailedNutritionOn()) await loadFoodTable(); // so the Eating line can carry the food estimate
   const report = buildNotesReport(entries, questionsAll, from, to, rangeLabel);
   state.notesText = report.text;
+  $('notes-explain').hidden = !explainAvailable();
   state.notesPdf = { filename: 'care-log-notes-' + to + '.pdf', title: 'Notes for the team', subtitle: `${fmtDayNum(from)} to ${fmtDayNum(to)}, printed ${fmtDayNum(today)}`, blocks: notesPdfBlocks(report) };
 
   $('notes-questions').replaceChildren(...report.questions.map((q, i) => h('div', { class: 'card question' },
@@ -4129,6 +4172,33 @@ function promptMealMeds(mealAt) {
 /* ------------------------------------------------------------------ */
 
 const PUSH = window.DAYBOOK_PUSH && window.DAYBOOK_PUSH.publicKey ? window.DAYBOOK_PUSH : null;
+
+/* ---- Explain in Daybook: the bridge asks the AI service on the person's behalf ---- */
+/* The bridge's address comes from config.js; without it the buttons stay hidden and the share
+   sheet route is the only one. The call carries the signed-in person's Firebase ID token, which
+   the bridge checks before spending anything (see worker/). Nothing is stored on the way. */
+const BRIDGE = window.DAYBOOK_BRIDGE && window.DAYBOOK_BRIDGE.url ? window.DAYBOOK_BRIDGE : null;
+function explainAvailable() { return !!BRIDGE && !!(auth && auth.currentUser); }
+async function bridgeExplain(payload) {
+  const user = auth && auth.currentUser;
+  if (!BRIDGE || !user) throw new Error('Sign in to use Explain in Daybook');
+  const idToken = await user.getIdToken();
+  const r = await fetch(BRIDGE.url.replace(/\/$/, '') + '/explain', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + idToken }, body: JSON.stringify(payload) });
+  let data = null;
+  try { data = await r.json(); } catch (e) { data = null; }
+  if (!r.ok || !data || !data.text) {
+    const msg = data && data.message ? data.message : (r.status === 503 ? 'Explain in Daybook is not switched on yet.' : 'Could not reach Daybook\'s AI service. Try again in a moment, or use Send to my AI app.');
+    const err = new Error(msg); err.code = data && data.error; throw err;
+  }
+  return data;
+}
+/* A button that shows its own progress while the reply comes back (about 20 to 60 seconds) */
+async function withBusy(btn, busyText, fn) {
+  const label = btn.textContent;
+  btn.disabled = true; btn.textContent = busyText; btn.setAttribute('aria-busy', 'true');
+  try { return await fn(); }
+  finally { btn.disabled = false; btn.textContent = label; btn.removeAttribute('aria-busy'); }
+}
 function pushSupported() {
   return Boolean(PUSH && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window);
 }
@@ -4912,6 +4982,7 @@ async function openDocument(id) {
   $('doc-meta').textContent = `${fmtDayNum(d.docDate || '')} · added by ${d.addedBy || ''}`;
   $('doc-explanation').value = d.explanation || '';
   $('doc-explanation').readOnly = state.readOnly;
+  $('doc-explain').hidden = !explainAvailable();
   const pagesEl = $('doc-pages'), textEl = $('doc-text');
   pagesEl.replaceChildren();
   textEl.hidden = true;
@@ -4999,6 +5070,28 @@ function slug(s) { return (s || 'document').toLowerCase().replace(/[^a-z0-9]+/g,
 $('doc-paste-summary').addEventListener('click', () => {
   if (!currentDocRecord()) return;
   pasteSummaryInto({ explanationEl: $('doc-explanation') });
+});
+
+/* Explain in Daybook: the letter (text or page photos) goes to the bridge, the reply lands in
+   the explanation box and is saved, so one tap does the whole job; the box stays editable. */
+$('doc-explain').addEventListener('click', async () => {
+  const d = currentDocRecord();
+  if (!d || !explainAvailable()) return;
+  const btn = $('doc-explain');
+  if ($('doc-explanation').value.trim() && !(await confirmSheet('Explain again', 'This will replace the explanation already saved for this document.', 'Explain again', false))) return;
+  try {
+    const reply = await withBusy(btn, 'Explaining, about half a minute', () => bridgeExplain({
+      kind: 'document', title: d.title, date: fmtDayNum(d.docDate || ''),
+      text: d.kind === 'text' ? (d.text || '') : '',
+      pages: d.kind === 'text' ? [] : (state.currentDoc ? state.currentDoc.pages.map((p) => p.data) : [])
+    }));
+    const text = reply.text + (reply.cut ? '\n\n(The explanation was cut short. Tap Explain in Daybook again for another go.)' : '') + '\n\n' + NOT_MEDICAL_ADVICE;
+    $('doc-explanation').value = text;
+    if (state.demo) { d.explanation = text; renderDocsList(); }
+    else await updateDoc(doc(db, 'documents', d.id), { explanation: text, updatedAt: serverTimestamp() });
+    toast('Explanation ready and saved. Read it below.');
+    $('doc-explanation').scrollIntoView({ block: 'start', behavior: 'smooth' });
+  } catch (e) { console.warn(e); toast(e.message || 'Could not explain this document'); }
 });
 
 $('doc-save-explanation').addEventListener('click', async () => {

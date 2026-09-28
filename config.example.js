@@ -30,6 +30,11 @@
    key goes here, the private key in the VAPID_PRIVATE_KEY repository secret for the bridge. */
 // window.DAYBOOK_PUSH = { publicKey: "..." };
 
+/* Optional: the bridge's address (printed by the deploy workflow), for "Explain in Daybook" on
+   letters and Notes for the team. Without it those buttons are not shown; the share sheet
+   route to the person's own AI app works regardless. */
+// window.DAYBOOK_BRIDGE = { url: "https://care-log-bridge.<your-subdomain>.workers.dev" };
+
 window.CARE_LOG_CONFIG = {
   firebase: {
     apiKey: "YOUR_API_KEY",

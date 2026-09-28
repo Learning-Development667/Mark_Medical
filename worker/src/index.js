@@ -3,7 +3,11 @@
    1. /health   receives Apple Health data pushed by the Health Auto Export app and writes
                 steps and sleep into Firestore, so they no longer need typing in.
    2. /ping     a quick "is it alive" check.
-   Nutrition lookups (Open Food Facts by barcode) will be added here next.
+   3. /explain  "Explain in Daybook": a signed-in family member sends a letter (text or page
+                photos) or the Notes for the team text, and the bridge asks Claude for a plain
+                English explanation or a list of questions with the ANTHROPIC_API_KEY secret.
+   Medicine reminders run on a cron (see below). Nutrition lookups (Open Food Facts by barcode)
+   will be added here next.
 
    Firestore is written through its REST API with a Firebase service account, signed with
    WebCrypto. No Firebase SDK, no build step, nothing to install. */
@@ -17,6 +21,7 @@ export default {
     try {
       if (url.pathname === '/ping') return withCors(request, json({ ok: true, at: new Date().toISOString() }));
       if (url.pathname === '/health' && request.method === 'POST') return withCors(request, await handleHealth(request, env));
+      if (url.pathname === '/explain' && request.method === 'POST') return withCors(request, await handleExplain(request, env));
       /* Diagnostic: what the phone last sent and what was written, for checking the field names.
          Opened in a browser with ?key=<BRIDGE_KEY>. Health data only, no secrets. */
       if (url.pathname === '/last' && request.method === 'GET') {
@@ -369,6 +374,135 @@ const doubleVal = (v) => ({ doubleValue: Number(v) });
 const NUTRITION = { dietary_energy: 'kcal', active_energy_dietary: 'kcal', protein: 'prot', carbohydrates: 'carb', total_fat: 'fat' };
 const tsVal = (iso) => ({ timestampValue: new Date(iso).toISOString() });
 const nowTs = () => ({ timestampValue: new Date().toISOString() });
+
+/* ------------------------------------------------------------------ */
+/* Explain in Daybook: a plain English explanation or a list of questions */
+/* ------------------------------------------------------------------ */
+/* The app sends the signed-in person's Firebase ID token (Authorization: Bearer). The bridge
+   checks the token against Google's public keys, accepts the real project (family accounts
+   only, read from users/{uid}) and the shared demo project (any signed-in guest), keeps a
+   daily count in bridge/explainLog so a bug or a busy demo day cannot run the credit down,
+   and calls the Messages API over plain fetch: no SDK, no dependency, the key never leaves
+   here. Nothing about the letter is stored; the reply goes straight back to the phone. */
+
+const EXPLAIN_MODEL = 'claude-opus-5';
+const EXPLAIN_MAX_TOKENS = 4000;             // a letter's explanation or a question list; also the cost cap per call
+const EXPLAIN_LIMIT_REAL = 40;               // calls a day from the real project, all accounts together
+const EXPLAIN_LIMIT_DEMO = 12;               // calls a day from the shared demo (its guest sign-in is public)
+const EXPLAIN_MAX_PAGES = 8;
+const EXPLAIN_MAX_PAGE_CHARS = 1300000;      // base64 JPEG per page (the app keeps pages under 900 KB)
+const EXPLAIN_MAX_TEXT_CHARS = 60000;
+
+const EXPLAIN_SYSTEM = {
+  document: 'You explain medical letters, results and documents to a patient and their family in plain, calm UK English. ' +
+    'Say what the document says, what it means for day-to-day care, anything that needs doing and by when, and end with a short list headed "Worth asking the team:" of questions they might raise. ' +
+    'Short paragraphs, everyday words, no jargon without a plain explanation in brackets, no em dashes, no headings other than that one, no preamble and no sign-off. ' +
+    'Do not guess at anything the document does not say. Do not give medical advice or reassurance the document does not support; if something looks urgent, say clearly that they should contact the team. ' +
+    'Reply with the explanation only, ready to be shown in the app as it is.',
+  notes: 'You turn a patient\'s care notes into a short, clear list of questions to ask their oncologist or specialist nurse at the next appointment, in plain UK English. ' +
+    'Read the questions already listed, the summary, any letters and the day notes. Reply with a numbered list of at most eight questions, one per line, most important first, each specific to what the notes actually show and short enough to ask in a ten-minute appointment. ' +
+    'Do not repeat a question the person has already written down. No preamble, no explanation, no headings, no em dashes, nothing after the list.'
+};
+
+async function handleExplain(request, env) {
+  if (!env.ANTHROPIC_API_KEY) return json({ error: 'not-set-up', message: 'Explain in Daybook is not switched on yet.' }, 503);
+  const auth = request.headers.get('Authorization') || '';
+  const idToken = auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';
+  if (!idToken) return json({ error: 'unauthorised', message: 'Sign in to use Explain in Daybook.' }, 401);
+  const sa = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT || '{}');
+  const projects = [sa.project_id, env.DEMO_PROJECT_ID].filter(Boolean);
+  let who;
+  try { who = await verifyFirebaseToken(idToken, projects); }
+  catch (e) { return json({ error: 'unauthorised', message: 'Could not check who you are. Sign out and in again.' }, 401); }
+  const demo = !!env.DEMO_PROJECT_ID && who.project === env.DEMO_PROJECT_ID && who.project !== sa.project_id;
+  const fs = await firestore(env);
+  if (!demo) {
+    const rec = await fs.get('users/' + who.uid);
+    const role = rec && rec.fields && rec.fields.role && rec.fields.role.stringValue;
+    if (role !== 'family') return json({ error: 'unauthorised', message: 'Only family accounts can use Explain in Daybook.' }, 403);
+  }
+
+  let body;
+  try { body = await request.json(); } catch (e) { return json({ error: 'bad-request', message: 'Nothing to explain.' }, 400); }
+  const kind = body.kind === 'notes' ? 'notes' : 'document';
+  const text = String(body.text || '').slice(0, EXPLAIN_MAX_TEXT_CHARS);
+  const pages = Array.isArray(body.pages) ? body.pages.slice(0, EXPLAIN_MAX_PAGES).filter((p) => typeof p === 'string' && p.length > 100 && p.length <= EXPLAIN_MAX_PAGE_CHARS) : [];
+  if (!text.trim() && !pages.length) return json({ error: 'bad-request', message: 'Nothing to explain.' }, 400);
+
+  /* The daily count, bumped before the call so parallel taps cannot slip past it */
+  const day = londonNow().day;
+  const logDoc = await fs.get('bridge/explainLog');
+  const f = (logDoc && logDoc.fields && logDoc.fields.day && logDoc.fields.day.stringValue === day) ? logDoc.fields : {};
+  const n = (k) => Number(f[k] && f[k].integerValue || 0);
+  const used = demo ? n('demo') : n('real');
+  if (used >= (demo ? EXPLAIN_LIMIT_DEMO : EXPLAIN_LIMIT_REAL)) return json({ error: 'limit', message: demo ? 'The demo has used its explanations for today. Try again tomorrow, or use Send to my AI app.' : 'Daybook has used its explanations for today. Use Send to my AI app for now.' }, 429);
+  await fs.set('bridge/explainLog', { day: { stringValue: day }, real: { integerValue: String(n('real') + (demo ? 0 : 1)) }, demo: { integerValue: String(n('demo') + (demo ? 1 : 0)) }, tokensIn: { integerValue: String(n('tokensIn')) }, tokensOut: { integerValue: String(n('tokensOut')) }, updatedAt: { timestampValue: new Date().toISOString() } });
+
+  const content = pages.map((data) => ({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data } }));
+  const head = kind === 'document'
+    ? 'Document: ' + String(body.title || 'Untitled').slice(0, 200) + (body.date ? ' (dated ' + String(body.date).slice(0, 40) + ').' : '.')
+    : 'Care notes from Daybook.';
+  content.push({ type: 'text', text: head + (text.trim() ? '\n\n' + text : '\n\n(The document is in the attached page photos.)') });
+  const reply = await askClaude(env, EXPLAIN_SYSTEM[kind], content);
+  if (reply.refused) return json({ error: 'refused', message: 'The AI service declined to explain this one. Try Send to my AI app instead.' }, 422);
+  /* Usage for Mark's own accounting (tokens only, never the text) */
+  await fs.merge('bridge/explainLog', { tokensIn: { integerValue: String(n('tokensIn') + reply.usage.input) }, tokensOut: { integerValue: String(n('tokensOut') + reply.usage.output) } }).catch(() => {});
+  return json({ text: reply.text, model: reply.model, usage: reply.usage, cut: reply.cut });
+}
+
+/* One call to the Messages API. Adaptive thinking is on by default on this model; the
+   server-side fallback re-runs a declined request on another model inside the same call. */
+async function askClaude(env, system, content) {
+  const body = { model: EXPLAIN_MODEL, max_tokens: EXPLAIN_MAX_TOKENS, system, messages: [{ role: 'user', content }] };
+  const headers = { 'Content-Type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' };
+  let r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { ...headers, 'anthropic-beta': 'server-side-fallback-2026-07-01' }, body: JSON.stringify({ ...body, fallbacks: 'default' }) });
+  if (r.status === 400) {
+    const errText = await r.text();
+    if (!/fallback/i.test(errText)) throw new Error('Claude API 400: ' + errText.slice(0, 300));
+    r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers, body: JSON.stringify(body) }); // an account without the fallback beta
+  }
+  if (!r.ok) throw new Error('Claude API ' + r.status + ': ' + (await r.text()).slice(0, 300));
+  const data = await r.json();
+  const text = (data.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
+  return {
+    text, model: data.model, refused: data.stop_reason === 'refusal' || !text, cut: data.stop_reason === 'max_tokens',
+    usage: { input: Number(data.usage && data.usage.input_tokens || 0), output: Number(data.usage && data.usage.output_tokens || 0) }
+  };
+}
+
+/* Firebase ID token check: RS256 against Google's published keys, the project as audience */
+let googleKeys = { keys: null, exp: 0 };
+async function verifyFirebaseToken(token, projects, fetchFn) {
+  const parts = token.split('.');
+  if (parts.length !== 3) throw new Error('malformed');
+  const header = JSON.parse(new TextDecoder().decode(b64urlDecode(parts[0])));
+  const claims = JSON.parse(new TextDecoder().decode(b64urlDecode(parts[1])));
+  if (header.alg !== 'RS256' || !header.kid) throw new Error('alg');
+  const now = Math.floor(Date.now() / 1000);
+  if (!(claims.exp > now) || !(claims.iat <= now + 300)) throw new Error('expired');
+  if (!projects.includes(claims.aud) || claims.iss !== 'https://securetoken.google.com/' + claims.aud) throw new Error('audience');
+  if (!claims.sub || typeof claims.sub !== 'string') throw new Error('subject');
+  const jwk = await googleKey(header.kid, fetchFn || fetch);
+  if (!jwk) throw new Error('unknown key');
+  const key = await crypto.subtle.importKey('jwk', jwk, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify']);
+  const ok = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, b64urlDecode(parts[2]), new TextEncoder().encode(parts[0] + '.' + parts[1]));
+  if (!ok) throw new Error('signature');
+  return { uid: claims.sub, project: claims.aud };
+}
+async function googleKey(kid, fetchFn) {
+  const now = Date.now();
+  if (!googleKeys.keys || googleKeys.exp < now || !googleKeys.keys.find((k) => k.kid === kid)) {
+    const r = await fetchFn('https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com');
+    if (!r.ok) throw new Error('keys ' + r.status);
+    const data = await r.json();
+    const m = /max-age=(\d+)/.exec(r.headers.get('Cache-Control') || '');
+    googleKeys = { keys: data.keys || [], exp: now + (m ? Number(m[1]) : 3600) * 1000 };
+  }
+  return googleKeys.keys.find((k) => k.kid === kid) || null;
+}
+
+/* For the test harness only (scratchpad): nothing in the app or the workflow uses these */
+export const _test = { verifyFirebaseToken, askClaude, EXPLAIN_SYSTEM };
 
 /* ------------------------------------------------------------------ */
 /* Plumbing                                                             */
