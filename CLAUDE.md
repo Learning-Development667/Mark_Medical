@@ -30,6 +30,7 @@ Speech to text (since v48): `speakButton(textarea)` adds a big "Tap to speak" bu
 - Fonts: Bebas Neue (headings), DM Sans (body), DM Mono (times and numbers).
 
 ## Files
+- `ROADMAP.md` (since v72): what is still to do, in order, with who does what and what done looks like; update it as items finish. Read it at the start of a piece of work and keep it current.
 - `index.html`, `styles.css`, `scripts.js`, `sw.js`, `manifest.json`, `config.js`, `config.example.js`, `icons/` (the app icons plus the Mark 1 Apps film `mark1apps.mp4`, 720p, 188 KB, no sound, its last frame `mark1apps-poster.jpg` and the cropped mark `mark1apps.jpg` for the Settings card), `firestore.rules`, `CLAUDE.md`, `data/cofid.json` (the UK food table, generated, see Food entries), `tools/build_cofid.py`.
 - `worker/` is the bridge (see "Bridge" below): `wrangler.toml`, `src/index.js`, `README.md`. Plain JavaScript module worker, no build step, no dependencies. Run `node --check worker/src/index.js` before committing like any other JS file.
 - `config.js` holds the real Firebase web config and nothing else (the `users` map it used to carry went in v49; accounts are `users/{uid}` records, see Access). `index.html` loads it before `scripts.js`. It is a normal project file like any other; edit it the same way as the rest of the codebase. (Until 2026-09-22 this file carried a standing "Mark only, never edit" restriction; Mark removed that rule himself after repeated friction over a small, low-risk edit. `config.example.js` stays as the template for setting the project up from scratch.)
