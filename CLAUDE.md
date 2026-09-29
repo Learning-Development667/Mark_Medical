@@ -16,6 +16,9 @@ Speech to text (since v48): `speakButton(textarea)` adds a big "Tap to speak" bu
 - Document pages are stored as base64 JPEG strings in Firestore. Each page document MUST stay under 900 KB.
 - History: until 2026-09-24 the rule was "Firebase and GitHub Pages only, no keys, no server". Mark relaxed it after the rule, which came from the multi-user Forge project, blocked nutrition lookups and automatic steps and sleep here.
 
+## Licence
+`LICENSE` (since v68): copyright Mark Brown, Mark 1 Apps, all rights reserved. The code is published to be read (the repository has to be public for GitHub Pages, and a web app hands its code to every browser anyway), not copied, hosted or built on; the name, strapline, artwork and the Mark 1 Apps mark are reserved too. Third-party parts keep their own licences (CoFID under the Open Government Licence, the CDN libraries and the fonts under theirs). The notice also appears on the Settings App card, in `README.md` and in the pitch footer. Copyright is automatic; the file removes the "I assumed it was open source" excuse. A trademark check on the name Daybook is still to do.
+
 ## Branch and hosting
 - All work is committed directly to `main`. No feature branches, no pull requests.
 - GitHub Pages path is case-sensitive: `/Mark_Medical/`. `manifest.json` start_url and scope are `/Mark_Medical/`. `sw.js` is registered with scope `/Mark_Medical/`. All asset paths are relative.
