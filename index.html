@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=77">
+  <link rel="stylesheet" href="styles.css?v=78">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -80,9 +80,66 @@
         </label>
         <p id="signin-error" class="error" role="alert" hidden></p>
         <button id="signin-button" class="btn btn-primary btn-block" type="submit">Sign in</button>
+        <button id="forgot-button" class="btn btn-link btn-block" type="button">Forgotten your password?</button>
       </form>
+      <p id="invite-banner" class="invite-banner" hidden></p>
+      <button id="signup-button" class="btn btn-secondary btn-block" type="button" hidden>Create an account</button>
       <button id="guest-button" class="btn btn-secondary btn-block" type="button">Guest</button>
       <p class="hint" id="guest-hint">See the app with made-up example data. No sign-in needed, and nothing you do is saved.</p>
+    </div>
+  </section>
+
+  <!-- Create an account (since v78): a sign-in plus its own household, or a place in the household an invite is for -->
+  <section id="signup" class="signin" hidden>
+    <div class="signin-card">
+      <h1 class="brand">Daybook</h1>
+      <p class="strapline">Your companion between appointments.</p>
+      <p id="signup-intro" class="muted">Your own Daybook, for you and the people you invite.</p>
+      <form id="signup-form" autocomplete="on">
+        <label class="field">
+          <span>Your first name</span>
+          <input id="signup-name" type="text" autocomplete="given-name" maxlength="40" required>
+        </label>
+        <div class="chips" id="signup-relation" role="group" aria-label="I am"></div>
+        <label class="field">
+          <span>Email</span>
+          <input id="signup-email" type="email" inputmode="email" autocomplete="username" required>
+        </label>
+        <label class="field">
+          <span>Password (at least 8 characters)</span>
+          <input id="signup-password" type="password" autocomplete="new-password" minlength="8" required>
+        </label>
+        <label class="field" id="signup-code-field">
+          <span>Invite code (only if someone sent you one)</span>
+          <input id="signup-code" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="40">
+        </label>
+        <p class="hint">Your entries are stored in Google's data centre in London and shared only with the people you invite. Not medical advice.</p>
+        <p id="signup-error" class="error" role="alert" hidden></p>
+        <button id="signup-submit" class="btn btn-primary btn-block" type="submit">Create my account</button>
+      </form>
+      <button id="signup-cancel" class="btn btn-link btn-block" type="button">I already have a sign-in</button>
+    </div>
+  </section>
+
+  <!-- Signed in, but in no household yet (since v78) -->
+  <section id="nohousehold" class="signin" hidden>
+    <div class="signin-card">
+      <h1 class="brand">Daybook</h1>
+      <p class="muted" id="nohousehold-who">This sign-in is not in a Daybook household yet.</p>
+      <form id="nohousehold-form">
+        <label class="field">
+          <span>Your first name</span>
+          <input id="nohousehold-name" type="text" autocomplete="given-name" maxlength="40" required>
+        </label>
+        <div class="chips" id="nohousehold-relation" role="group" aria-label="I am"></div>
+        <label class="field">
+          <span>Invite code (only if someone sent you one)</span>
+          <input id="nohousehold-code" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="40">
+        </label>
+        <p id="nohousehold-error" class="error" role="alert" hidden></p>
+        <button id="nohousehold-submit" class="btn btn-primary btn-block" type="submit">Create my own Daybook</button>
+      </form>
+      <button id="nohousehold-signout" class="btn btn-link btn-block" type="button">Sign out</button>
     </div>
   </section>
 
@@ -527,6 +584,15 @@
             <p class="hint" id="settings-private-hint"></p>
           </div>
         </div>
+        <div id="settings-household" hidden>
+          <h2 class="section-title">Household</h2>
+          <div class="card settings-group">
+            <p id="settings-household-name" class="big"></p>
+            <ul id="settings-members" class="members"></ul>
+            <button id="settings-invite" class="btn btn-primary btn-block" type="button">Invite someone</button>
+            <p class="hint">An invite is a link that works once and expires in a week. Family can add and change everything; read only sees everything and changes nothing; medicines and treatment only sees just that.</p>
+          </div>
+        </div>
         <div id="settings-health" hidden>
           <h2 class="section-title">Apple Health</h2>
           <div class="card settings-group">
@@ -579,6 +645,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=77"></script>
+  <script type="module" src="scripts.js?v=78"></script>
 </body>
 </html>

@@ -27,7 +27,7 @@ Decisions already made, so they are not reopened:
 ## Stage 2: foundations, so it is safe for other people
 
 7. **Separate households.** Built in v75 (rules, break-in tests on the emulator, the app on household paths, the bridge per household, the migration and admin workflows). Left to do, Mark from the Actions tab: run "Households, move the data in" with copy, then "Publish database rules" (real), then copy again, verify, and cleanup with the confirmation text; then Claude removes the TRANSITION block from the rules and publishes once more. Done when both phones open on the household and cleanup has run.
-8. **Sign-up and invites.** A household starts itself and invites a carer or a read-only relative by a link, without anyone creating accounts by hand in the Firebase console. Claude: sign-up screen, invite links carrying a household id and role, the `users/{uid}` record written by a bridge endpoint (the app itself never writes one). Done when Shelley can be invited afresh from a new household in under a minute.
+8. ~~**Sign-up and invites.**~~ Done in v78: Create an account on the sign-in screen (a sign-in plus its own household), Forgotten your password, invite links from Settings > Household (family, read only, or medicines and treatment only; one use, seven days), a no-household screen for a sign-in that has neither, and Remove for the owner. All through the bridge; the app never writes the records that decide access.
 9. **Per-household keys and limits.** The Apple Health inbox key, the reminder subscriptions and the AI explain allowance become per household, so one household cannot spend another's. Claude: a key per household on the bridge, the daily cap counted per household. Done when the demo project and Mark's household have separate counts.
 10. **Security hardening.** Host the CDN libraries (Firebase, Chart.js, pdf.js, mammoth, jsPDF) in the repository with pinned versions; add a content security policy; move the diagnostic keys out of web addresses (`/push-test?key=`) into a header; review every place user text is put on screen. (The automated rules tests came with v75.) Claude. Done when the developer friends' checklist has nothing left in these areas.
 11. **Export and delete.** A household can download everything as a zip (JSON plus the document pages and recordings) and can erase the household outright. Apple requires it and it is right anyway. Claude: a bridge endpoint for each, buttons under Settings with a two-step confirm. Done when a fresh export opens and a deleted household leaves nothing behind.
@@ -56,6 +56,8 @@ Decisions already made, so they are not reopened:
 - Backgrounds on the data tabs. Decided against (see above).
 
 ## Done
+- v78 Sign-up and invites: nobody needs the Firebase console or the Actions tab to join or start a household.
+- v77 the household helpers fixed (v76 loaded nothing after sign-in).
 - v75 Separate households: one locked folder per household, enforced by the database rules and proved by the break-in tests; the bridge per household; migration and admin workflows; the rules published from git.
 - v74 Private notifications: "A medicine is due" on the lock screen, the detail in the app.
 - v73 Swimming and distances: the bridge converts metres, yards and feet (a pool swim no longer reads as kilometres), Lengths and Distance ways of counting with an optional time, and programme items that tick themselves from matching Apple Health workouts.

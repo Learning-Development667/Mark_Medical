@@ -899,6 +899,16 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 .settings-toggle { margin-bottom: 0; }
 .settings-target { margin-top: var(--s-3); }
 .settings-group .hint { margin-top: var(--s-2); }
+.invite-banner { background: var(--teal-light); color: var(--teal); border-radius: var(--r-md); padding: var(--s-3) var(--s-4); margin-top: var(--s-4); font-weight: 600; text-align: left; }
+.signin-card .btn-link { margin-top: var(--s-2); }
+.signin-card .chips { justify-content: center; }
+.members { list-style: none; margin: var(--s-2) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-2); }
+.member { display: flex; align-items: center; gap: var(--s-3); background: var(--surface-sunken); border-radius: var(--r-md); padding: var(--s-3) 14px; flex-wrap: wrap; }
+.member-main { flex: 1 1 160px; min-width: 0; }
+.member-name { font-weight: 600; }
+.member-sub { font-size: 15px; color: var(--text-secondary); }
+.member .btn { margin-top: 0; flex: none; margin-left: auto; }
+.invitebox { margin-top: var(--s-3); }
 .keybox { background: var(--surface-sunken); border-radius: var(--r-sm); padding: var(--s-2) var(--s-3); font-size: 15px; word-break: break-all; user-select: all; -webkit-user-select: all; margin: var(--s-2) 0 0; }
 
 /* The topbar names the page: "Care Log" then a lighter ": Food diary" */

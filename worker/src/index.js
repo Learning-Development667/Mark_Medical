@@ -22,6 +22,13 @@ export default {
       if (url.pathname === '/ping') return withCors(request, json({ ok: true, at: new Date().toISOString() }));
       if (url.pathname === '/health' && request.method === 'POST') return withCors(request, await handleHealth(request, env));
       if (url.pathname === '/explain' && request.method === 'POST') return withCors(request, await handleExplain(request, env));
+      /* Households (since v78): sign-up, invites, joining, removing a member. The app never writes
+         the records that decide access; these do, with the service account, after checking who asks. */
+      if (url.pathname === '/household' && request.method === 'POST') return withCors(request, await handleCreateHousehold(request, env));
+      if (url.pathname === '/invite' && request.method === 'POST') return withCors(request, await handleInvite(request, env));
+      if (url.pathname === '/invite-info' && request.method === 'GET') return withCors(request, await handleInviteInfo(url, env));
+      if (url.pathname === '/join' && request.method === 'POST') return withCors(request, await handleJoin(request, env));
+      if (url.pathname === '/member-remove' && request.method === 'POST') return withCors(request, await handleRemoveMember(request, env));
       /* Diagnostic: what the phone last sent and what was written, for checking the field names.
          Opened in a browser with ?key=<the household's inbox key>. Health data only, no secrets. */
       if (url.pathname === '/last' && request.method === 'GET') {
@@ -476,6 +483,137 @@ const EXPLAIN_SYSTEM = {
     'Read the questions already listed, the summary, any letters and the day notes. Reply with a numbered list of at most eight questions, one per line, most important first, each specific to what the notes actually show and short enough to ask in a ten-minute appointment. ' +
     'Do not repeat a question the person has already written down. No preamble, no explanation, no headings, no em dashes, nothing after the list.'
 };
+
+/* Who is asking: the Firebase ID token in the Authorization header, checked against Google's keys.
+   Returns { who: { uid, project }, demo, fs, sa } or a Response to send straight back. */
+async function whoIs(request, env) {
+  const auth = request.headers.get('Authorization') || '';
+  const idToken = auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';
+  if (!idToken) return { error: json({ error: 'unauthorised', message: 'Sign in first.' }, 401) };
+  const sa = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT || '{}');
+  const projects = [sa.project_id, env.DEMO_PROJECT_ID].filter(Boolean);
+  let who;
+  try { who = await verifyFirebaseToken(idToken, projects); }
+  catch (e) { return { error: json({ error: 'unauthorised', message: 'Could not check who you are. Sign out and in again.' }, 401) }; }
+  const demo = !!env.DEMO_PROJECT_ID && who.project === env.DEMO_PROJECT_ID && who.project !== sa.project_id;
+  const fs = await firestore(env);
+  return { who, demo, fs, sa };
+}
+async function readJson(request) { try { return await request.json(); } catch (e) { return null; } }
+const clean = (v, max) => String(v || '').replace(/\s+/g, ' ').trim().slice(0, max);
+const ROLES = ['family', 'readonly', 'viewer'];
+const relationOf = (r) => (['patient', 'carer'].includes(r) ? r : '');
+const INVITE_DAYS = 7;
+const HOUSEHOLDS_A_DAY = 20; // new households a day across everyone, so a bored stranger cannot fill the free tier
+function randomCode() { const b = new Uint8Array(18); crypto.getRandomValues(b); return b64url(b); }
+async function memberOf(fs, uid) {
+  const rec = await fs.get('users/' + uid);
+  const hid = rec && f(rec.fields, 'household');
+  if (!hid) return { hid: null };
+  const mem = await fs.get(hp(hid, 'members/' + uid));
+  return { hid, role: mem ? f(mem.fields, 'role') : null, name: mem ? f(mem.fields, 'name') : null };
+}
+
+/* POST /household { name, relation, householdName? }: a sign-in with no household makes its own and becomes its family owner */
+async function handleCreateHousehold(request, env) {
+  const a = await whoIs(request, env); if (a.error) return a.error;
+  if (a.demo) return json({ error: 'demo', message: 'The demo has one shared household.' }, 403);
+  const { who, fs } = a;
+  const body = await readJson(request); if (!body) return json({ error: 'bad-request', message: 'Could not read what was sent.' }, 400);
+  const name = clean(body.name, 40);
+  if (!name) return json({ error: 'bad-request', message: 'A first name is needed.' }, 400);
+  const current = await memberOf(fs, who.uid);
+  if (current.hid) return json({ error: 'already', message: 'This sign-in is already in a household.', household: current.hid }, 409);
+  const day = londonNow().day;
+  const g = await fs.get('bridge/global');
+  const made = g && f(g.fields, 'day') === day ? Number(f(g.fields, 'households') || 0) : 0;
+  if (made >= HOUSEHOLDS_A_DAY) return json({ error: 'limit', message: 'Daybook cannot take more new households today. Try again tomorrow.' }, 429);
+  await fs.set('bridge/global', { day: strVal(day), households: intVal(made + 1), updatedAt: nowTs() });
+  const hid = randomCode().slice(0, 20);
+  await fs.set('households/' + hid, { name: strVal(clean(body.householdName, 60) || name), owner: strVal(who.uid), createdAt: nowTs() });
+  await fs.set(hp(hid, 'members/' + who.uid), { name: strVal(name), role: strVal('family'), relation: strVal(relationOf(body.relation)), addedBy: strVal('sign-up'), addedAt: nowTs() });
+  await fs.merge('users/' + who.uid, { household: strVal(hid), name: strVal(name) });
+  return json({ ok: true, household: hid });
+}
+
+/* POST /invite { name, role, relation }: a family member makes a one-use link that expires in a week */
+async function handleInvite(request, env) {
+  const a = await whoIs(request, env); if (a.error) return a.error;
+  if (a.demo) return json({ error: 'demo', message: 'Invites are not available in the demo.' }, 403);
+  const { who, fs } = a;
+  const me = await memberOf(fs, who.uid);
+  if (!me.hid || me.role !== 'family') return json({ error: 'unauthorised', message: 'Only family members can invite someone.' }, 403);
+  const body = await readJson(request); if (!body) return json({ error: 'bad-request', message: 'Could not read what was sent.' }, 400);
+  const role = ROLES.includes(body.role) ? body.role : 'readonly';
+  const name = clean(body.name, 40);
+  const code = randomCode();
+  const expiresAt = new Date(Date.now() + INVITE_DAYS * 86400000).toISOString();
+  const house = await fs.get('households/' + me.hid);
+  await fs.set(hp(me.hid, 'invites/' + code), { name: strVal(name), role: strVal(role), relation: strVal(relationOf(body.relation)), createdBy: strVal(who.uid), createdByName: strVal(me.name || ''), createdAt: nowTs(), expiresAt: { timestampValue: expiresAt }, used: { booleanValue: false } });
+  await fs.set('inviteCodes/' + code, { household: strVal(me.hid), expiresAt: { timestampValue: expiresAt } });
+  return json({ ok: true, code, url: appUrl() + '?invite=' + code, expiresAt, householdName: house ? f(house.fields, 'name') : '' });
+}
+
+/* GET /invite-info?code=: what an invite link is for, shown before anyone signs up (the code itself is the secret) */
+async function handleInviteInfo(url, env) {
+  const code = clean(url.searchParams.get('code'), 40);
+  if (!/^[A-Za-z0-9_-]{16,40}$/.test(code)) return json({ valid: false, message: 'That invite link is not right.' });
+  const fs = await firestore(env);
+  const inv = await loadInvite(fs, code);
+  if (!inv.ok) return json({ valid: false, message: inv.message });
+  return json({ valid: true, householdName: inv.householdName, name: f(inv.fields, 'name'), role: f(inv.fields, 'role'), from: f(inv.fields, 'createdByName') });
+}
+async function loadInvite(fs, code) {
+  const idx = await fs.get('inviteCodes/' + code);
+  const hid = idx && f(idx.fields, 'household');
+  if (!hid) return { ok: false, message: 'That invite link has been used or is not right.' };
+  const inv = await fs.get(hp(hid, 'invites/' + code));
+  if (!inv) return { ok: false, message: 'That invite link is not right.' };
+  if (f(inv.fields, 'used') === true) return { ok: false, message: 'That invite link has already been used.' };
+  if (new Date(f(inv.fields, 'expiresAt')).getTime() < Date.now()) return { ok: false, message: 'That invite link has expired. Ask for a new one.' };
+  const house = await fs.get('households/' + hid);
+  return { ok: true, hid, fields: inv.fields, householdName: house ? f(house.fields, 'name') : '' };
+}
+
+/* POST /join { code, name? }: a sign-in with no household joins the one the invite is for */
+async function handleJoin(request, env) {
+  const a = await whoIs(request, env); if (a.error) return a.error;
+  if (a.demo) return json({ error: 'demo', message: 'Invites are not available in the demo.' }, 403);
+  const { who, fs } = a;
+  const body = await readJson(request); if (!body) return json({ error: 'bad-request', message: 'Could not read what was sent.' }, 400);
+  const code = clean(body.code, 40);
+  const current = await memberOf(fs, who.uid);
+  if (current.hid) return json({ error: 'already', message: 'This sign-in is already in a household. Sign out and create a new sign-in to join another.' }, 409);
+  const inv = await loadInvite(fs, code);
+  if (!inv.ok) return json({ error: 'invite', message: inv.message }, 400);
+  const name = clean(body.name, 40) || f(inv.fields, 'name') || 'Member';
+  await fs.set(hp(inv.hid, 'members/' + who.uid), { name: strVal(name), role: strVal(f(inv.fields, 'role') || 'readonly'), relation: strVal(f(inv.fields, 'relation') || ''), addedBy: strVal(f(inv.fields, 'createdBy') || 'invite'), addedAt: nowTs() });
+  await fs.merge('users/' + who.uid, { household: strVal(inv.hid), name: strVal(name) });
+  await fs.merge(hp(inv.hid, 'invites/' + code), { used: { booleanValue: true }, usedBy: strVal(who.uid), usedAt: nowTs() });
+  await fs.remove('inviteCodes/' + code);
+  return json({ ok: true, household: inv.hid, householdName: inv.householdName, name, role: f(inv.fields, 'role') });
+}
+
+/* POST /member-remove { uid }: the household's owner takes someone out (never themselves) */
+async function handleRemoveMember(request, env) {
+  const a = await whoIs(request, env); if (a.error) return a.error;
+  if (a.demo) return json({ error: 'demo', message: 'Not available in the demo.' }, 403);
+  const { who, fs } = a;
+  const me = await memberOf(fs, who.uid);
+  if (!me.hid) return json({ error: 'unauthorised', message: 'This sign-in is not in a household.' }, 403);
+  const house = await fs.get('households/' + me.hid);
+  if (!house || f(house.fields, 'owner') !== who.uid) return json({ error: 'unauthorised', message: 'Only the household owner can remove someone.' }, 403);
+  const body = await readJson(request); if (!body) return json({ error: 'bad-request', message: 'Could not read what was sent.' }, 400);
+  const uid = clean(body.uid, 60);
+  if (!uid || uid === who.uid) return json({ error: 'bad-request', message: 'The owner cannot be removed.' }, 400);
+  const target = await fs.get(hp(me.hid, 'members/' + uid));
+  if (!target) return json({ error: 'bad-request', message: 'That person is not in this household.' }, 400);
+  await fs.remove(hp(me.hid, 'members/' + uid));
+  await fs.remove('users/' + uid);
+  const subs = await fs.list(hp(me.hid, 'pushSubs'));
+  for (const sub of subs) if (f(sub.fields, 'uid') === uid) await fs.remove(sub.path);
+  return json({ ok: true });
+}
 
 async function handleExplain(request, env) {
   if (!env.ANTHROPIC_API_KEY) return json({ error: 'not-set-up', message: 'Explain in Daybook is not switched on yet.' }, 503);
