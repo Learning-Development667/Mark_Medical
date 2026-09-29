@@ -25,10 +25,10 @@ Decisions already made, so they are not reopened:
 
 ## Stage 2: foundations, so it is safe for other people
 
-7. **Separate households.** Today every account in the database shares one record. Before anyone outside the family uses it, each household needs its own walled-off data, enforced in `firestore.rules`, not just hidden in the app. The biggest single job, and everything after it depends on it. Claude: a `households/{id}` document, every collection moved under it or stamped with it, rules that check membership, a one-off migration of Mark's data. Done when a second household cannot read a byte of the first, proved by rules tests.
+7. **Separate households.** Built in v75 (rules, break-in tests on the emulator, the app on household paths, the bridge per household, the migration and admin workflows). Left to do, Mark from the Actions tab: run "Households, move the data in" with copy, then "Publish database rules" (real), then copy again, verify, and cleanup with the confirmation text; then Claude removes the TRANSITION block from the rules and publishes once more. Done when both phones open on the household and cleanup has run.
 8. **Sign-up and invites.** A household starts itself and invites a carer or a read-only relative by a link, without anyone creating accounts by hand in the Firebase console. Claude: sign-up screen, invite links carrying a household id and role, the `users/{uid}` record written by a bridge endpoint (the app itself never writes one). Done when Shelley can be invited afresh from a new household in under a minute.
 9. **Per-household keys and limits.** The Apple Health inbox key, the reminder subscriptions and the AI explain allowance become per household, so one household cannot spend another's. Claude: a key per household on the bridge, the daily cap counted per household. Done when the demo project and Mark's household have separate counts.
-10. **Security hardening.** Host the CDN libraries (Firebase, Chart.js, pdf.js, mammoth, jsPDF) in the repository with pinned versions; add a content security policy; move the bridge key out of web addresses (`/push-test?key=`) into a header; add automated tests for `firestore.rules`; review every place user text is put on screen. Claude. Done when the developer friends' checklist has nothing left in these areas.
+10. **Security hardening.** Host the CDN libraries (Firebase, Chart.js, pdf.js, mammoth, jsPDF) in the repository with pinned versions; add a content security policy; move the diagnostic keys out of web addresses (`/push-test?key=`) into a header; review every place user text is put on screen. (The automated rules tests came with v75.) Claude. Done when the developer friends' checklist has nothing left in these areas.
 11. **Export and delete.** A household can download everything as a zip (JSON plus the document pages and recordings) and can erase the household outright. Apple requires it and it is right anyway. Claude: a bridge endpoint for each, buttons under Settings with a two-step confirm. Done when a fresh export opens and a deleted household leaves nothing behind.
 
 ## Stage 3: the name and the look
@@ -45,7 +45,7 @@ Decisions already made, so they are not reopened:
 
 ## Stage 5: the App Store
 
-18. **Join the Apple Developer Programme.** Mark, £79 a year. A hosted Mac on GitHub Actions can build the iPhone app, so Mark does not need to own a Mac.
+18. **Join the Apple Developer Programme.** Mark, £79 a year. A hosted Mac on GitHub Actions can build the iPhone app, so Mark does not need to own a Mac. Decide first who publishes: Apple expects healthcare apps to come from a legal entity, not an individual, so either a charity, hospice or NHS team publishes it under their account, or a small limited company (Mark 1 Apps Ltd, about £50 to set up) does.
 19. **Build the native shell.** A thin iPhone app around the same web code, with Apple Health read directly (no Health Auto Export needed) and proper notifications. Claude. Done when the shell runs the app from the same repository with no second copy of the code.
 20. **TestFlight, then submission.** Mark and Shelley first, then a small group, then submission with a demo login for Apple's reviewers and the privacy answers from item 14.
 
@@ -55,6 +55,7 @@ Decisions already made, so they are not reopened:
 - Backgrounds on the data tabs. Decided against (see above).
 
 ## Done
+- v75 Separate households: one locked folder per household, enforced by the database rules and proved by the break-in tests; the bridge per household; migration and admin workflows; the rules published from git.
 - v74 Private notifications: "A medicine is due" on the lock screen, the detail in the app.
 - v73 Swimming and distances: the bridge converts metres, yards and feet (a pool swim no longer reads as kilometres), Lengths and Distance ways of counting with an optional time, and programme items that tick themselves from matching Apple Health workouts.
 - v72 this roadmap.

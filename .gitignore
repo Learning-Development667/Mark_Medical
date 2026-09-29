@@ -5,3 +5,8 @@ node_modules/
 # Worker tooling
 worker/node_modules/
 worker/.wrangler/
+
+# Firestore emulator (tests/rules)
+firestore-debug.log
+ui-debug.log
+.firebase/

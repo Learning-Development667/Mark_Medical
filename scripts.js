@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '74';
+const APP_VERSION = '75';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -322,6 +322,14 @@ const mainDb = initializeFirestore(app, {
    separate demo project for the length of a demo session (see enterLiveDemo) and back again. */
 let auth = mainAuth;
 let db = mainDb;
+/* One locked folder per household (since v75): every collection the app reads or writes sits under
+   households/{state.household}/..., and firestore.rules lets only that household's members in.
+   hcol('entries') and hdoc('entries', id) are the only way the app reaches its data; nothing else
+   calls collection(db, ...) or doc(db, ...) except the users/{uid} pointer and members reads at sign-in. */
+function hcol(name, ...rest) { return hcol('households', state.household, name, ...rest); }
+function hdoc(name, ...rest) { return hdoc('households', state.household, name, ...rest); }
+/* The shared demo project keeps its example data in one fixed household */
+const DEMO_HOUSEHOLD = 'demo';
 /* The shared, usable demo: a second Firebase project of its own, with a guest sign-in whose
    details are public by design (window.DAYBOOK_DEMO in config.js). Without it, Guest is the
    in-memory preview. Nothing here can reach the real project: different app, different database. */
@@ -337,28 +345,37 @@ const DEMO = window.DAYBOOK_DEMO && window.DAYBOOK_DEMO.firebase && window.DAYBO
 const ACCOUNT_CACHE_KEY = 'daybook.account.';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/* Reads users/{uid}. Returns the account, or { missing: true } only when the server
+/* Reads users/{uid} (which household this sign-in belongs to) and then that household's
+   members/{uid} record (name, role, relation). Returns the account, or { missing: true } only when the server
    itself says there is no record, or { error: true } when it could not be checked
    (no signal, a timeout). A poor connection must never look like "not set up":
    until v52 any error here signed the person out. A copy of the last good record is
    kept on the phone so a weak signal at start-up still opens the app straight away. */
 async function loadAccount(user) {
-  if (state.demoLive) return { name: 'Guest', role: 'family', relation: '' };
+  if (state.demoLive) return { name: 'Guest', role: 'family', relation: '', household: DEMO_HOUSEHOLD };
   const cacheKey = ACCOUNT_CACHE_KEY + user.uid;
   let cached = null;
   try { cached = JSON.parse(localStorage.getItem(cacheKey) || 'null'); } catch (e) { cached = null; }
+  if (cached && !cached.household) cached = null; // a record cached before v75 names no household
   const delays = [0, 1500, 3000, 6000];
   for (let attempt = 0; attempt < delays.length; attempt++) {
     if (delays[attempt]) await sleep(delays[attempt]);
     try {
       const snap = await getDoc(doc(db, 'users', user.uid));
-      if (snap.exists()) {
-        const d = snap.data();
-        const account = { name: d.name || (user.email || '').split('@')[0] || 'Unknown', role: d.role || 'family', relation: d.relation || '' };
-        try { localStorage.setItem(cacheKey, JSON.stringify(account)); } catch (e) { /* storage full or blocked: nothing lost */ }
-        return account;
+      const fromServer = (x) => !x.metadata || !x.metadata.fromCache;
+      if (snap.exists() && snap.data().household) {
+        const household = snap.data().household;
+        const mem = await getDoc(doc(db, 'households', household, 'members', user.uid));
+        if (mem.exists()) {
+          const d = mem.data();
+          const account = { name: d.name || (user.email || '').split('@')[0] || 'Unknown', role: d.role || 'family', relation: d.relation || '', household };
+          try { localStorage.setItem(cacheKey, JSON.stringify(account)); } catch (e) { /* storage full or blocked: nothing lost */ }
+          return account;
+        }
+        if (fromServer(mem)) return { missing: true }; // the server answered: not a member of that household
+      } else if (fromServer(snap)) {
+        return { missing: true }; // the server answered: no record, or one not moved into a household yet
       }
-      if (!snap.metadata || !snap.metadata.fromCache) return { missing: true }; // the server answered: no record
       // "no record" from the local cache only means it was never fetched; treat as unknown
     } catch (e) { console.error(e); }
     if (cached && cached.name) return cached;
@@ -369,6 +386,7 @@ async function loadAccount(user) {
 const state = {
   user: null,
   account: null,
+  household: null,
   name: '',
   selectedDay: todayStr(),
   medicines: [],
@@ -450,7 +468,7 @@ async function enterApp(user) {
   const account = user ? await loadAccount(user) : null;
   if (user && account && account.missing) {
     await signOut(auth);
-    $('signin-error').textContent = 'This account is not set up for Daybook yet.';
+    $('signin-error').textContent = 'This account is not in a Daybook household yet.';
     $('signin-error').hidden = false;
     return;
   }
@@ -466,6 +484,7 @@ async function enterApp(user) {
     state.user = user;
     state.account = account;
     state.name = account.name;
+    state.household = account.household;
     state.demo = false;
     state.viewer = account.role === 'viewer';
     state.readOnly = account.role === 'readonly';
@@ -490,6 +509,7 @@ async function enterApp(user) {
     stopData();
     state.user = null;
     state.account = null;
+    state.household = null;
     state.viewer = false;
     state.readOnly = false;
     setViewerMode(false);
@@ -564,6 +584,7 @@ async function enterLiveDemo() {
     auth = demoAuth;
     db = demoDb;
     state.demoLive = true;
+    state.household = DEMO_HOUSEHOLD;
     await seedDemoIfEmpty();
     await enterApp(cred.user);
     $('guest-pill').textContent = 'Demo';
@@ -589,6 +610,7 @@ async function exitLiveDemo() {
   state.demoLive = false;
   state.user = null;
   state.account = null;
+  state.household = null;
   $('guest-pill').hidden = true;
   $('guest-pill').textContent = 'Preview';
   $('app').hidden = true;
@@ -604,13 +626,13 @@ function demoClean(v) {
 async function writeDemo(writes) {
   for (let i = 0; i < writes.length; i += 400) {
     const batch = writeBatch(db);
-    writes.slice(i, i + 400).forEach(([col, id, data]) => batch.set(doc(db, col, id), demoClean(data)));
+    writes.slice(i, i + 400).forEach(([col, id, data]) => batch.set(hdoc(col, id), demoClean(data)));
     await batch.commit();
   }
 }
 /* A demo seeded before the carer's view existed gets the check-ins and sessions of the cycle chart added once */
 async function topUpDemo() {
-  const carer = await getDocs(query(collection(db, 'entries'), where('slot', '==', 'carer'), limit(1)));
+  const carer = await getDocs(query(hcol('entries'), where('slot', '==', 'carer'), limit(1)));
   if (!carer.empty) return;
   const fixture = buildDemoFixture();
   const writes = [];
@@ -619,7 +641,7 @@ async function topUpDemo() {
   await writeDemo(writes);
 }
 async function seedDemoIfEmpty() {
-  const snap = await getDocs(collection(db, 'medicines'));
+  const snap = await getDocs(hcol('medicines'));
   if (!snap.empty) { await topUpDemo(); return; }
   const fixture = buildDemoFixture();
   const writes = [];
@@ -870,12 +892,12 @@ function startDemoData() {
 
 async function seedMedicinesIfEmpty() {
   try {
-    const snap = await getDocs(collection(db, 'medicines'));
+    const snap = await getDocs(hcol('medicines'));
     if (!snap.empty) return;
     const batch = writeBatch(db);
     SEED_MEDICINES.forEach((m, i) => {
       const { id, ...data } = m;
-      batch.set(doc(db, 'medicines', id), { ...data, active: true, order: i + 1 });
+      batch.set(hdoc('medicines', id), { ...data, active: true, order: i + 1 });
     });
     await batch.commit();
   } catch (e) {
@@ -884,7 +906,7 @@ async function seedMedicinesIfEmpty() {
 }
 
 function watchMedicines() {
-  state.unsub.meds = onSnapshot(collection(db, 'medicines'), (snap) => {
+  state.unsub.meds = onSnapshot(hcol('medicines'), (snap) => {
     state.medicines = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
       .sort((a, b) => (a.order || 0) - (b.order || 0) || a.name.localeCompare(b.name));
     renderMeds();
@@ -897,7 +919,7 @@ function watchRecent() {
   if (state.recentFrom === from) return;
   state.recentFrom = from;
   if (state.unsub.recent) state.unsub.recent();
-  const q = query(collection(db, 'entries'), where('day', '>=', from));
+  const q = query(hcol('entries'), where('day', '>=', from));
   state.unsub.recent = onSnapshot(q, (snap) => {
     state.recentEntries = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     sortEntries(state.recentEntries);
@@ -920,7 +942,7 @@ function watchDay() {
   }
   state.dayEntries = [];
   renderToday();
-  const q = query(collection(db, 'entries'), where('day', '==', state.selectedDay));
+  const q = query(hcol('entries'), where('day', '==', state.selectedDay));
   state.unsub.day = onSnapshot(q, (snap) => {
     state.dayEntries = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     sortEntries(state.dayEntries);
@@ -933,7 +955,7 @@ function sortEntries(list) {
 }
 
 function watchDocuments() {
-  state.unsub.docs = onSnapshot(collection(db, 'documents'), (snap) => {
+  state.unsub.docs = onSnapshot(hcol('documents'), (snap) => {
     state.documents = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
       .sort((a, b) => (b.docDate || '').localeCompare(a.docDate || ''));
     renderDocsList();
@@ -941,7 +963,7 @@ function watchDocuments() {
 }
 
 function watchProfile() {
-  state.unsub.profile = onSnapshot(doc(db, 'profile', 'main'), (snap) => {
+  state.unsub.profile = onSnapshot(hdoc('profile', 'main'), (snap) => {
     state.profile = snap.exists() ? snap.data() : { calls: [] };
     renderCalls();
     renderExercise();
@@ -959,12 +981,43 @@ function syncSettings() {
   renderToday();
   if (!$('view-food').hidden) renderFoodDiary();
   if (!$('view-notes').hidden) renderNotesReport();
+  syncHealthCard();
 }
+
+/* Apple Health card (since v75): the bridge address and this household's inbox key, read from
+   households/{id}/private/health (family only, written by the household workflows), so the
+   Health Auto Export automation can be set up without the Firebase console. */
+function syncHealthCard() {
+  const card = $('settings-health');
+  if (!card) return;
+  const show = !!BRIDGE && !!state.household && !state.demo && !state.demoLive && !state.readOnly && !state.viewer;
+  card.hidden = !show;
+  if (!show) return;
+  $('settings-health-url').textContent = BRIDGE.url.replace(/\/$/, '') + '/health';
+  $('settings-health-keytext').hidden = true;
+  $('settings-health-hint').hidden = true;
+  $('settings-health-key').textContent = 'Show the inbox key';
+}
+$('settings-health-key').addEventListener('click', async () => {
+  const box = $('settings-health-keytext'), hint = $('settings-health-hint'), btn = $('settings-health-key');
+  if (!box.hidden) { box.hidden = true; hint.hidden = true; btn.textContent = 'Show the inbox key'; return; }
+  btn.disabled = true;
+  try {
+    const snap = await getDoc(hdoc('private', 'health'));
+    const key = snap.exists() ? snap.data().key : '';
+    box.textContent = key || 'No inbox key yet. Make one with the Household admin workflow (new-key) on the Actions tab.';
+    box.hidden = false;
+    hint.hidden = false;
+    hint.textContent = key ? 'Press and hold to copy it into the automation\'s X-Care-Log-Key header. Anyone with this key can send readings into this household, so keep it to the phone that needs it.' : '';
+    btn.textContent = 'Hide the inbox key';
+  } catch (e) { console.error(e); toast('Could not read the inbox key'); }
+  btn.disabled = false;
+});
 
 /* The same account-wide setting, switchable from Settings and from the top of the Food diary */
 async function setDetailedNutrition(detailedNutrition, input) {
   if (state.demo) { state.profile = { ...state.profile, detailedNutrition }; syncSettings(); toast(detailedNutrition ? 'Estimates on' : 'Estimates off'); return; }
-  try { await setDoc(doc(db, 'profile', 'main'), { detailedNutrition }, { merge: true }); toast(detailedNutrition ? 'Estimates on' : 'Estimates off'); }
+  try { await setDoc(hdoc('profile', 'main'), { detailedNutrition }, { merge: true }); toast(detailedNutrition ? 'Estimates on' : 'Estimates off'); }
   catch (e) { console.error(e); toast('Could not save the setting'); input.checked = !detailedNutrition; }
 }
 $('settings-nutrition').addEventListener('change', (ev) => setDetailedNutrition(ev.target.checked, ev.target));
@@ -972,13 +1025,13 @@ $('settings-protein').addEventListener('change', async (ev) => {
   const n = Math.round(parseFloat(ev.target.value));
   const proteinTarget = n > 0 ? n : null;
   if (state.demo) { state.profile = { ...state.profile, proteinTarget }; syncSettings(); toast(proteinTarget ? 'Protein target saved' : 'Protein target cleared'); return; }
-  try { await setDoc(doc(db, 'profile', 'main'), { proteinTarget }, { merge: true }); toast(proteinTarget ? 'Protein target saved' : 'Protein target cleared'); }
+  try { await setDoc(hdoc('profile', 'main'), { proteinTarget }, { merge: true }); toast(proteinTarget ? 'Protein target saved' : 'Protein target cleared'); }
   catch (e) { console.error(e); toast('Could not save the target'); }
 });
 $('food-nutrition').addEventListener('change', (ev) => setDetailedNutrition(ev.target.checked, ev.target));
 
 function watchDays() {
-  state.unsub.days = onSnapshot(collection(db, 'days'), (snap) => {
+  state.unsub.days = onSnapshot(hcol('days'), (snap) => {
     const days = {};
     snap.docs.forEach((d) => { days[d.id] = d.data(); });
     state.days = days;
@@ -987,7 +1040,7 @@ function watchDays() {
 }
 
 function watchExercise() {
-  state.unsub.exercise = onSnapshot(collection(db, 'exercise'), (snap) => {
+  state.unsub.exercise = onSnapshot(hcol('exercise'), (snap) => {
     const ex = {};
     snap.docs.forEach((d) => { ex[d.id] = d.data(); });
     state.exercise = ex;
@@ -999,7 +1052,7 @@ function watchExercise() {
    written by the bridge from Apple Health or typed in from the Food diary.
    Where a day has one, it is used instead of the app's own estimate. */
 function watchNutrition() {
-  state.unsub.nutrition = onSnapshot(collection(db, 'nutrition'), (snap) => {
+  state.unsub.nutrition = onSnapshot(hcol('nutrition'), (snap) => {
     const n = {};
     snap.docs.forEach((d) => { n[d.id] = d.data(); });
     state.nutrition = n;
@@ -1013,7 +1066,7 @@ function loggedTotals(day) {
 }
 
 function watchMeals() {
-  state.unsub.meals = onSnapshot(collection(db, 'meals'), (snap) => {
+  state.unsub.meals = onSnapshot(hcol('meals'), (snap) => {
     state.meals = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
   }, (e) => console.error(e));
 }
@@ -1037,7 +1090,7 @@ async function addEntry(data) {
     if (!$('view-vitals').hidden) renderVitals();
     return id;
   }
-  const ref = doc(collection(db, 'entries'));
+  const ref = doc(hcol('entries'));
   setDoc(ref, entry).catch((e) => { console.error(e); toast('Could not save. It will retry when online.'); });
   return ref.id;
 }
@@ -1058,7 +1111,7 @@ async function updateEntry(id, data) {
   }
   const patch = { ...fields, updatedAt: serverTimestamp() };
   if (at) patch.at = Timestamp.fromDate(at);
-  await updateDoc(doc(db, 'entries', id), patch);
+  await updateDoc(hdoc('entries', id), patch);
 }
 
 function deleteEntry(id) {
@@ -1069,7 +1122,7 @@ function deleteEntry(id) {
     renderMeds();
     return Promise.resolve();
   }
-  return deleteDoc(doc(db, 'entries', id));
+  return deleteDoc(hdoc('entries', id));
 }
 
 /* ------------------------------------------------------------------ */
@@ -1974,7 +2027,7 @@ function saveMeal(id, name, parts, portions, usedSlot, existing) {
     else state.meals.push({ id: fakeId('meal'), name, parts, portions: portions || null, addedBy: state.name, ...usage });
     return Promise.resolve();
   }
-  const ref = id ? doc(db, 'meals', id) : doc(collection(db, 'meals'));
+  const ref = id ? hdoc('meals', id) : doc(hcol('meals'));
   const data = { name, parts, updatedAt: serverTimestamp(), ...usage };
   if (portions) data.portions = portions;
   if (!id) { data.addedBy = state.name; data.createdAt = serverTimestamp(); }
@@ -1983,7 +2036,7 @@ function saveMeal(id, name, parts, portions, usedSlot, existing) {
 
 function deleteMeal(id) {
   if (state.demo) { state.meals = state.meals.filter((m) => m.id !== id); return Promise.resolve(); }
-  return deleteDoc(doc(db, 'meals', id)).catch((e) => { console.error(e); toast('Could not remove the meal'); });
+  return deleteDoc(hdoc('meals', id)).catch((e) => { console.error(e); toast('Could not remove the meal'); });
 }
 
 $('more-meals').addEventListener('click', openManageMeals);
@@ -2344,7 +2397,7 @@ function previewPdf(title, subtitle, blocks) {
 async function loadEntriesFrom(from) {
   if (state.demo) return state.recentEntries.filter((e) => e.day >= from);
   try {
-    const snap = await getDocs(query(collection(db, 'entries'), where('day', '>=', from)));
+    const snap = await getDocs(query(hcol('entries'), where('day', '>=', from)));
     return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
   } catch (e) { console.error(e); return null; }
 }
@@ -3038,7 +3091,7 @@ function saveCustomFood(name, per100) {
   const i = current.findIndex((f) => (f.name || '').trim().toLowerCase() === key);
   if (i >= 0) current[i] = entry; else current.push(entry);
   if (state.demo) { state.profile = { ...state.profile, customFoods: current }; return Promise.resolve(); }
-  return setDoc(doc(db, 'profile', 'main'), { customFoods: current }, { merge: true }).catch((e) => { console.error(e); toast('Could not save to My foods'); });
+  return setDoc(hdoc('profile', 'main'), { customFoods: current }, { merge: true }).catch((e) => { console.error(e); toast('Could not save to My foods'); });
 }
 
 /* Macro figures for one component: a manual "from the packet" override
@@ -3261,7 +3314,7 @@ $('food-totals').addEventListener('click', () => {
       if (!day || !data.kcal) { toast('Add at least the day\'s calories'); return; }
       closeSheet();
       if (state.demo) { state.nutrition[day] = data; renderFoodDiary(); toast('Day totals saved'); return; }
-      try { await setDoc(doc(db, 'nutrition', day), { ...data, updatedAt: serverTimestamp() }, { merge: true }); toast('Day totals saved'); }
+      try { await setDoc(hdoc('nutrition', day), { ...data, updatedAt: serverTimestamp() }, { merge: true }); toast('Day totals saved'); }
       catch (e) { console.error(e); toast('Could not save the totals'); }
     } }, 'Save'),
     h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Cancel')
@@ -3665,7 +3718,7 @@ const REPORT_CARER_KEYS = [['noticed', 'What the carer noticed']];
 async function loadQuestions() {
   if (state.demo) return state.recentEntries.filter((e) => e.type === 'question');
   try {
-    const snap = await getDocs(query(collection(db, 'entries'), where('type', '==', 'question')));
+    const snap = await getDocs(query(hcol('entries'), where('type', '==', 'question')));
     return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
   } catch (e) { console.error(e); return []; }
 }
@@ -3881,7 +3934,7 @@ function renderCheckins() {
 }
 /* Open questions for the team: a live list, so the Today row can say how many are waiting */
 function watchQuestions() {
-  state.unsub.questions = onSnapshot(query(collection(db, 'entries'), where('type', '==', 'question')), (snap) => {
+  state.unsub.questions = onSnapshot(query(hcol('entries'), where('type', '==', 'question')), (snap) => {
     state.questions = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     renderCheckins();
   }, (e) => console.error(e));
@@ -4023,13 +4076,13 @@ async function saveCheckin(slot, day, answers, existing) {
     return;
   }
   try {
-    await setDoc(doc(db, 'entries', id), {
+    await setDoc(hdoc('entries', id), {
       ...data,
       at: Timestamp.fromDate(at),
       createdAt: existing && existing.createdAt ? existing.createdAt : serverTimestamp(),
       updatedAt: serverTimestamp()
     });
-    if (Object.keys(mirror).length) await setDoc(doc(db, 'days', day), { ...mirror, updatedBy: state.name, updatedAt: serverTimestamp() }, { merge: true });
+    if (Object.keys(mirror).length) await setDoc(hdoc('days', day), { ...mirror, updatedBy: state.name, updatedAt: serverTimestamp() }, { merge: true });
     state.cycleFetched = 0;
     if (!$('view-chemo').hidden) renderChemo();
     toast(label);
@@ -4202,7 +4255,7 @@ function promptMealMeds(mealAt) {
         block.remove(); finish();
         const at = new Date(Date.now() + 15 * 60 * 1000);
         if (state.demo) { toast('Reminders are not sent from the preview'); return; }
-        try { await setDoc(doc(collection(db, 'reminders')), { at: Timestamp.fromDate(at), medId: m.id, medName: m.name, dose: m.dose || '', sent: false, addedBy: state.name, createdAt: serverTimestamp() }); toast(`Reminder set for ${fmtTime(at)}`); }
+        try { await setDoc(doc(hcol('reminders')), { at: Timestamp.fromDate(at), medId: m.id, medName: m.name, dose: m.dose || '', sent: false, addedBy: state.name, createdAt: serverTimestamp() }); toast(`Reminder set for ${fmtTime(at)}`); }
         catch (e) { console.error(e); toast('Could not set the reminder'); }
       } }, 'Remind me in 15 minutes') : null,
       h('button', { class: 'btn btn-link btn-block', type: 'button', onclick: () => { block.remove(); finish(); } }, 'Not this time')
@@ -4282,14 +4335,14 @@ async function setReminders(on) {
     const reg = await navigator.serviceWorker.ready;
     const existing = await reg.pushManager.getSubscription();
     if (!on) {
-      if (existing) { await deleteDoc(doc(db, 'pushSubs', pushSubId(existing.endpoint))).catch(() => {}); await existing.unsubscribe(); }
+      if (existing) { await deleteDoc(hdoc('pushSubs', pushSubId(existing.endpoint))).catch(() => {}); await existing.unsubscribe(); }
       toast('Reminders off on this phone');
     } else {
       const perm = await Notification.requestPermission();
       if (perm !== 'granted') { box.checked = false; toast('Notifications were not allowed'); await syncReminders(); return; }
       const sub = existing || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(PUSH.publicKey) });
       const j = sub.toJSON();
-      await setDoc(doc(db, 'pushSubs', pushSubId(sub.endpoint)), { endpoint: sub.endpoint, keys: { p256dh: j.keys.p256dh, auth: j.keys.auth }, private: $('settings-private').checked, addedBy: state.name, uid: state.user ? state.user.uid : null, agent: navigator.userAgent.slice(0, 120), addedAt: serverTimestamp() }, { merge: true });
+      await setDoc(hdoc('pushSubs', pushSubId(sub.endpoint)), { endpoint: sub.endpoint, keys: { p256dh: j.keys.p256dh, auth: j.keys.auth }, private: $('settings-private').checked, addedBy: state.name, uid: state.user ? state.user.uid : null, agent: navigator.userAgent.slice(0, 120), addedAt: serverTimestamp() }, { merge: true });
       toast('Reminders on for this phone');
     }
   } catch (e) { console.error(e); toast('Could not change reminders on this phone'); }
@@ -4307,7 +4360,7 @@ async function syncPrivate(sub) {
   row.hidden = !sub;
   if (!sub) return;
   let priv = true;
-  try { const snap = await getDoc(doc(db, 'pushSubs', pushSubId(sub.endpoint))); if (snap.exists() && snap.data().private === false) priv = false; } catch (e) { console.warn(e); }
+  try { const snap = await getDoc(hdoc('pushSubs', pushSubId(sub.endpoint))); if (snap.exists() && snap.data().private === false) priv = false; } catch (e) { console.warn(e); }
   box.checked = priv;
   $('settings-private-hint').textContent = priv ? PRIVATE_HINT_ON : PRIVATE_HINT_OFF;
 }
@@ -4317,7 +4370,7 @@ $('settings-private').addEventListener('change', async (ev) => {
     const reg = await navigator.serviceWorker.ready;
     const sub = await reg.pushManager.getSubscription();
     if (!sub) return;
-    await setDoc(doc(db, 'pushSubs', pushSubId(sub.endpoint)), { private: on }, { merge: true });
+    await setDoc(hdoc('pushSubs', pushSubId(sub.endpoint)), { private: on }, { merge: true });
     $('settings-private-hint').textContent = on ? PRIVATE_HINT_ON : PRIVATE_HINT_OFF;
     toast(on ? 'Medicine names hidden on this phone' : 'Medicine names shown on this phone');
   } catch (e) { console.error(e); ev.target.checked = !on; toast('Could not change this setting'); }
@@ -4408,7 +4461,7 @@ function openEditMed(m) {
         toast(isNew ? 'Medicine added' : 'Medicine updated');
         return;
       }
-      const ref = isNew ? doc(collection(db, 'medicines')) : doc(db, 'medicines', m.id);
+      const ref = isNew ? doc(hcol('medicines')) : hdoc('medicines', m.id);
       try {
         await setDoc(ref, data, { merge: true });
         toast(isNew ? 'Medicine added' : 'Medicine updated');
@@ -4763,7 +4816,7 @@ $('doc-edit').addEventListener('click', () => {
         state.documents.sort((a, b) => (b.docDate || '').localeCompare(a.docDate || ''));
         renderDocsList();
       } else {
-        try { await updateDoc(doc(db, 'documents', d.id), { ...data, updatedAt: serverTimestamp() }); }
+        try { await updateDoc(hdoc('documents', d.id), { ...data, updatedAt: serverTimestamp() }); }
         catch (e) { console.error(e); toast('Could not save the changes'); return; }
       }
       $('doc-title').textContent = t;
@@ -5035,11 +5088,11 @@ async function saveDocumentBatch({ category, title, docDate, explanation, kind, 
     renderDocsList();
     return id;
   }
-  const ref = doc(collection(db, 'documents'));
+  const ref = doc(hcol('documents'));
   const batch = writeBatch(db);
   batch.set(ref, data);
   pages.forEach((p, i) => {
-    batch.set(doc(db, 'documents', ref.id, 'pages', String(i + 1)), { n: i + 1, data: p.data, width: p.width, height: p.height });
+    batch.set(hdoc('documents', ref.id, 'pages', String(i + 1)), { n: i + 1, data: p.data, width: p.width, height: p.height });
   });
   await batch.commit();
   return ref.id;
@@ -5075,7 +5128,7 @@ async function openDocument(id) {
   const current = state.currentDoc;
   current.loading = (async () => {
     try {
-      const snap = await getDocs(query(collection(db, 'documents', id, 'pages'), orderBy('n')));
+      const snap = await getDocs(query(hcol('documents', id, 'pages'), orderBy('n')));
       if (state.currentDoc !== current) return;
       current.pages = snap.docs.map((p) => p.data());
       pagesEl.replaceChildren(...current.pages.map((p, i) => h('img', { src: 'data:image/jpeg;base64,' + p.data, alt: `Page ${i + 1}`, width: p.width, height: p.height, loading: 'lazy' })));
@@ -5158,29 +5211,29 @@ async function saveRecording(q, blob, mime, seconds) {
     state.demoRecordings.push({ id, ...meta, at: demoTs(now), createdAt: demoTs(now), blob });
     return id;
   }
-  const ref = doc(collection(db, 'recordings'));
+  const ref = doc(hcol('recordings'));
   const batch = writeBatch(db);
   batch.set(ref, { ...meta, at: Timestamp.fromDate(now), createdAt: serverTimestamp() });
-  parts.forEach((data, n) => batch.set(doc(db, 'recordings', ref.id, 'parts', String(n)), { n, data }));
+  parts.forEach((data, n) => batch.set(hdoc('recordings', ref.id, 'parts', String(n)), { n, data }));
   await batch.commit();
   return ref.id;
 }
 async function loadRecordings(questionId) {
   if (state.demo) return state.demoRecordings.filter((r) => r.questionId === questionId);
-  const snap = await getDocs(query(collection(db, 'recordings'), where('questionId', '==', questionId)));
+  const snap = await getDocs(query(hcol('recordings'), where('questionId', '==', questionId)));
   return snap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => entryDate(a) - entryDate(b));
 }
 async function recordingBlob(rec) {
   if (rec.blob) return rec.blob;
-  const snap = await getDocs(query(collection(db, 'recordings', rec.id, 'parts'), orderBy('n')));
+  const snap = await getDocs(query(hcol('recordings', rec.id, 'parts'), orderBy('n')));
   return b64ToBlob(snap.docs.map((d) => d.data().data).join(''), rec.mime);
 }
 async function deleteRecording(rec) {
   if (state.demo) { state.demoRecordings = state.demoRecordings.filter((r) => r.id !== rec.id); return; }
-  const snap = await getDocs(collection(db, 'recordings', rec.id, 'parts'));
+  const snap = await getDocs(hcol('recordings', rec.id, 'parts'));
   const batch = writeBatch(db);
   snap.docs.forEach((d) => batch.delete(d.ref));
-  batch.delete(doc(db, 'recordings', rec.id));
+  batch.delete(hdoc('recordings', rec.id));
   await batch.commit();
 }
 /* Save or share the file: the share sheet where files can be shared (Files, Mail, an AI app), otherwise a download */
@@ -5407,7 +5460,7 @@ $('doc-explain').addEventListener('click', async () => {
     const text = reply.text + (reply.cut ? '\n\n(The explanation was cut short. Tap Explain in Daybook again for another go.)' : '') + '\n\n' + NOT_MEDICAL_ADVICE;
     $('doc-explanation').value = text;
     if (state.demo) { d.explanation = text; renderDocsList(); }
-    else await updateDoc(doc(db, 'documents', d.id), { explanation: text, updatedAt: serverTimestamp() });
+    else await updateDoc(hdoc('documents', d.id), { explanation: text, updatedAt: serverTimestamp() });
     toast('Explanation ready and saved. Read it below.');
     $('doc-explanation').scrollIntoView({ block: 'start', behavior: 'smooth' });
   } catch (e) { console.warn(e); toast(e.message || 'Could not explain this document'); }
@@ -5421,7 +5474,7 @@ $('doc-save-explanation').addEventListener('click', async () => {
   const text = $('doc-explanation').value.trim();
   if (state.demo) { d.explanation = text; renderDocsList(); toast('Explanation saved'); btn.disabled = false; return; }
   try {
-    await updateDoc(doc(db, 'documents', d.id), { explanation: text, updatedAt: serverTimestamp() });
+    await updateDoc(hdoc('documents', d.id), { explanation: text, updatedAt: serverTimestamp() });
     toast('Explanation saved');
   } catch (e) { console.error(e); toast('Could not save'); }
   btn.disabled = false;
@@ -5439,9 +5492,9 @@ $('doc-delete').addEventListener('click', async () => {
     return;
   }
   try {
-    const snap = await getDocs(collection(db, 'documents', d.id, 'pages'));
+    const snap = await getDocs(hcol('documents', d.id, 'pages'));
     for (const p of snap.docs) await deleteDoc(p.ref);
-    await deleteDoc(doc(db, 'documents', d.id));
+    await deleteDoc(hdoc('documents', d.id));
     showDocsList();
     toast('Document deleted');
   } catch (e) { console.error(e); toast('Could not delete'); }
@@ -5539,7 +5592,7 @@ async function cycleEntries() {
   if (state.demo) return state.recentEntries.filter((e) => e.type === 'checkin' && e.day >= from);
   if (state.cycleEntries && state.cycleFrom === from && Date.now() - state.cycleFetched < 60000) return state.cycleEntries;
   try {
-    const snap = await getDocs(query(collection(db, 'entries'), where('type', '==', 'checkin')));
+    const snap = await getDocs(query(hcol('entries'), where('type', '==', 'checkin')));
     state.cycleEntries = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((e) => e.day >= from);
     state.cycleFrom = from;
     state.cycleFetched = Date.now();
@@ -5732,7 +5785,7 @@ function openDaySheet(key) {
         return;
       }
       try {
-        await setDoc(doc(db, 'days', key), data, { merge: true });
+        await setDoc(hdoc('days', key), data, { merge: true });
         if (data.chemoDone && !wasDone) { confetti(); toast('One more session done. Well done.'); }
         else toast('Saved');
       } catch (e) { console.error(e); toast('Could not save'); }
@@ -5741,7 +5794,7 @@ function openDaySheet(key) {
       closeSheet();
       const data = { chemo: false, chemoDone: false, updatedBy: state.name, updatedAt: serverTimestamp() };
       if (state.demo) { state.days[key] = { ...state.days[key], chemo: false, chemoDone: false }; renderChemo(); toast('Session removed'); return; }
-      try { await setDoc(doc(db, 'days', key), data, { merge: true }); toast('Session removed'); } catch (e) { console.error(e); toast('Could not clear'); }
+      try { await setDoc(hdoc('days', key), data, { merge: true }); toast('Session removed'); } catch (e) { console.error(e); toast('Could not clear'); }
     } }, 'Remove the session from this day') : null,
     h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Cancel')
   );
@@ -5891,7 +5944,7 @@ async function saveProgramme(items, physio) {
   const programme = { items: items.map((it) => ({ ...it, amount: Number(it.amount) || 0 })) };
   const patch = physio !== undefined ? { programme, physio } : { programme };
   if (state.demo) { state.profile = { ...state.profile, ...patch }; renderExercise(); return; }
-  await setDoc(doc(db, 'profile', 'main'), patch, { merge: true });
+  await setDoc(hdoc('profile', 'main'), patch, { merge: true });
 }
 function newItemId() { return 'x' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
 
@@ -5994,7 +6047,7 @@ async function toggleGoal(day, id) {
     return;
   }
   try {
-    await setDoc(doc(db, 'exercise', day), { day, done, off, addedBy: state.name, updatedAt: serverTimestamp() }, { merge: true });
+    await setDoc(hdoc('exercise', day), { day, done, off, addedBy: state.name, updatedAt: serverTimestamp() }, { merge: true });
     if (nowAll && !wasAll) toast('All done for today. Nice work.');
   } catch (e) { console.error(e); toast('Could not save'); }
 }
@@ -6030,7 +6083,7 @@ function openStepsSheet(initialDay) {
   async function saveStepsFor(targetDay, v) {
     const rec = exerciseFor(targetDay);
     if (!state.demo) {
-      try { await setDoc(doc(db, 'exercise', targetDay), { day: targetDay, steps: v, addedBy: state.name, updatedAt: serverTimestamp() }, { merge: true }); }
+      try { await setDoc(hdoc('exercise', targetDay), { day: targetDay, steps: v, addedBy: state.name, updatedAt: serverTimestamp() }, { merge: true }); }
       catch (e) { console.error(e); return false; }
     }
     state.exercise[targetDay] = { ...rec, day: targetDay, steps: v };
@@ -6389,7 +6442,7 @@ $('calls-edit').addEventListener('click', () => {
       });
       closeSheet();
       if (state.demo) { state.profile = { ...state.profile, calls }; renderCalls(); toast('Numbers saved'); return; }
-      try { await setDoc(doc(db, 'profile', 'main'), { calls }, { merge: true }); toast('Numbers saved'); }
+      try { await setDoc(hdoc('profile', 'main'), { calls }, { merge: true }); toast('Numbers saved'); }
       catch (e) { console.error(e); toast('Could not save'); }
     } }, 'Save'),
     h('button', { class: 'btn btn-link btn-block', type: 'button', onclick: closeSheet }, 'Cancel')

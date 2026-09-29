@@ -23,27 +23,29 @@ export default {
       if (url.pathname === '/health' && request.method === 'POST') return withCors(request, await handleHealth(request, env));
       if (url.pathname === '/explain' && request.method === 'POST') return withCors(request, await handleExplain(request, env));
       /* Diagnostic: what the phone last sent and what was written, for checking the field names.
-         Opened in a browser with ?key=<BRIDGE_KEY>. Health data only, no secrets. */
+         Opened in a browser with ?key=<the household's inbox key>. Health data only, no secrets. */
       if (url.pathname === '/last' && request.method === 'GET') {
-        if (!env.BRIDGE_KEY || url.searchParams.get('key') !== env.BRIDGE_KEY) return json({ error: 'Unauthorised' }, 401);
         const fs = await firestore(env);
-        const doc = await fs.get('bridge/last');
+        const hid = await householdForKey(fs, url.searchParams.get('key') || '');
+        if (!hid) return json({ error: 'Unauthorised' }, 401);
+        const doc = await fs.get(hp(hid, 'bridge/last'));
         if (!doc) return json({ note: 'Nothing received yet' });
         const f = doc.fields || {};
         let sample = null;
         try { sample = JSON.parse(f.sample && f.sample.stringValue || 'null'); } catch (e) { sample = f.sample && f.sample.stringValue; }
         return json({ receivedAt: f.receivedAt && f.receivedAt.timestampValue, result: f.result && f.result.stringValue, sample });
       }
-      /* Sends a test notification to every phone with reminders on: ?key=<BRIDGE_KEY> */
+      /* Sends a test notification to every phone with reminders on in that key's household: ?key=<the household's inbox key> */
       if (url.pathname === '/push-test' && request.method === 'GET') {
-        if (!env.BRIDGE_KEY || url.searchParams.get('key') !== env.BRIDGE_KEY) return json({ error: 'Unauthorised' }, 401);
         const fs = await firestore(env);
-        const subs = await fs.list('pushSubs');
+        const hid = await householdForKey(fs, url.searchParams.get('key') || '');
+        if (!hid) return json({ error: 'Unauthorised' }, 401);
+        const subs = await fs.list(hp(hid, 'pushSubs'));
         const results = [];
         for (const d of subs) results.push(await sendPush(env, fs, d, { title: 'Daybook', body: 'Reminders are working on this phone.', tag: 'test', url: appUrl('meds') }));
         return json({ phones: subs.length, results });
       }
-      /* Runs the reminder check by hand: ?key=<BRIDGE_KEY> */
+      /* Runs the reminder check by hand for every household: ?key=<BRIDGE_KEY> (the operator's key) */
       if (url.pathname === '/remind-now' && request.method === 'GET') {
         if (!env.BRIDGE_KEY || url.searchParams.get('key') !== env.BRIDGE_KEY) return json({ error: 'Unauthorised' }, 401);
         return json(await runReminders(env));
@@ -63,14 +65,32 @@ export default {
 /* Apple Health inbox                                                    */
 /* ------------------------------------------------------------------ */
 
+/* Every household has its own inbox key (since v75): the key travels in the X-Care-Log-Key header,
+   its SHA-256 hash is looked up in healthKeys/{hash} { household }, and the send lands in that
+   household alone. The keys themselves are never stored, only their hashes. */
+async function householdForKey(fs, key) {
+  if (!key) return null;
+  const rec = await fs.get('healthKeys/' + await sha256Hex(key));
+  return rec && f(rec.fields, 'household') || null;
+}
+async function sha256Hex(s) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+/* households/{hid}/... */
+const hp = (hid, path) => 'households/' + hid + '/' + path;
+
 async function handleHealth(request, env) {
-  if (!env.BRIDGE_KEY || request.headers.get('X-Care-Log-Key') !== env.BRIDGE_KEY) return json({ error: 'Unauthorised' }, 401);
+  const key = request.headers.get('X-Care-Log-Key') || '';
+  if (!key) return json({ error: 'Unauthorised' }, 401);
+  const fs = await firestore(env);
+  const hid = await householdForKey(fs, key);
+  if (!hid) return json({ error: 'Unauthorised', message: 'This key is not linked to a household. Link it with the household workflow on the Actions tab.' }, 401);
   const body = await request.json().catch(() => null);
   if (!body) return json({ error: 'Expected JSON' }, 400);
 
-  const fs = await firestore(env);
   /* Keep the last raw payload (trimmed) so the exact shape can be checked after the first real send */
-  await fs.set('bridge/last', { receivedAt: nowTs(), sample: strVal(JSON.stringify(body).slice(0, 20000)) });
+  await fs.set(hp(hid, 'bridge/last'), { receivedAt: nowTs(), sample: strVal(JSON.stringify(body).slice(0, 20000)) });
 
   const metrics = (body.data && Array.isArray(body.data.metrics)) ? body.data.metrics : [];
   const result = { steps: 0, sleep: 0, nutrition: 0, workouts: 0, skipped: [] };
@@ -92,7 +112,7 @@ async function handleHealth(request, env) {
       for (const [day, qty] of Object.entries(perDay)) {
         const steps = Math.round(qty);
         if (steps <= 0) continue;
-        await fs.merge('exercise/' + day, { day: strVal(day), steps: intVal(steps), addedBy: strVal('Apple Health'), updatedAt: nowTs() });
+        await fs.merge(hp(hid, 'exercise/' + day), { day: strVal(day), steps: intVal(steps), addedBy: strVal('Apple Health'), updatedAt: nowTs() });
         result.steps++;
       }
     } else if (name === 'sleep_analysis' || name === 'sleep') {
@@ -121,9 +141,9 @@ async function handleHealth(request, env) {
         if (bedAt) fields.bedAt = strVal(bedAt);
         if (wokeAt) fields.wokeAt = strVal(wokeAt);
         /* Deterministic id: a night can only ever be one document, so re-sends update rather than duplicate */
-        const existing = await fs.get('entries/' + day + '_sleep');
+        const existing = await fs.get(hp(hid, 'entries/' + day + '_sleep'));
         if (!existing) fields.createdAt = nowTs();
-        await fs.merge('entries/' + day + '_sleep', fields);
+        await fs.merge(hp(hid, 'entries/' + day + '_sleep'), fields);
         result.sleep++;
       }
     } else if (NUTRITION[name]) {
@@ -162,16 +182,16 @@ async function handleHealth(request, env) {
     (workoutDays[day] = workoutDays[day] || []).push({ mapValue: { fields: item } });
   }
   for (const [day, list] of Object.entries(workoutDays)) {
-    await fs.merge('exercise/' + day, { day: strVal(day), workouts: { arrayValue: { values: list } }, addedBy: strVal('Apple Health'), updatedAt: nowTs() });
+    await fs.merge(hp(hid, 'exercise/' + day), { day: strVal(day), workouts: { arrayValue: { values: list } }, addedBy: strVal('Apple Health'), updatedAt: nowTs() });
     result.workouts++;
   }
   for (const [day, totals] of Object.entries(foodDays)) {
     const fields = { day: strVal(day), source: strVal('apple-health'), addedBy: strVal('Apple Health'), updatedAt: nowTs() };
     for (const k of ['kcal', 'prot', 'carb', 'fat']) if (totals[k] > 0) fields[k] = doubleVal(Math.round(totals[k] * 10) / 10);
-    await fs.merge('nutrition/' + day, fields);
+    await fs.merge(hp(hid, 'nutrition/' + day), fields);
     result.nutrition++;
   }
-  await fs.merge('bridge/last', { result: strVal(JSON.stringify(result)) });
+  await fs.merge(hp(hid, 'bridge/last'), { result: strVal(JSON.stringify(result)) });
   return json({ ok: true, ...result });
 }
 
@@ -226,16 +246,20 @@ async function firestore(env) {
         if (r.status === 404) return out;
         if (!r.ok) throw new Error('Firestore list ' + collection + ': ' + r.status + ' ' + await r.text());
         const body = await r.json();
-        (body.documents || []).forEach((d) => out.push({ id: d.name.split('/').pop(), fields: d.fields || {} }));
+        (body.documents || []).forEach((d) => out.push({ id: d.name.split('/').pop(), path: d.name.split('/documents/')[1], fields: d.fields || {} }));
         pageToken = body.nextPageToken || '';
       } while (pageToken);
       return out;
     },
     /* Documents matching equality filters, e.g. query('entries', { day: '2026-09-28', type: 'med' }) */
+    /* The path may be a subcollection ("households/abc/entries"): the last segment is the collection, the rest its parent document */
     async query(collection, where) {
+      const segs = collection.split('/');
+      const collectionId = segs.pop();
+      const parent = segs.length ? '/' + segs.join('/') : '';
       const filters = Object.entries(where).map(([field, value]) => ({ fieldFilter: { field: { fieldPath: field }, op: 'EQUAL', value: { stringValue: String(value) } } }));
-      const structuredQuery = { from: [{ collectionId: collection }], where: filters.length === 1 ? filters[0] : { compositeFilter: { op: 'AND', filters } }, limit: 500 };
-      const r = await fetch(base.replace(/\/$/, '') + ':runQuery', { method: 'POST', headers, body: JSON.stringify({ structuredQuery }) });
+      const structuredQuery = { from: [{ collectionId }], where: filters.length === 1 ? filters[0] : { compositeFilter: { op: 'AND', filters } }, limit: 500 };
+      const r = await fetch(base.replace(/\/$/, '') + parent + ':runQuery', { method: 'POST', headers, body: JSON.stringify({ structuredQuery }) });
       if (!r.ok) throw new Error('Firestore query ' + collection + ': ' + r.status + ' ' + await r.text());
       const rows = await r.json();
       return rows.filter((x) => x.document).map((x) => ({ id: x.document.name.split('/').pop(), fields: x.document.fields || {} }));
@@ -299,18 +323,25 @@ const f = (fields, k) => { const v = fields[k]; if (!v) return null; return v.st
 function isPrivateSub(sub) { return f(sub.fields, 'private') !== false; }
 function payloadFor(sub, payload, privateBody) { return privateBody && isPrivateSub(sub) ? { ...payload, body: privateBody } : payload; }
 
+/* Every household in turn; a phone only ever hears about its own household's medicines */
 async function runReminders(env) {
   if (!env.VAPID_PRIVATE_KEY) return { skipped: 'VAPID_PRIVATE_KEY is not set' };
   const fs = await firestore(env);
-  const subs = await fs.list('pushSubs');
+  const households = await fs.list('households');
+  const out = {};
+  for (const hh of households) out[hh.id] = await runHouseholdReminders(env, fs, hh.id);
+  return { households: households.length, ...out };
+}
+async function runHouseholdReminders(env, fs, hid) {
+  const subs = await fs.list(hp(hid, 'pushSubs'));
   if (!subs.length) return { skipped: 'no phones have reminders on' };
   const now = londonNow();
-  const logDoc = await fs.get('bridge/reminderLog');
+  const logDoc = await fs.get(hp(hid, 'bridge/reminderLog'));
   const lf = logDoc ? logDoc.fields : {};
   const sent = f(lf, 'day') === now.day && lf.sent && lf.sent.mapValue ? Object.keys(lf.sent.mapValue.fields || {}) : [];
   const sentSet = new Set(sent);
-  const medicines = (await fs.list('medicines')).filter((m) => f(m.fields, 'active') !== false && f(m.fields, 'kind') !== 'prn' && (!f(m.fields, 'courseEnd') || f(m.fields, 'courseEnd') >= now.day));
-  const doses = await fs.query('entries', { day: now.day, type: 'med' });
+  const medicines = (await fs.list(hp(hid, 'medicines'))).filter((m) => f(m.fields, 'active') !== false && f(m.fields, 'kind') !== 'prn' && (!f(m.fields, 'courseEnd') || f(m.fields, 'courseEnd') >= now.day));
+  const doses = await fs.query(hp(hid, 'entries'), { day: now.day, type: 'med' });
   const doseMinutes = (medId) => doses.filter((d) => f(d.fields, 'medId') === medId).map((d) => londonNow(new Date(f(d.fields, 'at'))).minutes);
   const out = [];
   /* A private phone (pushSubs/{id}.private, true unless switched off) gets the same notification without the medicine's name or dose */
@@ -335,14 +366,14 @@ async function runReminders(env) {
     }
   }
   /* One-off reminders from the app ("Remind me in 15 minutes" after a meal) */
-  const oneOffs = await fs.list('reminders');
+  const oneOffs = await fs.list(hp(hid, 'reminders'));
   for (const r of oneOffs) {
-    if (f(r.fields, 'sent') === true) { if (new Date(f(r.fields, 'at')).getTime() < Date.now() - 86400000) await fs.remove('reminders/' + r.id); continue; }
+    if (f(r.fields, 'sent') === true) { if (new Date(f(r.fields, 'at')).getTime() < Date.now() - 86400000) await fs.remove(hp(hid, 'reminders/' + r.id)); continue; }
     if (new Date(f(r.fields, 'at')).getTime() > Date.now()) continue;
     await send('oneoff|' + r.id, { title: 'Daybook', body: `Reminder: ${f(r.fields, 'medName') || 'medicine'} ${f(r.fields, 'dose') || ''}`.trim(), tag: 'oneoff|' + r.id, url: appUrl('meds') }, 'Reminder: a medicine to take');
-    await fs.merge('reminders/' + r.id, { sent: { booleanValue: true } });
+    await fs.merge(hp(hid, 'reminders/' + r.id), { sent: { booleanValue: true } });
   }
-  await fs.set('bridge/reminderLog', { day: strVal(now.day), at: { timestampValue: new Date().toISOString() }, sent: { mapValue: { fields: Object.fromEntries([...sentSet].map((k) => [k, { booleanValue: true }])) } } });
+  await fs.set(hp(hid, 'bridge/reminderLog'), { day: strVal(now.day), at: { timestampValue: new Date().toISOString() }, sent: { mapValue: { fields: Object.fromEntries([...sentSet].map((k) => [k, { booleanValue: true }])) } } });
   return { day: now.day, minutes: now.minutes, phones: subs.length, medicines: medicines.length, sent: out };
 }
 
@@ -388,7 +419,7 @@ async function sendPush(env, fs, subDoc, payload) {
   try {
     const body = await encryptPayload(sub, JSON.stringify(payload));
     const r = await fetch(endpoint, { method: 'POST', headers: { Authorization: await vapidHeader(env, endpoint), 'Content-Encoding': 'aes128gcm', 'Content-Type': 'application/octet-stream', TTL: '3600', Urgency: 'high' }, body });
-    if (r.status === 404 || r.status === 410) { await fs.remove('pushSubs/' + subDoc.id); return 'gone, removed'; }
+    if (r.status === 404 || r.status === 410) { await fs.remove(subDoc.path || ('pushSubs/' + subDoc.id)); return 'gone, removed'; }
     if (!r.ok) return 'push service ' + r.status + ' ' + (await r.text()).slice(0, 120);
     return 'sent';
   } catch (e) { return 'error ' + (e && e.message || e); }
@@ -424,8 +455,9 @@ const nowTs = () => ({ timestampValue: new Date().toISOString() });
 
 const EXPLAIN_MODEL = 'claude-opus-5';
 const EXPLAIN_MAX_TOKENS = 4000;             // a letter's explanation or a question list; also the cost cap per call
-const EXPLAIN_LIMIT_REAL = 40;               // calls a day from the real project, all accounts together
+const EXPLAIN_LIMIT_REAL = 40;               // calls a day per household on the real project
 const EXPLAIN_LIMIT_DEMO = 12;               // calls a day from the shared demo (its guest sign-in is public)
+const DEMO_HOUSEHOLD = 'demo';               // the demo project's one household (DEMO_HOUSEHOLD in scripts.js)
 const EXPLAIN_MAX_PAGES = 8;
 const EXPLAIN_MAX_PAGE_CHARS = 1300000;      // base64 JPEG per page (the app keeps pages under 900 KB)
 const EXPLAIN_MAX_TEXT_CHARS = 60000;
@@ -457,10 +489,13 @@ async function handleExplain(request, env) {
   catch (e) { return json({ error: 'unauthorised', message: 'Could not check who you are. Sign out and in again.' }, 401); }
   const demo = !!env.DEMO_PROJECT_ID && who.project === env.DEMO_PROJECT_ID && who.project !== sa.project_id;
   const fs = await firestore(env);
+  let hid = DEMO_HOUSEHOLD;
   if (!demo) {
     const rec = await fs.get('users/' + who.uid);
-    const role = rec && rec.fields && rec.fields.role && rec.fields.role.stringValue;
-    if (role !== 'family') return json({ error: 'unauthorised', message: 'Only family accounts can use Explain in Daybook.' }, 403);
+    hid = rec && f(rec.fields, 'household');
+    if (!hid) return json({ error: 'unauthorised', message: 'This account is not in a Daybook household yet.' }, 403);
+    const mem = await fs.get(hp(hid, 'members/' + who.uid));
+    if (!mem || f(mem.fields, 'role') !== 'family') return json({ error: 'unauthorised', message: 'Only family accounts can use Explain in Daybook.' }, 403);
   }
 
   let body;
@@ -472,12 +507,12 @@ async function handleExplain(request, env) {
 
   /* The daily count, bumped before the call so parallel taps cannot slip past it */
   const day = londonNow().day;
-  const logDoc = await fs.get('bridge/explainLog');
+  const logDoc = await fs.get(hp(hid, 'bridge/explainLog'));
   const f = (logDoc && logDoc.fields && logDoc.fields.day && logDoc.fields.day.stringValue === day) ? logDoc.fields : {};
   const n = (k) => Number(f[k] && f[k].integerValue || 0);
   const used = demo ? n('demo') : n('real');
   if (used >= (demo ? EXPLAIN_LIMIT_DEMO : EXPLAIN_LIMIT_REAL)) return json({ error: 'limit', message: demo ? 'The demo has used its explanations for today. Try again tomorrow, or use Send to my AI app.' : 'Daybook has used its explanations for today. Use Send to my AI app for now.' }, 429);
-  await fs.set('bridge/explainLog', { day: { stringValue: day }, real: { integerValue: String(n('real') + (demo ? 0 : 1)) }, demo: { integerValue: String(n('demo') + (demo ? 1 : 0)) }, tokensIn: { integerValue: String(n('tokensIn')) }, tokensOut: { integerValue: String(n('tokensOut')) }, updatedAt: { timestampValue: new Date().toISOString() } });
+  await fs.set(hp(hid, 'bridge/explainLog'), { day: { stringValue: day }, real: { integerValue: String(n('real') + (demo ? 0 : 1)) }, demo: { integerValue: String(n('demo') + (demo ? 1 : 0)) }, tokensIn: { integerValue: String(n('tokensIn')) }, tokensOut: { integerValue: String(n('tokensOut')) }, updatedAt: { timestampValue: new Date().toISOString() } });
 
   const content = pages.map((data) => ({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data } }));
   const head = kind === 'document'
@@ -487,7 +522,7 @@ async function handleExplain(request, env) {
   const reply = await askClaude(env, EXPLAIN_SYSTEM[kind], content);
   if (reply.refused) return json({ error: 'refused', message: 'The AI service declined to explain this one. Try Send to my AI app instead.' }, 422);
   /* Usage for Mark's own accounting (tokens only, never the text) */
-  await fs.merge('bridge/explainLog', { tokensIn: { integerValue: String(n('tokensIn') + reply.usage.input) }, tokensOut: { integerValue: String(n('tokensOut') + reply.usage.output) } }).catch(() => {});
+  await fs.merge(hp(hid, 'bridge/explainLog'), { tokensIn: { integerValue: String(n('tokensIn') + reply.usage.input) }, tokensOut: { integerValue: String(n('tokensOut') + reply.usage.output) } }).catch(() => {});
   return json({ text: reply.text, model: reply.model, usage: reply.usage, cut: reply.cut });
 }
 
@@ -543,7 +578,7 @@ async function googleKey(kid, fetchFn) {
 }
 
 /* For the test harness only (scratchpad): nothing in the app or the workflow uses these */
-export const _test = { verifyFirebaseToken, askClaude, EXPLAIN_SYSTEM, distanceKm, payloadFor };
+export const _test = { verifyFirebaseToken, askClaude, EXPLAIN_SYSTEM, distanceKm, payloadFor, sha256Hex, hp };
 
 /* ------------------------------------------------------------------ */
 /* Plumbing                                                             */
