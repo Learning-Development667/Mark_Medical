@@ -1070,6 +1070,31 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .recbtn { color: var(--warm); } }
 :root[data-theme="dark"] .recbtn { color: var(--warm); }
 
+/* ---------- Exercise programme, physio plan, Apple Health workouts ---------- */
+.goal-main { display: flex; flex-direction: column; min-width: 0; }
+.goal-note { font-size: 14px; color: var(--text-secondary); font-weight: 400; }
+.ex-not-today { margin: var(--s-2) 0 var(--s-5); font-size: 15px; }
+.workouts { display: flex; flex-direction: column; gap: var(--s-2); }
+.workout { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2) var(--s-3); background: var(--surface-sunken); border-radius: var(--r-md); padding: var(--s-3) 14px; }
+.workout-main { flex: 1 1 180px; min-width: 0; }
+.workout-name { font-weight: 600; }
+.workout-sub { font-family: var(--font-mono); font-size: 13px; color: var(--text-muted); letter-spacing: 0.02em; }
+.workout .btn { margin-top: 0; flex: none; margin-left: auto; }
+.proglist { display: flex; flex-direction: column; gap: var(--s-2); margin-top: var(--s-2); }
+.progrow { display: flex; flex-direction: column; gap: var(--s-2); background: var(--surface-sunken); border-radius: var(--r-md); padding: var(--s-3) 14px var(--s-2); }
+.progrow-main { min-width: 0; }
+.progrow-name { font-weight: 600; }
+.progrow-sub { font-size: 14px; color: var(--text-secondary); }
+.progrow-btns { display: flex; align-items: center; gap: var(--s-2); }
+.progrow-btns .iconbtn { flex: none; }
+.progrow-btns .btn { margin-top: 0; flex: none; }
+.progrow-btns .btn-link { margin-left: auto; }
+.prog-section { font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); margin: var(--s-4) 0 var(--s-1); }
+.chips { display: flex; flex-wrap: wrap; gap: var(--s-2); margin: var(--s-2) 0 var(--s-3); }
+.review-row { display: flex; align-items: flex-start; gap: var(--s-3); background: var(--surface-sunken); border-radius: var(--r-md); padding: var(--s-3) 14px; }
+.review-row input[type="checkbox"] { width: 26px; height: 26px; flex: none; margin-top: 2px; accent-color: var(--teal); }
+body.is-readonly .workout .btn { display: none; }
+
 /* ---------- Suggested questions (Explain in Daybook) ---------- */
 .suggested { display: flex; flex-direction: column; gap: var(--s-2); margin-top: var(--s-3); }
 .suggest-row { display: flex; align-items: center; gap: var(--s-3); background: var(--surface-sunken); border-radius: var(--r-md); padding: var(--s-3) 14px; }

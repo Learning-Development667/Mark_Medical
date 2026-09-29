@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '68';
+const APP_VERSION = '69';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -81,15 +81,10 @@ function moodMark(level) {
   return svg;
 }
 
-/* Daily exercise goals. Defaults are what Mark asked for; editable in the app and
-   stored on profile/main.exerciseGoals. Plank is stored in seconds. */
+/* The four exercises Mark started with. Since v69 they are only the starting programme for an
+   account that has never edited one (profile/main.programme is missing): the old exerciseGoals
+   figures still feed the amounts, and the ids match the old done keys, so nothing ticked is lost. */
 const GOAL_DEFAULTS = { pressups: 20, situps: 20, plankSeconds: 60, squats: 2 };
-const GOAL_ROWS = [
-  { key: 'pressups', label: 'Press-ups', goal: 'pressups', fmt: (n) => n + ' a day' },
-  { key: 'situps', label: 'Sit-ups', goal: 'situps', fmt: (n) => n + ' a day' },
-  { key: 'plank', label: 'Plank', goal: 'plankSeconds', fmt: (sec) => sec % 60 === 0 ? (sec / 60) + (sec === 60 ? ' minute' : ' minutes') : sec + ' seconds' },
-  { key: 'squats', label: 'Squats', goal: 'squats', fmt: (n) => n + ' a day' }
-];
 
 const CARE_LOG_BLOCK_RE = /===\s*CARE LOG DOCUMENT\s*===\s*\nTitle:\s*(.*)\nDate:\s*(\d{4}-\d{2}-\d{2})\nExplanation:\s*\n([\s\S]*?)\n===\s*END\s*===/g;
 
@@ -810,15 +805,27 @@ function buildDemoFixture() {
   days[day(4)] = { chemo: true, treatment: 'chemo', chemoDone: false, updatedBy: 'Mark', updatedAt: demoTs(at(-1, '09:00')) };
   days[day(0)] = { mood: 4, good: 'Cup of tea in the sun with Shelley', updatedBy: 'Mark', updatedAt: demoTs(at(0, '08:30')) };
 
-  const doneAll = { pressups: true, situps: true, plank: true, squats: true };
+  const doneAll = { pressups: true, situps: true, plank: true, squats: true, walk: true, ankle: true, heel: true };
   const exercise = {};
-  exercise[day(-2)] = { day: day(-2), steps: 2100, done: doneAll };
-  exercise[day(-1)] = { day: day(-1), steps: 2800, done: doneAll };
-  exercise[day(0)] = { day: day(0), steps: 1200, done: { pressups: true, situps: true, plank: false, squats: false } };
+  exercise[day(-2)] = { day: day(-2), steps: 2100, done: doneAll, workouts: [{ name: 'Outdoor Walk', minutes: 32, km: 1.8, kcal: 120, start: '10:15' }] };
+  exercise[day(-1)] = { day: day(-1), steps: 2800, done: doneAll, workouts: [{ name: 'Outdoor Walk', minutes: 41, km: 2.4, kcal: 150, start: '09:50' }] };
+  exercise[day(0)] = { day: day(0), steps: 1200, done: { pressups: true, situps: true, plank: false, squats: false, ankle: true }, workouts: [{ name: 'Outdoor Walk', minutes: 18, km: 1.1, kcal: 70, start: '08:40' }] };
   exercise[day(-4)] = { day: day(-4), steps: 1600, done: { pressups: true, situps: false, plank: false, squats: true } };
   exercise[day(-6)] = { day: day(-6), steps: 900, done: {} };
 
-  const profile = { calls: [{ label: 'Oncology ward (example)', number: '01234 567890' }, { label: 'Hospice at home (example)', number: '01234 567891' }] };
+  const profile = {
+    calls: [{ label: 'Oncology ward (example)', number: '01234 567890' }, { label: 'Hospice at home (example)', number: '01234 567891' }],
+    programme: { items: [
+      { id: 'pressups', name: 'Press-ups', section: 'exercise', kind: 'reps', amount: 20 },
+      { id: 'situps', name: 'Sit-ups', section: 'exercise', kind: 'reps', amount: 20 },
+      { id: 'plank', name: 'Plank', section: 'exercise', kind: 'seconds', amount: 60 },
+      { id: 'squats', name: 'Squats', section: 'exercise', kind: 'reps', amount: 2 },
+      { id: 'walk', name: 'Walk', section: 'exercise', kind: 'minutes', amount: 20, days: [1, 3, 5], note: 'Round the block, slower on chemo days' },
+      { id: 'ankle', name: 'Ankle pumps', section: 'physio', kind: 'sets', amount: 20, sets: 3, note: 'Lying down, both feet' },
+      { id: 'heel', name: 'Heel slides', section: 'physio', kind: 'sets', amount: 10, sets: 2, note: 'Slow, stop at the first pull' }
+    ] },
+    physio: { from: 'Community physio (example)', given: day(-12), notes: 'Twice a day. Stop if pain goes above 5 out of 10.' }
+  };
 
   const meals = [
     { id: fakeId('meal'), name: 'Porridge', parts: 'honey and banana', addedBy: 'Mark' },
@@ -5739,24 +5746,85 @@ function confetti() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Exercise: steps by hand, daily goals, streak                          */
+/* Exercise: steps (Apple Health or by hand), the programme, physio, streak */
 /* ------------------------------------------------------------------ */
-
-function goals() { return { ...GOAL_DEFAULTS, ...((state.profile && state.profile.exerciseGoals) || {}) }; }
+/* profile/main.programme = { items: [{ id, name, section "exercise"|"physio", kind, amount, sets?, days?, note? }] }
+   and profile/main.physio = { from, given, notes } (the plan's header). A day's ticks stay in
+   exercise/{day}.done keyed by item id. Kinds: reps, seconds, minutes, sets (amount = reps per set),
+   do (no count, just tick it). days is a list of getDay() numbers, none meaning every day.
+   since "YYYY-MM-DD" is the day an item was added in the app: before it the item is not due, so
+   adding an exercise never turns past days into missed ones (the starting four carry no since). */
+const PROGRAMME_KINDS = [
+  { key: 'reps', label: 'Reps', unit: (n) => (n === 1 ? '1 rep' : n + ' reps') },
+  { key: 'seconds', label: 'Seconds', unit: (n) => fmtSecondsWord(n) },
+  { key: 'minutes', label: 'Minutes', unit: (n) => (n === 1 ? '1 minute' : n + ' minutes') },
+  { key: 'sets', label: 'Sets and reps', unit: (n, sets) => (sets || 1) + ' sets of ' + n },
+  { key: 'do', label: 'Just tick it off', unit: () => 'once' }
+];
+const WEEKDAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0];
+function fmtSecondsWord(sec) { return sec >= 60 && sec % 60 === 0 ? (sec / 60) + (sec === 60 ? ' minute' : ' minutes') : sec + ' seconds'; }
+function programmeKind(item) { return PROGRAMME_KINDS.find((k) => k.key === item.kind) || PROGRAMME_KINDS[0]; }
+function itemTarget(item) { return programmeKind(item).unit(Number(item.amount) || 0, Number(item.sets) || 0); }
+function itemDaysText(item) { return !item.days || !item.days.length || item.days.length === 7 ? 'every day' : WEEK_ORDER.filter((d) => item.days.includes(d)).map((d) => WEEKDAY_SHORT[d]).join(', '); }
+function defaultProgrammeItems() {
+  const g = { ...GOAL_DEFAULTS, ...((state.profile && state.profile.exerciseGoals) || {}) };
+  return [
+    { id: 'pressups', name: 'Press-ups', section: 'exercise', kind: 'reps', amount: g.pressups },
+    { id: 'situps', name: 'Sit-ups', section: 'exercise', kind: 'reps', amount: g.situps },
+    { id: 'plank', name: 'Plank', section: 'exercise', kind: 'seconds', amount: g.plankSeconds },
+    { id: 'squats', name: 'Squats', section: 'exercise', kind: 'reps', amount: g.squats }
+  ];
+}
+function programmeItems() {
+  const p = state.profile && state.profile.programme;
+  return p && Array.isArray(p.items) ? p.items : defaultProgrammeItems();
+}
+function physioPlan() { return (state.profile && state.profile.physio) || {}; }
+function itemDue(item, day) {
+  if (item.since && day < item.since) return false;
+  return !item.days || !item.days.length || item.days.includes(parseDay(day).getDay());
+}
 function exerciseFor(day) { return state.exercise[day] || {}; }
-function allGoalsDone(day) { const d = exerciseFor(day).done || {}; return GOAL_ROWS.every((g) => d[g.key]); }
-
+/* done: every item due that day is ticked; rest: nothing due; missed: something due is not ticked */
+function dayStatus(day) {
+  const due = programmeItems().filter((it) => itemDue(it, day));
+  if (!due.length) return 'rest';
+  const d = exerciseFor(day).done || {};
+  return due.every((it) => d[it.id]) ? 'done' : 'missed';
+}
+function allGoalsDone(day) { return dayStatus(day) === 'done'; }
+/* Consecutive done days, counting back from today (or yesterday if today is not done yet); rest days are passed over */
 function exerciseStreak() {
-  let n = 0;
-  let d = todayStr();
-  if (!allGoalsDone(d)) d = addDays(d, -1);
-  while (allGoalsDone(d) && n < 3660) { n++; d = addDays(d, -1); }
+  let n = 0, d = todayStr();
+  if (dayStatus(d) !== 'done') d = addDays(d, -1);
+  for (let i = 0; i < 3660; i++) {
+    const s = dayStatus(d);
+    if (s === 'missed') break;
+    if (s === 'done') n++;
+    d = addDays(d, -1);
+  }
   return n;
 }
+async function saveProgramme(items, physio) {
+  const programme = { items: items.map((it) => ({ ...it, amount: Number(it.amount) || 0 })) };
+  const patch = physio !== undefined ? { programme, physio } : { programme };
+  if (state.demo) { state.profile = { ...state.profile, ...patch }; renderExercise(); return; }
+  await setDoc(doc(db, 'profile', 'main'), patch, { merge: true });
+}
+function newItemId() { return 'x' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
 
 $('ex-prev').addEventListener('click', () => { state.exerciseDay = addDays(state.exerciseDay, -1); renderExercise(); });
 $('ex-next').addEventListener('click', () => { if (state.exerciseDay < todayStr()) { state.exerciseDay = addDays(state.exerciseDay, 1); renderExercise(); } });
 $('ex-label').addEventListener('click', () => { state.exerciseDay = todayStr(); renderExercise(); });
+
+function goalRow(item, done, day) {
+  return h('button', { class: 'goal' + (done ? ' is-done' : ''), type: 'button', 'aria-pressed': done ? 'true' : 'false', disabled: state.readOnly, onclick: () => toggleGoal(day, item.id) },
+    h('span', { class: 'goal-box' }, done ? icon('check') : null),
+    h('span', { class: 'goal-main' }, h('span', { class: 'goal-label', text: item.name }), item.note ? h('span', { class: 'goal-note', text: item.note }) : null),
+    h('span', { class: 'goal-target', text: itemTarget(item) })
+  );
+}
 
 function renderExercise() {
   const day = state.exerciseDay;
@@ -5774,31 +5842,59 @@ function renderExercise() {
   $('ex-streak-sub').textContent = streak === 1 ? 'day all done' : 'days all done';
   $('ex-streak-tile').classList.toggle('is-green', streak > 0);
 
-  const g = goals();
+  /* Workouts Apple Health already recorded that day (walks, swims, anything on the watch) */
+  const workouts = Array.isArray(rec.workouts) ? rec.workouts : [];
+  $('ex-workouts').hidden = !workouts.length;
+  $('ex-workouts-list').replaceChildren(...workouts.map((w) => {
+    const bits = [];
+    if (w.minutes) bits.push(w.minutes + ' min');
+    if (w.km) bits.push(w.km + ' km');
+    if (w.kcal) bits.push(w.kcal + ' kcal');
+    if (w.start) bits.push(w.start);
+    return h('div', { class: 'workout' },
+      h('div', { class: 'workout-main' }, h('div', { class: 'workout-name', text: w.name || 'Workout' }), h('div', { class: 'workout-sub', text: bits.join(' · ') })),
+      h('button', { class: 'btn btn-secondary btn-small', type: 'button', onclick: () => openItemSheet({ id: newItemId(), name: w.name || 'Workout', section: 'exercise', kind: 'minutes', amount: Math.max(1, Math.round(w.minutes || 30)) }, true, () => closeSheet()) }, 'Add to programme'));
+  }));
+
+  const items = programmeItems();
   const done = rec.done || {};
-  $('ex-goals').replaceChildren(...GOAL_ROWS.map((row) => h('button', { class: 'goal' + (done[row.key] ? ' is-done' : ''), type: 'button', 'aria-pressed': done[row.key] ? 'true' : 'false', disabled: state.readOnly, onclick: () => toggleGoal(day, row.key) },
-    h('span', { class: 'goal-box' }, done[row.key] ? icon('check') : null),
-    h('span', { class: 'goal-label', text: row.label }),
-    h('span', { class: 'goal-target', text: row.fmt(g[row.goal]) })
-  )));
+  const renderSection = (section, listId, notId) => {
+    const mine = items.filter((it) => it.section === section);
+    const due = mine.filter((it) => itemDue(it, day));
+    const off = mine.filter((it) => !itemDue(it, day));
+    $(listId).replaceChildren(...due.map((it) => goalRow(it, !!done[it.id], day)));
+    const not = $(notId);
+    not.hidden = !off.length;
+    not.textContent = off.length ? 'Not today: ' + off.map((it) => it.name + ' (' + itemDaysText(it) + ')').join(', ') : '';
+    return mine.length;
+  };
+  const nEx = renderSection('exercise', 'ex-goals', 'ex-not-today');
+  $('ex-goals-empty').hidden = nEx > 0;
+  const nPh = renderSection('physio', 'ex-physio', 'ex-physio-not-today');
+  const plan = physioPlan();
+  const header = [[plan.from ? 'From ' + plan.from : '', plan.given ? 'given ' + fmtDayNum(plan.given) : ''].filter(Boolean).join(', '), plan.notes || ''].filter(Boolean).join('. ');
+  $('ex-physio-section').hidden = !(nPh > 0 || header);
+  $('ex-physio-hint').hidden = !header;
+  $('ex-physio-hint').textContent = header;
   renderStepsChart();
 }
 
-async function toggleGoal(day, key) {
+async function toggleGoal(day, id) {
   const rec = exerciseFor(day);
   const done = { ...(rec.done || {}) };
-  done[key] = !done[key];
-  const nowAll = GOAL_ROWS.every((g) => done[g.key]);
+  done[id] = !done[id];
   const wasAll = allGoalsDone(day);
+  const due = programmeItems().filter((it) => itemDue(it, day));
+  const nowAll = due.length > 0 && due.every((it) => done[it.id]);
   if (state.demo) {
     state.exercise[day] = { ...rec, day, done };
     renderExercise();
-    if (nowAll && !wasAll) toast('All four done. Nice work.');
+    if (nowAll && !wasAll) toast('All done for today. Nice work.');
     return;
   }
   try {
     await setDoc(doc(db, 'exercise', day), { day, done, addedBy: state.name, updatedAt: serverTimestamp() }, { merge: true });
-    if (nowAll && !wasAll) toast('All four done. Nice work.');
+    if (nowAll && !wasAll) toast('All done for today. Nice work.');
   } catch (e) { console.error(e); toast('Could not save'); }
 }
 
@@ -5910,31 +6006,206 @@ function openStepsSheet(initialDay) {
   openSheet('Steps', body, saveIfDirty);
 }
 
-$('ex-goals-edit').addEventListener('click', () => {
-  const g = goals();
-  const pressups = h('input', { type: 'number', inputmode: 'numeric', min: '0', value: String(g.pressups) });
-  const situps = h('input', { type: 'number', inputmode: 'numeric', min: '0', value: String(g.situps) });
-  const plank = h('input', { type: 'number', inputmode: 'numeric', min: '0', step: '5', value: String(g.plankSeconds) });
-  const squats = h('input', { type: 'number', inputmode: 'numeric', min: '0', value: String(g.squats) });
+/* ---- The programme editor: a list to add to, reorder and remove from, each change saved as it is made ---- */
+$('ex-goals-edit').addEventListener('click', () => openProgrammeSheet());
+
+function openProgrammeSheet() {
+  const items = programmeItems().map((it) => ({ ...it }));
+  const list = h('div', { class: 'proglist' });
+  const persist = async (next, physio) => {
+    try { await saveProgramme(next, physio); } catch (e) { console.error(e); toast('Could not save'); return false; }
+    return true;
+  };
+  const move = async (i, dir) => {
+    const j = i + dir;
+    if (j < 0 || j >= items.length) return;
+    [items[i], items[j]] = [items[j], items[i]];
+    if (await persist(items)) { draw(); renderExercise(); }
+  };
+  const remove = async (i) => {
+    const gone = items.splice(i, 1)[0];
+    if (await persist(items)) { toast('Removed ' + gone.name); draw(); renderExercise(); }
+  };
+  function draw() {
+    const rows = [];
+    for (const section of ['exercise', 'physio']) {
+      const mine = items.map((it, i) => ({ it, i })).filter((x) => x.it.section === section);
+      if (!mine.length) continue;
+      rows.push(h('p', { class: 'prog-section', text: section === 'exercise' ? 'Daily exercises' : 'Physio plan' }));
+      mine.forEach(({ it, i }, k) => {
+        const del = h('button', { class: 'btn btn-link btn-small', type: 'button', 'aria-label': 'Remove ' + it.name }, 'Remove');
+        del.addEventListener('click', () => {
+          const yes = h('button', { class: 'btn btn-danger btn-small', type: 'button', onclick: () => remove(i) }, 'Yes, remove');
+          const keep = h('button', { class: 'btn btn-secondary btn-small', type: 'button', onclick: () => { yes.replaceWith(del); keep.remove(); } }, 'Keep');
+          del.replaceWith(yes); yes.after(keep); yes.focus();
+        });
+        rows.push(h('div', { class: 'progrow' },
+          h('div', { class: 'progrow-main' }, h('div', { class: 'progrow-name', text: it.name }), h('div', { class: 'progrow-sub', text: itemTarget(it) + ', ' + itemDaysText(it) + (it.note ? '. ' + it.note : '') })),
+          h('div', { class: 'progrow-btns' },
+            h('button', { class: 'iconbtn', type: 'button', 'aria-label': 'Move ' + it.name + ' up', disabled: k === 0, onclick: () => move(i, -1) }, '\u2191'),
+            h('button', { class: 'iconbtn', type: 'button', 'aria-label': 'Move ' + it.name + ' down', disabled: k === mine.length - 1, onclick: () => move(i, 1) }, '\u2193'),
+            h('button', { class: 'btn btn-secondary btn-small', type: 'button', 'aria-label': 'Edit ' + it.name, onclick: () => openItemSheet(it, false, () => openProgrammeSheet()) }, 'Edit'),
+            del)));
+      });
+    }
+    /* the up and down arrows swap neighbours in the full list; inside a section the neighbour is the next of the same section */
+    list.replaceChildren(...rows);
+    if (!items.length) list.append(h('p', { class: 'muted', text: 'Nothing in the programme yet.' }));
+  }
+  draw();
+  const plan = physioPlan();
   const body = h('div', null,
-    h('p', { class: 'hint', text: 'Set what a full day looks like. Worth checking these with the oncology team first.' }),
-    field('Press-ups a day', pressups), field('Sit-ups a day', situps), field('Plank (seconds)', plank), field('Squats a day', squats),
+    h('p', { class: 'hint', text: 'Your own exercises, in your own amounts. Tick them off each day on the Exercise tab. Anything from a physio goes under Physio plan.' }),
+    list,
+    h('div', { class: 'btnrow' },
+      h('button', { class: 'btn btn-primary', type: 'button', onclick: () => openItemSheet({ id: newItemId(), name: '', section: 'exercise', kind: 'reps', amount: 10 }, true, () => openProgrammeSheet()) }, 'Add exercise'),
+      h('button', { class: 'btn btn-secondary', type: 'button', onclick: () => openItemSheet({ id: newItemId(), name: '', section: 'physio', kind: 'sets', amount: 10, sets: 3 }, true, () => openProgrammeSheet()) }, 'Add physio exercise')),
+    explainAvailable() ? h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => importPlanPhotos() }, 'Add from a photo of the plan') : null,
+    explainAvailable() ? h('p', { class: 'hint', text: 'Photograph the exercise sheet or physio plan and Daybook reads it into the list for you to check. The photo goes to Daybook\'s AI service and is not kept.' }) : null,
+    h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => openPhysioDetailsSheet() }, (plan.from || plan.notes) ? 'Physio plan details' : 'Add physio plan details'),
+    h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: closeSheet }, 'Done')
+  );
+  openSheet('Programme', body);
+}
+
+/* One exercise: name, where it belongs, how it is counted, how much, which days, a note */
+function openItemSheet(item, isNew, after) {
+  const it = { ...item, days: Array.isArray(item.days) ? item.days.slice() : [] };
+  const name = h('input', { type: 'text', placeholder: 'e.g. Lunges', value: it.name || '', maxlength: '60' });
+  const amount = h('input', { type: 'number', inputmode: 'numeric', min: '0', value: String(it.amount || '') });
+  const sets = h('input', { type: 'number', inputmode: 'numeric', min: '1', value: String(it.sets || 3) });
+  const note = h('textarea', { rows: '2', placeholder: 'e.g. hold for 10 seconds each side', maxlength: '200' });
+  note.value = it.note || '';
+  const setsField = field('Sets', sets);
+  const amountField = field('How many', amount);
+  const sectionRow = h('div', { class: 'chips', role: 'group', 'aria-label': 'Where it belongs' });
+  const kindRow = h('div', { class: 'chips', role: 'group', 'aria-label': 'How it is counted' });
+  const dayRow = h('div', { class: 'chips', role: 'group', 'aria-label': 'Which days' });
+  const chip = (label, on, onclick) => h('button', { class: 'preset' + (on ? ' is-active' : ''), type: 'button', 'aria-pressed': on ? 'true' : 'false', onclick }, label);
+  const drawSection = () => sectionRow.replaceChildren(chip('Exercise', it.section !== 'physio', () => { it.section = 'exercise'; drawSection(); }), chip('Physio', it.section === 'physio', () => { it.section = 'physio'; drawSection(); }));
+  const drawKind = () => {
+    kindRow.replaceChildren(...PROGRAMME_KINDS.map((k) => chip(k.label, it.kind === k.key, () => { it.kind = k.key; drawKind(); })));
+    setsField.hidden = it.kind !== 'sets';
+    amountField.hidden = it.kind === 'do';
+    amountField.querySelector('span').textContent = it.kind === 'sets' ? 'Reps in each set' : it.kind === 'seconds' ? 'Seconds' : it.kind === 'minutes' ? 'Minutes' : 'How many';
+  };
+  const drawDays = () => {
+    const every = !it.days.length;
+    dayRow.replaceChildren(chip('Every day', every, () => { it.days = []; drawDays(); }),
+      ...WEEK_ORDER.map((d) => chip(WEEKDAY_SHORT[d], it.days.includes(d), () => { it.days = it.days.includes(d) ? it.days.filter((x) => x !== d) : it.days.concat(d); if (it.days.length === 7) it.days = []; drawDays(); })));
+  };
+  drawSection(); drawKind(); drawDays();
+  const saveBtn = h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
+    it.name = name.value.trim();
+    it.amount = it.kind === 'do' ? 1 : Math.max(0, parseInt(amount.value, 10) || 0);
+    it.sets = it.kind === 'sets' ? Math.max(1, parseInt(sets.value, 10) || 1) : null;
+    it.note = note.value.trim();
+    if (!it.name) { toast('Give it a name'); name.focus(); return; }
+    if (it.kind !== 'do' && !it.amount) { toast('How many?'); amount.focus(); return; }
+    const clean = { id: it.id, name: it.name, section: it.section === 'physio' ? 'physio' : 'exercise', kind: it.kind, amount: it.amount, days: it.days };
+    if (it.sets) clean.sets = it.sets;
+    if (it.note) clean.note = it.note;
+    if (isNew) clean.since = todayStr(); else if (it.since) clean.since = it.since;
+    const items = programmeItems().map((x) => ({ ...x }));
+    const i = items.findIndex((x) => x.id === it.id);
+    if (i >= 0) items[i] = clean; else items.push(clean);
+    saveBtn.disabled = true;
+    try { await saveProgramme(items); toast(isNew ? 'Added ' + clean.name : 'Saved'); renderExercise(); if (after) after(); else closeSheet(); }
+    catch (e) { console.error(e); toast('Could not save'); saveBtn.disabled = false; }
+  } }, isNew ? 'Add' : 'Save');
+  const body = h('div', null,
+    field('Name', name), h('p', { class: 'hint', text: 'Where it belongs' }), sectionRow,
+    h('p', { class: 'hint', text: 'How it is counted' }), kindRow, amountField, setsField,
+    h('p', { class: 'hint', text: 'Which days' }), dayRow,
+    field('Note (optional)', note),
+    saveBtn,
+    h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => { if (after) after(); else closeSheet(); } }, 'Cancel'));
+  openSheet(isNew ? 'Add to the programme' : 'Edit exercise', body);
+}
+
+function openPhysioDetailsSheet() {
+  const plan = physioPlan();
+  const from = h('input', { type: 'text', placeholder: 'e.g. Community physio team, Jo', value: plan.from || '', maxlength: '80' });
+  const given = h('input', { type: 'date', value: plan.given || '' });
+  const notes = h('textarea', { rows: '3', placeholder: 'e.g. Twice a day. Stop if pain goes above 5 out of 10.', maxlength: '400' });
+  notes.value = plan.notes || '';
+  const body = h('div', null,
+    field('Who gave the plan', from), field('When', given), field('Their instructions', notes), speakButton(notes) || '',
     h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
-      const exerciseGoals = {
-        pressups: Math.max(0, parseInt(pressups.value, 10) || 0),
-        situps: Math.max(0, parseInt(situps.value, 10) || 0),
-        plankSeconds: Math.max(0, parseInt(plank.value, 10) || 0),
-        squats: Math.max(0, parseInt(squats.value, 10) || 0)
-      };
-      closeSheet();
-      if (state.demo) { state.profile = { ...state.profile, exerciseGoals }; renderExercise(); toast('Goals saved'); return; }
-      try { await setDoc(doc(db, 'profile', 'main'), { exerciseGoals }, { merge: true }); toast('Goals saved'); }
+      const physio = { from: from.value.trim(), given: given.value || '', notes: notes.value.trim() };
+      try { await saveProgramme(programmeItems(), physio); toast('Saved'); renderExercise(); openProgrammeSheet(); }
       catch (e) { console.error(e); toast('Could not save'); }
     } }, 'Save'),
-    h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Cancel')
-  );
-  openSheet('Daily goals', body);
-});
+    h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => openProgrammeSheet() }, 'Back'));
+  openSheet('Physio plan details', body);
+}
+
+/* ---- Add from a photo: the plan is read by the AI service through the bridge, then checked here before anything is added ---- */
+function importPlanPhotos() {
+  const input = h('input', { type: 'file', accept: 'image/*', multiple: true, style: 'display:none' });
+  document.body.append(input);
+  input.addEventListener('change', async () => {
+    const files = Array.from(input.files || []).slice(0, 4);
+    input.remove();
+    if (!files.length) return;
+    const status = h('p', { class: 'hint', role: 'status', text: 'Reading the plan, about half a minute' });
+    openSheet('Reading the plan', h('div', null, status, h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => openProgrammeSheet() }, 'Cancel')));
+    try {
+      const pages = [];
+      for (const f of files) { const page = await compressCanvas(await imageToCanvas(f)); pages.push(page.data); }
+      const reply = await bridgeExplain({ kind: 'programme', pages });
+      const parsed = parsePlanReply(reply.text);
+      if (!parsed.items.length) { toast('Could not find any exercises in that photo'); openProgrammeSheet(); return; }
+      openPlanReviewSheet(parsed);
+    } catch (e) { console.warn(e); toast(e.message || 'Could not read the plan'); openProgrammeSheet(); }
+  });
+  input.click();
+}
+function parsePlanReply(text) {
+  let t = String(text || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  const a = t.indexOf('{'), b = t.lastIndexOf('}');
+  if (a >= 0 && b > a) t = t.slice(a, b + 1);
+  let data = {};
+  try { data = JSON.parse(t); } catch (e) { data = {}; }
+  const kinds = PROGRAMME_KINDS.map((k) => k.key);
+  const items = (Array.isArray(data.items) ? data.items : []).map((x) => ({
+    id: newItemId(), name: String(x.name || '').trim().slice(0, 60),
+    kind: kinds.includes(x.kind) ? x.kind : 'reps',
+    amount: Math.max(0, parseInt(x.amount, 10) || 0) || 1,
+    sets: x.kind === 'sets' ? Math.max(1, parseInt(x.sets, 10) || 1) : null,
+    days: Array.isArray(x.days) ? x.days.map((d) => parseInt(d, 10)).filter((d) => d >= 0 && d <= 6) : [],
+    note: String(x.note || '').trim().slice(0, 200)
+  })).filter((x) => x.name);
+  return { items, physio: !!data.physio, from: String(data.from || '').trim(), given: /^\d{4}-\d{2}-\d{2}$/.test(String(data.given || '')) ? data.given : '', notes: String(data.notes || '').trim() };
+}
+function openPlanReviewSheet(parsed) {
+  let section = parsed.physio ? 'physio' : 'exercise';
+  const boxes = [];
+  const rows = parsed.items.map((it) => {
+    const cb = h('input', { type: 'checkbox' }); cb.checked = true; boxes.push(cb);
+    return h('label', { class: 'review-row' }, cb, h('span', null, h('span', { class: 'progrow-name', text: it.name }), h('br'), h('span', { class: 'progrow-sub', text: itemTarget(it) + ', ' + itemDaysText(it) + (it.note ? '. ' + it.note : '') })));
+  });
+  const secRow = h('div', { class: 'chips', role: 'group', 'aria-label': 'Where these belong' });
+  const chip = (label, on, onclick) => h('button', { class: 'preset' + (on ? ' is-active' : ''), type: 'button', 'aria-pressed': on ? 'true' : 'false', onclick }, label);
+  const drawSec = () => secRow.replaceChildren(chip('Daily exercises', section === 'exercise', () => { section = 'exercise'; drawSec(); }), chip('Physio plan', section === 'physio', () => { section = 'physio'; drawSec(); }));
+  drawSec();
+  const addBtn = h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
+    const chosen = parsed.items.filter((it, i) => boxes[i].checked).map((it) => { const c = { id: it.id, name: it.name, section, kind: it.kind, amount: it.amount, days: it.days, since: todayStr() }; if (it.sets) c.sets = it.sets; if (it.note) c.note = it.note; return c; });
+    if (!chosen.length) { toast('Nothing ticked'); return; }
+    addBtn.disabled = true;
+    const items = programmeItems().map((x) => ({ ...x })).concat(chosen);
+    let physio;
+    if (section === 'physio' && (parsed.from || parsed.notes || parsed.given)) { const old = physioPlan(); physio = { from: parsed.from || old.from || '', given: parsed.given || old.given || '', notes: parsed.notes || old.notes || '' }; }
+    try { await saveProgramme(items, physio); toast('Added ' + plural(chosen.length, 'exercise')); renderExercise(); openProgrammeSheet(); }
+    catch (e) { console.error(e); toast('Could not save'); addBtn.disabled = false; }
+  } }, 'Add the ticked ones');
+  const body = h('div', null,
+    h('p', { class: 'hint', text: 'Check what was read before adding. Untick anything wrong; you can edit names and amounts afterwards.' }),
+    ...(parsed.from || parsed.notes ? [h('p', { class: 'hint', text: [parsed.from ? 'From ' + parsed.from : '', parsed.notes].filter(Boolean).join('. ') })] : []),
+    secRow, h('div', { class: 'proglist' }, ...rows), addBtn,
+    h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => openProgrammeSheet() }, 'Back'));
+  openSheet('Read from the photo', body);
+}
 
 async function renderStepsChart() {
   if ($('view-exercise').hidden) return;

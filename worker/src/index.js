@@ -73,7 +73,7 @@ async function handleHealth(request, env) {
   await fs.set('bridge/last', { receivedAt: nowTs(), sample: strVal(JSON.stringify(body).slice(0, 20000)) });
 
   const metrics = (body.data && Array.isArray(body.data.metrics)) ? body.data.metrics : [];
-  const result = { steps: 0, sleep: 0, nutrition: 0, skipped: [] };
+  const result = { steps: 0, sleep: 0, nutrition: 0, workouts: 0, skipped: [] };
   /* Food totals per day from whatever app writes them into Apple Health (MyFitnessPal, Nutracheck, Apple's own):
      gathered across the four metrics first, then written once per day */
   const foodDays = {};
@@ -140,6 +140,29 @@ async function handleHealth(request, env) {
     } else {
       result.skipped.push(name || '(unnamed metric)');
     }
+  }
+  /* Workouts (walks, swims, anything logged on the watch or phone): the day's list, replaced on each send.
+     Health Auto Export sends them under data.workouts when Workouts is ticked in the automation. */
+  const workouts = (body.data && Array.isArray(body.data.workouts)) ? body.data.workouts : [];
+  const workoutDays = {};
+  for (const w of workouts) {
+    const day = dayOf(w.start || w.date);
+    if (!day) continue;
+    const startMs = Date.parse(toIso(w.start) || ''), endMs = Date.parse(toIso(w.end) || '');
+    let minutes = isFinite(startMs) && isFinite(endMs) && endMs > startMs ? (endMs - startMs) / 60000 : Number(w.duration) || 0;
+    if (!(isFinite(startMs) && isFinite(endMs) && endMs > startMs) && minutes > 600) minutes = minutes / 60; // a bare duration that large is seconds
+    const item = { name: strVal(String(w.name || w.workoutActivityType || 'Workout').slice(0, 60)), minutes: intVal(Math.round(minutes)) };
+    const dist = w.distance && Number(w.distance.qty);
+    if (isFinite(dist) && dist > 0) item.km = doubleVal(Math.round((/^mi/i.test(String(w.distance.units || '')) ? dist * 1.609 : dist) * 100) / 100);
+    const kcal = w.activeEnergyBurned && Number(w.activeEnergyBurned.qty);
+    if (isFinite(kcal) && kcal > 0) item.kcal = intVal(Math.round(kcal));
+    const st = hhmm(w.start);
+    if (st) item.start = strVal(st);
+    (workoutDays[day] = workoutDays[day] || []).push({ mapValue: { fields: item } });
+  }
+  for (const [day, list] of Object.entries(workoutDays)) {
+    await fs.merge('exercise/' + day, { day: strVal(day), workouts: { arrayValue: { values: list } }, addedBy: strVal('Apple Health'), updatedAt: nowTs() });
+    result.workouts++;
   }
   for (const [day, totals] of Object.entries(foodDays)) {
     const fields = { day: strVal(day), source: strVal('apple-health'), addedBy: strVal('Apple Health'), updatedAt: nowTs() };
@@ -399,6 +422,10 @@ const EXPLAIN_SYSTEM = {
     'Short paragraphs, everyday words, no jargon without a plain explanation in brackets, no em dashes, no headings other than that one, no preamble and no sign-off. ' +
     'Do not guess at anything the document does not say. Do not give medical advice or reassurance the document does not support; if something looks urgent, say clearly that they should contact the team. ' +
     'Reply with the explanation only, ready to be shown in the app as it is.',
+  programme: 'You read exercise sheets and physiotherapy plans from photos, printed or handwritten, for a patient who is recording them in an app. ' +
+    'Reply with JSON only, no prose and no code fence, in exactly this shape: {"from": string or null, "given": "YYYY-MM-DD" or null, "physio": true or false, "notes": string, "items": [{"name": string, "kind": "reps" or "seconds" or "minutes" or "sets" or "do", "amount": number, "sets": number or null, "days": [numbers 0 to 6, 0 = Sunday] or null, "note": string}]}. ' +
+    '"from" is who gave the plan (a physiotherapist, a service), "given" the date on it, "physio" true when it is a physiotherapy plan, "notes" the general instructions on the sheet in one or two plain UK English sentences, or an empty string. ' +
+    'One item per exercise, in the order on the sheet. "sets" means sets of repetitions and amount is then the reps per set. Use "do" with amount 1 for an exercise with no count. days is null when it is every day. Put frequency such as "twice a day" and any holds or cautions in the item note. Leave out anything that is not an exercise. No em dashes.',
   notes: 'You turn a patient\'s care notes into a short, clear list of questions to ask their oncologist or specialist nurse at the next appointment, in plain UK English. ' +
     'Read the questions already listed, the summary, any letters and the day notes. Reply with a numbered list of at most eight questions, one per line, most important first, each specific to what the notes actually show and short enough to ask in a ten-minute appointment. ' +
     'Do not repeat a question the person has already written down. No preamble, no explanation, no headings, no em dashes, nothing after the list.'
@@ -424,7 +451,7 @@ async function handleExplain(request, env) {
 
   let body;
   try { body = await request.json(); } catch (e) { return json({ error: 'bad-request', message: 'Could not read what was sent. Try again.' }, 400); }
-  const kind = body.kind === 'notes' ? 'notes' : 'document';
+  const kind = ['notes', 'programme'].includes(body.kind) ? body.kind : 'document';
   const text = String(body.text || '').slice(0, EXPLAIN_MAX_TEXT_CHARS);
   const pages = Array.isArray(body.pages) ? body.pages.slice(0, EXPLAIN_MAX_PAGES).filter((p) => typeof p === 'string' && p.length > 100 && p.length <= EXPLAIN_MAX_PAGE_CHARS) : [];
   if (!text.trim() && !pages.length) return json({ error: 'bad-request', message: 'Nothing to explain.' }, 400);
@@ -441,7 +468,7 @@ async function handleExplain(request, env) {
   const content = pages.map((data) => ({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data } }));
   const head = kind === 'document'
     ? 'Document: ' + String(body.title || 'Untitled').slice(0, 200) + (body.date ? ' (dated ' + String(body.date).slice(0, 40) + ').' : '.')
-    : 'Care notes from Daybook.';
+    : kind === 'programme' ? 'The exercise or physiotherapy plan is in the attached photos.' : 'Care notes from Daybook.';
   content.push({ type: 'text', text: head + (text.trim() ? '\n\n' + text : '\n\n(The document is in the attached page photos.)') });
   const reply = await askClaude(env, EXPLAIN_SYSTEM[kind], content);
   if (reply.refused) return json({ error: 'refused', message: 'The AI service declined to explain this one. Try Send to my AI app instead.' }, 422);
