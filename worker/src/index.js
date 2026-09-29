@@ -422,7 +422,7 @@ const EXPLAIN_SYSTEM = {
     'Short paragraphs, everyday words, no jargon without a plain explanation in brackets, no em dashes, no headings other than that one, no preamble and no sign-off. ' +
     'Do not guess at anything the document does not say. Do not give medical advice or reassurance the document does not support; if something looks urgent, say clearly that they should contact the team. ' +
     'Reply with the explanation only, ready to be shown in the app as it is.',
-  programme: 'You read exercise sheets and physiotherapy plans from photos, printed or handwritten, for a patient who is recording them in an app. ' +
+  programme: 'You read exercise sheets and physiotherapy plans from photos (printed or handwritten), PDF pages or pasted text, for a patient who is recording them in an app. ' +
     'Reply with JSON only, no prose and no code fence, in exactly this shape: {"from": string or null, "given": "YYYY-MM-DD" or null, "physio": true or false, "notes": string, "items": [{"name": string, "kind": "reps" or "seconds" or "minutes" or "sets" or "do", "amount": number, "sets": number or null, "days": [numbers 0 to 6, 0 = Sunday] or null, "note": string}]}. ' +
     '"from" is who gave the plan (a physiotherapist, a service), "given" the date on it, "physio" true when it is a physiotherapy plan, "notes" the general instructions on the sheet in one or two plain UK English sentences, or an empty string. ' +
     'One item per exercise, in the order on the sheet. "sets" means sets of repetitions and amount is then the reps per set. Use "do" with amount 1 for an exercise with no count. days is null when it is every day. Put frequency such as "twice a day" and any holds or cautions in the item note. Leave out anything that is not an exercise. No em dashes.',
@@ -468,7 +468,7 @@ async function handleExplain(request, env) {
   const content = pages.map((data) => ({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data } }));
   const head = kind === 'document'
     ? 'Document: ' + String(body.title || 'Untitled').slice(0, 200) + (body.date ? ' (dated ' + String(body.date).slice(0, 40) + ').' : '.')
-    : kind === 'programme' ? 'The exercise or physiotherapy plan is in the attached photos.' : 'Care notes from Daybook.';
+    : kind === 'programme' ? 'The exercise or physiotherapy plan follows, as page photos or as text.' : 'Care notes from Daybook.';
   content.push({ type: 'text', text: head + (text.trim() ? '\n\n' + text : '\n\n(The document is in the attached page photos.)') });
   const reply = await askClaude(env, EXPLAIN_SYSTEM[kind], content);
   if (reply.refused) return json({ error: 'refused', message: 'The AI service declined to explain this one. Try Send to my AI app instead.' }, 422);
