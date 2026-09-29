@@ -52,6 +52,14 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Invite codes mapping to a household, and the bridge's own global counters: the bridge's alone.
+    match /inviteCodes/{code} {
+      allow read, write: if false;
+    }
+    match /bridge/{docId} {
+      allow read, write: if false;
+    }
+
     match /households/{hid} {
       // The household record itself (name, owner, created): members may read it.
       allow read: if isMember(hid);

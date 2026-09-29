@@ -5,7 +5,7 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import {
   getAuth, setPersistence, browserLocalPersistence, inMemoryPersistence, signInWithEmailAndPassword,
-  onAuthStateChanged, signOut
+  onAuthStateChanged, signOut, createUserWithEmailAndPassword, sendPasswordResetEmail
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager, memoryLocalCache,
@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '77';
+const APP_VERSION = '78';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -334,6 +334,8 @@ const DEMO_HOUSEHOLD = 'demo';
    details are public by design (window.DAYBOOK_DEMO in config.js). Without it, Guest is the
    in-memory preview. Nothing here can reach the real project: different app, different database. */
 const DEMO = window.DAYBOOK_DEMO && window.DAYBOOK_DEMO.firebase && window.DAYBOOK_DEMO.firebase.apiKey ? window.DAYBOOK_DEMO : null;
+/* The bridge's address (config.js); without it Explain, sign-up and invites stay hidden */
+const BRIDGE = window.DAYBOOK_BRIDGE && window.DAYBOOK_BRIDGE.url ? window.DAYBOOK_BRIDGE : null;
 
 /* Accounts are data, not code (since v44): users/{uid} in Firestore holds
    { name, role, relation }. role is "family" (full access), "readonly" (sees
@@ -387,6 +389,7 @@ const state = {
   user: null,
   account: null,
   household: null,
+  pendingInvite: null,
   name: '',
   selectedDay: todayStr(),
   medicines: [],
@@ -452,11 +455,110 @@ $('signin-form').addEventListener('submit', async (ev) => {
   }
 });
 
+/* ---- Create an account, invites and the no-household screen (since v78) ----
+   A sign-in is made by Firebase Auth from the app; the household records that decide access are
+   made only by the bridge (/household, /join), which checks the ID token and the invite. */
+const relationChips = (holder, initial) => {
+  let value = initial || '';
+  const draw = () => holder.replaceChildren(...[['patient', 'The patient'], ['carer', 'A carer'], ['', 'Family or friend']].map(([v, label]) =>
+    h('button', { class: 'preset' + (value === v ? ' is-active' : ''), type: 'button', 'aria-pressed': value === v ? 'true' : 'false', onclick: () => { value = v; draw(); } }, label)));
+  draw();
+  return () => value;
+};
+const signupRelation = relationChips($('signup-relation'), 'patient');
+const nohouseholdRelation = relationChips($('nohousehold-relation'), 'patient');
+function showSignup() {
+  $('signin').hidden = true; $('nohousehold').hidden = true;
+  $('signup').hidden = false;
+  $('signup-error').hidden = true;
+  $('signup-code').value = state.pendingInvite || '';
+  $('signup-intro').textContent = state.pendingInvite ? 'Create a sign-in to join the household you were invited to.' : 'Your own Daybook, for you and the people you invite.';
+  $('signup-name').focus();
+}
+$('signup-button').addEventListener('click', showSignup);
+$('signup-cancel').addEventListener('click', () => { $('signup').hidden = true; $('signin').hidden = false; });
+$('signup-form').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const btn = $('signup-submit'), err = $('signup-error');
+  err.hidden = true; btn.disabled = true; btn.textContent = 'Creating';
+  const name = $('signup-name').value.trim(), code = $('signup-code').value.trim();
+  try {
+    await setPersistence(auth, browserLocalPersistence);
+    const cred = await createUserWithEmailAndPassword(auth, $('signup-email').value.trim(), $('signup-password').value);
+    /* the sign-in exists now; the household is made by the bridge, and a failure there lands on the no-household screen, not in limbo */
+    if (code) await bridgeCall('/join', { code, name });
+    else await bridgeCall('/household', { name, relation: signupRelation() });
+    state.pendingInvite = null;
+    $('signup').hidden = true;
+    $('signup-password').value = '';
+    await enterApp(cred.user);
+    toast(code ? 'You are in. Welcome to Daybook.' : 'Your Daybook is ready.');
+  } catch (e) {
+    console.error(e);
+    if (auth.currentUser && !(e && e.code && String(e.code).startsWith('auth/'))) { $('signup').hidden = true; showNoHousehold(auth.currentUser, e.message); }
+    else { err.textContent = friendlyAuthError(e); err.hidden = false; }
+  } finally { btn.disabled = false; btn.textContent = 'Create my account'; }
+});
+$('forgot-button').addEventListener('click', async () => {
+  const email = $('signin-email').value.trim(), err = $('signin-error');
+  if (!email) { err.textContent = 'Type your email address first, then tap Forgotten your password.'; err.hidden = false; $('signin-email').focus(); return; }
+  try { await sendPasswordResetEmail(auth, email); toast('If that address has a sign-in, a reset email is on its way.'); err.hidden = true; }
+  catch (e) { err.textContent = friendlyAuthError(e); err.hidden = false; }
+});
+/* Signed in, in no household: make one, or join with a code */
+function showNoHousehold(user, message) {
+  $('app').hidden = true; $('signin').hidden = true; $('signup').hidden = true;
+  $('nohousehold').hidden = false;
+  $('nohousehold-who').textContent = (user && user.email ? user.email + ' is signed in, but' : 'This sign-in is') + ' not in a Daybook household yet. Create your own, or paste the invite code someone sent you.';
+  if (!$('nohousehold-name').value) $('nohousehold-name').value = (user && user.displayName) || $('signup-name').value || '';
+  $('nohousehold-code').value = state.pendingInvite || $('signup-code').value || '';
+  const err = $('nohousehold-error');
+  if (message) { err.textContent = message; err.hidden = false; } else err.hidden = true;
+  if (!BRIDGE) { err.textContent = 'Daybook cannot set up households at the moment. Ask the person who runs it.'; err.hidden = false; }
+}
+$('nohousehold-code').addEventListener('input', () => { $('nohousehold-submit').textContent = $('nohousehold-code').value.trim() ? 'Join with this invite' : 'Create my own Daybook'; });
+$('nohousehold-form').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const btn = $('nohousehold-submit'), err = $('nohousehold-error');
+  err.hidden = true; btn.disabled = true;
+  const name = $('nohousehold-name').value.trim(), code = $('nohousehold-code').value.trim();
+  try {
+    if (code) await bridgeCall('/join', { code, name });
+    else await bridgeCall('/household', { name, relation: nohouseholdRelation() });
+    state.pendingInvite = null;
+    $('nohousehold').hidden = true;
+    await enterApp(auth.currentUser);
+  } catch (e) { err.textContent = e.message; err.hidden = false; }
+  finally { btn.disabled = false; }
+});
+$('nohousehold-signout').addEventListener('click', async () => { $('nohousehold').hidden = true; await signOut(auth); $('signin').hidden = false; });
+/* ?invite=CODE in the address: remember it, say what it is for, and lead with Create an account */
+(async function readInviteLink() {
+  const code = new URLSearchParams(location.search).get('invite');
+  $('signup-button').hidden = !BRIDGE;
+  if (!code || !BRIDGE) return;
+  state.pendingInvite = code;
+  history.replaceState(null, '', location.pathname + location.hash);
+  const banner = $('invite-banner');
+  banner.textContent = 'You have been invited to join a Daybook. Create an account, or sign in if you already have one.';
+  banner.hidden = false;
+  try {
+    const r = await fetch(BRIDGE.url.replace(/\/$/, '') + '/invite-info?code=' + encodeURIComponent(code));
+    const info = await r.json();
+    if (info.valid) banner.textContent = `${info.from ? info.from + ' has' : 'You have been'} invited ${info.name ? info.name + ' ' : ''}to join ${info.householdName ? info.householdName + '\'s' : 'a'} Daybook${info.role === 'family' ? '' : info.role === 'viewer' ? ' (medicines and treatment only)' : ' (read only)'}. Create an account, or sign in if you already have one.`;
+    else { banner.textContent = info.message || 'That invite link is not right.'; state.pendingInvite = null; }
+  } catch (e) { /* the banner already says enough */ }
+})();
+
 function friendlyAuthError(e) {
   const code = (e && e.code) || '';
   if (code.includes('invalid-credential') || code.includes('wrong-password') || code.includes('user-not-found')) return 'Email or password not recognised.';
   if (code.includes('too-many-requests')) return 'Too many attempts. Wait a few minutes and try again.';
   if (code.includes('network')) return 'No connection. Check the signal and try again.';
+  if (code.includes('email-already-in-use')) return 'There is already a sign-in with that email. Sign in instead, or use Forgotten your password.';
+  if (code.includes('weak-password')) return 'Choose a longer password, at least 8 characters.';
+  if (code.includes('invalid-email')) return 'That email address does not look right.';
+  if (code.includes('operation-not-allowed')) return 'Creating accounts is switched off at the moment.';
   return 'Could not sign in. ' + (e && e.message ? e.message : '');
 }
 
@@ -467,9 +569,13 @@ onAuthStateChanged(auth, (user) => enterApp(user));
 async function enterApp(user) {
   const account = user ? await loadAccount(user) : null;
   if (user && account && account.missing) {
-    await signOut(auth);
-    $('signin-error').textContent = 'This account is not in a Daybook household yet.';
-    $('signin-error').hidden = false;
+    /* Signed in, but in no household: join the one an invite link is for, or make one (since v78) */
+    if (state.pendingInvite && BRIDGE) {
+      const code = state.pendingInvite; state.pendingInvite = null;
+      try { await bridgeCall('/join', { code }); return enterApp(user); }
+      catch (e) { toast(e.message); }
+    }
+    showNoHousehold(user);
     return;
   }
   if (user && account && account.error) {
@@ -982,7 +1088,78 @@ function syncSettings() {
   if (!$('view-food').hidden) renderFoodDiary();
   if (!$('view-notes').hidden) renderNotesReport();
   syncHealthCard();
+  syncHouseholdCard();
 }
+
+/* Household card (since v78): who is in, invite someone, and for the owner, remove someone */
+async function syncHouseholdCard() {
+  const card = $('settings-household');
+  if (!card) return;
+  const show = !!BRIDGE && !!state.household && !state.demo && !state.demoLive && !state.readOnly && !state.viewer;
+  card.hidden = !show;
+  if (!show) return;
+  const list = $('settings-members');
+  try {
+    const house = await getDoc(doc(db, 'households', state.household));
+    const owner = house.exists() ? house.data().owner : '';
+    $('settings-household-name').textContent = (house.exists() && house.data().name) || 'Household';
+    const snap = await getDocs(hcol('members'));
+    const me = state.user ? state.user.uid : '';
+    const roleWord = { family: 'family', readonly: 'read only', viewer: 'medicines and treatment only' };
+    const rows = snap.docs.map((d) => ({ uid: d.id, ...d.data() })).sort((a, b) => (a.uid === owner ? -1 : b.uid === owner ? 1 : 0) || String(a.name).localeCompare(String(b.name)));
+    list.replaceChildren(...rows.map((m) => {
+      const sub = [roleWord[m.role] || m.role, m.relation, m.uid === owner ? 'owner' : '', m.uid === me ? 'you' : ''].filter(Boolean).join(', ');
+      const row = h('li', { class: 'member' }, h('div', { class: 'member-main' }, h('div', { class: 'member-name', text: m.name || 'Member' }), h('div', { class: 'member-sub', text: sub })));
+      if (owner === me && m.uid !== me) {
+        const del = h('button', { class: 'btn btn-link btn-small', type: 'button', 'aria-label': 'Remove ' + (m.name || 'this member') }, 'Remove');
+        del.addEventListener('click', () => {
+          const yes = h('button', { class: 'btn btn-danger btn-small', type: 'button', onclick: async () => { yes.disabled = true; try { await bridgeCall('/member-remove', { uid: m.uid }); toast((m.name || 'They') + ' no longer has access'); } catch (e) { toast(e.message); } syncHouseholdCard(); } }, 'Yes, remove');
+          const keep = h('button', { class: 'btn btn-secondary btn-small', type: 'button', onclick: () => { yes.replaceWith(del); keep.remove(); } }, 'Keep');
+          del.replaceWith(yes); yes.after(keep); yes.focus();
+        });
+        row.append(del);
+      }
+      return row;
+    }));
+  } catch (e) { console.warn(e); list.replaceChildren(h('li', { class: 'muted', text: 'Could not load the members.' })); }
+}
+/* Invite someone: name, access, who they are; the bridge makes a one-use link to share */
+function openInviteSheet() {
+  const name = h('input', { type: 'text', placeholder: 'e.g. Sam', maxlength: '40' });
+  let role = 'family', relation = '';
+  const roleRow = h('div', { class: 'chips', role: 'group', 'aria-label': 'What they can do' });
+  const relRow = h('div', { class: 'chips', role: 'group', 'aria-label': 'Who they are' });
+  const chip = (label, on, onclick) => h('button', { class: 'preset' + (on ? ' is-active' : ''), type: 'button', 'aria-pressed': on ? 'true' : 'false', onclick }, label);
+  const roleHint = h('p', { class: 'hint' });
+  const ROLE_HINTS = { family: 'Can add, change and delete everything, and invite others.', readonly: 'Sees everything, changes nothing.', viewer: 'Sees only medicines, the treatment plan and the trend charts.' };
+  const drawRole = () => { roleRow.replaceChildren(chip('Family', role === 'family', () => { role = 'family'; drawRole(); }), chip('Read only', role === 'readonly', () => { role = 'readonly'; drawRole(); }), chip('Medicines and treatment only', role === 'viewer', () => { role = 'viewer'; drawRole(); })); roleHint.textContent = ROLE_HINTS[role]; };
+  const drawRel = () => relRow.replaceChildren(chip('A carer', relation === 'carer', () => { relation = 'carer'; drawRel(); }), chip('Family or friend', relation === '', () => { relation = ''; drawRel(); }), chip('The patient', relation === 'patient', () => { relation = 'patient'; drawRel(); }));
+  drawRole(); drawRel();
+  const result = h('div', { class: 'invitebox' });
+  const makeBtn = h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
+    if (!name.value.trim()) { toast('Their first name, please'); name.focus(); return; }
+    makeBtn.disabled = true;
+    try {
+      const inv = await bridgeCall('/invite', { name: name.value.trim(), role, relation });
+      const link = h('p', { class: 'mono keybox', text: inv.url });
+      const share = h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
+        const text = `${state.name} has invited you to join ${inv.householdName || 'their'} Daybook. Open this link, then create an account or sign in: ${inv.url}`;
+        if (navigator.share) { try { await navigator.share({ title: 'Daybook invite', text }); return; } catch (e) { if (e && e.name === 'AbortError') return; } }
+        try { await navigator.clipboard.writeText(text); toast('Invite copied. Paste it into a message.'); } catch (e) { toast('Press and hold the link to copy it'); }
+      } }, 'Share the invite');
+      result.replaceChildren(h('p', { text: 'Send this to ' + name.value.trim() + '. It works once and expires in 7 days.' }), link, share);
+      makeBtn.hidden = true;
+    } catch (e) { toast(e.message); makeBtn.disabled = false; }
+  } }, 'Make the invite link');
+  const body = h('div', null,
+    field('Their first name', name),
+    h('p', { class: 'hint', text: 'What they can do' }), roleRow, roleHint,
+    h('p', { class: 'hint', text: 'Who they are' }), relRow,
+    makeBtn, result,
+    h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Done'));
+  openSheet('Invite someone', body);
+}
+$('settings-invite').addEventListener('click', openInviteSheet);
 
 /* Apple Health card (since v75): the bridge address and this household's inbox key, read from
    households/{id}/private/health (family only, written by the household workflows), so the
@@ -4275,19 +4452,26 @@ const PUSH = window.DAYBOOK_PUSH && window.DAYBOOK_PUSH.publicKey ? window.DAYBO
 /* The bridge's address comes from config.js; without it the buttons stay hidden and the share
    sheet route is the only one. The call carries the signed-in person's Firebase ID token, which
    the bridge checks before spending anything (see worker/). Nothing is stored on the way. */
-const BRIDGE = window.DAYBOOK_BRIDGE && window.DAYBOOK_BRIDGE.url ? window.DAYBOOK_BRIDGE : null;
 function explainAvailable() { return !!BRIDGE && !!(auth && auth.currentUser); }
-async function bridgeExplain(payload) {
+/* One signed-in call to the bridge: the person's Firebase ID token, JSON in, JSON out, errors in the bridge's own words */
+async function bridgeCall(path, payload, fallbackMessage) {
   const user = auth && auth.currentUser;
-  if (!BRIDGE || !user) throw new Error('Sign in to use Explain in Daybook');
+  if (!BRIDGE || !user) throw new Error('Sign in first');
   const idToken = await user.getIdToken();
-  const r = await fetch(BRIDGE.url.replace(/\/$/, '') + '/explain', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + idToken }, body: JSON.stringify(payload) });
+  let r;
+  try { r = await fetch(BRIDGE.url.replace(/\/$/, '') + path, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + idToken }, body: JSON.stringify(payload || {}) }); }
+  catch (e) { throw new Error('No connection to Daybook. Check the signal and try again.'); }
   let data = null;
   try { data = await r.json(); } catch (e) { data = null; }
-  if (!r.ok || !data || !data.text) {
-    const msg = data && data.message ? data.message : (r.status === 503 ? 'Explain in Daybook is not switched on yet.' : 'Could not reach Daybook\'s AI service. Try again in a moment, or use Send to my AI app.');
-    const err = new Error(msg); err.code = data && data.error; throw err;
+  if (!r.ok || !data) {
+    const err = new Error(data && data.message ? data.message : (fallbackMessage || 'Daybook could not do that just now. Try again in a moment.'));
+    err.code = data && data.error; err.status = r.status; err.data = data; throw err;
   }
+  return data;
+}
+async function bridgeExplain(payload) {
+  const data = await bridgeCall('/explain', payload, 'Could not reach Daybook\'s AI service. Try again in a moment, or use Send to my AI app.');
+  if (!data.text) throw new Error('Could not reach Daybook\'s AI service. Try again in a moment, or use Send to my AI app.');
   return data;
 }
 /* A button that shows its own progress while the reply comes back (about 20 to 60 seconds) */
@@ -6483,7 +6667,7 @@ $('app-version').textContent = 'Version ' + APP_VERSION;
     const wait = minMs - (Date.now() - start);
     if (wait > 0) setTimeout(leave, wait); else leave();
   };
-  const ready = () => ['app', 'signin', 'noconfig'].some((id) => { const s = $(id); return s && !s.hidden; });
+  const ready = () => ['app', 'signin', 'noconfig', 'signup', 'nohousehold'].some((id) => { const s = $(id); return s && !s.hidden; });
   const check = () => { if (!appReady && ready()) { appReady = true; maybe(); } };
   new MutationObserver(check).observe(document.body, { attributes: true, subtree: true, attributeFilter: ['hidden'] });
   check();

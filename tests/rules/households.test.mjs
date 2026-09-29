@@ -53,6 +53,8 @@ beforeEach(async () => {
     await put(`households/${B}/entries/e-jane`, { type: 'med', day: '2026-09-29', medName: 'Dalteparin', addedBy: 'Jane' });
     await put(`households/${B}/medicines/mj`, { name: 'Dalteparin', kind: 'scheduled', active: true });
     await put(`healthKeys/abc123`, { household: A });
+    await put(`inviteCodes/code1`, { household: A });
+    await put(`bridge/global`, { day: '2026-09-29', households: 1 });
     /* the pre-v75 shared layout, still guarded during the transition */
     await put(`entries/old1`, { type: 'note', day: '2026-09-01', note: 'Old' });
   });
@@ -186,6 +188,11 @@ test('nobody can write a household, a members record, a users record, an inbox k
   await assertFails(read(MARK, `households/${A}/invites/code1`));
   await assertFails(write(MARK, `households/${A}/invites/code2`, { role: 'family' }));
   await assertFails(list(MARK, `households`));
+  await assertFails(read(MARK, `inviteCodes/code1`));
+  await assertFails(read(SAM, `inviteCodes/code1`));
+  await assertFails(write(SAM, `inviteCodes/mine`, { household: A }));
+  await assertFails(read(MARK, `bridge/global`));
+  await assertFails(write(MARK, `bridge/global`, { households: 0 }));
 });
 
 /* ---- size guard ---- */

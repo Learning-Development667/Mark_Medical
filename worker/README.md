@@ -28,6 +28,10 @@ Endpoints:
   `households/{id}/bridge/explainLog` (40 per household, 12 for the demo) caps what a day can
   spend; the letter itself is never stored. Answers `503 not-set-up` until the key exists,
   `429 limit` when the day is used up, `422 refused` if the model declines.
+- Households (since v78), each with the person's Firebase ID token: `POST /household` { name, relation } makes a
+  household for a sign-in that has none; `POST /invite` { name, role, relation } (family only) makes a one-use link
+  that expires in seven days; `GET /invite-info?code=` says what a link is for; `POST /join` { code, name? } takes
+  the invite up; `POST /member-remove` { uid } (the owner only). The demo project refuses all five.
 - `GET /push-test?key=<inbox key>` sends a test notification to every phone in that household.
 - `GET /remind-now?key=<BRIDGE_KEY>` runs the reminder check for every household by hand (the
   same thing the five-minute cron does).
