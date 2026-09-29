@@ -1,7 +1,8 @@
 # Publishes the database rules from the repository to Firebase, so the file in git is always what
 # is live and nobody pastes into the console. Real project: firestore.rules with the bridge's
 # FIREBASE_SERVICE_ACCOUNT. Demo project: firestore.demo.rules with DEMO_SERVICE_ACCOUNT.
-# The service account needs the Firebase Rules Admin role (the default Admin SDK account has it).
+# Goes through the Firebase Rules REST API (tools/publish_rules.mjs) rather than firebase-tools,
+# whose deploy first asks Service Usage a question the Admin SDK service account may not ask.
 name: Publish database rules
 
 on:
@@ -26,15 +27,8 @@ jobs:
           node-version: "20"
       - name: Publish
         env:
-          SA: ${{ inputs.target == 'demo' && secrets.DEMO_SERVICE_ACCOUNT || secrets.FIREBASE_SERVICE_ACCOUNT }}
-          TARGET: ${{ inputs.target }}
+          SERVICE_ACCOUNT: ${{ inputs.target == 'demo' && secrets.DEMO_SERVICE_ACCOUNT || secrets.FIREBASE_SERVICE_ACCOUNT }}
+          RULES_FILE: ${{ inputs.target == 'demo' && 'firestore.demo.rules' || 'firestore.rules' }}
         run: |
-          if [ -z "$SA" ]; then echo "::error::The service account secret for $TARGET is not set"; exit 1; fi
-          printf '%s' "$SA" > "$RUNNER_TEMP/sa.json"
-          PROJECT=$(node -e "console.log(JSON.parse(require('fs').readFileSync(process.argv[1],'utf8')).project_id)" "$RUNNER_TEMP/sa.json")
-          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json"
-          CONFIG=firebase.json
-          [ "$TARGET" = "demo" ] && CONFIG=firebase.demo.json
-          echo "Publishing $( [ "$TARGET" = demo ] && echo firestore.demo.rules || echo firestore.rules ) to $PROJECT"
-          npx --yes firebase-tools@15 deploy --only firestore:rules --project "$PROJECT" --config "$CONFIG" --non-interactive --force
-          rm -f "$RUNNER_TEMP/sa.json"
+          if [ -z "$SERVICE_ACCOUNT" ]; then echo "::error::The service account secret for ${{ inputs.target }} is not set"; exit 1; fi
+          node tools/publish_rules.mjs
