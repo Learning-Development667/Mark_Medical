@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=68">
+  <link rel="stylesheet" href="styles.css?v=69">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -338,10 +338,24 @@
           <div class="chart-wrap"><canvas id="chart-steps"></canvas></div>
         </div>
 
-        <h2 class="section-title">Daily goals</h2>
-        <p class="hint">Check these with your oncology team before starting, and go gently on low days.</p>
+        <div id="ex-workouts" hidden>
+          <h2 class="section-title">From Apple Health</h2>
+          <div id="ex-workouts-list" class="workouts"></div>
+        </div>
+
+        <h2 class="section-title">Daily exercises</h2>
+        <p class="hint">Check these with your team before starting, and go gently on low days.</p>
         <div id="ex-goals" class="goals"></div>
-        <button id="ex-goals-edit" class="btn btn-secondary btn-block" type="button">Edit goals</button>
+        <p id="ex-goals-empty" class="muted" hidden>No exercises yet. Tap Edit programme to add your own.</p>
+        <p id="ex-not-today" class="muted ex-not-today" hidden></p>
+
+        <div id="ex-physio-section" hidden>
+          <h2 class="section-title">Physio plan</h2>
+          <p class="hint" id="ex-physio-hint" hidden></p>
+          <div id="ex-physio" class="goals"></div>
+          <p id="ex-physio-not-today" class="muted ex-not-today" hidden></p>
+        </div>
+        <button id="ex-goals-edit" class="btn btn-secondary btn-block" type="button">Edit programme</button>
       </section>
 
       <!-- DOCUMENTS -->
@@ -547,6 +561,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=68"></script>
+  <script type="module" src="scripts.js?v=69"></script>
 </body>
 </html>
