@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '73';
+const APP_VERSION = '74';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -4263,6 +4263,7 @@ async function syncReminders() {
   const standalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
   const demo = state.demo || state.demoLive;
   group.hidden = state.readOnly || state.viewer;
+  $('settings-private-row').hidden = true;
   if (demo) { box.checked = false; box.disabled = true; hint.textContent = 'Not available in the demo.'; state.pushEnabled = false; return; }
   if (!pushSupported()) { box.checked = false; box.disabled = true; hint.textContent = standalone ? 'This browser cannot show notifications.' : 'On iPhone, add Daybook to the Home Screen first (Share, then Add to Home Screen), then turn this on from there.'; state.pushEnabled = false; return; }
   box.disabled = false;
@@ -4271,6 +4272,7 @@ async function syncReminders() {
     const sub = await reg.pushManager.getSubscription();
     state.pushEnabled = Boolean(sub);
     box.checked = Boolean(sub);
+    await syncPrivate(sub);
     hint.textContent = sub ? 'This phone gets a notification at each medicine\'s reminder times, and one nudge 30 minutes later if the dose is still not logged.' : (Notification.permission === 'denied' ? 'Notifications are blocked for Daybook in this phone\'s settings. Allow them there, then turn this on.' : 'A notification at each medicine\'s reminder times (set under Manage medicines), only on phones where this is on.');
   } catch (e) { console.warn(e); box.disabled = true; hint.textContent = 'Could not check notifications on this phone.'; }
 }
@@ -4287,13 +4289,39 @@ async function setReminders(on) {
       if (perm !== 'granted') { box.checked = false; toast('Notifications were not allowed'); await syncReminders(); return; }
       const sub = existing || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(PUSH.publicKey) });
       const j = sub.toJSON();
-      await setDoc(doc(db, 'pushSubs', pushSubId(sub.endpoint)), { endpoint: sub.endpoint, keys: { p256dh: j.keys.p256dh, auth: j.keys.auth }, addedBy: state.name, uid: state.user ? state.user.uid : null, agent: navigator.userAgent.slice(0, 120), addedAt: serverTimestamp() }, { merge: true });
+      await setDoc(doc(db, 'pushSubs', pushSubId(sub.endpoint)), { endpoint: sub.endpoint, keys: { p256dh: j.keys.p256dh, auth: j.keys.auth }, private: $('settings-private').checked, addedBy: state.name, uid: state.user ? state.user.uid : null, agent: navigator.userAgent.slice(0, 120), addedAt: serverTimestamp() }, { merge: true });
       toast('Reminders on for this phone');
     }
   } catch (e) { console.error(e); toast('Could not change reminders on this phone'); }
   await syncReminders();
 }
 $('settings-reminders').addEventListener('change', (ev) => setReminders(ev.target.checked));
+
+/* Private notifications (since v74), per phone and on unless switched off: the bridge sends this phone
+   "A medicine is due" rather than the name and dose, so nothing personal shows on a locked screen.
+   Stored as pushSubs/{id}.private; a phone saved before the setting existed counts as private. */
+const PRIVATE_HINT_ON = 'The notification says "A medicine is due". Open Daybook to see which one.';
+const PRIVATE_HINT_OFF = 'The notification names the medicine and dose, so anyone who can see this phone can read it.';
+async function syncPrivate(sub) {
+  const row = $('settings-private-row'), box = $('settings-private');
+  row.hidden = !sub;
+  if (!sub) return;
+  let priv = true;
+  try { const snap = await getDoc(doc(db, 'pushSubs', pushSubId(sub.endpoint))); if (snap.exists() && snap.data().private === false) priv = false; } catch (e) { console.warn(e); }
+  box.checked = priv;
+  $('settings-private-hint').textContent = priv ? PRIVATE_HINT_ON : PRIVATE_HINT_OFF;
+}
+$('settings-private').addEventListener('change', async (ev) => {
+  const on = ev.target.checked;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (!sub) return;
+    await setDoc(doc(db, 'pushSubs', pushSubId(sub.endpoint)), { private: on }, { merge: true });
+    $('settings-private-hint').textContent = on ? PRIVATE_HINT_ON : PRIVATE_HINT_OFF;
+    toast(on ? 'Medicine names hidden on this phone' : 'Medicine names shown on this phone');
+  } catch (e) { console.error(e); ev.target.checked = !on; toast('Could not change this setting'); }
+});
 
 function openManageMeds() {
   const list = h('div', { class: 'medlist' });

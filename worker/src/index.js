@@ -296,6 +296,9 @@ function londonNow(date) {
 const toMinutes = (hhmm) => { const m = String(hhmm || '').match(/^(\d{1,2}):(\d{2})$/); return m ? parseInt(m[1], 10) * 60 + parseInt(m[2], 10) : null; };
 const f = (fields, k) => { const v = fields[k]; if (!v) return null; return v.stringValue ?? v.integerValue ?? v.doubleValue ?? v.booleanValue ?? v.timestampValue ?? (v.arrayValue ? (v.arrayValue.values || []).map((x) => x.stringValue ?? x.integerValue ?? x.doubleValue) : null); };
 
+function isPrivateSub(sub) { return f(sub.fields, 'private') !== false; }
+function payloadFor(sub, payload, privateBody) { return privateBody && isPrivateSub(sub) ? { ...payload, body: privateBody } : payload; }
+
 async function runReminders(env) {
   if (!env.VAPID_PRIVATE_KEY) return { skipped: 'VAPID_PRIVATE_KEY is not set' };
   const fs = await firestore(env);
@@ -310,8 +313,9 @@ async function runReminders(env) {
   const doses = await fs.query('entries', { day: now.day, type: 'med' });
   const doseMinutes = (medId) => doses.filter((d) => f(d.fields, 'medId') === medId).map((d) => londonNow(new Date(f(d.fields, 'at'))).minutes);
   const out = [];
-  const send = async (key, payload) => {
-    for (const sub of subs) out.push({ key, phone: sub.id, result: await sendPush(env, fs, sub, payload) });
+  /* A private phone (pushSubs/{id}.private, true unless switched off) gets the same notification without the medicine's name or dose */
+  const send = async (key, payload, privateBody) => {
+    for (const sub of subs) out.push({ key, phone: sub.id, private: isPrivateSub(sub), result: await sendPush(env, fs, sub, payloadFor(sub, payload, privateBody)) });
     sentSet.add(key);
   };
   for (const m of medicines) {
@@ -322,11 +326,11 @@ async function runReminders(env) {
       const key = `${m.id}|${t}`;
       const takenSince = taken.some((x) => x >= t - LOGGED_BEFORE_MIN);
       if (!sentSet.has(key) && now.minutes >= t && now.minutes < t + REMINDER_WINDOW_MIN && !takenSince) {
-        await send(key, { title: 'Daybook', body: `${name} ${dose} is due`.trim(), tag: key, url: appUrl('meds') });
+        await send(key, { title: 'Daybook', body: `${name} ${dose} is due`.trim(), tag: key, url: appUrl('meds') }, 'A medicine is due');
       }
       const nudgeKey = key + '|nudge';
       if (!sentSet.has(nudgeKey) && now.minutes >= t + NUDGE_AFTER_MIN && now.minutes < t + NUDGE_AFTER_MIN + REMINDER_WINDOW_MIN && !takenSince) {
-        await send(nudgeKey, { title: 'Daybook', body: `Still to take: ${name} ${dose}`.trim(), tag: nudgeKey, url: appUrl('meds') });
+        await send(nudgeKey, { title: 'Daybook', body: `Still to take: ${name} ${dose}`.trim(), tag: nudgeKey, url: appUrl('meds') }, 'A medicine is still to take');
       }
     }
   }
@@ -335,7 +339,7 @@ async function runReminders(env) {
   for (const r of oneOffs) {
     if (f(r.fields, 'sent') === true) { if (new Date(f(r.fields, 'at')).getTime() < Date.now() - 86400000) await fs.remove('reminders/' + r.id); continue; }
     if (new Date(f(r.fields, 'at')).getTime() > Date.now()) continue;
-    await send('oneoff|' + r.id, { title: 'Daybook', body: `Reminder: ${f(r.fields, 'medName') || 'medicine'} ${f(r.fields, 'dose') || ''}`.trim(), tag: 'oneoff|' + r.id, url: appUrl('meds') });
+    await send('oneoff|' + r.id, { title: 'Daybook', body: `Reminder: ${f(r.fields, 'medName') || 'medicine'} ${f(r.fields, 'dose') || ''}`.trim(), tag: 'oneoff|' + r.id, url: appUrl('meds') }, 'Reminder: a medicine to take');
     await fs.merge('reminders/' + r.id, { sent: { booleanValue: true } });
   }
   await fs.set('bridge/reminderLog', { day: strVal(now.day), at: { timestampValue: new Date().toISOString() }, sent: { mapValue: { fields: Object.fromEntries([...sentSet].map((k) => [k, { booleanValue: true }])) } } });
@@ -539,7 +543,7 @@ async function googleKey(kid, fetchFn) {
 }
 
 /* For the test harness only (scratchpad): nothing in the app or the workflow uses these */
-export const _test = { verifyFirebaseToken, askClaude, EXPLAIN_SYSTEM, distanceKm };
+export const _test = { verifyFirebaseToken, askClaude, EXPLAIN_SYSTEM, distanceKm, payloadFor };
 
 /* ------------------------------------------------------------------ */
 /* Plumbing                                                             */
