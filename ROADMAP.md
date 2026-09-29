@@ -44,11 +44,12 @@ Decisions already made, so they are not reopened:
 16. **Refresh the pitch and write the handover.** What it is, how to run it against the shared demo, how the bridge fits, and which choices are deliberate (no frameworks, no build step, network-first service worker, all rights reserved). Claude writes; Mark sends. Done when a developer can get it running from the handover alone.
 17. **Fix what they find.** Their findings become a numbered list here, each closed with a version number.
 
-## Stage 5: the App Store
+## Stage 5: the app stores, Apple and Android
+Daybook is one web app, so both stores get the same code. Android users can install it from Chrome today (Add to Home screen) with reminders and recordings working; only the health feed and the store listing are platform work.
 
 18. **Join the Apple Developer Programme.** Mark, £79 a year. A hosted Mac on GitHub Actions can build the iPhone app, so Mark does not need to own a Mac. Decide first who publishes: Apple expects healthcare apps to come from a legal entity, not an individual, so either a charity, hospice or NHS team publishes it under their account, or a small limited company (Mark 1 Apps Ltd, about £50 to set up) does.
-19. **Build the native shell.** A thin iPhone app around the same web code, with Apple Health read directly (no Health Auto Export needed) and proper notifications. Claude. Done when the shell runs the app from the same repository with no second copy of the code.
-20. **TestFlight, then submission.** Mark and Shelley first, then a small group, then submission with a demo login for Apple's reviewers and the privacy answers from item 14.
+19. **Build the native shells.** iPhone: a thin app around the same web code, with Apple Health read directly (no Health Auto Export needed) and proper notifications. Android: a Trusted Web Activity wrapper (Google's own route for web apps) and a Health Connect feed, either through a Play Store app that posts to the bridge's inbox (a one-off purchase, like Health Auto Export) or read directly by the wrapper. Both built on GitHub Actions, no Mac needed. Claude. Done when each shell runs the app from the same repository with no second copy of the code.
+20. **TestFlight and Play internal testing, then submission.** Mark and Shelley first, then a small group, then submission to both stores with a demo login for the reviewers and the privacy answers from item 14. Google Play: a developer account is a one-off $25; Google leans the same way as Apple on health apps coming from an organisation, but less strictly.
 
 ## Parked, on purpose
 - Food barcode lookup on the bridge (`/food?barcode=`, Open Food Facts). Useful, not urgent; the CoFID table and My foods cover most meals.
