@@ -57,20 +57,25 @@ async function deleteAll(names) {
   }
 }
 
-/* Subcollections first (document pages, recording parts), then the collections. users is left alone: the guest's record, if any. */
+/* The demo's one household (households/demo, DEMO_HOUSEHOLD in scripts.js) and, until it is empty, the
+   pre-v75 top-level layout too. Subcollections first (document pages, recording parts), then the
+   collections. users is left alone: the guest's record, if any. */
 let total = 0;
-for (const [parent, sub] of [['documents', 'pages'], ['recordings', 'parts']]) {
-  for (const name of await listNames(parent)) {
-    const id = name.split('/').pop();
-    const children = await listNames(`${parent}/${id}/${sub}`);
-    await deleteAll(children);
-    total += children.length;
+const COLLECTIONS = ['entries', 'medicines', 'documents', 'recordings', 'profile', 'days', 'cheers', 'exercise', 'meals', 'nutrition', 'bridge', 'pushSubs', 'reminders', 'private'];
+for (const prefix of ['households/demo/', '']) {
+  for (const [parent, sub] of [['documents', 'pages'], ['recordings', 'parts']]) {
+    for (const name of await listNames(prefix + parent)) {
+      const id = name.split('/').pop();
+      const children = await listNames(`${prefix}${parent}/${id}/${sub}`);
+      await deleteAll(children);
+      total += children.length;
+    }
   }
-}
-for (const col of ['entries', 'medicines', 'documents', 'recordings', 'profile', 'days', 'cheers', 'exercise', 'meals', 'nutrition', 'bridge', 'pushSubs', 'reminders']) {
-  const names = await listNames(col);
-  await deleteAll(names);
-  total += names.length;
-  console.log(`${col}: ${names.length} deleted`);
+  for (const col of COLLECTIONS) {
+    const names = await listNames(prefix + col);
+    await deleteAll(names);
+    total += names.length;
+    if (names.length) console.log(`${prefix}${col}: ${names.length} deleted`);
+  }
 }
 console.log(`Demo wiped: ${total} documents removed from ${sa.project_id}. The app reseeds the example data on the next visit.`);

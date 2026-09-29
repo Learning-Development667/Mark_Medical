@@ -1,0 +1,82 @@
+# Household admin from the Actions tab (replaces "Seed a user record" since v75): create a
+# household, add or remove a member, make a fresh Apple Health inbox key, or list them all.
+# Uses the bridge's FIREBASE_SERVICE_ACCOUNT secret; nothing secret is typed in or printed.
+name: Household admin
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "What to do"
+        required: true
+        type: choice
+        default: list
+        options:
+          - list
+          - create
+          - add-member
+          - remove-member
+          - new-key
+      household_id:
+        description: "Household id (add-member, remove-member, new-key)"
+        required: false
+        type: string
+      household_name:
+        description: "Household name (create)"
+        required: false
+        type: string
+      uid:
+        description: "Sign-in UID (copy from Authentication > Users, 28 characters)"
+        required: false
+        type: string
+      name:
+        description: "First name shown in the app"
+        required: false
+        type: string
+      role:
+        description: "Access (add-member)"
+        required: false
+        type: choice
+        default: family
+        options:
+          - family
+          - readonly
+          - viewer
+      relation:
+        description: "Who they are"
+        required: false
+        type: choice
+        default: none
+        options:
+          - none
+          - patient
+          - carer
+      move:
+        description: "add-member: move a sign-in that is already in another household"
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: ${{ inputs.action }}
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          ACTION: ${{ inputs.action }}
+          HOUSEHOLD_ID: ${{ inputs.household_id }}
+          HOUSEHOLD_NAME: ${{ inputs.household_name }}
+          OWNER_UID: ${{ inputs.uid }}
+          OWNER_NAME: ${{ inputs.name }}
+          OWNER_RELATION: ${{ inputs.relation }}
+          USER_UID: ${{ inputs.uid }}
+          NAME: ${{ inputs.name }}
+          ROLE: ${{ inputs.role }}
+          RELATION: ${{ inputs.relation }}
+          MOVE: ${{ inputs.move && 'yes' || 'no' }}
+        run: node tools/household_admin.mjs

@@ -1,127 +1,224 @@
 rules_version = '2';
 
-// Care Log: accounts are data, not code. users/{uid} holds { name, role, relation }.
-// role is "family" (full read and write), "readonly" (sees everything a family member
-// sees, writes nothing) or "viewer" (a narrow read-only slice, see below); relation is
-// "patient", "carer" or "". Records are created in the Firebase console (Authentication
-// > Users gives the uid; Firestore Database > users > Add document), never by the app,
-// so no email address appears in this file, in config.js or anywhere on the site.
-// Publish this file in the Firebase console (Firestore Database > Rules) after any
-// change here; editing this file alone does not reach the live database.
+// Daybook: one locked folder per household (since v75).
+//
+// Every household's data lives under households/{hid}/... and can be reached only by the
+// accounts listed in households/{hid}/members/{uid} { name, role, relation }. The role is
+// "family" (full read and write), "readonly" (sees everything a family member sees, writes
+// nothing) or "viewer" (a narrow read-only slice: medicines, the treatment calendar and the
+// trend readings). users/{uid} { household } tells a sign-in which household it belongs to.
+// Members records and household records are never written by the app: the bridge (a service
+// account, which bypasses these rules) and the Actions-tab workflows write them.
+//
+// No email address appears in this file, in config.js or anywhere on the site; the repository
+// is public, so that matters. Publish with the "Publish database rules" workflow (Actions tab)
+// or by pasting into Firestore Database > Rules; editing this file alone changes nothing live.
+//
+// tests/rules/ is the break-in suite (a stranger, another household, a read-only writer, a
+// viewer reaching for food or letters, anyone writing a members record): every case must be
+// refused. It runs on Google's Firestore emulator on every push that touches the rules.
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function account() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    function signedIn() { return request.auth != null; }
+
+    // ---- Households ----
+    function memberPath(hid) {
+      return /databases/$(database)/documents/households/$(hid)/members/$(request.auth.uid);
     }
+    function isMember(hid) { return signedIn() && exists(memberPath(hid)); }
+    function role(hid) { return get(memberPath(hid)).data.role; }
+    function hasRole(hid, roles) { return isMember(hid) && role(hid) in roles; }
+    function isFamily(hid) { return hasRole(hid, ['family']); }
+    function isViewer(hid) { return hasRole(hid, ['viewer']); }
+    // family and readonly see everything; viewer sees only the slice named below
+    function canRead(hid) { return hasRole(hid, ['family', 'readonly']); }
 
-    function hasRole(roles) {
-      return request.auth != null
-        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
-        && account().role in roles;
-    }
-
-    function isFamily() { return hasRole(['family']); }
-
-    // Full read-only access: sees everything a family member sees (every entry type,
-    // documents, cheers, exercise, meals, profile), never write access anywhere.
-    function isReadOnly() { return hasRole(['readonly']); }
-
-    // Narrow read-only viewer: medicines, med-log/vitals/trend entries and the chemo/mood
-    // day records only. Never documents, cheers, food, notes, exercise or who-to-call,
-    // and never write access.
-    function isViewer() { return hasRole(['viewer']); }
-
-    // Each document page is kept well under the 1 MiB Firestore limit by the app;
-    // this guard stops anything oversized being written by mistake.
+    // Each document page and recording part is kept well under the 1 MiB Firestore limit by the
+    // app; this guard stops anything oversized being written by mistake.
     function pageSizeOk() {
       return request.resource.data.data is string
         && request.resource.data.data.size() < 950000;
     }
 
-    // A signed-in person can read their own account record and nothing else here.
-    // Nobody can create or change one from the app.
+    // A signed-in person can read their own pointer record and nothing else here.
     match /users/{uid} {
-      allow read: if request.auth != null && request.auth.uid == uid;
+      allow read: if signedIn() && request.auth.uid == uid;
       allow write: if false;
     }
 
-    match /entries/{entryId} {
-      allow read: if isFamily() || isReadOnly() || (isViewer() && resource.data.type in ['med', 'temp', 'vitals', 'weight', 'sleep', 'drink']);
-      allow write: if isFamily();
+    // Apple Health inbox keys, hashed, mapping to a household: the bridge's alone.
+    match /healthKeys/{keyHash} {
+      allow read, write: if false;
     }
 
-    match /medicines/{medId} {
-      allow read: if isFamily() || isReadOnly() || isViewer();
-      allow write: if isFamily();
-    }
+    match /households/{hid} {
+      // The household record itself (name, owner, created): members may read it.
+      allow read: if isMember(hid);
+      allow write: if false;
 
-    match /documents/{docId} {
-      allow read: if isFamily() || isReadOnly();
-      allow write: if isFamily();
+      // Who belongs: a member sees their own record; family sees everyone's. Nobody writes one.
+      match /members/{uid} {
+        allow read: if isMember(hid) && (request.auth.uid == uid || isFamily(hid));
+        allow write: if false;
+      }
 
-      match /pages/{pageNo} {
-        allow read: if isFamily() || isReadOnly();
-        allow delete: if isFamily();
-        allow create, update: if isFamily() && pageSizeOk();
+      match /entries/{entryId} {
+        allow read: if canRead(hid) || (isViewer(hid) && resource.data.type in ['med', 'temp', 'vitals', 'weight', 'sleep', 'drink']);
+        allow write: if isFamily(hid);
+      }
+
+      match /medicines/{medId} {
+        allow read: if canRead(hid) || isViewer(hid);
+        allow write: if isFamily(hid);
+      }
+
+      match /documents/{docId} {
+        allow read: if canRead(hid);
+        allow write: if isFamily(hid);
+        match /pages/{pageNo} {
+          allow read: if canRead(hid);
+          allow delete: if isFamily(hid);
+          allow create, update: if isFamily(hid) && pageSizeOk();
+        }
+      }
+
+      match /profile/{profileId} {
+        allow read: if canRead(hid);
+        allow write: if isFamily(hid);
+      }
+
+      // Treatment plan: one document per calendar day (session, done, mood, one good thing)
+      match /days/{dayId} {
+        allow read: if canRead(hid) || isViewer(hid);
+        allow write: if isFamily(hid);
+      }
+
+      // Exercise: one document per day (steps, which programme items were done, workouts)
+      match /exercise/{dayId} {
+        allow read: if canRead(hid);
+        allow write: if isFamily(hid);
+      }
+
+      // Saved meals
+      match /meals/{mealId} {
+        allow read: if canRead(hid);
+        allow write: if isFamily(hid);
+      }
+
+      // Day totals from a food app, written by the bridge or by hand
+      match /nutrition/{dayId} {
+        allow read: if canRead(hid);
+        allow write: if isFamily(hid);
+      }
+
+      // Recorded answers to questions for the team, stored as base64 chunks in parts
+      match /recordings/{recId} {
+        allow read: if canRead(hid);
+        allow write: if isFamily(hid);
+        match /parts/{partNo} {
+          allow read: if canRead(hid);
+          allow delete: if isFamily(hid);
+          allow create, update: if isFamily(hid) && pageSizeOk();
+        }
+      }
+
+      // Medicine reminders: one document per phone with reminders on, and one-off requests;
+      // both read by the bridge's service account
+      match /pushSubs/{subId} {
+        allow read, write: if isFamily(hid);
+      }
+      match /reminders/{reminderId} {
+        allow read, write: if isFamily(hid);
+      }
+
+      // The household's own secrets, written by the workflows: the Apple Health inbox key, so the
+      // app can show it under Settings. Family may read it; nobody writes it from the app.
+      match /private/{docId} {
+        allow read: if isFamily(hid);
+        allow write: if false;
+      }
+
+      // The bridge's own logs (last Apple Health send, reminder and explain counts): its alone
+      match /bridge/{docId} {
+        allow read, write: if false;
+      }
+
+      // Invite codes (item 8 on the roadmap): the bridge's alone
+      match /invites/{code} {
+        allow read, write: if false;
       }
     }
 
+    // ---- TRANSITION: the pre-v75 shared layout ----
+    // Kept only until the old top-level collections are cleaned up after the migration, so a
+    // phone still running an older version keeps working. Remove this whole block (down to
+    // END TRANSITION) in the clean-up commit.
+    function oldAccount() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    function oldHasRole(roles) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && oldAccount().role in roles;
+    }
+    function oldFamily() { return oldHasRole(['family']); }
+    function oldReadOnly() { return oldHasRole(['readonly']); }
+    function oldViewer() { return oldHasRole(['viewer']); }
+
+    match /entries/{entryId} {
+      allow read: if oldFamily() || oldReadOnly() || (oldViewer() && resource.data.type in ['med', 'temp', 'vitals', 'weight', 'sleep', 'drink']);
+      allow write: if oldFamily();
+    }
+    match /medicines/{medId} {
+      allow read: if oldFamily() || oldReadOnly() || oldViewer();
+      allow write: if oldFamily();
+    }
+    match /documents/{docId} {
+      allow read: if oldFamily() || oldReadOnly();
+      allow write: if oldFamily();
+      match /pages/{pageNo} {
+        allow read: if oldFamily() || oldReadOnly();
+        allow delete: if oldFamily();
+        allow create, update: if oldFamily() && pageSizeOk();
+      }
+    }
     match /profile/{profileId} {
-      allow read: if isFamily() || isReadOnly();
-      allow write: if isFamily();
+      allow read: if oldFamily() || oldReadOnly();
+      allow write: if oldFamily();
     }
-
-    // Chemo plan: one document per calendar day (chemo session, done, mood, one good thing)
     match /days/{dayId} {
-      allow read: if isFamily() || isReadOnly() || isViewer();
-      allow write: if isFamily();
+      allow read: if oldFamily() || oldReadOnly() || oldViewer();
+      allow write: if oldFamily();
     }
-
-    // Cheer board: short notes between the two of them
-    match /cheers/{cheerId} {
-      allow read: if isFamily() || isReadOnly();
-      allow write: if isFamily();
-    }
-
-    // Exercise: one document per day (steps, which daily goals were done)
     match /exercise/{dayId} {
-      allow read: if isFamily() || isReadOnly();
-      allow write: if isFamily();
+      allow read: if oldFamily() || oldReadOnly();
+      allow write: if oldFamily();
     }
-
-    // Saved meals: quick buttons for logging food, with what goes with each one
     match /meals/{mealId} {
-      allow read: if isFamily() || isReadOnly();
-      allow write: if isFamily();
+      allow read: if oldFamily() || oldReadOnly();
+      allow write: if oldFamily();
     }
-
-    // Day totals from a food app: one document per day ({ kcal, prot, carb, fat, source }),
-    // written by the bridge from Apple Health, or typed in by hand from the Food diary
     match /nutrition/{dayId} {
-      allow read: if isFamily() || isReadOnly();
-      allow write: if isFamily();
+      allow read: if oldFamily() || oldReadOnly();
+      allow write: if oldFamily();
     }
-
-    // Medicine reminders: one document per phone with reminders on (its push subscription),
-    // and one-off "remind me in 15 minutes" requests; both read by the bridge's service account
-    // Recorded answers to questions for the team (since v64): the clinician's spoken answer, stored
-    // as base64 chunks in parts, the same way document pages are, with the same size guard
     match /recordings/{recId} {
-      allow read: if isFamily() || isReadOnly();
-      allow write: if isFamily();
+      allow read: if oldFamily() || oldReadOnly();
+      allow write: if oldFamily();
       match /parts/{partNo} {
-        allow read: if isFamily() || isReadOnly();
-        allow delete: if isFamily();
-        allow create, update: if isFamily() && pageSizeOk();
+        allow read: if oldFamily() || oldReadOnly();
+        allow delete: if oldFamily();
+        allow create, update: if oldFamily() && pageSizeOk();
       }
     }
     match /pushSubs/{subId} {
-      allow read, write: if isFamily();
+      allow read, write: if oldFamily();
     }
     match /reminders/{reminderId} {
-      allow read, write: if isFamily();
+      allow read, write: if oldFamily();
     }
+    // ---- END TRANSITION ----
 
     match /{document=**} {
       allow read, write: if false;

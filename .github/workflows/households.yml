@@ -1,0 +1,50 @@
+# Moves the pre-v75 shared data into a household, in three runs from the Actions tab:
+# copy (creates the household and copies everything; safe to repeat), verify (counts old and new),
+# cleanup (deletes the OLD layout once verify passes; needs the confirmation text).
+# Uses the bridge's FIREBASE_SERVICE_ACCOUNT and BRIDGE_KEY secrets; nothing is typed in that
+# is secret, and nothing secret is printed.
+name: Households, move the data in
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "What to do"
+        required: true
+        type: choice
+        default: verify
+        options:
+          - copy
+          - verify
+          - cleanup
+      household_name:
+        description: "Household name (copy only, when creating it)"
+        required: false
+        type: string
+        default: "Mark and Shelley"
+      household_id:
+        description: "Household id (only if more than one exists)"
+        required: false
+        type: string
+      confirm:
+        description: "For cleanup, type exactly: delete the old data"
+        required: false
+        type: string
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: ${{ inputs.action }}
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          BRIDGE_KEY: ${{ secrets.BRIDGE_KEY }}
+          ACTION: ${{ inputs.action }}
+          HOUSEHOLD_NAME: ${{ inputs.household_name }}
+          HOUSEHOLD_ID: ${{ inputs.household_id }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: node tools/migrate_households.mjs
