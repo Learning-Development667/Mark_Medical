@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '69';
+const APP_VERSION = '70';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -6060,8 +6060,8 @@ function openProgrammeSheet() {
     h('div', { class: 'btnrow' },
       h('button', { class: 'btn btn-primary', type: 'button', onclick: () => openItemSheet({ id: newItemId(), name: '', section: 'exercise', kind: 'reps', amount: 10 }, true, () => openProgrammeSheet()) }, 'Add exercise'),
       h('button', { class: 'btn btn-secondary', type: 'button', onclick: () => openItemSheet({ id: newItemId(), name: '', section: 'physio', kind: 'sets', amount: 10, sets: 3 }, true, () => openProgrammeSheet()) }, 'Add physio exercise')),
-    explainAvailable() ? h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => importPlanPhotos() }, 'Add from a photo of the plan') : null,
-    explainAvailable() ? h('p', { class: 'hint', text: 'Photograph the exercise sheet or physio plan and Daybook reads it into the list for you to check. The photo goes to Daybook\'s AI service and is not kept.' }) : null,
+    explainAvailable() ? h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => importPlanPhotos() }, 'Add from a photo or PDF of the plan') : null,
+    explainAvailable() ? h('p', { class: 'hint', text: 'Photograph the exercise sheet or physio plan, or choose the PDF or Word file if it was emailed, and Daybook reads it into the list for you to check. The file goes to Daybook\'s AI service and is not kept.' }) : null,
     h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => openPhysioDetailsSheet() }, (plan.from || plan.notes) ? 'Physio plan details' : 'Add physio plan details'),
     h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: closeSheet }, 'Done')
   );
@@ -6140,20 +6140,24 @@ function openPhysioDetailsSheet() {
   openSheet('Physio plan details', body);
 }
 
-/* ---- Add from a photo: the plan is read by the AI service through the bridge, then checked here before anything is added ---- */
+/* ---- Add from a photo, PDF or Word file: the plan is read by the AI service through the bridge, then checked here before anything is added ---- */
+const PLAN_MAX_PAGES = 8; // the bridge's own page limit
 function importPlanPhotos() {
-  const input = h('input', { type: 'file', accept: 'image/*', multiple: true, style: 'display:none' });
+  const input = h('input', { type: 'file', accept: 'image/*,application/pdf,.pdf,.docx,.txt', multiple: true, style: 'display:none' });
   document.body.append(input);
   input.addEventListener('change', async () => {
-    const files = Array.from(input.files || []).slice(0, 4);
+    const files = Array.from(input.files || []);
     input.remove();
     if (!files.length) return;
     const status = h('p', { class: 'hint', role: 'status', text: 'Reading the plan, about half a minute' });
     openSheet('Reading the plan', h('div', null, status, h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => openProgrammeSheet() }, 'Cancel')));
     try {
-      const pages = [];
-      for (const f of files) { const page = await compressCanvas(await imageToCanvas(f)); pages.push(page.data); }
-      const reply = await bridgeExplain({ kind: 'programme', pages });
+      /* the same reader the document screen uses: photos and PDF pages become page images, Word and text files become text */
+      const read = await processFiles(files, (label) => { status.textContent = label; });
+      status.textContent = 'Reading the plan, about half a minute';
+      if (read.pages.length > PLAN_MAX_PAGES) throw new Error('That is more than ' + PLAN_MAX_PAGES + ' pages. Choose the pages with the exercises on.');
+      const payload = read.kind === 'text' ? { kind: 'programme', text: read.text } : { kind: 'programme', pages: read.pages.map((p) => p.data) };
+      const reply = await bridgeExplain(payload);
       const parsed = parsePlanReply(reply.text);
       if (!parsed.items.length) { toast('Could not find any exercises in that photo'); openProgrammeSheet(); return; }
       openPlanReviewSheet(parsed);
