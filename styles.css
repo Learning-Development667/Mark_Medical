@@ -1073,7 +1073,13 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 /* ---------- Exercise programme, physio plan, Apple Health workouts ---------- */
 .goal-main { display: flex; flex-direction: column; min-width: 0; }
 .goal-note { font-size: 14px; color: var(--text-secondary); font-weight: 400; }
-.ex-not-today { margin: var(--s-2) 0 var(--s-5); font-size: 15px; }
+.goal-health { font-size: 14px; color: var(--text-secondary); font-weight: 400; }
+.goal.is-done .goal-health { color: var(--success); }
+.workout-counts { font-size: 15px; color: var(--success); font-weight: 600; margin-left: auto; }
+.hint-small { font-size: 15px; margin-top: calc(-1 * var(--s-1)); }
+.ex-not-today { margin: var(--s-2) 0 0; font-size: 15px; }
+#ex-physio-section { margin-top: var(--s-6); }
+#ex-physio-section > .section-title:first-child { margin-top: 0; }
 .workouts { display: flex; flex-direction: column; gap: var(--s-2); }
 .workout { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2) var(--s-3); background: var(--surface-sunken); border-radius: var(--r-md); padding: var(--s-3) 14px; }
 .workout-main { flex: 1 1 180px; min-width: 0; }
