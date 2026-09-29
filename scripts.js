@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '76';
+const APP_VERSION = '77';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -326,8 +326,8 @@ let db = mainDb;
    households/{state.household}/..., and firestore.rules lets only that household's members in.
    hcol('entries') and hdoc('entries', id) are the only way the app reaches its data; nothing else
    calls collection(db, ...) or doc(db, ...) except the users/{uid} pointer and members reads at sign-in. */
-function hcol(name, ...rest) { return hcol('households', state.household, name, ...rest); }
-function hdoc(name, ...rest) { return hdoc('households', state.household, name, ...rest); }
+function hcol(name, ...rest) { return collection(db, 'households', state.household, name, ...rest); }
+function hdoc(name, ...rest) { return doc(db, 'households', state.household, name, ...rest); }
 /* The shared demo project keeps its example data in one fixed household */
 const DEMO_HOUSEHOLD = 'demo';
 /* The shared, usable demo: a second Firebase project of its own, with a guest sign-in whose
