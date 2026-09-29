@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '72';
+const APP_VERSION = '73';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -806,9 +806,12 @@ function buildDemoFixture() {
   days[day(0)] = { mood: 4, good: 'Cup of tea in the sun with Shelley', updatedBy: 'Mark', updatedAt: demoTs(at(0, '08:30')) };
 
   const doneAll = { pressups: true, situps: true, plank: true, squats: true, walk: true, ankle: true, heel: true };
+  /* the example swim falls on yesterday's weekday and two others, so yesterday's Pool Swim ticks it and today is a rest day for it */
+  const yDow = parseDay(day(-1)).getDay();
+  const swimDays = [yDow, (yDow + 2) % 7, (yDow + 4) % 7];
   const exercise = {};
   exercise[day(-2)] = { day: day(-2), steps: 2100, done: doneAll, workouts: [{ name: 'Outdoor Walk', minutes: 32, km: 1.8, kcal: 120, start: '10:15' }] };
-  exercise[day(-1)] = { day: day(-1), steps: 2800, done: doneAll, workouts: [{ name: 'Outdoor Walk', minutes: 41, km: 2.4, kcal: 150, start: '09:50' }] };
+  exercise[day(-1)] = { day: day(-1), steps: 2800, done: doneAll, workouts: [{ name: 'Pool Swim', minutes: 35, km: 0.8, kcal: 210, start: '07:30' }, { name: 'Outdoor Walk', minutes: 41, km: 2.4, kcal: 150, start: '09:50' }] };
   exercise[day(0)] = { day: day(0), steps: 1200, done: { pressups: true, situps: true, plank: false, squats: false, ankle: true }, workouts: [{ name: 'Outdoor Walk', minutes: 18, km: 1.1, kcal: 70, start: '08:40' }] };
   exercise[day(-4)] = { day: day(-4), steps: 1600, done: { pressups: true, situps: false, plank: false, squats: true } };
   exercise[day(-6)] = { day: day(-6), steps: 900, done: {} };
@@ -820,7 +823,8 @@ function buildDemoFixture() {
       { id: 'situps', name: 'Sit-ups', section: 'exercise', kind: 'reps', amount: 20 },
       { id: 'plank', name: 'Plank', section: 'exercise', kind: 'seconds', amount: 60 },
       { id: 'squats', name: 'Squats', section: 'exercise', kind: 'reps', amount: 2 },
-      { id: 'walk', name: 'Walk', section: 'exercise', kind: 'minutes', amount: 20, days: [1, 3, 5], note: 'Round the block, slower on chemo days' },
+      { id: 'walk', name: 'Walk', section: 'exercise', kind: 'minutes', amount: 20, days: [1, 3, 5], match: 'walk', note: 'Round the block, slower on chemo days' },
+      { id: 'swim', name: 'Swim', section: 'exercise', kind: 'lengths', amount: 30, pool: 25, days: swimDays, match: 'swim', since: day(-1), note: 'Gentle breaststroke' },
       { id: 'ankle', name: 'Ankle pumps', section: 'physio', kind: 'sets', amount: 20, sets: 3, note: 'Lying down, both feet' },
       { id: 'heel', name: 'Heel slides', section: 'physio', kind: 'sets', amount: 10, sets: 2, note: 'Slow, stop at the first pull' }
     ] },
@@ -5751,21 +5755,70 @@ function confetti() {
 /* profile/main.programme = { items: [{ id, name, section "exercise"|"physio", kind, amount, sets?, days?, note? }] }
    and profile/main.physio = { from, given, notes } (the plan's header). A day's ticks stay in
    exercise/{day}.done keyed by item id. Kinds: reps, seconds, minutes, sets (amount = reps per set),
-   do (no count, just tick it). days is a list of getDay() numbers, none meaning every day.
+   do (no count, just tick it), lengths (amount lengths of a pool metres pool) and distance (amount in dunit
+   "km"|"m"); time is an optional target in minutes for lengths and distance. match ("walk"|"swim"|"run"|"cycle"|"any")
+   ticks the item from Apple Health workouts that day, when they reach the target (itemHealth()); an item ticked that
+   way and then unticked by hand is kept off in exercise/{day}.off[id]. days is a list of getDay() numbers, none meaning every day.
    since "YYYY-MM-DD" is the day an item was added in the app: before it the item is not due, so
    adding an exercise never turns past days into missed ones (the starting four carry no since). */
 const PROGRAMME_KINDS = [
-  { key: 'reps', label: 'Reps', unit: (n) => (n === 1 ? '1 rep' : n + ' reps') },
-  { key: 'seconds', label: 'Seconds', unit: (n) => fmtSecondsWord(n) },
-  { key: 'minutes', label: 'Minutes', unit: (n) => (n === 1 ? '1 minute' : n + ' minutes') },
-  { key: 'sets', label: 'Sets and reps', unit: (n, sets) => (sets || 1) + ' sets of ' + n },
+  { key: 'reps', label: 'Reps', unit: (it) => (Number(it.amount) === 1 ? '1 rep' : Number(it.amount) + ' reps') },
+  { key: 'seconds', label: 'Seconds', unit: (it) => fmtSecondsWord(Number(it.amount)) },
+  { key: 'minutes', label: 'Minutes', unit: (it) => fmtMinutesWord(Number(it.amount)) },
+  { key: 'sets', label: 'Sets and reps', unit: (it) => (Number(it.sets) || 1) + ' sets of ' + Number(it.amount) },
+  { key: 'lengths', label: 'Lengths', unit: (it) => Number(it.amount) + ' \u00d7 ' + poolLength(it) + ' m' + timeWord(it) },
+  { key: 'distance', label: 'Distance', unit: (it) => fmtMetres(itemMetres(it)) + timeWord(it) },
   { key: 'do', label: 'Just tick it off', unit: () => 'once' }
 ];
+function fmtMinutesWord(n) { return n === 1 ? '1 minute' : n + ' minutes'; }
+function timeWord(it) { return Number(it.time) > 0 ? ' in ' + fmtMinutesWord(Number(it.time)) : ''; }
+function poolLength(it) { return Number(it.pool) > 0 ? Number(it.pool) : 25; }
+/* The distance an item asks for, in metres (0 for kinds that are not a distance) */
+function itemMetres(it) {
+  if (it.kind === 'lengths') return (Number(it.amount) || 0) * poolLength(it);
+  if (it.kind === 'distance') return (Number(it.amount) || 0) * (it.dunit === 'm' ? 1 : 1000);
+  return 0;
+}
+/* Distances read as people say them: 750 m, 1.2 km */
+function fmtMetres(m) { return m < 1000 ? Math.round(m) + ' m' : (Math.round(m / 10) / 100) + ' km'; }
+function fmtKm(km) { return fmtMetres((Number(km) || 0) * 1000); }
+
+/* Apple Health workouts by activity, from the workout's own name ("Pool Swim", "Outdoor Walk", "Hiking") */
+const WORKOUT_ACTIVITIES = [
+  { key: 'walk', label: 'Walk', re: /walk|hik/i },
+  { key: 'swim', label: 'Swim', re: /swim/i },
+  { key: 'run', label: 'Run', re: /run|jog/i },
+  { key: 'cycle', label: 'Cycle', re: /cycl|bik/i }
+];
+function workoutActivity(name) { const a = WORKOUT_ACTIVITIES.find((x) => x.re.test(String(name || ''))); return a ? a.key : null; }
+/* What Apple Health recorded that day towards one item: the matching workouts added together, and whether they reach the target */
+function itemHealth(item, rec) {
+  if (!item.match) return null;
+  const ws = (rec.workouts || []).filter((w) => item.match === 'any' || workoutActivity(w.name) === item.match);
+  if (!ws.length) return null;
+  const minutes = ws.reduce((t, w) => t + (Number(w.minutes) || 0), 0);
+  const withKm = ws.filter((w) => Number(w.km) > 0);
+  const metres = withKm.reduce((t, w) => t + Number(w.km) * 1000, 0);
+  const bits = [];
+  if (minutes) bits.push(minutes + ' min');
+  if (withKm.length) bits.push(fmtMetres(metres));
+  let met = true, short = '';
+  if (item.kind === 'minutes') { met = minutes >= Number(item.amount); short = minutes + ' of ' + Number(item.amount) + ' min'; }
+  else if (item.kind === 'lengths' || item.kind === 'distance') { const want = itemMetres(item); met = withKm.length > 0 && metres >= want; short = withKm.length ? fmtMetres(metres) + ' of ' + fmtMetres(want) : 'no distance recorded'; }
+  return { met, text: met ? 'Apple Health: ' + bits.join(' \u00b7 ') : 'Apple Health so far: ' + short };
+}
+/* Ticked by hand, or reached through Apple Health and not unticked by hand */
+function isItemDone(item, rec) {
+  const d = rec.done || {};
+  if (d[item.id] === true) return true;
+  const hp = itemHealth(item, rec);
+  return !!(hp && hp.met && !(rec.off || {})[item.id]);
+}
 const WEEKDAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0];
 function fmtSecondsWord(sec) { return sec >= 60 && sec % 60 === 0 ? (sec / 60) + (sec === 60 ? ' minute' : ' minutes') : sec + ' seconds'; }
 function programmeKind(item) { return PROGRAMME_KINDS.find((k) => k.key === item.kind) || PROGRAMME_KINDS[0]; }
-function itemTarget(item) { return programmeKind(item).unit(Number(item.amount) || 0, Number(item.sets) || 0); }
+function itemTarget(item) { return programmeKind(item).unit(item); }
 function itemDaysText(item) { return !item.days || !item.days.length || item.days.length === 7 ? 'every day' : WEEK_ORDER.filter((d) => item.days.includes(d)).map((d) => WEEKDAY_SHORT[d]).join(', '); }
 function defaultProgrammeItems() {
   const g = { ...GOAL_DEFAULTS, ...((state.profile && state.profile.exerciseGoals) || {}) };
@@ -5790,8 +5843,8 @@ function exerciseFor(day) { return state.exercise[day] || {}; }
 function dayStatus(day) {
   const due = programmeItems().filter((it) => itemDue(it, day));
   if (!due.length) return 'rest';
-  const d = exerciseFor(day).done || {};
-  return due.every((it) => d[it.id]) ? 'done' : 'missed';
+  const rec = exerciseFor(day);
+  return due.every((it) => isItemDone(it, rec)) ? 'done' : 'missed';
 }
 function allGoalsDone(day) { return dayStatus(day) === 'done'; }
 /* Consecutive done days, counting back from today (or yesterday if today is not done yet); rest days are passed over */
@@ -5818,10 +5871,21 @@ $('ex-prev').addEventListener('click', () => { state.exerciseDay = addDays(state
 $('ex-next').addEventListener('click', () => { if (state.exerciseDay < todayStr()) { state.exerciseDay = addDays(state.exerciseDay, 1); renderExercise(); } });
 $('ex-label').addEventListener('click', () => { state.exerciseDay = todayStr(); renderExercise(); });
 
+/* A programme item started from an Apple Health workout: a swim by its distance, anything else by its minutes, ticked from Health from then on */
+function itemFromWorkout(w) {
+  const activity = workoutActivity(w.name);
+  const base = { id: newItemId(), name: w.name || 'Workout', section: 'exercise', match: activity || null };
+  if (activity === 'swim' && Number(w.km) > 0) return { ...base, name: 'Swim', kind: 'distance', dunit: 'm', amount: Math.max(25, Math.round(Number(w.km) * 1000 / 25) * 25) };
+  const name = activity ? WORKOUT_ACTIVITIES.find((a) => a.key === activity).label : base.name;
+  return { ...base, name, kind: 'minutes', amount: Math.max(1, Math.round(w.minutes || 30)) };
+}
+
 function goalRow(item, done, day) {
+  const hp = itemHealth(item, exerciseFor(day));
   return h('button', { class: 'goal' + (done ? ' is-done' : ''), type: 'button', 'aria-pressed': done ? 'true' : 'false', disabled: state.readOnly, onclick: () => toggleGoal(day, item.id) },
     h('span', { class: 'goal-box' }, done ? icon('check') : null),
-    h('span', { class: 'goal-main' }, h('span', { class: 'goal-label', text: item.name }), item.note ? h('span', { class: 'goal-note', text: item.note }) : null),
+    h('span', { class: 'goal-main' }, h('span', { class: 'goal-label', text: item.name }), item.note ? h('span', { class: 'goal-note', text: item.note }) : null,
+      hp ? h('span', { class: 'goal-health', text: hp.text }) : null),
     h('span', { class: 'goal-target', text: itemTarget(item) })
   );
 }
@@ -5844,25 +5908,29 @@ function renderExercise() {
 
   /* Workouts Apple Health already recorded that day (walks, swims, anything on the watch) */
   const workouts = Array.isArray(rec.workouts) ? rec.workouts : [];
+  const items = programmeItems();
   $('ex-workouts').hidden = !workouts.length;
   $('ex-workouts-list').replaceChildren(...workouts.map((w) => {
     const bits = [];
     if (w.minutes) bits.push(w.minutes + ' min');
-    if (w.km) bits.push(w.km + ' km');
+    if (w.km) bits.push(fmtKm(w.km));
     if (w.kcal) bits.push(w.kcal + ' kcal');
     if (w.start) bits.push(w.start);
+    const activity = workoutActivity(w.name);
+    /* a workout already counting towards something due that day says so, rather than offering to add it again */
+    const counts = items.filter((it) => it.match && (it.match === 'any' || it.match === activity) && itemDue(it, day));
     return h('div', { class: 'workout' },
       h('div', { class: 'workout-main' }, h('div', { class: 'workout-name', text: w.name || 'Workout' }), h('div', { class: 'workout-sub', text: bits.join(' · ') })),
-      h('button', { class: 'btn btn-secondary btn-small', type: 'button', onclick: () => openItemSheet({ id: newItemId(), name: w.name || 'Workout', section: 'exercise', kind: 'minutes', amount: Math.max(1, Math.round(w.minutes || 30)) }, true, () => closeSheet()) }, 'Add to programme'));
+      counts.length
+        ? h('div', { class: 'workout-counts', text: 'Counts towards ' + counts.map((it) => it.name).join(', ') })
+        : h('button', { class: 'btn btn-secondary btn-small', type: 'button', onclick: () => openItemSheet(itemFromWorkout(w), true, () => closeSheet()) }, 'Add to programme'));
   }));
 
-  const items = programmeItems();
-  const done = rec.done || {};
   const renderSection = (section, listId, notId) => {
     const mine = items.filter((it) => it.section === section);
     const due = mine.filter((it) => itemDue(it, day));
     const off = mine.filter((it) => !itemDue(it, day));
-    $(listId).replaceChildren(...due.map((it) => goalRow(it, !!done[it.id], day)));
+    $(listId).replaceChildren(...due.map((it) => goalRow(it, isItemDone(it, rec), day)));
     const not = $(notId);
     not.hidden = !off.length;
     not.textContent = off.length ? 'Not today: ' + off.map((it) => it.name + ' (' + itemDaysText(it) + ')').join(', ') : '';
@@ -5881,19 +5949,24 @@ function renderExercise() {
 
 async function toggleGoal(day, id) {
   const rec = exerciseFor(day);
-  const done = { ...(rec.done || {}) };
-  done[id] = !done[id];
+  const item = programmeItems().find((it) => it.id === id) || { id };
+  const next = !isItemDone(item, rec);
+  const done = { ...(rec.done || {}), [id]: next };
+  /* unticking something Apple Health ticked keeps it off; ticking it again clears that */
+  const off = { ...(rec.off || {}) };
+  if (item.match) off[id] = !next;
   const wasAll = allGoalsDone(day);
+  const after = { ...rec, done, off };
   const due = programmeItems().filter((it) => itemDue(it, day));
-  const nowAll = due.length > 0 && due.every((it) => done[it.id]);
+  const nowAll = due.length > 0 && due.every((it) => isItemDone(it, after));
   if (state.demo) {
-    state.exercise[day] = { ...rec, day, done };
+    state.exercise[day] = { ...after, day };
     renderExercise();
     if (nowAll && !wasAll) toast('All done for today. Nice work.');
     return;
   }
   try {
-    await setDoc(doc(db, 'exercise', day), { day, done, addedBy: state.name, updatedAt: serverTimestamp() }, { merge: true });
+    await setDoc(doc(db, 'exercise', day), { day, done, off, addedBy: state.name, updatedAt: serverTimestamp() }, { merge: true });
     if (nowAll && !wasAll) toast('All done for today. Nice work.');
   } catch (e) { console.error(e); toast('Could not save'); }
 }
@@ -6071,9 +6144,19 @@ function openProgrammeSheet() {
 /* One exercise: name, where it belongs, how it is counted, how much, which days, a note */
 function openItemSheet(item, isNew, after) {
   const it = { ...item, days: Array.isArray(item.days) ? item.days.slice() : [] };
+  if (it.dunit !== 'm') it.dunit = 'km';
+  if (!('match' in item)) it.match = null;
+  let matchTouched = !isNew || 'match' in item;
   const name = h('input', { type: 'text', placeholder: 'e.g. Lunges', value: it.name || '', maxlength: '60' });
-  const amount = h('input', { type: 'number', inputmode: 'numeric', min: '0', value: String(it.amount || '') });
+  const amount = h('input', { type: 'number', inputmode: 'decimal', min: '0', step: 'any', value: String(it.amount || '') });
   const sets = h('input', { type: 'number', inputmode: 'numeric', min: '1', value: String(it.sets || 3) });
+  const pool = h('input', { type: 'number', inputmode: 'numeric', min: '1', value: String(poolLength(it)) });
+  const time = h('input', { type: 'number', inputmode: 'numeric', min: '0', placeholder: 'Optional', value: Number(it.time) > 0 ? String(it.time) : '' });
+  const poolField = field('Pool length in metres', pool);
+  const timeField = field('Time to aim for, in minutes (optional)', time);
+  const unitRow = h('div', { class: 'chips', role: 'group', 'aria-label': 'Distance in' });
+  const matchRow = h('div', { class: 'chips', role: 'group', 'aria-label': 'Tick it from Apple Health' });
+  const matchHint = h('p', { class: 'hint', text: 'Tick it from Apple Health' });
   const note = h('textarea', { rows: '2', placeholder: 'e.g. hold for 10 seconds each side', maxlength: '200' });
   note.value = it.note || '';
   const setsField = field('Sets', sets);
@@ -6087,23 +6170,38 @@ function openItemSheet(item, isNew, after) {
     kindRow.replaceChildren(...PROGRAMME_KINDS.map((k) => chip(k.label, it.kind === k.key, () => { it.kind = k.key; drawKind(); })));
     setsField.hidden = it.kind !== 'sets';
     amountField.hidden = it.kind === 'do';
-    amountField.querySelector('span').textContent = it.kind === 'sets' ? 'Reps in each set' : it.kind === 'seconds' ? 'Seconds' : it.kind === 'minutes' ? 'Minutes' : 'How many';
+    poolField.hidden = it.kind !== 'lengths';
+    unitRow.hidden = it.kind !== 'distance';
+    timeField.hidden = !(it.kind === 'lengths' || it.kind === 'distance');
+    amountField.querySelector('span').textContent = it.kind === 'sets' ? 'Reps in each set' : it.kind === 'seconds' ? 'Seconds' : it.kind === 'minutes' ? 'Minutes' : it.kind === 'lengths' ? 'How many lengths' : it.kind === 'distance' ? 'How far' : 'How many';
+    unitRow.replaceChildren(chip('Kilometres', it.dunit === 'km', () => { it.dunit = 'km'; drawKind(); }), chip('Metres', it.dunit === 'm', () => { it.dunit = 'm'; drawKind(); }));
   };
+  const drawMatch = () => matchRow.replaceChildren(chip('Off', !it.match, () => { it.match = null; matchTouched = true; drawMatch(); }),
+    ...WORKOUT_ACTIVITIES.map((a) => chip(a.label, it.match === a.key, () => { it.match = a.key; matchTouched = true; drawMatch(); })),
+    chip('Any workout', it.match === 'any', () => { it.match = 'any'; matchTouched = true; drawMatch(); }));
+  /* a new item called "Swim" or "Evening walk" is ticked from matching workouts unless the person says otherwise */
+  name.addEventListener('input', () => { if (!matchTouched) { it.match = workoutActivity(name.value); drawMatch(); } });
+  if (isNew && !matchTouched && it.name) it.match = workoutActivity(it.name);
   const drawDays = () => {
     const every = !it.days.length;
     dayRow.replaceChildren(chip('Every day', every, () => { it.days = []; drawDays(); }),
       ...WEEK_ORDER.map((d) => chip(WEEKDAY_SHORT[d], it.days.includes(d), () => { it.days = it.days.includes(d) ? it.days.filter((x) => x !== d) : it.days.concat(d); if (it.days.length === 7) it.days = []; drawDays(); })));
   };
-  drawSection(); drawKind(); drawDays();
+  drawSection(); drawKind(); drawDays(); drawMatch();
   const saveBtn = h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
     it.name = name.value.trim();
-    it.amount = it.kind === 'do' ? 1 : Math.max(0, parseInt(amount.value, 10) || 0);
+    const decimals = it.kind === 'distance' && it.dunit === 'km';
+    it.amount = it.kind === 'do' ? 1 : Math.max(0, (decimals ? Math.round(parseFloat(amount.value) * 100) / 100 : parseInt(amount.value, 10)) || 0);
     it.sets = it.kind === 'sets' ? Math.max(1, parseInt(sets.value, 10) || 1) : null;
     it.note = note.value.trim();
     if (!it.name) { toast('Give it a name'); name.focus(); return; }
     if (it.kind !== 'do' && !it.amount) { toast('How many?'); amount.focus(); return; }
     const clean = { id: it.id, name: it.name, section: it.section === 'physio' ? 'physio' : 'exercise', kind: it.kind, amount: it.amount, days: it.days };
     if (it.sets) clean.sets = it.sets;
+    if (it.kind === 'lengths') clean.pool = Math.max(1, parseInt(pool.value, 10) || 25);
+    if (it.kind === 'distance') clean.dunit = it.dunit;
+    if ((it.kind === 'lengths' || it.kind === 'distance') && parseInt(time.value, 10) > 0) clean.time = parseInt(time.value, 10);
+    if (it.match) clean.match = it.match;
     if (it.note) clean.note = it.note;
     if (isNew) clean.since = todayStr(); else if (it.since) clean.since = it.since;
     const items = programmeItems().map((x) => ({ ...x }));
@@ -6115,8 +6213,9 @@ function openItemSheet(item, isNew, after) {
   } }, isNew ? 'Add' : 'Save');
   const body = h('div', null,
     field('Name', name), h('p', { class: 'hint', text: 'Where it belongs' }), sectionRow,
-    h('p', { class: 'hint', text: 'How it is counted' }), kindRow, amountField, setsField,
+    h('p', { class: 'hint', text: 'How it is counted' }), kindRow, amountField, unitRow, setsField, poolField, timeField,
     h('p', { class: 'hint', text: 'Which days' }), dayRow,
+    matchHint, matchRow, h('p', { class: 'hint hint-small', text: 'When a walk, swim, run or ride recorded on the phone or watch reaches the target, it ticks itself. You can still untick it.' }),
     field('Note (optional)', note),
     saveBtn,
     h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => { if (after) after(); else closeSheet(); } }, 'Cancel'));
@@ -6175,8 +6274,12 @@ function parsePlanReply(text) {
   const items = (Array.isArray(data.items) ? data.items : []).map((x) => ({
     id: newItemId(), name: String(x.name || '').trim().slice(0, 60),
     kind: kinds.includes(x.kind) ? x.kind : 'reps',
-    amount: Math.max(0, parseInt(x.amount, 10) || 0) || 1,
+    amount: Math.max(0, (x.kind === 'distance' && x.unit !== 'm' ? Math.round(parseFloat(x.amount) * 100) / 100 : parseInt(x.amount, 10)) || 0) || 1,
     sets: x.kind === 'sets' ? Math.max(1, parseInt(x.sets, 10) || 1) : null,
+    pool: x.kind === 'lengths' ? Math.max(1, parseInt(x.pool, 10) || 25) : null,
+    dunit: x.kind === 'distance' ? (x.unit === 'm' ? 'm' : 'km') : null,
+    time: (x.kind === 'lengths' || x.kind === 'distance') && parseInt(x.time, 10) > 0 ? parseInt(x.time, 10) : null,
+    match: workoutActivity(x.name),
     days: Array.isArray(x.days) ? x.days.map((d) => parseInt(d, 10)).filter((d) => d >= 0 && d <= 6) : [],
     note: String(x.note || '').trim().slice(0, 200)
   })).filter((x) => x.name);
@@ -6194,7 +6297,7 @@ function openPlanReviewSheet(parsed) {
   const drawSec = () => secRow.replaceChildren(chip('Daily exercises', section === 'exercise', () => { section = 'exercise'; drawSec(); }), chip('Physio plan', section === 'physio', () => { section = 'physio'; drawSec(); }));
   drawSec();
   const addBtn = h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
-    const chosen = parsed.items.filter((it, i) => boxes[i].checked).map((it) => { const c = { id: it.id, name: it.name, section, kind: it.kind, amount: it.amount, days: it.days, since: todayStr() }; if (it.sets) c.sets = it.sets; if (it.note) c.note = it.note; return c; });
+    const chosen = parsed.items.filter((it, i) => boxes[i].checked).map((it) => { const c = { id: it.id, name: it.name, section, kind: it.kind, amount: it.amount, days: it.days, since: todayStr() }; for (const k of ['sets', 'pool', 'dunit', 'time', 'match', 'note']) if (it[k]) c[k] = it[k]; return c; });
     if (!chosen.length) { toast('Nothing ticked'); return; }
     addBtn.disabled = true;
     const items = programmeItems().map((x) => ({ ...x })).concat(chosen);

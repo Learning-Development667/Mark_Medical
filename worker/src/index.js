@@ -142,6 +142,7 @@ async function handleHealth(request, env) {
     }
   }
   /* Workouts (walks, swims, anything logged on the watch or phone): the day's list, replaced on each send.
+     Distances are stored in km whatever unit Health used (pool swims come in metres or yards).
      Health Auto Export sends them under data.workouts when Workouts is ticked in the automation. */
   const workouts = (body.data && Array.isArray(body.data.workouts)) ? body.data.workouts : [];
   const workoutDays = {};
@@ -152,8 +153,8 @@ async function handleHealth(request, env) {
     let minutes = isFinite(startMs) && isFinite(endMs) && endMs > startMs ? (endMs - startMs) / 60000 : Number(w.duration) || 0;
     if (!(isFinite(startMs) && isFinite(endMs) && endMs > startMs) && minutes > 600) minutes = minutes / 60; // a bare duration that large is seconds
     const item = { name: strVal(String(w.name || w.workoutActivityType || 'Workout').slice(0, 60)), minutes: intVal(Math.round(minutes)) };
-    const dist = w.distance && Number(w.distance.qty);
-    if (isFinite(dist) && dist > 0) item.km = doubleVal(Math.round((/^mi/i.test(String(w.distance.units || '')) ? dist * 1.609 : dist) * 100) / 100);
+    const km = distanceKm(w.distance || w.swimDistance || w.totalDistance);
+    if (km > 0) item.km = doubleVal(km);
     const kcal = w.activeEnergyBurned && Number(w.activeEnergyBurned.qty);
     if (isFinite(kcal) && kcal > 0) item.kcal = intVal(Math.round(kcal));
     const st = hhmm(w.start);
@@ -394,6 +395,15 @@ const strVal = (v) => ({ stringValue: String(v) });
 const intVal = (v) => ({ integerValue: String(Math.round(v)) });
 const doubleVal = (v) => ({ doubleValue: Number(v) });
 /* Health Auto Export metric names for the day's food totals, and the field each lands in (nutrition/{day}) */
+/* A Health distance { qty, units } in km, to the metre: km, miles, metres, yards and feet */
+function distanceKm(d) {
+  const qty = d && Number(d.qty);
+  if (!isFinite(qty) || qty <= 0) return 0;
+  const u = String(d.units || 'km').toLowerCase().trim();
+  const perUnit = /^mi/.test(u) ? 1.609344 : /^(m|meters?|metres?)$/.test(u) ? 0.001 : /^(yd|yds|yards?)$/.test(u) ? 0.0009144 : /^(ft|feet|foot)$/.test(u) ? 0.0003048 : 1;
+  return Math.round(qty * perUnit * 1000) / 1000;
+}
+
 const NUTRITION = { dietary_energy: 'kcal', active_energy_dietary: 'kcal', protein: 'prot', carbohydrates: 'carb', total_fat: 'fat' };
 const tsVal = (iso) => ({ timestampValue: new Date(iso).toISOString() });
 const nowTs = () => ({ timestampValue: new Date().toISOString() });
@@ -423,9 +433,9 @@ const EXPLAIN_SYSTEM = {
     'Do not guess at anything the document does not say. Do not give medical advice or reassurance the document does not support; if something looks urgent, say clearly that they should contact the team. ' +
     'Reply with the explanation only, ready to be shown in the app as it is.',
   programme: 'You read exercise sheets and physiotherapy plans from photos (printed or handwritten), PDF pages or pasted text, for a patient who is recording them in an app. ' +
-    'Reply with JSON only, no prose and no code fence, in exactly this shape: {"from": string or null, "given": "YYYY-MM-DD" or null, "physio": true or false, "notes": string, "items": [{"name": string, "kind": "reps" or "seconds" or "minutes" or "sets" or "do", "amount": number, "sets": number or null, "days": [numbers 0 to 6, 0 = Sunday] or null, "note": string}]}. ' +
+    'Reply with JSON only, no prose and no code fence, in exactly this shape: {"from": string or null, "given": "YYYY-MM-DD" or null, "physio": true or false, "notes": string, "items": [{"name": string, "kind": "reps" or "seconds" or "minutes" or "sets" or "lengths" or "distance" or "do", "amount": number, "sets": number or null, "pool": number or null, "unit": "km" or "m" or null, "time": number or null, "days": [numbers 0 to 6, 0 = Sunday] or null, "note": string}]}. ' +
     '"from" is who gave the plan (a physiotherapist, a service), "given" the date on it, "physio" true when it is a physiotherapy plan, "notes" the general instructions on the sheet in one or two plain UK English sentences, or an empty string. ' +
-    'One item per exercise, in the order on the sheet. "sets" means sets of repetitions and amount is then the reps per set. Use "do" with amount 1 for an exercise with no count. days is null when it is every day. Put frequency such as "twice a day" and any holds or cautions in the item note. Leave out anything that is not an exercise. No em dashes.',
+    'One item per exercise, in the order on the sheet. "sets" means sets of repetitions and amount is then the reps per set. "lengths" is swimming lengths: amount is the number of lengths and pool the pool length in metres (25 if not stated). "distance" is a distance to cover: amount in the unit given by "unit". "time" is a target time in minutes for a lengths or distance item, or null. Use "do" with amount 1 for an exercise with no count. days is null when it is every day. Put frequency such as "twice a day" and any holds or cautions in the item note. Leave out anything that is not an exercise. No em dashes.',
   notes: 'You turn a patient\'s care notes into a short, clear list of questions to ask their oncologist or specialist nurse at the next appointment, in plain UK English. ' +
     'Read the questions already listed, the summary, any letters and the day notes. Reply with a numbered list of at most eight questions, one per line, most important first, each specific to what the notes actually show and short enough to ask in a ten-minute appointment. ' +
     'Do not repeat a question the person has already written down. No preamble, no explanation, no headings, no em dashes, nothing after the list.'
@@ -529,7 +539,7 @@ async function googleKey(kid, fetchFn) {
 }
 
 /* For the test harness only (scratchpad): nothing in the app or the workflow uses these */
-export const _test = { verifyFirebaseToken, askClaude, EXPLAIN_SYSTEM };
+export const _test = { verifyFirebaseToken, askClaude, EXPLAIN_SYSTEM, distanceKm };
 
 /* ------------------------------------------------------------------ */
 /* Plumbing                                                             */

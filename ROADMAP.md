@@ -15,8 +15,8 @@ Decisions already made, so they are not reopened:
 
 ## Stage 1: for Mark's own use, now
 
-1. **Confirm the recording rules are published.** `firestore.rules` gained `recordings` and `recordings/{id}/parts` in v64. Mark: open Firebase console > Firestore > Rules and check the live rules mention `recordings`; if not, paste the file from the repository and Publish. Done when a recorded answer saves on the phone without "Could not save".
-2. **Tick Workouts in Health Auto Export.** The bridge and the Exercise tab handle workouts since v69, but the automation only sends what is ticked. Mark: open the automation that posts to the bridge, tick Workouts, run it once. Done when the "From Apple Health" card shows today's walk.
+1. ~~**Confirm the recording rules are published.**~~ Done 29 September: the live rules match the repository. `firestore.rules` gained `recordings` and `recordings/{id}/parts` in v64. Mark: open Firebase console > Firestore > Rules and check the live rules mention `recordings`; if not, paste the file from the repository and Publish. Done when a recorded answer saves on the phone without "Could not save".
+2. ~~**Tick Workouts in Health Auto Export.**~~ Done 29 September: a second automation, "Care Log Workouts" (Data Type Workouts, route data and workout metrics off, every 3 hours), beside "Care Log" (Health Metrics). Nothing to send until a walk or swim is recorded on the phone or watch. The bridge and the Exercise tab handle workouts since v69, but the automation only sends what is ticked. Mark: open the automation that posts to the bridge, tick Workouts, run it once. Done when the "From Apple Health" card shows today's walk.
 3. **Try a real physio plan through "Add from a photo or PDF of the plan".** The reader was tested with a canned reply only. Mark: photograph a real sheet, or choose an emailed PDF, and note what it read and what it missed. Claude: tune the instructions from that. Done when a real plan comes through with nothing important missed.
 4. **Private notifications.** A setting under More > Settings > Reminders, on by default, per phone: the notification says "A medicine is due" and the app shows the name and dose when opened. Suggested by a friend who saw a medicine name on a lock screen. Claude: the setting on `pushSubs/{id}.private`, the bridge honouring it, the settings switch. Done when a reminder on a private phone shows no medicine name.
 5. **Transcribe saved recordings.** A doctor's recorded answer becomes text automatically, so it can be read, copied and included in Notes for the team. Claude: test Cloudflare Workers AI (Whisper) on the bridge first; if the quality is not good enough, the Anthropic API can do it from the same credit. Done when a saved recording gains "Transcript" text on the answer sheet within a minute.
@@ -54,5 +54,7 @@ Decisions already made, so they are not reopened:
 - Backgrounds on the data tabs. Decided against (see above).
 
 ## Done
+- v73 Swimming and distances: the bridge converts metres, yards and feet (a pool swim no longer reads as kilometres), Lengths and Distance ways of counting with an optional time, and programme items that tick themselves from matching Apple Health workouts.
+- v72 this roadmap.
 - v69 Exercise programme: own exercises, physio plan, add from a photo, Apple Health workouts. v70 the plan from a PDF, Word or text file. v71 Manage medicines moved to the top of the Meds tab.
 - v68 Licence and copyright notice. v67 demo wipe covers recordings, push subscriptions and reminders. v65 sign-in watercolour. v64 recorded answers with consent. v63 Treatment plan with session types. v62 opener film. v60 and v61 Explain in Daybook. v59 carer's view and the treatment cycle chart.
