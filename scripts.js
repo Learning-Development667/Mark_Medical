@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '79';
+const APP_VERSION = '80';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -3600,7 +3600,7 @@ $('notes-preview').addEventListener('click', () => { if (state.notesPdf) preview
 /* The PDF is for people (the clinic, the folder), so it carries the report without the request to the AI app */
 function notesPdfBlocks(report) {
   const blocks = [{ kind: 'heading', text: 'Questions for the team' }];
-  if (report.questions.length) report.questions.forEach((q, i) => blocks.push({ kind: 'question', n: i + 1, text: q.text, who: q.who, day: q.day }));
+  if (report.questions.length) report.questions.forEach((q) => blocks.push({ kind: 'question', n: q.n, text: q.text, who: q.who, day: q.day }));
   else blocks.push({ kind: 'muted', text: 'No open questions.' });
   if (report.answers.length) {
     blocks.push({ kind: 'sub', text: 'Answered' });
@@ -3904,11 +3904,12 @@ async function loadQuestions() {
 function buildNotesReport(entries, questionsAll, from, to, rangeLabel) {
   const glance = summaryRows(entries, from, to);
   const open = questionsAll.filter((q) => !q.answered).sort((a, b) => entryDate(a) - entryDate(b));
-  const questions = open.map((q) => ({ id: q.id, text: q.note, who: q.addedBy || 'unknown', day: q.day }));
+  const nums = questionNumbers(questionsAll);
+  const questions = open.map((q) => ({ id: q.id, n: nums.get(q.id), text: q.note, who: q.addedBy || 'unknown', day: q.day }));
   const answeredDayOf = (q) => (q.answeredAt && typeof q.answeredAt.toDate === 'function' ? dayStr(q.answeredAt.toDate()) : q.day);
   const answers = questionsAll.filter((q) => q.answered && (q.answerText || q.recordings) && answeredDayOf(q) >= from && answeredDayOf(q) <= to)
     .sort((a, b) => entryDate(a) - entryDate(b))
-    .map((q) => ({ id: q.id, n: questionNumber(q.id), text: q.note, who: q.addedBy || 'unknown', day: q.day, answeredDay: answeredDayOf(q), answerText: q.answerText || '', recordings: q.recordings || 0 }));
+    .map((q) => ({ id: q.id, n: nums.get(q.id), text: q.note, who: q.addedBy || 'unknown', day: q.day, answeredDay: answeredDayOf(q), answerText: q.answerText || '', recordings: q.recordings || 0 }));
   const answered = questionsAll.filter((q) => q.answered && !(q.answerText || q.recordings) && q.day >= from && q.day <= to).length;
   const byDay = {};
   entries.forEach((e) => { (byDay[e.day] = byDay[e.day] || []).push(e); });
@@ -3932,7 +3933,7 @@ function buildNotesReport(entries, questionsAll, from, to, rangeLabel) {
 
   /* The range is the first line, so whoever reads it (an AI app included) knows the period before anything else */
   const lines = [`Daybook notes from ${fmtDayNum(from)} to ${fmtDayNum(to)}.`, '', NOTES_PROMPT, '', 'Questions for the team:'];
-  if (questions.length) questions.forEach((q, i) => lines.push(`${i + 1}. ${q.text} (${q.who}, ${fmtDayShort(q.day)})`));
+  if (questions.length) questions.forEach((q) => lines.push(`${q.n}. ${q.text} (${q.who}, ${fmtDayShort(q.day)})`));
   else lines.push('- No open questions.');
   if (answers.length) {
     lines.push('', 'Answered:');
@@ -3975,8 +3976,8 @@ async function renderNotesReport() {
   $('notes-explain').hidden = !explainAvailable();
   state.notesPdf = { filename: 'care-log-notes-' + to + '.pdf', title: 'Notes for the team', subtitle: `${fmtDayNum(from)} to ${fmtDayNum(to)}, printed ${fmtDayNum(today)}`, blocks: notesPdfBlocks(report) };
 
-  $('notes-questions').replaceChildren(...report.questions.map((q, i) => h('div', { class: 'card question' },
-    h('div', { class: 'question-text', text: `${i + 1}. ${q.text}` }),
+  $('notes-questions').replaceChildren(...report.questions.map((q) => h('div', { class: 'card question' },
+    h('div', { class: 'question-text', text: `${q.n}. ${q.text}` }),
     h('div', { class: 'docitem-sub', text: `${q.who} · ${fmtDayNum(q.day)}` }),
     state.readOnly ? null : h('div', { class: 'question-btns' },
       h('button', { class: 'btn btn-secondary btn-small', type: 'button', onclick: () => { const full = allQuestions().find((x) => x.id === q.id); if (full) openAnswerSheet(full); } }, 'Record or write the answer'),
@@ -5473,11 +5474,18 @@ function b64ToBlob(b64, type) {
 const REC_MAX_SECONDS = 300;
 const REC_PART_CHARS = 700000;
 function allQuestions() { return state.demo ? state.recentEntries.filter((e) => e.type === 'question') : (state.questions || []); }
-/* A question's number never changes: its place among every question ever asked, oldest first */
+/* A question's number is its place among the questions that exist, oldest first, answered ones
+   included: it stays put when one is answered and closes up when one is deleted. The list, the
+   answer sheet, the PDF, the copied text and the recording file names all use it (v80; until then
+   the list counted only the open ones and the sheet counted differently, so "2" opened "Q3"). */
+function questionNumbers(list) {
+  const map = new Map();
+  list.slice().sort((a, b) => entryDate(a) - entryDate(b)).forEach((q, i) => map.set(q.id, i + 1));
+  return map;
+}
 function questionNumber(id) {
-  const list = allQuestions().slice().sort((a, b) => entryDate(a) - entryDate(b));
-  const i = list.findIndex((q) => q.id === id);
-  return i < 0 ? list.length + 1 : i + 1;
+  const nums = questionNumbers(allQuestions());
+  return nums.get(id) || nums.size + 1;
 }
 function recMime() {
   if (!window.MediaRecorder) return null;
