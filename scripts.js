@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '78';
+const APP_VERSION = '79';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -4668,6 +4668,110 @@ document.querySelectorAll('#view-vitals .seg').forEach((b) => b.addEventListener
   renderVitals();
 }));
 
+/* ---- Chart or table (since v79): every Trends card can be flicked from the chart to a plain
+   table of the same readings, newest first, date, time and value, with the same amber and red
+   as the chart. The choice is remembered per card on this phone. The tables are built from the
+   entries before Chart.js is fetched, so they work with no connection at all. ---- */
+const CHART_TABLE_KEYS = ['temp', 'pain', 'mood', 'heart', 'bp', 'oxygen', 'weight', 'sleep', 'drink'];
+const TABLE_VIEW_STORE = 'daybook.trends.tables';
+function tableViews() {
+  if (!state.tableViews) {
+    state.tableViews = new Set();
+    try { for (const k of JSON.parse(localStorage.getItem(TABLE_VIEW_STORE) || '[]')) state.tableViews.add(k); } catch (e) { /* no storage, no memory */ }
+  }
+  return state.tableViews;
+}
+function wireChartViews() {
+  for (const key of CHART_TABLE_KEYS) {
+    const canvas = $('chart-' + key);
+    const card = canvas && canvas.closest('.chart-card');
+    if (!card) continue;
+    const title = card.querySelector('.section-title');
+    const head = h('div', { class: 'chart-head' });
+    title.replaceWith(head);
+    head.appendChild(title);
+    const toggle = h('div', { class: 'viewtoggle', role: 'group', 'aria-label': title.textContent.trim() + ', show as' },
+      h('button', { class: 'vt', type: 'button', dataset: { view: 'chart' }, text: 'Chart', onclick: () => setChartView(key, 'chart') }),
+      h('button', { class: 'vt', type: 'button', dataset: { view: 'table' }, text: 'Table', onclick: () => setChartView(key, 'table') }));
+    head.appendChild(toggle);
+    card.querySelector('.chart-wrap').insertAdjacentElement('afterend', h('div', { class: 'chart-table', id: 'table-' + key, hidden: true }));
+    setChartView(key, tableViews().has(key) ? 'table' : 'chart', true);
+  }
+}
+function setChartView(key, view, quiet) {
+  const card = $('chart-' + key).closest('.chart-card');
+  const table = view === 'table';
+  card.querySelectorAll('.vt').forEach((b) => { const on = b.dataset.view === view; b.classList.toggle('is-active', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+  card.querySelector('.chart-wrap').hidden = table;
+  $('table-' + key).hidden = !table;
+  if (!table && state.charts[key]) { try { state.charts[key].resize(); } catch (e) { /* not drawn yet */ } }
+  if (quiet) return;
+  const set = tableViews();
+  if (table) set.add(key); else set.delete(key);
+  try { localStorage.setItem(TABLE_VIEW_STORE, JSON.stringify([...set])); } catch (e) { /* fine without */ }
+}
+/* Levels follow Notes for the team: temperature 37.5 and 38.0; heart rate 100 and 120, or 50
+   and under; blood pressure 140/90 and 160/100, or systolic 90 and under; oxygen 93 and 90 and
+   under; pain 5 and 7; a night under 5 hours. Mood, weight and drinks carry no level. */
+function tableLevel(key, e) {
+  const v = Number(e.value);
+  if (key === 'temp') return v >= 38 ? 'red' : v >= 37.5 ? 'amber' : '';
+  if (key === 'heart') { const n = Number(e.heartRate); return n >= 120 || n <= 50 ? 'red' : n >= 100 ? 'amber' : ''; }
+  if (key === 'bp') { const s = Number(e.systolic), d = Number(e.diastolic); return s >= 160 || d >= 100 || s <= 90 ? 'red' : s >= 140 || d >= 90 ? 'amber' : ''; }
+  if (key === 'oxygen') { const n = Number(e.oxygen); return n <= 90 ? 'red' : n <= 93 ? 'amber' : ''; }
+  if (key === 'pain') { const n = e.type === 'pain' ? v : Number(e.pain); return n >= 7 ? 'red' : n >= 5 ? 'amber' : ''; }
+  if (key === 'sleep') return v > 0 && v < 300 ? 'amber' : '';
+  return '';
+}
+function renderChartTables(entries, from) {
+  const inRange = entries.filter((e) => e.day >= from);
+  const dayText = (s) => parseDay(s).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+  const timeText = (e) => fmtTime(entryDate(e));
+  const sub = (t) => t ? h('small', { text: t }) : null;
+  const rangeWord = `the last ${state.trendRange} days`;
+  const drinkTotals = {};
+  for (const e of inRange) if (e.type === 'drink') drinkTotals[e.day] = (drinkTotals[e.day] || 0) + (Number(e.value) || 0);
+  /* each: the entries, the value column heading, the value cell (a string or nodes), the time cell */
+  const specs = {
+    temp: { rows: inRange.filter((e) => e.type === 'temp'), head: 'Temperature', cell: (e) => [Number(e.value).toFixed(1) + ' °C', sub(e.note)] },
+    pain: { rows: inRange.filter((e) => e.type === 'pain' || (isPatientCheckin(e) && e.pain != null)), head: 'Pain', cell: (e) => [(e.type === 'pain' ? Number(e.value) : Number(e.pain)) + '/10', sub(e.type === 'pain' ? (e.note ? 'Reading: ' + e.note : 'Reading') : checkinTitle(e.slot))] },
+    mood: { rows: inRange.filter((e) => isPatientCheckin(e) && e.mood != null), head: 'Mood', cell: (e) => [Number(e.mood) + '/10', sub(checkinTitle(e.slot))] },
+    heart: { rows: inRange.filter((e) => e.type === 'vitals' && e.heartRate), head: 'Heart rate', cell: (e) => [Math.round(Number(e.heartRate)) + ' bpm', sub(e.note)] },
+    bp: { rows: inRange.filter((e) => e.type === 'vitals' && e.systolic && e.diastolic), head: 'Blood pressure', cell: (e) => [Math.round(Number(e.systolic)) + '/' + Math.round(Number(e.diastolic)) + ' mmHg', sub(e.note)] },
+    oxygen: { rows: inRange.filter((e) => e.type === 'vitals' && e.oxygen), head: 'Oxygen', cell: (e) => [Math.round(Number(e.oxygen)) + '%', sub(e.note)] },
+    weight: { rows: inRange.filter((e) => e.type === 'weight' && Number(e.value) > 0), head: 'Weight', cell: (e) => [Number(e.value).toFixed(1) + ' kg', sub(e.note)] },
+    sleep: { rows: inRange.filter((e) => e.type === 'sleep'), head: 'Asleep', timeHead: 'Bed to up',
+      time: (e) => e.bedAt && e.wokeAt ? e.bedAt + ' to ' + e.wokeAt : '--',
+      cell: (e) => { const st = ['deep', 'core', 'rem'].filter((k) => Number(e[k]) > 0).map((k) => (k === 'rem' ? 'REM' : k[0].toUpperCase() + k.slice(1)) + ' ' + fmtHm(Number(e[k]))); if (Number(e.awake) > 0) st.push('awake ' + fmtHm(Number(e.awake))); return [fmtHm(Number(e.value) || 0), sub(st.join(' · '))]; } },
+    drink: { rows: inRange.filter((e) => e.type === 'drink'), head: 'Amount', cell: (e) => [(Number(e.value) || 0) + ' ml', sub(e.note)], dayNote: (day) => 'Total ' + (drinkTotals[day] || 0) + ' ml' }
+  };
+  for (const key of CHART_TABLE_KEYS) {
+    const box = $('table-' + key);
+    if (!box) continue;
+    const s = specs[key];
+    box.replaceChildren();
+    if (!s.rows.length) { box.appendChild(h('p', { class: 'chart-table-empty', text: `No readings in ${rangeWord}.` })); continue; }
+    const rows = s.rows.slice().sort((a, b) => entryDate(b) - entryDate(a));
+    const tbody = h('tbody');
+    let lastDay = null;
+    for (const e of rows) {
+      const first = e.day !== lastDay;
+      lastDay = e.day;
+      const level = tableLevel(key, e);
+      const dateCell = h('td', { class: 'td-date' + (first ? '' : ' is-repeat'), text: dayText(e.day) });
+      if (first && s.dayNote) dateCell.appendChild(h('small', { text: s.dayNote(e.day) }));
+      const cell = h('td', { class: 'td-val' + (level ? ' lvl-' + level : '') });
+      for (const part of s.cell(e)) { if (part == null) continue; if (typeof part === 'string') cell.appendChild(document.createTextNode(part)); else cell.appendChild(part); }
+      tbody.appendChild(h('tr', null, dateCell, h('td', { class: 'td-time', text: s.time ? s.time(e) : timeText(e) }), cell));
+    }
+    box.appendChild(h('table', null,
+      h('caption', { class: 'sr-only', text: `${s.head} readings, ${rangeWord}, newest first` }),
+      h('thead', null, h('tr', null, h('th', { scope: 'col', text: 'Date' }), h('th', { scope: 'col', text: s.timeHead || 'Time' }), h('th', { scope: 'col', text: s.head }))),
+      tbody));
+  }
+}
+wireChartViews();
+
 function whenLabel(e) {
   const d = entryDate(e);
   return (e.day === todayStr() ? 'today' : fmtDayShort(e.day)) + ' ' + fmtTime(d);
@@ -4723,7 +4827,8 @@ async function renderVitals() {
   if (!entries) return;
   entries.sort((a, b) => entryDate(a) - entryDate(b));
   renderVitalsLatest(entries);
-  /* Latest readings are shown above regardless; only the charts need the library. */
+  renderChartTables(entries, from);
+  /* Latest readings and the tables are shown above regardless; only the charts need the library. */
   try {
     await loadScript(CDN.chart);
   } catch (e) { toast('Charts need a connection'); return; }
