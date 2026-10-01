@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '87';
+const APP_VERSION = '88';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -7157,25 +7157,26 @@ $('calls-edit').addEventListener('click', () => {
 
 $('app-version').textContent = 'Version ' + APP_VERSION;
 
-/* ---- Opener: the loading page. Shown on every cold start while the account check runs. The Mark 1
-   Apps film plays through only on a phone's first visit (localStorage daybook.opener.seen); later
-   starts show its last frame just for as long as loading takes, half a second at least so it never
-   flashes. A tap, the Skip button, a decode error or 5.5 seconds ends the film; the page leaves once
-   the app or the sign-in screen is ready, and after fifteen seconds regardless. Reduced motion: no film. ---- */
+/* ---- Opener: the loading page, shown on every cold start while the account check runs. The Mark 1 Apps
+   film plays every time (since v88; until then only on a phone's first visit, after which a still frame),
+   from one second in (OPENER_START_S, the film's quiet lead-in), so about three seconds; a tap anywhere,
+   the Skip button, a decode error or the OPENER_CAP_MS cap ends it. The page leaves once the film is done
+   and the app or the sign-in screen is ready, and after fifteen seconds regardless. Reduced motion: the
+   still frame for as long as loading takes, half a second at least so it never flashes. The harness sets
+   localStorage daybook.opener.nofilm to skip the film so no test waits on it. ---- */
+const OPENER_START_S = 1, OPENER_CAP_MS = 4500;
 (function opener() {
   const el = $('opener'), video = $('opener-video'), skip = $('opener-skip');
   if (!el || !video) return;
   $('opener-version').textContent = 'Version ' + APP_VERSION;
-  const KEY = 'daybook.opener.seen';
-  let seen = false;
-  try { seen = localStorage.getItem(KEY) === '1'; } catch (e) { seen = true; }
+  let noFilm = false;
+  try { noFilm = localStorage.getItem('daybook.opener.nofilm') === '1'; } catch (e) { /* ignore */ }
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const start = Date.now(), minMs = 500;
-  let appReady = false, filmDone = seen || reduced, gone = false;
+  let appReady = false, filmDone = noFilm || reduced, gone = false;
   const leave = () => {
     if (gone) return;
     gone = true;
-    try { localStorage.setItem(KEY, '1'); } catch (e) { /* private mode: the film plays next time too */ }
     el.classList.add('is-leaving');
     setTimeout(() => { el.hidden = true; try { video.pause(); } catch (e) { /* ignore */ } }, 440);
   };
@@ -7195,9 +7196,14 @@ $('app-version').textContent = 'Version ' + APP_VERSION;
     el.addEventListener('click', endFilm);
     video.addEventListener('ended', endFilm);
     video.addEventListener('error', endFilm);
-    setTimeout(endFilm, 5500);
-    const p = video.play();
-    if (p && typeof p.catch === 'function') p.catch(endFilm);
+    setTimeout(endFilm, OPENER_CAP_MS);
+    /* skip the quiet lead-in: seek once the browser knows the file, then play */
+    const begin = () => {
+      try { if (video.currentTime < OPENER_START_S) video.currentTime = OPENER_START_S; } catch (e) { /* not seekable yet: play from the start */ }
+      const p = video.play();
+      if (p && typeof p.catch === 'function') p.catch(endFilm);
+    };
+    if (video.readyState >= 1) begin(); else video.addEventListener('loadedmetadata', begin, { once: true });
   }
   setTimeout(leave, 15000);
 })();
