@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=87">
+  <link rel="stylesheet" href="styles.css?v=88">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -54,11 +54,15 @@
       <span class="opener-brand">Daybook</span>
       <span class="opener-strap">Your companion between appointments.</span>
     </div>
-    <video id="opener-video" class="opener-video" muted playsinline preload="auto" poster="icons/mark1apps-poster.jpg" aria-hidden="true" tabindex="-1">
-      <source src="icons/mark1apps.mp4" type="video/mp4">
-    </video>
+    <div class="opener-film">
+      <video id="opener-video" class="opener-video" muted playsinline preload="auto" poster="icons/mark1apps-poster.jpg" aria-hidden="true" tabindex="-1">
+        <source src="icons/mark1apps.mp4" type="video/mp4">
+      </video>
+    </div>
     <div class="opener-foot">
       <button id="opener-skip" class="btn-link opener-skip" type="button" hidden>Skip</button>
+      <span class="opener-made mono">Made by Mark 1 Apps</span>
+      <span class="opener-legal mono">Copyright 2026 Mark Brown, Mark 1 Apps. All rights reserved.</span>
       <span class="opener-version mono" id="opener-version"></span>
     </div>
   </div>
@@ -668,6 +672,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=87"></script>
+  <script type="module" src="scripts.js?v=88"></script>
 </body>
 </html>
