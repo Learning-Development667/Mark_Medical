@@ -71,6 +71,7 @@ Daybook is one web app, so both stores get the same code. Android users can inst
 - Backgrounds on the data tabs. Decided against (see above).
 
 ## Done
+- v87 The gap under Choose exercises, and the old picker log taken off the Exercise tab (it stays on the timeline) so the tile and the list agree.
 - v86 The Exercise tab: Choose exercises above the Gentle exercises list (the chosen ones, no more My stretches), side cards matching the exercise cards with the Timer inside, and the 10:22 duplicate: cause found (a second tap on the old Done button, the guard did not hold), the stray document removed automatically, a five-second safety net on exercise entries and a double-tap guard on the rows.
 - v85 The picker is a plain tick list: all 24 exercises under Upper, Lower and Full body headings, no drop-down, nothing moves when you tick; My stretches rows swipe left to Remove, with Undo.
 - v84 Add to plan ticks in the picker build My stretches, a free-form box for an exercise not in the list, and reps and Timer pills in one aligned column.
