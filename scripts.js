@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '84';
+const APP_VERSION = '85';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -6402,12 +6402,6 @@ function exerciseLogFor(day) {
   const src = day === state.selectedDay && state.dayEntries.length ? state.dayEntries : state.recentEntries;
   return src.filter((e) => e.type === 'exercise' && e.day === day).sort((a, b) => entryDate(b) - entryDate(a));
 }
-async function logExercise(ex) {
-  const at = new Date();
-  await addEntry({ type: 'exercise', exId: ex.id, note: ex.name, group: ex.group, tags: ex.tags.slice(), at });
-  toast('Logged ' + ex.name);
-  renderExercise();
-}
 function exWarningBox() {
   return h('div', { class: 'exwarn', role: 'region', 'aria-label': EX_WARNING.title },
     h('div', { class: 'exwarn-head' }, icon('warning', 'exwarn-icon'), h('h3', { class: 'exwarn-title', text: EX_WARNING.title })),
@@ -6417,83 +6411,55 @@ function exWarningBox() {
 }
 function openExercisePicker() {
   const avoid = exAvoid();
-  let group = state.exGroup || 'upper', chosen = null;
   const hiddenLine = h('p', { class: 'exhidden', role: 'status' });
   const filterBox = h('div', { class: 'exfilter' }, h('h3', { class: 'exfilter-title', text: "I've been told to avoid:" }));
   const ticks = h('div', { class: 'exfilter-ticks' });
+  const rows = new Map();   // exercise id -> { row, box }
+  const groupEmpty = new Map();
+  /* the filter hides rows in place, so the list never rebuilds and the page never jumps */
+  const applyFilter = () => {
+    let hiddenCount = 0;
+    EXERCISE_LIBRARY.forEach((ex) => { const hid = exHidden(ex); rows.get(ex.id).row.hidden = hid; if (hid) hiddenCount++; });
+    EX_GROUPS.forEach(([k]) => { groupEmpty.get(k).hidden = EXERCISE_LIBRARY.some((x) => x.group === k && !exHidden(x)); });
+    hiddenLine.textContent = 'Hidden exercises: ' + hiddenCount;
+  };
   EX_TAG_ORDER.forEach((t) => {
     const box = h('input', { type: 'checkbox', id: 'exavoid-' + t });
     box.checked = avoid.has(t);
-    box.addEventListener('change', () => { if (box.checked) avoid.add(t); else avoid.delete(t); saveExAvoid(); if (chosen && exHidden(chosen)) chosen = null; drawList(); });
+    box.addEventListener('change', () => { if (box.checked) avoid.add(t); else avoid.delete(t); saveExAvoid(); applyFilter(); });
     ticks.append(h('label', { class: 'check exfilter-check', for: 'exavoid-' + t }, box, h('span', { class: 'extag is-' + t, text: EX_TAGS[t] })));
   });
   filterBox.append(ticks, hiddenLine);
-  const groupSel = h('select', { id: 'exgroup', 'aria-label': 'Group' }, ...EX_GROUPS.map(([k, label]) => h('option', { value: k, text: label })));
-  groupSel.value = group;
-  groupSel.addEventListener('change', () => { group = groupSel.value; state.exGroup = group; chosen = null; drawList(); });
-  const list = h('div', { class: 'exlist', role: 'radiogroup', 'aria-label': 'Exercises in this group' });
-  const detail = h('div', { class: 'exdetail' });
-  const logList = h('div', { class: 'exlog' });
-  const drawLog = () => {
-    const today = todayStr();
-    const rows = exerciseLogFor(today);
-    logList.replaceChildren(h('p', { class: 'eyebrow-hint', text: rows.length ? 'Done today' : 'Nothing logged yet today' }),
-      ...rows.map((e) => h('div', { class: 'exlog-row' }, h('span', { class: 'exlog-time', text: fmtTime(entryDate(e)) }), h('span', { class: 'exlog-name', text: e.note }), h('span', { class: 'exlog-who', text: e.addedBy || '' }))));
-  };
-  const drawDetail = () => {
-    if (!chosen) { detail.replaceChildren(); return; }
-    const ex = chosen;
-    const count = exerciseLogFor(todayStr()).filter((e) => e.exId === ex.id).length;
-    detail.replaceChildren(
-      h('h3', { class: 'exdetail-name', text: ex.name }),
-      tagPills(ex.tags),
-      h('p', { class: 'exdetail-how', text: ex.how }),
-      h('p', { class: 'exdetail-target', text: ex.target }),
-      count ? h('p', { class: 'exdetail-count', text: 'Done ' + count + (count === 1 ? ' time' : ' times') + ' today' }) : null,
-      state.readOnly ? null : planTick(ex, () => { drawList(); }),
-      state.readOnly ? null : h('button', { class: 'btn btn-primary btn-block exdone', type: 'button', onclick: async (ev) => {
-        const b = ev.currentTarget; b.disabled = true;
-        try { await logExercise(ex); drawLog(); drawDetail(); } finally { b.disabled = false; }
-      } }, 'Done'));
-  };
-  const drawList = () => {
-    const all = EXERCISE_LIBRARY.filter((x) => x.group === group);
-    const shown = all.filter((x) => !exHidden(x)).sort((a, b) => (b.starter ? 1 : 0) - (a.starter ? 1 : 0));
-    const hiddenCount = EXERCISE_LIBRARY.filter(exHidden).length;
-    hiddenLine.textContent = 'Hidden exercises: ' + hiddenCount;
-    groupSel.querySelectorAll('option').forEach((o) => { const n = EXERCISE_LIBRARY.filter((x) => x.group === o.value && !exHidden(x)).length; o.textContent = EX_GROUPS.find(([k]) => k === o.value)[1] + ' (' + n + ')'; });
-    if (!shown.length) { list.replaceChildren(h('p', { class: 'muted exempty', text: 'No exercises left in this group with your current filters.' })); chosen = null; drawDetail(); return; }
-    if (!chosen || chosen.group !== group || exHidden(chosen)) chosen = null;
-    list.replaceChildren(...shown.map((ex) => {
-      const on = chosen && chosen.id === ex.id;
-      const pick = h('button', { class: 'exrow-pick', type: 'button', role: 'radio', 'aria-checked': on ? 'true' : 'false', onclick: () => { chosen = ex; drawList(); drawDetail(); detail.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } },
+  /* one tick box per exercise: ticked means it is in My stretches on the Exercise tab */
+  const list = h('div', { class: 'exlist' });
+  EX_GROUPS.forEach(([k, label]) => {
+    list.append(h('h3', { class: 'exgroup-title', text: label }));
+    const empty = h('p', { class: 'muted exempty', text: 'No exercises left in this group with your current filters.', hidden: true });
+    groupEmpty.set(k, empty);
+    EXERCISE_LIBRARY.filter((x) => x.group === k).sort((a, b) => (b.starter ? 1 : 0) - (a.starter ? 1 : 0)).forEach((ex) => {
+      const box = h('input', { type: 'checkbox', id: 'plan-' + ex.id, disabled: state.readOnly });
+      box.checked = inPlan(ex);
+      box.addEventListener('change', async () => { box.disabled = true; const ok = await setInPlan(ex, box.checked); if (!ok) box.checked = !box.checked; box.disabled = state.readOnly; });
+      const row = h('label', { class: 'exrow' + (ex.starter ? ' is-starter' : ''), for: box.id },
+        h('span', { class: 'exrow-box' }, box),
         h('span', { class: 'exrow-main' },
           h('span', { class: 'exrow-name' }, ex.name, ex.starter ? h('span', { class: 'extag is-starter', text: 'Gentle start' }) : null),
           h('span', { class: 'exrow-how', text: ex.how }),
-          h('span', { class: 'exrow-target', text: ex.target })),
-        tagPills(ex.tags));
-      return h('div', { class: 'exrow' + (on ? ' is-on' : '') + (ex.starter ? ' is-starter' : '') }, pick, state.readOnly ? null : planTick(ex, () => { drawList(); drawDetail(); }));
-    }));
-    drawDetail();
-  };
-  /* the Add to plan tick box: ticked means the exercise sits in My stretches on the Exercise tab */
-  function planTick(ex, after) {
-    const box = h('input', { type: 'checkbox', id: 'plan-' + ex.id + '-' + Math.random().toString(36).slice(2, 6) });
-    box.checked = inPlan(ex);
-    box.addEventListener('change', async () => { box.disabled = true; const ok = await setInPlan(ex, box.checked); if (!ok) box.checked = !box.checked; box.disabled = false; if (after) after(); });
-    return h('label', { class: 'check exrow-add', for: box.id }, box, h('span', { text: 'Add to plan' }));
-  }
-  drawList(); drawLog();
+          h('span', { class: 'exrow-target', text: ex.target }),
+          tagPills(ex.tags)));
+      rows.set(ex.id, { row, box });
+      list.append(row);
+    });
+    list.append(empty);
+  });
+  applyFilter();
   const body = h('div', { class: 'expicker' },
     exWarningBox(),
     filterBox,
-    h('p', { class: 'hint', text: 'All optional. If you are new to this, the three marked Gentle start in each group are a place to begin, if your care team agrees. Every exercise has its reps or time.' }),
-    field('Group', groupSel),
+    h('p', { class: 'hint', text: 'Tick the ones you want in My stretches. All optional. If you are new to this, the three marked Gentle start in each group are a place to begin, if your care team agrees.' }),
     list,
-    detail,
-    logList,
     ownBox(),
-    h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Close'));
+    h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: closeSheet }, 'Done'));
   openSheet('Gentle exercises', body);
   /* an exercise the list does not have (one a physio gave): a name here, then the usual sheet for how it is counted, into My stretches */
   function ownBox() {
@@ -6512,6 +6478,21 @@ function openExercisePicker() {
   }
 }
 const PROGRAMME_SECTIONS = [['exercise', 'Daily exercises'], ['stretch', 'My stretches'], ['physio', 'Physio plan']];
+/* Swipe a My stretches row to the left to reveal Remove (touch only; Edit programme and the picker's tick boxes are the other ways) */
+function swipeToRemove(wrap, item) {
+  const behind = h('button', { class: 'swipe-remove', type: 'button', 'aria-label': 'Remove ' + item.name + ' from My stretches', onclick: async () => {
+    const items = programmeItems().map((it) => ({ ...it })).filter((it) => it.id !== item.id);
+    try { await saveProgramme(items); renderExercise(); toast('Removed ' + item.name, { label: 'Undo', onClick: async () => { await saveProgramme(programmeItems().concat([item])); renderExercise(); } }); }
+    catch (e) { console.error(e); toast('Could not save'); }
+  } }, 'Remove');
+  const shell = h('div', { class: 'swipe' }, behind, wrap);
+  let x0 = null, dx = 0, open = false;
+  const set = (d) => { wrap.style.transform = d ? 'translateX(' + d + 'px)' : ''; };
+  wrap.addEventListener('touchstart', (ev) => { x0 = ev.touches[0].clientX; dx = 0; wrap.style.transition = 'none'; shell.classList.add('is-dragging'); }, { passive: true });
+  wrap.addEventListener('touchmove', (ev) => { if (x0 == null) return; dx = Math.max(-104, Math.min(0, ev.touches[0].clientX - x0 + (open ? -96 : 0))); set(dx); }, { passive: true });
+  wrap.addEventListener('touchend', () => { wrap.style.transition = ''; open = dx < -48; set(open ? -96 : 0); shell.classList.toggle('is-open', open); shell.classList.remove('is-dragging'); x0 = null; }, { passive: true });
+  return shell;
+}
 function stretchItems() { return programmeItems().filter((it) => it.section === 'stretch'); }
 /* The items that count towards "all done" today: everything except the optional stretches */
 function countedItems() { return programmeItems().filter((it) => it.section !== 'stretch'); }
@@ -6661,7 +6642,7 @@ function renderExercise() {
   /* exercises logged from the picker that day */
   const logged = exerciseLogFor(day);
   $('ex-logged').replaceChildren(...logged.map((e) => h('div', { class: 'exlog-row' }, h('span', { class: 'exlog-time', text: fmtTime(entryDate(e)) }), h('span', { class: 'exlog-name', text: e.note }), h('span', { class: 'exlog-who', text: e.addedBy || '' }))));
-  $('ex-logged-empty').hidden = logged.length > 0;
+  $('ex-logged').hidden = logged.length === 0;
 
   /* Workouts Apple Health already recorded that day (walks, swims, anything on the watch) */
   const workouts = Array.isArray(rec.workouts) ? rec.workouts : [];
@@ -6687,7 +6668,7 @@ function renderExercise() {
     const mine = items.filter((it) => it.section === section);
     const due = mine.filter((it) => itemDue(it, day));
     const off = mine.filter((it) => !itemDue(it, day));
-    $(listId).replaceChildren(...due.map((it) => goalRow(it, isItemDone(it, rec), day)));
+    $(listId).replaceChildren(...due.map((it) => { const row = goalRow(it, isItemDone(it, rec), day); return section === 'stretch' && !state.readOnly ? swipeToRemove(row, it) : row; }));
     const not = $(notId);
     not.hidden = !off.length;
     not.textContent = off.length ? 'Not today: ' + off.map((it) => it.name + ' (' + itemDaysText(it) + ')').join(', ') : '';
