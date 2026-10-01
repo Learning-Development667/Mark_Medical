@@ -60,6 +60,13 @@
   --cat-vitals: #A33B5A;
   --cat-sleep: #4B4FA6;
   --cat-note: #546569;
+  --cat-exercise: #3F7A5A;
+  /* Colour: body-area tags on the gentle exercises (v83), a fill and an ink each, 4.5:1 or better */
+  --tag-arms: #DCEBF8; --tag-arms-ink: #1B4A73;
+  --tag-legs: #E0F1E3; --tag-legs-ink: #1F5A33;
+  --tag-spine: #F1E6F5; --tag-spine-ink: #5B2A6B;
+  --tag-stand: #FBEBD9; --tag-stand-ink: #7A4210;
+  --warn-bg: #FBE9EA; --warn-ink: #7A1C21; --warn-border: #A4262C;
   /* Colour: sleep-stage ramp for the Trends sleep chart, one hue (deepest to lightest) */
   --sleep-deep: #373B8A;
   --sleep-core: #4348A7;
@@ -173,6 +180,12 @@
     --cat-vitals: #D2778F;
     --cat-sleep: #8A8DD6;
     --cat-note: #8FA0A6;
+    --cat-exercise: #7FBF9C;
+    --tag-arms: #1B3A52; --tag-arms-ink: #BFDBF5;
+    --tag-legs: #1C3B27; --tag-legs-ink: #BFE7CB;
+    --tag-spine: #3A2444; --tag-spine-ink: #E5CDEF;
+    --tag-stand: #4A2E12; --tag-stand-ink: #F6D4AE;
+    --warn-bg: #3D1F21; --warn-ink: #F5C6C9; --warn-border: #E27B80;
     --sleep-deep: #BFC0E9;
     --sleep-core: #9D9FDD;
     --sleep-rem: #7B7ED1;
@@ -687,6 +700,7 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 .entry.type-checkin { --cat: var(--teal); }
 .entry.type-pain { --cat: var(--warm); }
 .entry.type-question { --cat: var(--teal); }
+.entry.type-exercise { --cat: var(--cat-exercise); }
 /* Only new rows animate in; rows already on screen stay put when data updates */
 .entry.is-new, .docitem.is-new { animation: block-in var(--t-slow) var(--ease-out) both; animation-delay: calc(var(--i, 0) * 60ms); }
 .stages { margin-top: var(--s-1); }
@@ -1185,9 +1199,50 @@ body.is-readonly .workout .btn { display: none; }
 .goal-wrap .goal .goal-main { grid-area: main; }
 .goal-wrap .goal .goal-target { grid-area: target; margin: 0; font-size: 14px; }
 .timerbtn { flex: none; min-width: 68px; min-height: 48px; padding: 0 12px; }
-.ex-honest { margin: 0 0 var(--s-2); font-size: 15px; color: var(--text-secondary); }
-.stretch-empty { display: grid; gap: var(--s-3); }
-.stretch-empty p { margin: 0; color: var(--text-secondary); }
+/* the gentle exercises picker (v83) */
+.exwarn { border: 2px solid var(--warn-border); background: var(--warn-bg); color: var(--warn-ink); border-radius: var(--r-md); padding: var(--s-4); display: grid; gap: var(--s-2); font-size: 17px; }
+.exwarn p, .exwarn ul { margin: 0; }
+.exwarn ul { padding-left: 22px; }
+.exwarn-head { display: flex; align-items: center; gap: var(--s-2); }
+.exwarn-icon { width: 26px; height: 26px; flex: none; }
+.exwarn-title { margin: 0; font-family: var(--font-head); font-size: 22px; letter-spacing: 0.04em; }
+.exfilter { margin-top: var(--s-4); display: grid; gap: var(--s-2); }
+.exfilter-title { margin: 0; font-size: 17px; font-weight: 700; }
+.exfilter-ticks { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-2); }
+.exfilter-check { min-height: 48px; display: flex; align-items: center; gap: var(--s-2); }
+.exhidden { margin: 0; font-size: 15px; color: var(--text-secondary); }
+.extags { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.extag { display: inline-block; padding: 3px 10px; border-radius: 999px; font-family: var(--font-mono); font-size: 12px; font-weight: 500; letter-spacing: 0.04em; line-height: 1.5; white-space: nowrap; }
+.extag.is-arms { background: var(--tag-arms); color: var(--tag-arms-ink); }
+.extag.is-legs { background: var(--tag-legs); color: var(--tag-legs-ink); }
+.extag.is-spine { background: var(--tag-spine); color: var(--tag-spine-ink); }
+.extag.is-stand { background: var(--tag-stand); color: var(--tag-stand-ink); }
+.extag.is-none, .extag.is-starter { background: var(--surface-sunken); color: var(--text-secondary); }
+.extag.is-starter { margin-left: 6px; }
+.expicker { display: grid; gap: var(--s-3); }
+.expicker .field { margin-top: var(--s-2); }
+.exlist { display: grid; gap: var(--s-2); }
+.exrow { display: grid; gap: var(--s-2); width: 100%; text-align: left; background: var(--grad-raised); border: 2px solid transparent; border-radius: var(--r-md); box-shadow: var(--elev-raised); padding: var(--s-3) 14px; color: var(--text-primary); font: inherit; cursor: pointer; }
+.exrow.is-on { border-color: var(--teal); }
+.exrow-main { display: grid; gap: 2px; min-width: 0; }
+.exrow-name { font-weight: 700; font-size: 17px; }
+.exrow-how { color: var(--text-secondary); font-size: 15px; }
+.exrow-target { font-family: var(--font-mono); font-size: 14px; color: var(--text-secondary); }
+.exempty { margin: var(--s-2) 0; }
+.exdetail { display: grid; gap: var(--s-2); background: var(--surface-sunken); border-radius: var(--r-md); padding: var(--s-4); box-shadow: var(--elev-sunken); }
+.exdetail:empty { display: none; }
+.exdetail-name { margin: 0; font-size: 20px; }
+.exdetail-how { margin: 0; font-size: 17px; }
+.exdetail-target { margin: 0; font-family: var(--font-mono); font-size: 16px; color: var(--teal); }
+.exdetail-count { margin: 0; color: var(--success); font-weight: 600; }
+.exlog { display: grid; gap: 6px; margin-top: var(--s-2); }
+.exlog-row { display: grid; grid-template-columns: 56px 1fr auto; gap: var(--s-2); align-items: baseline; font-size: 16px; }
+.exlog-time { font-family: var(--font-mono); color: var(--text-secondary); }
+.exlog-who { color: var(--text-muted); font-size: 14px; }
+.eyebrow-hint { margin: 0; font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
+.wiz-signpost { margin: var(--s-3) 0 0; padding: var(--s-3); background: var(--surface-sunken); border-radius: var(--r-sm); color: var(--text-secondary); font-size: 15px; }
+.about-sub { margin: var(--s-4) 0 var(--s-1); font-size: 15px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); }
+.about-list { margin: 0 0 var(--s-2); padding-left: 20px; }
 /* the countdown sheet (v81) */
 .timer { display: grid; gap: var(--s-4); justify-items: center; text-align: center; }
 .timer-note { margin: 0; color: var(--text-secondary); max-width: 34ch; }

@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '82';
+const APP_VERSION = '83';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -1089,7 +1089,16 @@ function syncSettings() {
   if (!$('view-notes').hidden) renderNotesReport();
   syncHealthCard();
   syncHouseholdCard();
+  const nudge = $('settings-stretch-nudge');
+  if (nudge) { const on = !!(state.profile && state.profile.stretchNudge); if (nudge.checked !== on) nudge.checked = on; nudge.disabled = state.readOnly || state.demo; }
 }
+/* Gentle nudge at 10:00 (v83): one notification if nothing has been logged on the Exercise tab by then. Household-wide, sent by the bridge to the phones with reminders on. */
+$('settings-stretch-nudge').addEventListener('change', async (ev) => {
+  const on = ev.target.checked;
+  if (state.demo) { state.profile = { ...state.profile, stretchNudge: on }; return; }
+  try { await setDoc(hdoc('profile', 'main'), { stretchNudge: on }, { merge: true }); toast(on ? 'Nudge on, at 10:00' : 'Nudge off'); }
+  catch (e) { console.error(e); ev.target.checked = !on; toast('Could not change this setting'); }
+});
 
 /* Household card (since v78): who is in, invite someone, and for the owner, remove someone */
 async function syncHouseholdCard() {
@@ -1456,6 +1465,7 @@ function entryTitle(e) {
     case 'checkin': return [h('span', { text: checkinTitle(e.slot) })];
     case 'pain': return [h('span', { class: 'val', text: 'Pain ' + e.value + '/10' })];
     case 'question': return [h('span', { text: e.note || 'Question' })];
+    case 'exercise': return [h('span', { text: e.note || 'Exercise' })];
     case 'weight': return [h('span', { class: 'val', text: Number(e.value).toFixed(1) + ' kg' })];
     case 'vitals': {
       const parts = [];
@@ -1491,6 +1501,7 @@ function entrySub(e) {
   if (e.type === 'question' && e.recordings) bits.push(plural(e.recordings, 'recording'));
   if (e.type === 'weight' && e.note) bits.push(e.note);
   if (e.type === 'vitals' && e.note) bits.push(e.note);
+  if (e.type === 'exercise') { const ex = exById(e.exId); bits.push('Exercise' + (ex ? ', ' + ex.target : '')); }
   bits.push('by ' + (e.addedBy || 'unknown'));
   return bits.join(' · ');
 }
@@ -4076,7 +4087,7 @@ const CHECKIN_QUESTIONS = {
 const CHECKIN_LABELS = {
   sleep: 'Sleep', sleepHours: 'Hours slept', pain: 'Pain now', mood: 'Mood', symptoms: 'New or worse symptoms',
   lookingForward: 'Looking forward to', worstPain: 'Worst pain', sickness: 'Sickness', appetite: 'Appetite',
-  energy: 'Energy', settled: 'Settled since yesterday', goodThing: 'One good thing', noticed: 'What you noticed', stretches: 'Morning stretches'
+  energy: 'Energy', settled: 'Settled since yesterday', goodThing: 'One good thing', noticed: 'What you noticed'
 };
 /* A patient check-in, as opposed to the carer's view */
 function isPatientCheckin(e) { return e.type === 'checkin' && e.slot !== 'carer'; }
@@ -4206,18 +4217,17 @@ function sliderBlock(q, current, onChange) {
   return { nodes, value: () => (touched ? parseInt(range.value, 10) : null) };
 }
 
-/* The last morning question, only when the person has stretches in their programme: ticks go to the same place as the Exercise tab, so one record keeps everyone honest */
-const STRETCH_STEP = { key: 'stretches', kind: 'stretches', q: 'Gentle morning stretches' };
-function checkinSteps(slot) { return slot === 'morning' && !state.readOnly && stretchItems().length ? CHECKIN_QUESTIONS.morning.concat([STRETCH_STEP]) : CHECKIN_QUESTIONS[slot]; }
+/* The check-in is a wellness check, not an exercise check (v83): the morning one ends with a signpost to the Exercise tab, never a tick list */
+function checkinSteps(slot) { return CHECKIN_QUESTIONS[slot]; }
 function openCheckin(slot, initialDay) {
   const today = todayStr();
   let day = initialDay > today ? today : initialDay;
   const qs = checkinSteps(slot);
-  let answers = {}, existing = null, step = 0, dir = 1, stretchTicks = {};
+  let answers = {}, existing = null, step = 0, dir = 1;
 
   const load = () => {
     existing = findCheckin(day, slot);
-    answers = {}; stretchTicks = {};
+    answers = {};
     qs.forEach((q) => { answers[q.key] = existing && existing[q.key] !== undefined ? existing[q.key] : (q.kind === 'text' ? '' : null); });
     answers.sleepHours = existing && existing.sleepHours != null ? existing.sleepHours : null;
   };
@@ -4244,23 +4254,7 @@ function openCheckin(slot, initialDay) {
       wrap.append(h('p', { class: 'wiz-q', text: q.q }));
 
       let getVal;
-      if (q.kind === 'stretches') {
-        const due = stretchItems().filter((it) => itemDue(it, day));
-        const rec = exerciseFor(day);
-        wrap.append(h('p', { class: 'wiz-hint', text: due.length ? 'Optional. Tick the ones you have done. These are the same ticks as on the Exercise tab.' : 'No stretches planned for this day.' }));
-        const rows = h('div', { class: 'goals' });
-        due.forEach((it) => {
-          const on = it.id in stretchTicks ? stretchTicks[it.id] : isItemDone(it, rec);
-          rows.append(h('button', { class: 'goal' + (on ? ' is-done' : ''), type: 'button', 'aria-pressed': on ? 'true' : 'false', onclick: async () => { stretchTicks[it.id] = !on; await toggleGoal(day, it.id); render(); } },
-            h('span', { class: 'goal-box' }, on ? icon('check') : null),
-            h('span', { class: 'goal-main' }, h('span', { class: 'goal-label', text: it.name }), it.note ? h('span', { class: 'goal-note', text: it.note }) : null),
-            h('span', { class: 'goal-target', text: itemTarget(it) })));
-        });
-        wrap.append(rows);
-        const honestLine = stretchHonesty();
-        if (honestLine) wrap.append(h('p', { class: 'ex-honest', text: honestLine }));
-        getVal = () => null;
-      } else if (q.kind === 'text') {
+      if (q.kind === 'text') {
         const ta = h('textarea', { rows: '3', placeholder: q.ph || '' });
         ta.value = answers[q.key] || '';
         wrap.append(h('p', { class: 'wiz-hint', text: 'Optional. Skip if there is nothing to say.' }), ta, speakButton(ta) || '');
@@ -4294,12 +4288,12 @@ function openCheckin(slot, initialDay) {
         const v = answers[q.key];
         let skipped = q.kind === 'text' ? !v : v == null;
         let shown = skipped ? 'Skipped' : (q.kind === 'text' ? v : String(v) + (q.kind === 'sleep' && answers.sleepHours != null ? ' · ' + answers.sleepHours + ' h' : ''));
-        if (q.kind === 'stretches') { const sm = stretchSummary(day); skipped = sm.done === 0; shown = sm.total ? (sm.done ? sm.done + ' of ' + sm.total + ' done' : 'None yet') : 'None planned'; }
         list.append(h('li', null, h('button', { type: 'button', onclick: () => { dir = -1; step = i; render(); } },
           h('span', { class: 'k', text: CHECKIN_LABELS[q.key] }),
           h('span', { class: 'v' + (skipped ? ' is-skipped' : (q.kind === 'text' ? '' : ' is-num')), text: shown }))));
       });
       wrap.append(list);
+      if (slot === 'morning' && !state.readOnly) wrap.append(h('p', { class: 'wiz-signpost', text: 'Gentle exercises and stretches are on the Exercise tab, for when you are up and ready. Optional.' }));
       const save = h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
         save.disabled = true;
         await saveCheckin(slot, day, answers, existing);
@@ -6312,25 +6306,12 @@ function itemDue(item, day) {
   return !item.days || !item.days.length || item.days.includes(parseDay(day).getDay());
 }
 function exerciseFor(day) { return state.exercise[day] || {}; }
-/* done: every item due that day is ticked; rest: nothing due; missed: something due is not ticked */
-function dayStatus(day) {
+/* Every programme item due that day is ticked (the "All done for today" toast). There is no streak: it was not motivational. */
+function allGoalsDone(day) {
   const due = countedItems().filter((it) => itemDue(it, day));
-  if (!due.length) return 'rest';
+  if (!due.length) return false;
   const rec = exerciseFor(day);
-  return due.every((it) => isItemDone(it, rec)) ? 'done' : 'missed';
-}
-function allGoalsDone(day) { return dayStatus(day) === 'done'; }
-/* Consecutive done days, counting back from today (or yesterday if today is not done yet); rest days are passed over */
-function exerciseStreak() {
-  let n = 0, d = todayStr();
-  if (dayStatus(d) !== 'done') d = addDays(d, -1);
-  for (let i = 0; i < 3660; i++) {
-    const s = dayStatus(d);
-    if (s === 'missed') break;
-    if (s === 'done') n++;
-    d = addDays(d, -1);
-  }
-  return n;
+  return due.every((it) => isItemDone(it, rec));
 }
 async function saveProgramme(items, physio) {
   const programme = { items: items.map((it) => ({ ...it, amount: Number(it.amount) || 0 })) };
@@ -6353,49 +6334,166 @@ function itemFromWorkout(w) {
   return { ...base, name, kind: 'minutes', amount: Math.max(1, Math.round(w.minutes || 30)) };
 }
 
-/* ---- Morning stretches and timers (since v81) ----
-   Stretches are programme items in their own section ("stretch"), so ticks, days, notes, editing and
-   the timer all work like any other exercise. They are optional: they never make a day "missed" and
-   never break the streak. The starter set is only added when the person asks for it, after a notice. */
-const PROGRAMME_SECTIONS = [['exercise', 'Daily exercises'], ['stretch', 'Morning stretches'], ['physio', 'Physio plan']];
-const STRETCH_STARTER = [
-  { id: 'st-breath', name: 'Slow breathing', section: 'stretch', kind: 'minutes', amount: 1, note: 'Sitting or lying. In through the nose, out slowly. Let the shoulders drop.' },
-  { id: 'st-ankle', name: 'Ankle circles', section: 'stretch', kind: 'seconds', amount: 30, note: 'Sitting or lying. Slow circles one way, then the other, on each foot.' },
-  { id: 'st-wrist', name: 'Wrist and finger stretch', section: 'stretch', kind: 'seconds', amount: 30, note: 'Arm out, palm up. Gently ease the fingers back with the other hand. Both sides.' },
-  { id: 'st-shoulder', name: 'Shoulder rolls', section: 'stretch', kind: 'seconds', amount: 30, note: 'Slow circles, up, back and down. Only as far as is comfortable.' },
-  { id: 'st-hands', name: 'Hand opens and closes', section: 'stretch', kind: 'reps', amount: 10, note: 'Open the hands wide, then slowly close into a soft fist.' },
-  { id: 'st-knee', name: 'Seated knee straightening', section: 'stretch', kind: 'reps', amount: 10, note: 'On a firm chair, slowly straighten one leg, hold a moment, lower it. Each leg.' }
+/* ---- Gentle exercises (since v83): a library with body-area tags, an avoid filter and a picker ----
+   Twenty-four exercises in three groups, each tagged with the body areas it uses. The picker (a sheet from the
+   Exercise tab) opens on a warning box that is always shown, then the avoid tick boxes, a group drop-down and the
+   group's exercises; Done logs the exercise as an `entries` document { type "exercise", exId, note (the name),
+   group, tags, day, at, addedBy } so it carries the time and who did it, shows on Today's timeline and under the
+   picker, and can be deleted like any entry. The avoid ticks live on this phone only (localStorage). Everything
+   here is optional, there is no streak and no tally beyond "done today". */
+const EX_TAGS = { arms: 'Arms', legs: 'Legs', spine: 'Spine', stand: 'Standing' };
+const EX_TAG_ORDER = ['arms', 'legs', 'spine', 'stand'];
+const EX_GROUPS = [['upper', 'Upper body'], ['lower', 'Lower body'], ['full', 'Full body']];
+/* starter: the three in each group a poorly person could begin with, if their team agrees */
+const EXERCISE_LIBRARY = [
+  { id: 'neck-rot', group: 'upper', name: 'Neck rotation (seated)', tags: ['spine'], how: 'Turn your head slowly towards one shoulder, hold 5 seconds, return.', target: '3 each side', starter: true },
+  { id: 'neck-stretch', group: 'upper', name: 'Neck stretch (seated)', tags: ['spine', 'arms'], how: 'Hold one shoulder down with the opposite hand, tilt your head to the other side. Hold 5 seconds.', target: '3 each side' },
+  { id: 'shoulder-rolls', group: 'upper', name: 'Shoulder rolls (seated)', tags: ['arms'], how: 'Roll the shoulders slowly.', target: '10 backwards, then 10 forwards', starter: true },
+  { id: 'chest-stretch', group: 'upper', name: 'Chest stretch (seated)', tags: ['arms', 'spine'], how: 'Arms out to the sides, shoulders back and down, gently push your chest forward and up.', target: 'Hold 5 to 10 seconds, 5 times' },
+  { id: 'w-squeeze', group: 'upper', name: 'W squeeze (seated)', tags: ['arms', 'spine'], how: 'Arms out in a W shape, squeeze the shoulder blades back and down. If your arms will not go that high, rest them on the chair arms.', target: 'Hold 5 seconds, 5 times' },
+  { id: 'upper-twist', group: 'upper', name: 'Upper body twist (seated)', tags: ['spine', 'arms'], how: 'Arms crossed reaching for your shoulders, turn the upper body to one side without moving your hips.', target: 'Hold 5 seconds, 5 each side' },
+  { id: 'overhead-breathe', group: 'upper', name: 'Overhead reach and breathe (seated)', tags: ['arms'], how: 'Breathe in for 4 while raising your arms overhead, hold 8 seconds if you can, breathe out through pursed lips for 8 while lowering.', target: '3 times', starter: true },
+  { id: 'bicep-curls', group: 'upper', name: 'Bicep curls (seated)', tags: ['arms'], how: 'Light weights or filled water bottles. Curl to the shoulder and lower slowly.', target: '5 each arm, up to 3 sets' },
+  { id: 'wall-pressups', group: 'upper', name: 'Wall press-ups', tags: ['arms', 'stand'], how: 'Hands flat on the wall at chest height, bend the elbows slowly towards the wall and push back.', target: '5 to 10, up to 3 sets' },
+  { id: 'ankle-pumps', group: 'lower', name: 'Ankle pumps (seated)', tags: ['legs'], how: 'Point your toes up, then down. Helps circulation.', target: '30 seconds', starter: true },
+  { id: 'ankle-circles', group: 'lower', name: 'Ankle circles (seated)', tags: ['legs'], how: 'Lift one foot and circle it, then swap feet.', target: '5 circles each way, each foot', starter: true },
+  { id: 'hip-marching', group: 'lower', name: 'Hip marching (seated)', tags: ['legs'], how: 'Lift one knee at a time without leaning back, place the foot down with control.', target: '5 each leg', starter: true },
+  { id: 'knee-ext', group: 'lower', name: 'Knee extensions (seated)', tags: ['legs'], how: 'Straighten one leg, hold 1 second, bend and lower. Alternate legs.', target: '30 seconds' },
+  { id: 'groin-stretch', group: 'lower', name: 'Seated groin stretch', tags: ['legs', 'arms'], how: 'Feet flat, knees apart, gently press the knees outwards against your hands. Stop if it pulls sharply.', target: 'Hold 3 seconds, 5 times' },
+  { id: 'hamstring', group: 'lower', name: 'Seated hamstring stretch', tags: ['legs', 'spine'], how: 'One leg out straight with the heel on the floor, lean forward gently from the hips.', target: 'Hold 10 seconds each leg' },
+  { id: 'toe-reach', group: 'lower', name: 'Seated toe reach', tags: ['legs', 'spine', 'arms'], how: 'Feet flat, slide your hands down your shins towards your toes as far as is comfortable.', target: 'Hold 10 seconds, 3 times' },
+  { id: 'calf-raises', group: 'lower', name: 'Calf raises', tags: ['legs', 'stand'], how: 'Hold the chair back, lift both heels slowly, lower with control.', target: '5 times' },
+  { id: 'side-leg', group: 'lower', name: 'Sideways leg lift', tags: ['legs', 'stand'], how: 'Hold the chair back, raise one leg to the side, keep your back and hips straight.', target: '5 each leg' },
+  { id: 'mini-squats', group: 'lower', name: 'Mini squats', tags: ['legs', 'stand'], how: 'Hold the chair back, bend the knees slowly as far as is comfortable with your back straight, then stand squeezing your buttocks.', target: '5 times' },
+  { id: 'sit-stand', group: 'full', name: 'Sit to stand', tags: ['legs'], how: 'Sit on the chair edge, lean slightly forward, stand using your legs not your arms, then sit slowly.', target: '5 times', starter: true },
+  { id: 'side-bend', group: 'full', name: 'Seated side bend', tags: ['spine', 'arms'], how: 'Slide one hand down towards the floor, hold 2 seconds, return.', target: '3 each side' },
+  { id: 'buttock-squeeze', group: 'full', name: 'Buttock squeezes (seated)', tags: ['legs'], how: 'Squeeze the buttocks together, hold 3 seconds, relax.', target: 'Repeat for 30 seconds', starter: true },
+  { id: 'short-walk', group: 'full', name: 'Short walk', tags: ['legs', 'stand'], how: 'Indoors or in the garden, at a comfortable pace.', target: '2 to 5 minutes' },
+  { id: 'breathing-488', group: 'full', name: '4-8-8 breathing (seated)', tags: [], how: 'In through the nose for 4, hold for 8, out through pursed lips for 8. Uses no arms, legs or spine, so it is never hidden by the filter.', target: '3 times', starter: true }
 ];
-const STRETCH_NOTICE = 'These are general, very gentle moves, not medical advice. Check them with your physio or oncology team first, especially if cancer has reached your bones or spine, and stop if anything hurts or you feel unwell. You can change or remove any of them.';
-function stretchItems() { return programmeItems().filter((it) => it.section === 'stretch'); }
-/* The items that count towards "all done" and the streak: everything except the optional stretches */
-function countedItems() { return programmeItems().filter((it) => it.section !== 'stretch'); }
-function stretchSummary(day) {
-  const due = stretchItems().filter((it) => itemDue(it, day));
-  const rec = exerciseFor(day);
-  return { total: due.length, done: due.filter((it) => isItemDone(it, rec)).length };
-}
-/* The plain, unnagging line that keeps the person honest: how many of the last seven days had every stretch ticked */
-function stretchHonesty() {
-  const today = todayStr();
-  let counted = 0, full = 0;
-  for (let i = 0; i < 7; i++) {
-    const sm = stretchSummary(addDays(today, -i));
-    if (!sm.total) continue;
-    counted++;
-    if (sm.done === sm.total) full++;
+const EX_WARNING = {
+  title: 'Check before you start',
+  intro: 'Some exercises may need changing or skipping if you have any of the following. Ask your care team which ones are safe for you:',
+  list: ['Blood clots', 'Broken bones', 'Weakened bones', 'Recent surgery on your spine, arms or legs'],
+  rest: ['Each exercise is tagged with the body areas it uses. If your care team has told you to avoid an area, tick it below and those exercises will be hidden.',
+    'You should feel no more than slight strain. Exercises must not cause pain. Tell your care team if you get new or increased pain.',
+    'Stop straight away if you get chest pressure, dizziness or shortness of breath. If it does not settle after resting, call 999.']
+};
+const EX_AVOID_STORE = 'daybook.exercise.avoid';
+function exAvoid() {
+  if (!state.exAvoid) {
+    state.exAvoid = new Set();
+    try { for (const t of JSON.parse(localStorage.getItem(EX_AVOID_STORE) || '[]')) if (EX_TAGS[t]) state.exAvoid.add(t); } catch (e) { /* no storage */ }
   }
-  if (!counted) return '';
-  if (counted === 1) return full ? 'All stretches done today.' : '';
-  return 'All stretches done on ' + full + ' of the last ' + counted + ' days.';
+  return state.exAvoid;
 }
-async function addStarterStretches() {
-  if (!(await confirmSheet('Before you start', STRETCH_NOTICE, 'Add the stretches', false))) return false;
-  const have = new Set(programmeItems().map((it) => it.id));
-  const today = todayStr();
-  const items = programmeItems().map((it) => ({ ...it })).concat(STRETCH_STARTER.filter((x) => !have.has(x.id)).map((x) => ({ ...x, since: today })));
-  try { await saveProgramme(items); toast('Added gentle morning stretches'); renderExercise(); return true; }
-  catch (e) { console.error(e); toast('Could not save'); return false; }
+function saveExAvoid() { try { localStorage.setItem(EX_AVOID_STORE, JSON.stringify([...exAvoid()])); } catch (e) { /* fine */ } }
+function exHidden(ex) { const a = exAvoid(); return ex.tags.some((t) => a.has(t)); }
+function exById(id) { return EXERCISE_LIBRARY.find((x) => x.id === id) || null; }
+function tagPills(tags) {
+  const wrap = h('span', { class: 'extags', role: 'group', 'aria-label': 'Body areas' });
+  const list = EX_TAG_ORDER.filter((t) => tags.includes(t));
+  if (!list.length) wrap.append(h('span', { class: 'extag is-none', text: 'No body area' }));
+  list.forEach((t) => wrap.append(h('span', { class: 'extag is-' + t, text: EX_TAGS[t] })));
+  return wrap;
+}
+/* The exercises logged on a day, newest first */
+function exerciseLogFor(day) {
+  const src = day === state.selectedDay && state.dayEntries.length ? state.dayEntries : state.recentEntries;
+  return src.filter((e) => e.type === 'exercise' && e.day === day).sort((a, b) => entryDate(b) - entryDate(a));
+}
+async function logExercise(ex) {
+  const at = new Date();
+  await addEntry({ type: 'exercise', exId: ex.id, note: ex.name, group: ex.group, tags: ex.tags.slice(), at });
+  toast('Logged ' + ex.name);
+  renderExercise();
+}
+function exWarningBox() {
+  return h('div', { class: 'exwarn', role: 'region', 'aria-label': EX_WARNING.title },
+    h('div', { class: 'exwarn-head' }, icon('warning', 'exwarn-icon'), h('h3', { class: 'exwarn-title', text: EX_WARNING.title })),
+    h('p', { text: EX_WARNING.intro }),
+    h('ul', null, ...EX_WARNING.list.map((t) => h('li', { text: t }))),
+    ...EX_WARNING.rest.map((t) => h('p', { text: t })));
+}
+function openExercisePicker() {
+  const avoid = exAvoid();
+  let group = state.exGroup || 'upper', chosen = null;
+  const hiddenLine = h('p', { class: 'exhidden', role: 'status' });
+  const filterBox = h('div', { class: 'exfilter' }, h('h3', { class: 'exfilter-title', text: "I've been told to avoid:" }));
+  const ticks = h('div', { class: 'exfilter-ticks' });
+  EX_TAG_ORDER.forEach((t) => {
+    const box = h('input', { type: 'checkbox', id: 'exavoid-' + t });
+    box.checked = avoid.has(t);
+    box.addEventListener('change', () => { if (box.checked) avoid.add(t); else avoid.delete(t); saveExAvoid(); if (chosen && exHidden(chosen)) chosen = null; drawList(); });
+    ticks.append(h('label', { class: 'check exfilter-check', for: 'exavoid-' + t }, box, h('span', { class: 'extag is-' + t, text: EX_TAGS[t] })));
+  });
+  filterBox.append(ticks, hiddenLine);
+  const groupSel = h('select', { id: 'exgroup', 'aria-label': 'Group' }, ...EX_GROUPS.map(([k, label]) => h('option', { value: k, text: label })));
+  groupSel.value = group;
+  groupSel.addEventListener('change', () => { group = groupSel.value; state.exGroup = group; chosen = null; drawList(); });
+  const list = h('div', { class: 'exlist', role: 'radiogroup', 'aria-label': 'Exercises in this group' });
+  const detail = h('div', { class: 'exdetail' });
+  const logList = h('div', { class: 'exlog' });
+  const drawLog = () => {
+    const today = todayStr();
+    const rows = exerciseLogFor(today);
+    logList.replaceChildren(h('p', { class: 'eyebrow-hint', text: rows.length ? 'Done today' : 'Nothing logged yet today' }),
+      ...rows.map((e) => h('div', { class: 'exlog-row' }, h('span', { class: 'exlog-time', text: fmtTime(entryDate(e)) }), h('span', { class: 'exlog-name', text: e.note }), h('span', { class: 'exlog-who', text: e.addedBy || '' }))));
+  };
+  const drawDetail = () => {
+    if (!chosen) { detail.replaceChildren(); return; }
+    const ex = chosen;
+    const count = exerciseLogFor(todayStr()).filter((e) => e.exId === ex.id).length;
+    detail.replaceChildren(
+      h('h3', { class: 'exdetail-name', text: ex.name }),
+      tagPills(ex.tags),
+      h('p', { class: 'exdetail-how', text: ex.how }),
+      h('p', { class: 'exdetail-target', text: ex.target }),
+      count ? h('p', { class: 'exdetail-count', text: 'Done ' + count + (count === 1 ? ' time' : ' times') + ' today' }) : null,
+      state.readOnly ? null : h('button', { class: 'btn btn-primary btn-block exdone', type: 'button', onclick: async (ev) => {
+        const b = ev.currentTarget; b.disabled = true;
+        try { await logExercise(ex); drawLog(); drawDetail(); } finally { b.disabled = false; }
+      } }, 'Done'));
+  };
+  const drawList = () => {
+    const all = EXERCISE_LIBRARY.filter((x) => x.group === group);
+    const shown = all.filter((x) => !exHidden(x)).sort((a, b) => (b.starter ? 1 : 0) - (a.starter ? 1 : 0));
+    const hiddenCount = EXERCISE_LIBRARY.filter(exHidden).length;
+    hiddenLine.textContent = 'Hidden exercises: ' + hiddenCount;
+    groupSel.querySelectorAll('option').forEach((o) => { const n = EXERCISE_LIBRARY.filter((x) => x.group === o.value && !exHidden(x)).length; o.textContent = EX_GROUPS.find(([k]) => k === o.value)[1] + ' (' + n + ')'; });
+    if (!shown.length) { list.replaceChildren(h('p', { class: 'muted exempty', text: 'No exercises left in this group with your current filters.' })); chosen = null; drawDetail(); return; }
+    if (!chosen || chosen.group !== group || exHidden(chosen)) chosen = null;
+    list.replaceChildren(...shown.map((ex) => {
+      const on = chosen && chosen.id === ex.id;
+      return h('button', { class: 'exrow' + (on ? ' is-on' : '') + (ex.starter ? ' is-starter' : ''), type: 'button', role: 'radio', 'aria-checked': on ? 'true' : 'false', onclick: () => { chosen = ex; drawList(); drawDetail(); detail.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } },
+        h('span', { class: 'exrow-main' },
+          h('span', { class: 'exrow-name' }, ex.name, ex.starter ? h('span', { class: 'extag is-starter', text: 'Gentle start' }) : null),
+          h('span', { class: 'exrow-how', text: ex.how }),
+          h('span', { class: 'exrow-target', text: ex.target })),
+        tagPills(ex.tags));
+    }));
+    drawDetail();
+  };
+  drawList(); drawLog();
+  const body = h('div', { class: 'expicker' },
+    exWarningBox(),
+    filterBox,
+    h('p', { class: 'hint', text: 'All optional. If you are new to this, the three marked Gentle start in each group are a place to begin, if your care team agrees. Every exercise has its reps or time.' }),
+    field('Group', groupSel),
+    list,
+    detail,
+    logList,
+    h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Close'));
+  openSheet('Gentle exercises', body);
+}
+const PROGRAMME_SECTIONS = [['exercise', 'Daily exercises'], ['stretch', 'My stretches'], ['physio', 'Physio plan']];
+function stretchItems() { return programmeItems().filter((it) => it.section === 'stretch'); }
+/* The items that count towards "all done" today: everything except the optional stretches */
+function countedItems() { return programmeItems().filter((it) => it.section !== 'stretch'); }
+/* Everything done on a day: programme ticks plus exercises logged from the picker */
+function doneTodayCount(day) {
+  const rec = exerciseFor(day);
+  return programmeItems().filter((it) => itemDue(it, day) && isItemDone(it, rec)).length + exerciseLogFor(day).length;
 }
 
 /* A countdown for anything counted in seconds or minutes: a plank for 1 minute, a stretch for 30 seconds.
@@ -6513,10 +6611,14 @@ function renderExercise() {
   if (rec.steps) { countTo($('ex-steps-value'), Number(rec.steps), { format: (n) => Math.round(n).toLocaleString('en-GB') }); $('ex-steps-sub').textContent = 'steps'; }
   else { clearCount($('ex-steps-value'), '--'); $('ex-steps-sub').textContent = 'not logged'; }
 
-  const streak = exerciseStreak();
-  countTo($('ex-streak-value'), streak);
-  $('ex-streak-sub').textContent = streak === 1 ? 'day all done' : 'days all done';
-  $('ex-streak-tile').classList.toggle('is-green', streak > 0);
+  const doneN = doneTodayCount(day);
+  countTo($('ex-done-value'), doneN);
+  $('ex-done-sub').textContent = doneN === 1 ? 'exercise done' : 'exercises done';
+  $('ex-done-tile').classList.toggle('is-green', doneN > 0);
+  /* exercises logged from the picker that day */
+  const logged = exerciseLogFor(day);
+  $('ex-logged').replaceChildren(...logged.map((e) => h('div', { class: 'exlog-row' }, h('span', { class: 'exlog-time', text: fmtTime(entryDate(e)) }), h('span', { class: 'exlog-name', text: e.note }), h('span', { class: 'exlog-who', text: e.addedBy || '' }))));
+  $('ex-logged-empty').hidden = logged.length > 0;
 
   /* Workouts Apple Health already recorded that day (walks, swims, anything on the watch) */
   const workouts = Array.isArray(rec.workouts) ? rec.workouts : [];
@@ -6549,12 +6651,7 @@ function renderExercise() {
     return mine.length;
   };
   const nSt = renderSection('stretch', 'ex-stretch', 'ex-stretch-not-today');
-  $('ex-stretch-section').hidden = nSt === 0 && state.readOnly;
-  $('ex-stretch-empty').hidden = nSt > 0 || state.readOnly;
-  $('ex-stretch-hint').hidden = nSt === 0;
-  const honest = nSt ? stretchHonesty() : '';
-  $('ex-stretch-honest').hidden = !honest;
-  $('ex-stretch-honest').textContent = honest;
+  $('ex-stretch-section').hidden = nSt === 0;
   const nEx = renderSection('exercise', 'ex-goals', 'ex-not-today');
   $('ex-goals-empty').hidden = nEx > 0;
   const nPh = renderSection('physio', 'ex-physio', 'ex-physio-not-today');
@@ -6591,7 +6688,7 @@ async function toggleGoal(day, id) {
 }
 
 $('ex-steps-edit').addEventListener('click', () => openStepsSheet(state.exerciseDay));
-$('ex-stretch-add').addEventListener('click', () => addStarterStretches());
+$('ex-pick').addEventListener('click', () => openExercisePicker());
 
 /* Steps can be logged for any past day: the sheet has its own day picker, so
    yesterday's count can go in the next morning without hunting for the arrows. */
@@ -6754,7 +6851,7 @@ function openProgrammeSheet() {
       h('button', { class: 'btn btn-primary', type: 'button', onclick: () => openItemSheet({ id: newItemId(), name: '', section: 'exercise', kind: 'reps', amount: 10 }, true, () => openProgrammeSheet()) }, 'Add exercise'),
       h('button', { class: 'btn btn-secondary', type: 'button', onclick: () => openItemSheet({ id: newItemId(), name: '', section: 'physio', kind: 'sets', amount: 10, sets: 3 }, true, () => openProgrammeSheet()) }, 'Add physio exercise')),
     h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => openItemSheet({ id: newItemId(), name: '', section: 'stretch', kind: 'seconds', amount: 30 }, true, () => openProgrammeSheet()) }, 'Add a stretch'),
-    stretchItems().length ? null : h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: async () => { await addStarterStretches(); openProgrammeSheet(); } }, 'Add gentle morning stretches'),
+
     explainAvailable() ? h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => importPlanPhotos() }, 'Add from a photo or PDF of the plan') : null,
     explainAvailable() ? h('p', { class: 'hint', text: 'Photograph the exercise sheet or physio plan, or choose the PDF or Word file if it was emailed, and Daybook reads it into the list for you to check. The file goes to Daybook\'s AI service and is not kept.' }) : null,
     h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => openPhysioDetailsSheet() }, (plan.from || plan.notes) ? 'Physio plan details' : 'Add physio plan details'),
