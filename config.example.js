@@ -35,6 +35,10 @@
    route to the person's own AI app works regardless. */
 // window.DAYBOOK_BRIDGE = { url: "https://care-log-bridge.<your-subdomain>.workers.dev" };
 
+/* Optional: the email address shown on the Privacy and Terms pages for data protection questions.
+   Leave it out and the pages name Mark 1 Apps with no address. */
+// window.DAYBOOK_CONTACT = { email: "you@example.com" };
+
 window.CARE_LOG_CONFIG = {
   firebase: {
     apiKey: "YOUR_API_KEY",

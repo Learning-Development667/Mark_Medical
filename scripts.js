@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '89';
+const APP_VERSION = '90';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -533,6 +533,38 @@ $('nohousehold-form').addEventListener('submit', async (ev) => {
 });
 $('nohousehold-signout').addEventListener('click', async () => { $('nohousehold').hidden = true; await signOut(auth); $('signin').hidden = false; });
 /* ?invite=CODE in the address: remember it, say what it is for, and lead with Create an account */
+/* Privacy, terms and About (since v90): the three documents are <template>s in index.html, shown in the
+   sheet so they open from the sign-in screen as well as from Settings; ?page=privacy in the address opens
+   one directly, which gives the store listings a link. The contact email comes from config.js
+   (window.DAYBOOK_CONTACT.email) so no address is written into the page. */
+const LEGAL_PAGES = { privacy: 'Privacy', terms: 'Terms of use', about: 'About Daybook' };
+function openLegal(which) {
+  const tpl = $('tpl-' + which);
+  if (!tpl || !LEGAL_PAGES[which]) return;
+  const wrap = h('div', { class: 'legal' });
+  wrap.append(tpl.content.cloneNode(true));
+  const email = (window.DAYBOOK_CONTACT && window.DAYBOOK_CONTACT.email) || '';
+  for (const el of wrap.querySelectorAll('[data-contact]')) {
+    if (email) el.replaceChildren('Contact: ', h('a', { href: 'mailto:' + email, text: email }), '.');
+    else el.textContent = 'Contact: Mark Brown, Mark 1 Apps.';
+  }
+  for (const el of wrap.querySelectorAll('[data-version]')) el.textContent = 'Version ' + APP_VERSION;
+  openSheet(LEGAL_PAGES[which], wrap);
+}
+document.addEventListener('click', (ev) => {
+  const b = ev.target.closest('[data-page]');
+  if (b && LEGAL_PAGES[b.dataset.page]) openLegal(b.dataset.page);
+});
+(function readPageLink() {
+  const params = new URLSearchParams(location.search);
+  const page = params.get('page');
+  if (!page || !LEGAL_PAGES[page]) return;
+  params.delete('page');
+  const q = params.toString();
+  history.replaceState(null, '', location.pathname + (q ? '?' + q : '') + location.hash);
+  openLegal(page);
+})();
+
 (async function readInviteLink() {
   const code = new URLSearchParams(location.search).get('invite');
   $('signup-button').hidden = !BRIDGE;

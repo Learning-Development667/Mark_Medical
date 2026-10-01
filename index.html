@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=89">
+  <link rel="stylesheet" href="styles.css?v=90">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -92,6 +92,7 @@
       <button id="signup-button" class="btn btn-secondary btn-block" type="button" hidden>Create an account</button>
       <button id="guest-button" class="btn btn-secondary btn-block" type="button">Guest</button>
       <p class="hint" id="guest-hint">See the app with made-up example data. No sign-in needed, and nothing you do is saved.</p>
+      <p class="legal-foot"><button class="btn-link legal-link" type="button" data-page="privacy">Privacy</button><button class="btn-link legal-link" type="button" data-page="terms">Terms</button><button class="btn-link legal-link" type="button" data-page="about">About</button></p>
     </div>
   </section>
 
@@ -119,7 +120,7 @@
           <span>Invite code (only if someone sent you one)</span>
           <input id="signup-code" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="40">
         </label>
-        <p class="hint">Your entries are stored in Google's data centre in London and shared only with the people you invite. Not medical advice.</p>
+        <p class="hint">Your entries are stored in Google's data centre in London and shared only with the people you invite. Not medical advice. By creating an account you agree to the <button class="btn-inline" type="button" data-page="terms">terms of use</button> and have read the <button class="btn-inline" type="button" data-page="privacy">privacy policy</button>.</p>
         <p id="signup-error" class="error" role="alert" hidden></p>
         <button id="signup-submit" class="btn btn-primary btn-block" type="submit">Create my account</button>
       </form>
@@ -630,6 +631,11 @@
           <p>Add Daybook to the Home Screen from the Share menu in Safari to use it like an app.</p>
           <p>Meets WCAG 2.2 level AA, the web accessibility standard. Checked 28 September 2026.</p>
           <p class="muted mono" id="app-version"></p>
+          <div class="legal-links">
+            <button class="btn btn-secondary btn-block" type="button" data-page="privacy">Privacy</button>
+            <button class="btn btn-secondary btn-block" type="button" data-page="terms">Terms of use</button>
+            <button class="btn btn-secondary btn-block" type="button" data-page="about">About Daybook</button>
+          </div>
           <div class="madeby"><img src="icons/mark1apps.jpg" alt="" width="360" height="303"><span>Made by Mark 1 Apps<br><span class="muted">Copyright 2026 Mark Brown, Mark 1 Apps. All rights reserved.</span></span></div>
           <h3 class="about-sub">Exercises based on</h3>
           <ul class="about-list">
@@ -655,6 +661,117 @@
 
   <canvas id="confetti" class="confetti" hidden></canvas>
 
+  <!-- Privacy, terms and About (since v90): plain English, opened in the sheet from the Settings App card,
+       the sign-in and sign-up screens, or ?page=privacy|terms|about in the address (openLegal()). -->
+  <template id="tpl-privacy">
+    <p class="legal-date mono">Last updated 1 October 2026</p>
+    <p>My Medical Daybook (Daybook for short) is made and run by Mark Brown, trading as Mark 1 Apps, who is responsible for the information the app holds (the "data controller" in UK law). <span data-contact></span></p>
+    <h3>The short version</h3>
+    <ul>
+      <li>What you record in Daybook is yours. It lives in one locked folder for your household, and only the people you invite can see it.</li>
+      <li>Nothing is sold, nothing is used for advertising, and nothing is used to train AI.</li>
+      <li>Your health information leaves your household's folder only when you tap a button that says so, and the app tells you what will be sent before you do.</li>
+      <li>You can delete any entry, document or recording yourself, and you can ask for everything to be exported or erased.</li>
+      <li>No cookies, no tracking, no analytics.</li>
+    </ul>
+    <h3>What Daybook stores</h3>
+    <p><b>Your sign-in:</b> your email address and password (held by Google's Firebase Authentication; Daybook never sees the password), your first name, your role in the household (family, read only, or medicines and treatment only), whether you are the patient or a carer, and which household you belong to.</p>
+    <p><b>What your household records:</b> check-ins (pain, mood, sleep, sickness, appetite, energy and what you write), readings (temperature, heart rate, blood pressure, oxygen, weight), food and drink, notes, questions for the care team and their answers, including any voice recordings you choose to make, medicines, doses and reminder times, letters and documents you photograph or paste in and the explanations saved with them, treatment sessions and the calendar, exercise ticks, steps, sleep, workouts and food totals if you connect Apple Health, saved meals, who to call, and your settings.</p>
+    <p><b>On your phone:</b> a copy of your account record, so the app opens quickly on a weak signal, and a few settings (which charts you view as tables, the exercise filter, the opener). Your browser holds these and they go when you clear its data.</p>
+    <h3>Where it is kept</h3>
+    <p>In Google Cloud's Firestore database in London (the europe-west2 region), through Google's Firebase service and under Google's security measures. Everything travels encrypted (HTTPS). The app itself is served from GitHub Pages.</p>
+    <h3>Who can see it</h3>
+    <ul>
+      <li><b>The members of your household,</b> according to the access they were given. Family members can add, change and delete. A read-only member sees everything and changes nothing. A "medicines and treatment only" member sees medicines, the treatment calendar and the readings charts, and nothing else. The database itself enforces these rules, not just the app.</li>
+      <li><b>Mark 1 Apps,</b> as the operator, has administrative access to the database in order to run it. That access is used to fix a problem you have reported, and for the maintenance jobs described below. It is not used to read anyone's records.</li>
+      <li><b>Google,</b> as the company hosting the database, under its own data processing terms.</li>
+      <li>Nobody else, unless the law requires it.</li>
+    </ul>
+    <h3>What leaves your household's folder, and when</h3>
+    <ul>
+      <li><b>The AI service, only when you tap.</b> "Explain in Daybook" on a letter sends that letter's text or page photos to Anthropic's API through Daybook's own bridge. "Suggest questions to ask" sends the Notes for the team text. Anthropic does not use what is sent through its API to train its models and handles it under its own terms. Daybook keeps nothing of what was sent or returned except a count of words used, so the cost can be tracked. The reply is saved only if you save it. There is a daily limit per household.</li>
+      <li><b>Your own AI app.</b> "Send to my AI app" and "Copy for my AI app" put the text on your phone's share sheet or clipboard. Where it goes from there is between you and the app you choose.</li>
+      <li><b>Save as PDF, Print, Share and Copy</b> make a copy for you to give to the clinic or someone else. Once it has left the app, it is in your hands.</li>
+      <li><b>Tap to speak</b> uses your phone's own speech recognition (Apple's on an iPhone, Google's in Chrome). Depending on the phone, the audio may be processed on the phone or on that company's servers under their terms. Daybook receives only the words.</li>
+      <li><b>Apple Health.</b> Nothing goes to Apple from Daybook. If you set up the Health Auto Export app to send steps, sleep, workouts and food totals, that data comes from your phone to Daybook's bridge and into your household's folder. The bridge keeps the last message it received, trimmed, so a problem with the feed can be checked.</li>
+      <li><b>Reminders.</b> If you turn on medicine reminders, each notification goes through your phone maker's push service (Apple, Google or Mozilla). The message is encrypted so that service cannot read it, and unless you switch it off it names no medicine ("A medicine is due"), so nothing shows on your lock screen.</li>
+      <li><b>Fonts and chart code.</b> The app loads its fonts from Google Fonts and some code libraries from Cloudflare's cdnjs. Those servers see your phone's internet address when the app loads, as with any website. None of your entries go to them.</li>
+      <li><b>Daybook's bridge.</b> A small service on Cloudflare that handles sign-up, invites, the Apple Health feed, reminders and the AI requests. It checks who you are with your sign-in token and writes only to your household's folder. Cloudflare keeps standard request logs for a short time.</li>
+    </ul>
+    <h3>Why it is held</h3>
+    <p>To provide the service you have asked for, with your explicit consent for the health information you choose to record. UK data protection law calls health information "special category data", which is why it is handled with the care above. You can withdraw consent at any time by deleting what you recorded or asking for it to be erased.</p>
+    <h3>How long</h3>
+    <p>Until you delete it. Deleting an entry, document or recording removes it from the database straight away. Removing a member removes their access and their reminders. The last Apple Health message held by the bridge is overwritten by the next one. Export and household deletion with one tap are planned; until they arrive, ask using the contact details at the top and it will be done within 30 days. Google keeps standard server logs for a limited period.</p>
+    <h3>Your rights</h3>
+    <p>Under UK data protection law you can ask to see the information held about you, have it corrected, have it erased, have a copy to take elsewhere, and object to how it is used. Ask using the contact details at the top. You can also complain to the Information Commissioner's Office at ico.org.uk.</p>
+    <h3>Children</h3>
+    <p>A sign-in holder must be 18 or over. A parent or carer may record on behalf of someone they look after, including a child, with that person's agreement where they are able to give it.</p>
+    <h3>The demo</h3>
+    <p>The Guest button opens a shared demo. Everything in it is made up, anyone can see what is added, and it is wiped every night. Put no real details in it.</p>
+    <h3>Changes</h3>
+    <p>If this policy changes, the date at the top changes.</p>
+  </template>
+
+  <template id="tpl-terms">
+    <p class="legal-date mono">Last updated 1 October 2026</p>
+    <h3>1. What Daybook is</h3>
+    <p>My Medical Daybook (Daybook for short) is a personal record-keeping tool for a patient and the people looking after them, made by Mark Brown, trading as Mark 1 Apps. <span data-contact></span></p>
+    <p>It is not a medical device, it gives no medical advice, and it does not replace your doctors, nurses or pharmacist. Everything it shows, including the summary lines, the flags, the food estimates and the AI explanations, is there to help you talk to your care team, not to decide anything for you. If you are worried about a symptom, contact your care team or NHS 111. In an emergency call 999.</p>
+    <h3>2. Your account</h3>
+    <p>One sign-in per person. Keep your password private; you are responsible for what is done with your sign-in. The household owner decides who is invited and with what access, and can remove them. By inviting someone you confirm that the patient agrees to them seeing the records.</p>
+    <h3>3. Your records</h3>
+    <p>They remain yours. You give Mark 1 Apps permission only to store them and show them to your household, as the privacy policy describes. You are responsible for what you enter and for checking it is right, especially medicine doses and times.</p>
+    <h3>4. Using it fairly</h3>
+    <p>Daybook is for personal, non-commercial use. Do not try to get into another household's data, probe or overload the service, or use it for anything unlawful. Do not enter anyone's information without their agreement.</p>
+    <h3>5. Recordings</h3>
+    <p>"Record the answer" records a person speaking. Ask them first, every time; the app asks you to confirm that you have. You are responsible for any recording you make and for what you do with it.</p>
+    <h3>6. The AI features</h3>
+    <p>They are optional. When you use one, the text you chose goes to the AI service as the privacy policy describes. AI explanations can be wrong. Check anything that matters with your care team.</p>
+    <h3>7. Availability</h3>
+    <p>Daybook is provided free and as it is. It depends on Google, Cloudflare, GitHub and your phone's maker, and may be unavailable or change without notice. Mark 1 Apps may change, pause or withdraw it. If it is to be withdrawn you will be given reasonable notice and a way to take your records with you.</p>
+    <h3>8. No warranty, limited liability</h3>
+    <p>As far as the law allows, Mark 1 Apps is not liable for loss arising from your use of the app, from an error in what it shows, or from anything decided on the basis of it. Nothing in these terms limits liability for death or personal injury caused by negligence, or for anything else the law does not allow to be limited.</p>
+    <h3>9. The code and the name</h3>
+    <p>Copyright 2026 Mark Brown, Mark 1 Apps. All rights reserved. The code is published so that it can be read, not reused: see the licence in the repository. The names My Medical Daybook and Daybook, the strapline and the artwork belong to Mark 1 Apps. Third-party parts keep their own licences.</p>
+    <h3>10. Ending</h3>
+    <p>You can stop at any time by signing out, and you can ask for your household to be erased. Mark 1 Apps may close a sign-in used in breach of these terms.</p>
+    <h3>11. Law</h3>
+    <p>These terms are governed by the law of England and Wales.</p>
+    <h3>12. Changes</h3>
+    <p>The date at the top shows the current version.</p>
+  </template>
+
+  <template id="tpl-about">
+    <p class="strapline">Your companion between appointments.</p>
+    <p>My Medical Daybook is a private, shared health record for a patient and the people looking after them. It keeps the days between appointments in one place: how you feel, readings, medicines and doses, food and drink, letters and what they mean, questions for the care team and their answers, treatment days and gentle exercise. Notes for the team turns it into a short summary for a ten-minute appointment.</p>
+    <p>Made by Mark Brown, Mark 1 Apps, first for his own cancer treatment and the people around him.</p>
+    <p class="muted mono" data-version></p>
+    <h3>Not medical advice</h3>
+    <p>Daybook helps you keep track and talk to your care team. It makes no diagnosis and gives no advice. If you are worried, contact your care team or NHS 111. In an emergency call 999.</p>
+    <h3>Accessibility</h3>
+    <p>Meets WCAG 2.2 level AA, the web accessibility standard, checked on every screen in light and dark. Text is at least 17px and every button is at least 48px, because the person using it may be tired.</p>
+    <h3>Add it to your Home Screen</h3>
+    <p>On an iPhone, open Daybook in Safari, tap Share, then "Add to Home Screen". On Android, open it in Chrome and choose "Add to Home screen" from the menu. It then opens like any other app, and medicine reminders can be switched on.</p>
+    <h3>Built with</h3>
+    <ul>
+      <li>Google Firebase (sign-in and the database, London)</li>
+      <li>GitHub Pages (the app) and a Cloudflare Worker (the bridge)</li>
+      <li>Chart.js, pdf.js, mammoth.js and jsPDF</li>
+      <li>The Bebas Neue, DM Sans and DM Mono typefaces</li>
+    </ul>
+    <h3>Data sources</h3>
+    <ul>
+      <li>Food tags and estimates: CoFID 2021, McCance and Widdowson's The Composition of Foods Integrated Dataset, Public Health England, under the Open Government Licence v3</li>
+      <li>Gentle exercises: NHS Live Well sitting, flexibility and strength exercises; Memorial Sloan Kettering Cancer Center, Chair Exercises</li>
+    </ul>
+    <h3>Licence</h3>
+    <p>Copyright 2026 Mark Brown, Mark 1 Apps. All rights reserved. The code is published so that it can be read, not copied, hosted or built on. Third-party parts keep their own licences.</p>
+    <div class="legal-links">
+      <button class="btn btn-secondary btn-block" type="button" data-page="privacy">Privacy</button>
+      <button class="btn btn-secondary btn-block" type="button" data-page="terms">Terms of use</button>
+    </div>
+  </template>
+
   <!-- Bottom sheet -->
   <div id="sheet" class="sheet" hidden>
     <div class="sheet-backdrop" data-close></div>
@@ -673,6 +790,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=89"></script>
+  <script type="module" src="scripts.js?v=90"></script>
 </body>
 </html>
