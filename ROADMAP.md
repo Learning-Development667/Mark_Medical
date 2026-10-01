@@ -71,6 +71,7 @@ Daybook is one web app, so both stores get the same code. Android users can inst
 - Backgrounds on the data tabs. Decided against (see above).
 
 ## Done
+- v85 The picker is a plain tick list: all 24 exercises under Upper, Lower and Full body headings, no drop-down, nothing moves when you tick; My stretches rows swipe left to Remove, with Undo.
 - v84 Add to plan ticks in the picker build My stretches, a free-form box for an exercise not in the list, and reps and Timer pills in one aligned column.
 - v83 Gentle exercises: a 24-exercise picker in three groups with body-area tags, an avoid filter kept on the phone, the always-shown warning box, Done logging with time and who, the streak removed, the check-in back to a wellness check with a signpost, and an optional 10:00 nudge from the bridge.
 - v82 Check-in summary card on Today and in the timeline (one line, opens to every answer, who submitted and who edited), Edit on the review screen with Cancel and Save changes, no second document.
