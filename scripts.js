@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '83';
+const APP_VERSION = '84';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -6285,7 +6285,7 @@ const WEEKDAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0];
 function fmtSecondsWord(sec) { return sec >= 60 && sec % 60 === 0 ? (sec / 60) + (sec === 60 ? ' minute' : ' minutes') : sec + ' seconds'; }
 function programmeKind(item) { return PROGRAMME_KINDS.find((k) => k.key === item.kind) || PROGRAMME_KINDS[0]; }
-function itemTarget(item) { return programmeKind(item).unit(item); }
+function itemTarget(item) { return item.targetText || programmeKind(item).unit(item); }
 function itemDaysText(item) { return !item.days || !item.days.length || item.days.length === 7 ? 'every day' : WEEK_ORDER.filter((d) => item.days.includes(d)).map((d) => WEEKDAY_SHORT[d]).join(', '); }
 function defaultProgrammeItems() {
   const g = { ...GOAL_DEFAULTS, ...((state.profile && state.profile.exerciseGoals) || {}) };
@@ -6450,6 +6450,7 @@ function openExercisePicker() {
       h('p', { class: 'exdetail-how', text: ex.how }),
       h('p', { class: 'exdetail-target', text: ex.target }),
       count ? h('p', { class: 'exdetail-count', text: 'Done ' + count + (count === 1 ? ' time' : ' times') + ' today' }) : null,
+      state.readOnly ? null : planTick(ex, () => { drawList(); }),
       state.readOnly ? null : h('button', { class: 'btn btn-primary btn-block exdone', type: 'button', onclick: async (ev) => {
         const b = ev.currentTarget; b.disabled = true;
         try { await logExercise(ex); drawLog(); drawDetail(); } finally { b.disabled = false; }
@@ -6465,15 +6466,23 @@ function openExercisePicker() {
     if (!chosen || chosen.group !== group || exHidden(chosen)) chosen = null;
     list.replaceChildren(...shown.map((ex) => {
       const on = chosen && chosen.id === ex.id;
-      return h('button', { class: 'exrow' + (on ? ' is-on' : '') + (ex.starter ? ' is-starter' : ''), type: 'button', role: 'radio', 'aria-checked': on ? 'true' : 'false', onclick: () => { chosen = ex; drawList(); drawDetail(); detail.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } },
+      const pick = h('button', { class: 'exrow-pick', type: 'button', role: 'radio', 'aria-checked': on ? 'true' : 'false', onclick: () => { chosen = ex; drawList(); drawDetail(); detail.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } },
         h('span', { class: 'exrow-main' },
           h('span', { class: 'exrow-name' }, ex.name, ex.starter ? h('span', { class: 'extag is-starter', text: 'Gentle start' }) : null),
           h('span', { class: 'exrow-how', text: ex.how }),
           h('span', { class: 'exrow-target', text: ex.target })),
         tagPills(ex.tags));
+      return h('div', { class: 'exrow' + (on ? ' is-on' : '') + (ex.starter ? ' is-starter' : '') }, pick, state.readOnly ? null : planTick(ex, () => { drawList(); drawDetail(); }));
     }));
     drawDetail();
   };
+  /* the Add to plan tick box: ticked means the exercise sits in My stretches on the Exercise tab */
+  function planTick(ex, after) {
+    const box = h('input', { type: 'checkbox', id: 'plan-' + ex.id + '-' + Math.random().toString(36).slice(2, 6) });
+    box.checked = inPlan(ex);
+    box.addEventListener('change', async () => { box.disabled = true; const ok = await setInPlan(ex, box.checked); if (!ok) box.checked = !box.checked; box.disabled = false; if (after) after(); });
+    return h('label', { class: 'check exrow-add', for: box.id }, box, h('span', { text: 'Add to plan' }));
+  }
   drawList(); drawLog();
   const body = h('div', { class: 'expicker' },
     exWarningBox(),
@@ -6483,13 +6492,46 @@ function openExercisePicker() {
     list,
     detail,
     logList,
+    ownBox(),
     h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Close'));
   openSheet('Gentle exercises', body);
+  /* an exercise the list does not have (one a physio gave): a name here, then the usual sheet for how it is counted, into My stretches */
+  function ownBox() {
+    if (state.readOnly) return null;
+    const name = h('input', { type: 'text', placeholder: 'e.g. Heel slides', maxlength: '60', 'aria-label': 'Your own exercise' });
+    const add = h('button', { class: 'btn btn-secondary', type: 'button', onclick: () => {
+      const n = name.value.trim();
+      if (!n) { toast('Give it a name'); name.focus(); return; }
+      openItemSheet({ id: newItemId(), name: n, section: 'stretch', kind: 'reps', amount: 5 }, true, () => openExercisePicker());
+    } }, 'Add');
+    name.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); add.click(); } });
+    return h('div', { class: 'exown' },
+      h('p', { class: 'exfilter-title', text: 'Not in the list?' }),
+      h('p', { class: 'hint', text: 'Add your own, for an exercise your physio or team gave you. It goes into My stretches with its own reps or time.' }),
+      h('div', { class: 'exown-row' }, name, add));
+  }
 }
 const PROGRAMME_SECTIONS = [['exercise', 'Daily exercises'], ['stretch', 'My stretches'], ['physio', 'Physio plan']];
 function stretchItems() { return programmeItems().filter((it) => it.section === 'stretch'); }
 /* The items that count towards "all done" today: everything except the optional stretches */
 function countedItems() { return programmeItems().filter((it) => it.section !== 'stretch'); }
+/* A library exercise as a programme item in the stretch section ("My stretches"): kind and amount drive the
+   timer (seconds or minutes when the target is purely a time), targetText keeps the library's own wording */
+function libToItem(ex) {
+  const t = ex.target;
+  let kind = 'reps', amount = parseInt((t.match(/\d+/) || ['1'])[0], 10) || 1;
+  const secs = t.match(/^(?:repeat for )?(\d+) seconds$/i), mins = t.match(/^(\d+)(?: to (\d+))? minutes$/i);
+  if (secs) { kind = 'seconds'; amount = parseInt(secs[1], 10); }
+  else if (mins) { kind = 'minutes'; amount = parseInt(mins[2] || mins[1], 10); }
+  return { id: 'lib-' + ex.id, lib: ex.id, name: ex.name, section: 'stretch', kind, amount, targetText: t, note: ex.how, tags: ex.tags.slice(), since: todayStr() };
+}
+function inPlan(ex) { return programmeItems().some((it) => it.lib === ex.id); }
+async function setInPlan(ex, on) {
+  const items = programmeItems().map((it) => ({ ...it })).filter((it) => it.lib !== ex.id);
+  if (on) items.push(libToItem(ex));
+  try { await saveProgramme(items); toast(on ? ex.name + ' added to My stretches' : ex.name + ' removed from My stretches'); renderExercise(); return true; }
+  catch (e) { console.error(e); toast('Could not save'); return false; }
+}
 /* Everything done on a day: programme ticks plus exercises logged from the picker */
 function doneTodayCount(day) {
   const rec = exerciseFor(day);
@@ -6588,16 +6630,17 @@ function openTimerSheet(item, day) {
 
 function goalRow(item, done, day) {
   const hp = itemHealth(item, exerciseFor(day));
+  const target = itemTarget(item);
   const btn = h('button', { class: 'goal' + (done ? ' is-done' : ''), type: 'button', 'aria-pressed': done ? 'true' : 'false', disabled: state.readOnly, onclick: () => toggleGoal(day, item.id) },
     h('span', { class: 'goal-box' }, done ? icon('check') : null),
     h('span', { class: 'goal-main' }, h('span', { class: 'goal-label', text: item.name }), item.note ? h('span', { class: 'goal-note', text: item.note }) : null,
-      hp ? h('span', { class: 'goal-health', text: hp.text }) : null),
-    h('span', { class: 'goal-target', text: itemTarget(item) })
+      hp ? h('span', { class: 'goal-health', text: hp.text }) : null,
+      h('span', { class: 'sr-only', text: target }))
   );
-  /* anything counted in seconds or minutes gets a countdown beside it; the row itself stays one plain button */
-  if (!timerSeconds(item) || state.readOnly) return btn;
-  return h('div', { class: 'goal-wrap' }, btn,
-    h('button', { class: 'btn btn-secondary timerbtn', type: 'button', 'aria-label': 'Start the ' + fmtSecondsWord(timerSeconds(item)) + ' timer for ' + item.name, onclick: () => openTimerSheet(item, day) }, 'Timer'));
+  /* the side column is the same width on every row: the reps or time as a pill, and under it a Timer pill for anything counted in seconds or minutes, so rows line up */
+  const side = h('div', { class: 'goal-side' }, h('span', { class: 'goal-target pill-target', text: target }));
+  if (timerSeconds(item) && !state.readOnly) side.append(h('button', { class: 'btn btn-secondary timerbtn', type: 'button', 'aria-label': 'Start the ' + fmtSecondsWord(timerSeconds(item)) + ' timer for ' + item.name, onclick: () => openTimerSheet(item, day) }, 'Timer'));
+  return h('div', { class: 'goal-wrap' }, btn, side);
 }
 
 function renderExercise() {
@@ -6923,6 +6966,7 @@ function openItemSheet(item, isNew, after) {
     if (it.match) clean.match = it.match;
     if (it.note) clean.note = it.note;
     if (isNew) clean.since = todayStr(); else if (it.since) clean.since = it.since;
+    if (it.lib) { clean.lib = it.lib; if (it.tags) clean.tags = it.tags; }
     const items = programmeItems().map((x) => ({ ...x }));
     const i = items.findIndex((x) => x.id === it.id);
     if (i >= 0) items[i] = clean; else items.push(clean);
