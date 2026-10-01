@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '86';
+const APP_VERSION = '87';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -6547,10 +6547,10 @@ async function setInPlan(ex, on) {
   try { await saveProgramme(items); toast(on ? ex.name + ' added to Gentle exercises' : ex.name + ' removed from Gentle exercises'); renderExercise(); return true; }
   catch (e) { console.error(e); toast('Could not save'); return false; }
 }
-/* Everything done on a day: programme ticks plus exercises logged from the picker */
+/* Everything done on a day: the programme ticks (since v87 the old picker log no longer counts, as it is no longer shown here) */
 function doneTodayCount(day) {
   const rec = exerciseFor(day);
-  return programmeItems().filter((it) => itemDue(it, day) && isItemDone(it, rec)).length + exerciseLogFor(day).length;
+  return programmeItems().filter((it) => itemDue(it, day) && isItemDone(it, rec)).length;
 }
 
 /* A countdown for anything counted in seconds or minutes: a plank for 1 minute, a stretch for 30 seconds.
@@ -6673,10 +6673,8 @@ function renderExercise() {
   countTo($('ex-done-value'), doneN);
   $('ex-done-sub').textContent = doneN === 1 ? 'exercise done' : 'exercises done';
   $('ex-done-tile').classList.toggle('is-green', doneN > 0);
-  /* exercises logged from the picker that day */
-  const logged = exerciseLogFor(day);
-  $('ex-logged').replaceChildren(...logged.map((e) => h('div', { class: 'exlog-row' }, h('span', { class: 'exlog-time', text: fmtTime(entryDate(e)) }), h('span', { class: 'exlog-name', text: e.note }), h('span', { class: 'exlog-who', text: e.addedBy || '' }))));
-  $('ex-logged').hidden = logged.length === 0;
+  /* entries the v83/v84 picker logged are no longer listed here (they stay on Today's timeline); this pass only finds and removes any double-tap duplicates among them */
+  exerciseLogFor(day);
   cleanDuplicateExercises();
 
   /* Workouts Apple Health already recorded that day (walks, swims, anything on the watch) */

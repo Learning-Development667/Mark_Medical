@@ -1217,7 +1217,7 @@ body.is-readonly .workout .btn { display: none; }
 .swipe.is-open .swipe-remove, .swipe.is-dragging .swipe-remove { opacity: 1; }
 .swipe:not(.is-open) .swipe-remove { pointer-events: none; }
 #ex-pick { margin-top: var(--s-5); }
-#ex-stretch-section .exlog { margin-top: var(--s-3); }
+#ex-stretch-section .section-title { margin-top: var(--s-6); } /* first child of its own wrapper, like the Meds documents section, so the first-child rule would otherwise remove the gap after Choose exercises */
 .exown { display: grid; gap: var(--s-2); margin-top: var(--s-2); }
 .exown-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--s-2); }
 .exown-row input { min-height: 48px; }
