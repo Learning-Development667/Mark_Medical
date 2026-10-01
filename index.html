@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=81">
+  <link rel="stylesheet" href="styles.css?v=82">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -197,11 +197,13 @@
 
         <div class="actions">
           <div class="checkins" id="checkin-card">
+            <div id="checkin-morning-card" hidden></div>
             <button class="checkin-row" id="checkin-morning" type="button" data-slot="morning">
               <svg class="icon checkin-icon" aria-hidden="true"><use href="#i-sun"/></svg>
               <span class="checkin-main"><span class="checkin-title">Morning check-in</span><span class="checkin-sub" id="checkin-morning-sub"></span></span>
               <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
             </button>
+            <div id="checkin-evening-card" hidden></div>
             <button class="checkin-row" id="checkin-evening" type="button" data-slot="evening">
               <svg class="icon checkin-icon" aria-hidden="true"><use href="#i-moon"/></svg>
               <span class="checkin-main"><span class="checkin-title">Evening check-in</span><span class="checkin-sub" id="checkin-evening-sub"></span></span>
@@ -657,6 +659,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=81"></script>
+  <script type="module" src="scripts.js?v=82"></script>
 </body>
 </html>

@@ -71,6 +71,7 @@ Daybook is one web app, so both stores get the same code. Android users can inst
 - Backgrounds on the data tabs. Decided against (see above).
 
 ## Done
+- v82 Check-in summary card on Today and in the timeline (one line, opens to every answer, who submitted and who edited), Edit on the review screen with Cancel and Save changes, no second document.
 - v81 Morning stretches (optional, never counted against the streak, starter set behind a notice and ticked from the morning check-in) and a countdown timer on anything counted in seconds or minutes.
 - v80 Question numbers agree everywhere and close up when one is deleted. v79 Chart or table on every Trends card.
 - v79 Chart or table on every Trends card, remembered per card; the Treatment calendar spaced from the Sessions card and the measure chips in a proper grid (part of 6a).
