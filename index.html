@@ -16,13 +16,14 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=82">
+  <link rel="stylesheet" href="styles.css?v=83">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
 
   <!-- Icon set: stroke icons drawn in the current text colour, referenced with <use href="#i-name"> -->
   <svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+    <symbol id="i-warning" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></symbol>
     <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/></symbol>
     <symbol id="i-pill" viewBox="0 0 24 24"><rect x="2.5" y="8.5" width="19" height="7" rx="3.5" transform="rotate(-45 12 12)"/><path d="M9.5 9.5l5 5"/></symbol>
     <symbol id="i-trend" viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/><path d="M3 21h18"/></symbol>
@@ -389,7 +390,7 @@
         </div>
         <div class="tiles tiles-2">
           <div class="tile" id="ex-steps-tile"><span class="tile-label">Steps</span><span class="tile-value mono" id="ex-steps-value">--</span><span class="tile-sub" id="ex-steps-sub">not logged</span></div>
-          <div class="tile" id="ex-streak-tile"><span class="tile-label">Streak</span><span class="tile-value mono" id="ex-streak-value">0</span><span class="tile-sub" id="ex-streak-sub">days all done</span></div>
+          <div class="tile" id="ex-done-tile"><span class="tile-label">Today</span><span class="tile-value mono" id="ex-done-value">0</span><span class="tile-sub" id="ex-done-sub">exercises done</span></div>
         </div>
         <button id="ex-steps-edit" class="btn btn-primary btn-block" type="button">Log steps</button>
 
@@ -403,16 +404,17 @@
           <div id="ex-workouts-list" class="workouts"></div>
         </div>
 
-        <div id="ex-stretch-section">
-          <h2 class="section-title">Morning stretches</h2>
-          <p class="hint" id="ex-stretch-hint">Gentle and optional. Stop if anything hurts. They never count against your streak.</p>
-          <p class="ex-honest" id="ex-stretch-honest" hidden></p>
+        <h2 class="section-title">Gentle exercises</h2>
+        <p class="hint">Twenty-four gentle exercises in three groups, each tagged with the body areas it uses. All optional.</p>
+        <button id="ex-pick" class="btn btn-primary btn-block" type="button">Pick an exercise</button>
+        <div id="ex-logged" class="exlog"></div>
+        <p id="ex-logged-empty" class="muted" hidden>Nothing logged from the picker this day.</p>
+
+        <div id="ex-stretch-section" hidden>
+          <h2 class="section-title">My stretches</h2>
+          <p class="hint">Your own, from the programme. Optional.</p>
           <div id="ex-stretch" class="goals"></div>
           <p id="ex-stretch-not-today" class="muted ex-not-today" hidden></p>
-          <div id="ex-stretch-empty" class="stretch-empty" hidden>
-            <p>Some gentle stretches to start the day, if you would like them. Optional, and you can change or remove any of them.</p>
-            <button id="ex-stretch-add" class="btn btn-secondary btn-block" type="button">Add gentle morning stretches</button>
-          </div>
         </div>
 
         <h2 class="section-title">Daily exercises</h2>
@@ -597,6 +599,11 @@
             </label>
             <p class="hint" id="settings-private-hint"></p>
           </div>
+          <label class="check settings-toggle">
+            <input id="settings-stretch-nudge" type="checkbox">
+            <span>Gentle nudge at 10:00 if nothing is logged on the Exercise tab</span>
+          </label>
+          <p class="hint">One notification, no pressure. Needs reminders on for at least one phone in the household.</p>
         </div>
         <div id="settings-household" hidden>
           <h2 class="section-title">Household</h2>
@@ -623,6 +630,12 @@
           <p>Meets WCAG 2.2 level AA, the web accessibility standard. Checked 28 September 2026.</p>
           <p class="muted mono" id="app-version"></p>
           <div class="madeby"><img src="icons/mark1apps.jpg" alt="" width="360" height="303"><span>Made by Mark 1 Apps<br><span class="muted">Copyright 2026 Mark Brown, Mark 1 Apps. All rights reserved.</span></span></div>
+          <h3 class="about-sub">Exercises based on</h3>
+          <ul class="about-list">
+            <li>NHS Live Well sitting, flexibility and strength exercises</li>
+            <li>Memorial Sloan Kettering Cancer Center, Chair Exercises</li>
+          </ul>
+          <p class="hint">Body area tags are a guide only. Your care team has the final say.</p>
         </div>
       </section>
 
@@ -659,6 +672,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=82"></script>
+  <script type="module" src="scripts.js?v=83"></script>
 </body>
 </html>

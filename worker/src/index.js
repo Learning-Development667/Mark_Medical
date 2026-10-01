@@ -318,6 +318,32 @@ const TZ = 'Europe/London';
 const REMINDER_WINDOW_MIN = 20;   // a time is "due" for this long after it (cron runs every five minutes)
 const NUDGE_AFTER_MIN = 30;       // one more notification if still not logged this long after the time
 const LOGGED_BEFORE_MIN = 60;     // a dose logged this long before the time counts as taken
+/* Gentle nudge (v83): one notification at 10:00 London time when the household has switched it on
+   (profile/main.stretchNudge) and nothing has been logged on the Exercise tab that day: no exercise entry
+   from the picker and no programme stretch ticked. Sent once a day, within the same 20 minute window. */
+const STRETCH_NUDGE_AT = 10 * 60;
+function stretchNudgeDue({ minutes, nudgeOn, exerciseLogged, stretchTicked, alreadySent }) {
+  if (!nudgeOn || alreadySent) return false;
+  if (minutes < STRETCH_NUDGE_AT || minutes >= STRETCH_NUDGE_AT + REMINDER_WINDOW_MIN) return false;
+  return !exerciseLogged && !stretchTicked;
+}
+/* Whether any programme item in the stretch section due that weekday is ticked in exercise/{day}.done */
+function stretchTickedOn(profileFields, exerciseFields, day) {
+  try {
+    const items = ((((profileFields || {}).programme || {}).mapValue || {}).fields || {}).items;
+    const list = items && items.arrayValue ? (items.arrayValue.values || []) : [];
+    const done = ((((exerciseFields || {}).done || {}).mapValue || {}).fields) || {};
+    const weekday = new Date(day + 'T12:00:00Z').getUTCDay();
+    return list.some((v) => {
+      const fl = (v.mapValue || {}).fields || {};
+      if (f(fl, 'section') !== 'stretch') return false;
+      const days = f(fl, 'days') || [];
+      if (days.length && !days.map(Number).includes(weekday)) return false;
+      const id = f(fl, 'id');
+      return !!(id && done[id] && done[id].booleanValue === true);
+    });
+  } catch (e) { return false; }
+}
 
 /* Local wall-clock time in London as { day: 'YYYY-MM-DD', minutes: since midnight } */
 function londonNow(date) {
@@ -370,6 +396,18 @@ async function runHouseholdReminders(env, fs, hid) {
       if (!sentSet.has(nudgeKey) && now.minutes >= t + NUDGE_AFTER_MIN && now.minutes < t + NUDGE_AFTER_MIN + REMINDER_WINDOW_MIN && !takenSince) {
         await send(nudgeKey, { title: 'Daybook', body: `Still to take: ${name} ${dose}`.trim(), tag: nudgeKey, url: appUrl('meds') }, 'A medicine is still to take');
       }
+    }
+  }
+  /* The gentle nudge at 10:00, household-wide, no medicine named, so the same body for a private phone */
+  const nudgeKey = 'stretch|' + now.day;
+  if (now.minutes >= STRETCH_NUDGE_AT && now.minutes < STRETCH_NUDGE_AT + REMINDER_WINDOW_MIN && !sentSet.has(nudgeKey)) {
+    const profile = await fs.get(hp(hid, 'profile/main'));
+    const nudgeOn = !!(profile && f(profile.fields, 'stretchNudge') === true);
+    if (nudgeOn) {
+      const exEntries = await fs.query(hp(hid, 'entries'), { day: now.day, type: 'exercise' });
+      const exDoc = await fs.get(hp(hid, 'exercise/' + now.day));
+      const due = stretchNudgeDue({ minutes: now.minutes, nudgeOn, exerciseLogged: exEntries.length > 0, stretchTicked: stretchTickedOn(profile.fields, exDoc ? exDoc.fields : null, now.day), alreadySent: false });
+      if (due) await send(nudgeKey, { title: 'Daybook', body: 'Your gentle exercises are there if you feel up to them. No pressure.', tag: nudgeKey, url: appUrl('exercise') }, null);
     }
   }
   /* One-off reminders from the app ("Remind me in 15 minutes" after a meal) */
@@ -716,7 +754,7 @@ async function googleKey(kid, fetchFn) {
 }
 
 /* For the test harness only (scratchpad): nothing in the app or the workflow uses these */
-export const _test = { verifyFirebaseToken, askClaude, EXPLAIN_SYSTEM, distanceKm, payloadFor, sha256Hex, hp };
+export const _test = { verifyFirebaseToken, askClaude, EXPLAIN_SYSTEM, distanceKm, payloadFor, sha256Hex, hp, stretchNudgeDue, stretchTickedOn };
 
 /* ------------------------------------------------------------------ */
 /* Plumbing                                                             */
