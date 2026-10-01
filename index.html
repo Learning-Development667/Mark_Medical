@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Daybook</title>
+  <title>My Medical Daybook</title>
   <meta name="description" content="Private shared health tracker">
   <meta name="theme-color" content="#1E5F74">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=88">
+  <link rel="stylesheet" href="styles.css?v=89">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -47,10 +47,11 @@
     <symbol id="i-image" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="M20.5 15.5l-4.5-4.5-7 7"/></symbol>
   </svg>
 
-  <!-- Opener: the loading page. Daybook at the top, the Mark 1 Apps film, the version at the bottom.
-       The film plays through on a phone's first visit only; later starts show the poster while loading. -->
-  <div id="opener" class="opener" role="status" aria-label="Daybook is loading">
+  <!-- Opener: the loading page. The full name at the top (My Medical over Daybook), the Mark 1 Apps film, the version at the bottom.
+       The film plays on every start, from one second in; reduced motion shows the still frame instead. -->
+  <div id="opener" class="opener" role="status" aria-label="My Medical Daybook is loading">
     <div class="opener-top">
+      <span class="opener-pre">My Medical</span>
       <span class="opener-brand">Daybook</span>
       <span class="opener-strap">Your companion between appointments.</span>
     </div>
@@ -71,7 +72,7 @@
   <section id="signin" class="signin" hidden>
     <div class="signin-card">
       <img class="signin-logo" src="icons/icon-192.png" alt="" width="72" height="72">
-      <h1 class="brand">Daybook</h1>
+      <h1 class="brand"><span class="brand-pre">My Medical</span>Daybook</h1>
       <p class="strapline">Your companion between appointments.</p>
       <p class="muted">Private. Only the people set up for this account can sign in.</p>
       <form id="signin-form" autocomplete="on">
@@ -97,7 +98,7 @@
   <!-- Create an account (since v78): a sign-in plus its own household, or a place in the household an invite is for -->
   <section id="signup" class="signin" hidden>
     <div class="signin-card">
-      <h1 class="brand">Daybook</h1>
+      <h1 class="brand"><span class="brand-pre">My Medical</span>Daybook</h1>
       <p class="strapline">Your companion between appointments.</p>
       <p id="signup-intro" class="muted">Your own Daybook, for you and the people you invite.</p>
       <form id="signup-form" autocomplete="on">
@@ -129,7 +130,7 @@
   <!-- Signed in, but in no household yet (since v78) -->
   <section id="nohousehold" class="signin" hidden>
     <div class="signin-card">
-      <h1 class="brand">Daybook</h1>
+      <h1 class="brand"><span class="brand-pre">My Medical</span>Daybook</h1>
       <p class="muted" id="nohousehold-who">This sign-in is not in a Daybook household yet.</p>
       <form id="nohousehold-form">
         <label class="field">
@@ -151,7 +152,7 @@
   <!-- Config missing -->
   <section id="noconfig" class="signin" hidden>
     <div class="signin-card">
-      <h1 class="brand">Daybook</h1>
+      <h1 class="brand"><span class="brand-pre">My Medical</span>Daybook</h1>
       <p><strong>config.js is missing.</strong></p>
       <p class="muted">Copy <code>config.example.js</code> to <code>config.js</code>, paste in the Firebase web config and the two permitted email addresses, then commit it.</p>
     </div>
@@ -672,6 +673,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=88"></script>
+  <script type="module" src="scripts.js?v=89"></script>
 </body>
 </html>

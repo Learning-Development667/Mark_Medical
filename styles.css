@@ -408,6 +408,7 @@ textarea { line-height: 1.5; resize: vertical; }
 }
 .signin-logo { border-radius: 18px; margin-bottom: var(--s-3); }
 .signin-card .brand { font-size: var(--fs-3xl); margin-bottom: 6px; }
+.signin-card .brand-pre { display: block; margin-bottom: 4px; font-size: var(--fs-lg); letter-spacing: 0.2em; text-transform: uppercase; color: var(--text-secondary); }
 .signin-card form { text-align: left; margin-top: 22px; }
 
 /* ---------- App frame ---------- */
@@ -1107,6 +1108,7 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 /* The name is the headline: large, letter-spaced, with a soft glow in the mark's blue so the title and the film read as one piece */
 .opener-top { text-align: center; margin-top: 10vh; }
 .opener-brand { display: block; font-family: var(--font-head); font-size: clamp(72px, 24vw, 128px); letter-spacing: 0.1em; line-height: 1; color: var(--opener-fg); text-shadow: 0 0 18px color-mix(in srgb, var(--opener-glow) 55%, transparent), 0 0 48px color-mix(in srgb, var(--opener-glow) 30%, transparent); }
+.opener-pre { display: block; margin-bottom: 6px; font-family: var(--font-head); font-size: clamp(22px, 7vw, 34px); letter-spacing: 0.22em; line-height: 1; color: var(--opener-muted); text-transform: uppercase; }
 .opener-strap { display: block; margin-top: 14px; color: var(--opener-muted); font-size: 18px; letter-spacing: 0.01em; }
 /* The maker's film, smaller than the name, its edges feathered so the mark floats on the page rather than sitting in a box */
 .opener-film { width: min(72%, 360px); aspect-ratio: 16 / 9; -webkit-mask-image: radial-gradient(ellipse 62% 62% at 50% 50%, #000 48%, transparent 100%); mask-image: radial-gradient(ellipse 62% 62% at 50% 50%, #000 48%, transparent 100%); }
