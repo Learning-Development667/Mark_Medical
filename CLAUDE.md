@@ -21,6 +21,7 @@ Speech to text (since v48): `speakButton(textarea)` adds a big "Tap to speak" bu
 
 ## Branch and hosting
 - All work is committed directly to `main`. No feature branches, no pull requests.
+- Scope (Mark, 1 October 2026): only the Learning-Development667 repositories. Never read, write or search Innovation-mag (Mark's work organisation) unless Mark expressly gives permission in that conversation. Nothing in Daybook needs it.
 - GitHub Pages path is case-sensitive: `/Mark_Medical/`. `manifest.json` start_url and scope are `/Mark_Medical/`. `sw.js` is registered with scope `/Mark_Medical/`. All asset paths are relative.
 
 ## Stack
