@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=85">
+  <link rel="stylesheet" href="styles.css?v=86">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -404,16 +404,14 @@
           <div id="ex-workouts-list" class="workouts"></div>
         </div>
 
-        <h2 class="section-title">Gentle exercises</h2>
-        <p class="hint">Twenty-four gentle exercises in three groups, each tagged with the body areas it uses. Tick the ones you want and they appear under My stretches. All optional.</p>
         <button id="ex-pick" class="btn btn-primary btn-block" type="button">Choose exercises</button>
-        <div id="ex-logged" class="exlog" hidden></div>
-
-        <div id="ex-stretch-section" hidden>
-          <h2 class="section-title">My stretches</h2>
-          <p class="hint">The exercises you ticked, plus any of your own. Swipe a row left to remove it. Optional.</p>
+        <div id="ex-stretch-section">
+          <h2 class="section-title">Gentle exercises</h2>
+          <p class="hint">The ones you chose, plus any of your own. Tap to tick one off, swipe a row left to remove it. All optional.</p>
           <div id="ex-stretch" class="goals"></div>
+          <p id="ex-stretch-empty" class="muted" hidden>Nothing chosen yet. Tap Choose exercises to pick from twenty-four gentle ones.</p>
           <p id="ex-stretch-not-today" class="muted ex-not-today" hidden></p>
+          <div id="ex-logged" class="exlog" hidden></div>
         </div>
 
         <h2 class="section-title">Daily exercises</h2>
@@ -671,6 +669,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=85"></script>
+  <script type="module" src="scripts.js?v=86"></script>
 </body>
 </html>
