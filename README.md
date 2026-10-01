@@ -1,7 +1,8 @@
-# Daybook
+# My Medical Daybook
 
 Your companion between appointments. A private, shared health daybook for a
-patient and the people looking after them, by Mark 1 Apps.
+patient and the people looking after them, by Mark 1 Apps. The full name is
+My Medical Daybook; inside the app it is simply Daybook.
 
 Live: https://learning-development667.github.io/Mark_Medical/ (tap Guest for
 the shared demo).

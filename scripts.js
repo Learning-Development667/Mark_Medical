@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '88';
+const APP_VERSION = '89';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -1334,7 +1334,7 @@ document.querySelectorAll('.tab').forEach((btn) => {
 const PAGE_TITLES = { today: 'Today', meds: 'Medicines', vitals: 'Trends', chemo: 'Treatment plan', exercise: 'Exercise', more: 'More', food: 'Food diary', notes: 'Team notes', docs: 'Documents', settings: 'Settings' };
 function setBrand(page) {
   $('brand').replaceChildren('Daybook', page ? h('span', { class: 'brand-page', text: ': ' + page }) : null);
-  document.title = page ? 'Daybook: ' + page : 'Daybook';
+  document.title = page ? 'Daybook: ' + page : 'My Medical Daybook';
 }
 
 function showTab(name) {
