@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '81';
+const APP_VERSION = '82';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -1503,6 +1503,13 @@ function sleepStages(e) {
 function renderEntry(e) {
   const d = entryDate(e);
   const cls = 'entry type-' + e.type + (e.type === 'temp' ? ' ' + tempClass(e.value) : '');
+  /* a check-in is the same summary card as on Today: open it to read every answer, Edit to change them */
+  if (e.type === 'checkin') {
+    return h('li', { class: cls + ' has-card' },
+      h('span', { class: 'entry-time', text: fmtTime(d) }),
+      h('div', { class: 'entry-main' }, checkinCard(e, true)),
+      state.readOnly ? null : h('button', { class: 'entry-menu', type: 'button', 'aria-label': 'Entry options', onclick: () => entryOptions(e) }, '⋯'));
+  }
   return h('li', { class: cls },
     h('span', { class: 'entry-time', text: fmtTime(d) }),
     h('div', { class: 'entry-main' },
@@ -1523,6 +1530,7 @@ function entryOptions(e) {
     h('p', null, h('strong', null, ...entryTitle(e).map((n) => n.cloneNode(true)))),
     h('p', { class: 'muted', text: `${fmtDayLong(e.day)} at ${fmtTime(d)}. ${entrySub(e)}` }),
     canEdit ? h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => openAdd(e.type, e) }, 'Edit') : null,
+    e.type === 'checkin' ? h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => { closeSheet(); openCheckin(e.slot, e.day); } }, 'Edit this check-in') : null,
     e.type === 'question' && !state.readOnly ? h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => { closeSheet(); openAnswerSheet(e); } }, 'Record or write the answer') : null,
     e.type === 'question' ? h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: async () => {
       closeSheet();
@@ -4093,17 +4101,73 @@ function checkinSummary(e) {
   return bits.join(' · ');
 }
 
+/* ---- The summary card for a check-in that has been submitted (since v82) ----
+   One line when closed ("Morning check-in done 08:42, pain 3, mood 6"); open, it shows every answer as saved,
+   who submitted it and when, and, if it was changed, who edited it and when. Edit reopens the form on its
+   review screen. The same card is used on Today and in the timeline, and which cards are open is remembered
+   (by id) so a live update from the other phone does not fold them shut. */
+function tsDate(t) { return t && typeof t.toDate === 'function' ? t.toDate() : null; }
+function whenText(d) { return d ? (dayStr(d) === todayStr() ? '' : fmtDayShort(dayStr(d)) + ' ') + fmtTime(d) : 'just now'; }
+function checkinSubmittedAt(c) { return tsDate(c.createdAt) || entryDate(c); }
+function checkinLine(c) {
+  const bits = ['pain', 'mood'].filter((k) => c[k] != null).map((k) => k + ' ' + c[k]);
+  return checkinTitle(c.slot) + ' done ' + fmtTime(checkinSubmittedAt(c)) + (bits.length ? ', ' + bits.join(', ') : '');
+}
+function checkinOpenSet() { if (!state.openCheckins) state.openCheckins = new Set(); return state.openCheckins; }
+function checkinCard(c, inEntry) {
+  const open = checkinOpenSet().has(c.id);
+  const bodyId = 'cc-' + String(c.id).replace(/[^\w-]/g, '') + (inEntry ? '-t' : '-s');
+  const rows = (CHECKIN_QUESTIONS[c.slot] || []).map((q) => {
+    const v = c[q.key];
+    let node;
+    if (q.kind === 'text') node = h('dd', { class: 'cc-v' + (v ? '' : ' is-empty'), text: v ? v : 'Nothing added' });
+    else {
+      const empty = v == null;
+      node = h('dd', { class: 'cc-v' + (empty ? ' is-empty' : ' is-num'), text: empty ? 'Skipped' : v + '/10' + (q.kind === 'sleep' && c.sleepHours != null ? ' \u00b7 ' + c.sleepHours + ' h' : '') });
+    }
+    return h('div', { class: 'cc-row' }, h('dt', { class: 'cc-k', text: CHECKIN_LABELS[q.key] || q.key }), node);
+  });
+  const meta = h('p', { class: 'cc-meta' },
+    h('span', { text: 'Submitted by ' + (c.addedBy || 'someone') + ' at ' + whenText(checkinSubmittedAt(c)) }),
+    c.editedBy || c.editedAt ? h('span', { text: 'Edited by ' + (c.editedBy || 'someone') + ' at ' + whenText(tsDate(c.editedAt)) }) : null);
+  const body = h('div', { class: 'cc-body', id: bodyId, hidden: !open },
+    h('dl', { class: 'cc-list' }, ...rows), meta,
+    state.readOnly ? null : h('button', { class: 'btn btn-secondary cc-edit', type: 'button', onclick: () => openCheckin(c.slot, c.day) }, 'Edit'));
+  const head = h('button', { class: 'cc-head', type: 'button', 'aria-expanded': open ? 'true' : 'false', 'aria-controls': bodyId },
+    h('span', { class: 'cc-check' }, icon('check')),
+    h('span', { class: 'cc-line', text: checkinLine(c) }),
+    h('span', { class: 'cc-chev' }, icon('chevron')));
+  const card = h('div', { class: 'checkin-card' + (open ? ' is-open' : '') + (inEntry ? ' in-entry' : ''), 'data-ccid': c.id }, head, body);
+  head.addEventListener('click', () => setCheckinOpen(c.id, head.getAttribute('aria-expanded') !== 'true'));
+  return card;
+}
+/* Open or close every copy of one check-in's card on screen (Today and the timeline show the same one) */
+function setCheckinOpen(id, now) {
+  if (now) checkinOpenSet().add(id); else checkinOpenSet().delete(id);
+  document.querySelectorAll('.checkin-card').forEach((card) => {
+    if (card.getAttribute('data-ccid') !== id) return;
+    card.classList.toggle('is-open', now);
+    const head = card.querySelector('.cc-head'), body = card.querySelector('.cc-body');
+    if (head) head.setAttribute('aria-expanded', now ? 'true' : 'false');
+    if (body) body.hidden = !now;
+  });
+}
+
 function renderCheckins() {
   const day = state.selectedDay, isToday = day === todayStr();
   ['morning', 'evening'].forEach((slot) => {
-    const row = $('checkin-' + slot), sub = $('checkin-' + slot + '-sub');
+    const row = $('checkin-' + slot), sub = $('checkin-' + slot + '-sub'), holder = $('checkin-' + slot + '-card');
     const c = findCheckin(day, slot);
     row.classList.remove('is-due', 'is-done');
     row.disabled = state.readOnly;
+    row.hidden = !!c;
+    holder.hidden = !c;
     if (c) {
-      row.classList.add('is-done');
-      sub.replaceChildren(h('span', { class: 'checkin-done' }, icon('check'), 'Done ' + fmtTime(entryDate(c))), state.readOnly ? '' : ' · tap to change');
-    } else if (isToday && dueSlot() === slot) { row.classList.add('is-due'); sub.textContent = state.readOnly ? 'Due now' : 'Due now, about a minute'; }
+      holder.replaceChildren(checkinCard(c, false));
+      return;
+    }
+    holder.replaceChildren();
+    if (isToday && dueSlot() === slot) { row.classList.add('is-due'); sub.textContent = state.readOnly ? 'Due now' : 'Due now, about a minute'; }
     else if (isToday && slot === 'morning') sub.textContent = state.readOnly ? 'Missed this morning' : 'Missed this morning, tap to fill in';
     else if (isToday) sub.textContent = 'Later today';
     else sub.textContent = state.readOnly ? 'Not filled in' : 'Not filled in, tap to add';
@@ -4158,8 +4222,11 @@ function openCheckin(slot, initialDay) {
     answers.sleepHours = existing && existing.sleepHours != null ? existing.sleepHours : null;
   };
   load();
+  /* editing a saved check-in opens straight on the review screen: every answer is there, tap one to change it */
+  if (existing) step = qs.length;
 
   const body = h('div', null);
+  const cancelLink = () => existing ? h('button', { class: 'btn-link wiz-cancel', type: 'button', onclick: closeSheet }, 'Cancel') : null;
 
   function render() {
     const wrap = h('div', { class: 'wiz-step' + (dir < 0 ? ' is-back' : '') });
@@ -4215,7 +4282,7 @@ function openCheckin(slot, initialDay) {
       const back = h('button', { class: 'btn btn-secondary btn-back', type: 'button', disabled: step === 0, onclick: () => { answers[q.key] = getVal(); go(step - 1, -1); } }, 'Back');
       const skip = h('button', { class: 'btn-link wiz-skip', type: 'button', onclick: () => { if (q.kind === 'sleep') getVal(); answers[q.key] = q.kind === 'text' ? '' : null; go(step + 1, 1); } }, 'Skip');
       const next = h('button', { class: 'btn btn-primary btn-next', type: 'button', onclick: () => { answers[q.key] = getVal(); go(step + 1, 1); } }, step === qs.length - 1 ? 'Review' : 'Next');
-      wrap.append(h('div', { class: 'wiz-buttons' }, back, skip, next));
+      wrap.append(h('div', { class: 'wiz-buttons' }, back, skip, next), cancelLink() || '');
     } else {
       const bar = h('div', { class: 'progress-bar' }, h('div'));
       bar.firstChild.style.width = '100%';
@@ -4238,7 +4305,7 @@ function openCheckin(slot, initialDay) {
         await saveCheckin(slot, day, answers, existing);
         closeSheet();
       } }, existing ? 'Save changes' : 'Save check-in');
-      wrap.append(save, h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => { dir = -1; step = qs.length - 1; render(); } }, 'Back'));
+      wrap.append(save, h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => { dir = -1; step = qs.length - 1; render(); } }, 'Back'), cancelLink() || '');
     }
     body.replaceChildren(wrap);
     const panel = document.querySelector('.sheet-panel');
@@ -4252,9 +4319,16 @@ async function saveCheckin(slot, day, answers, existing) {
   const id = checkinId(day, slot);
   const today = todayStr();
   const at = existing ? entryDate(existing) : atFromInputs(day, day === today ? fmtTime(new Date()) : (slot === 'morning' ? '09:00' : slot === 'carer' ? '20:00' : '21:00'));
-  const data = { type: 'checkin', slot, day, addedBy: state.name };
+  const data = { type: 'checkin', slot, day, addedBy: existing && existing.addedBy ? existing.addedBy : state.name };
   CHECKIN_QUESTIONS[slot].forEach((q) => { data[q.key] = answers[q.key]; });
   if (slot === 'morning') data.sleepHours = answers.sleepHours;
+  if (existing) {
+    /* nothing changed: no second write, and no "edited" stamp for a look and a tap on Save */
+    const keys = CHECKIN_QUESTIONS[slot].map((q) => q.key).concat(slot === 'morning' ? ['sleepHours'] : []);
+    const same = keys.every((k) => { const a = data[k] == null ? null : data[k], b = existing[k] == null ? null : existing[k]; return typeof a === 'string' || typeof b === 'string' ? String(a == null ? '' : a) === String(b == null ? '' : b) : a === b; });
+    if (same) { toast('No changes to save'); return; }
+    data.editedBy = state.name;
+  }
   const mirror = {};
   if (slot !== 'carer' && data.mood != null) mirror.mood = Math.max(1, Math.min(5, Math.ceil(data.mood / 2)));
   if (slot === 'evening' && data.goodThing) mirror.good = data.goodThing;
@@ -4262,7 +4336,7 @@ async function saveCheckin(slot, day, answers, existing) {
 
   if (state.demo) {
     const now = new Date();
-    const entry = { id, ...data, at: demoTs(at), createdAt: existing ? existing.createdAt : demoTs(now), updatedAt: demoTs(now) };
+    const entry = { id, ...data, at: demoTs(at), createdAt: existing ? existing.createdAt : demoTs(now), updatedAt: demoTs(now), ...(existing ? { editedAt: demoTs(now) } : {}) };
     state.recentEntries = state.recentEntries.filter((e) => e.id !== id);
     state.recentEntries.push(entry);
     sortEntries(state.recentEntries);
@@ -4278,7 +4352,8 @@ async function saveCheckin(slot, day, answers, existing) {
       ...data,
       at: Timestamp.fromDate(at),
       createdAt: existing && existing.createdAt ? existing.createdAt : serverTimestamp(),
-      updatedAt: serverTimestamp()
+      updatedAt: serverTimestamp(),
+      ...(existing ? { editedAt: serverTimestamp() } : {})
     });
     if (Object.keys(mirror).length) await setDoc(hdoc('days', day), { ...mirror, updatedBy: state.name, updatedAt: serverTimestamp() }, { merge: true });
     state.cycleFetched = 0;

@@ -576,6 +576,28 @@ body.is-readonly #calls-edit { display: none; }
 .checkin-row.is-due:active { box-shadow: var(--elev-floating-teal-pressed); }
 .checkin-row.is-due .checkin-icon, .checkin-row.is-due .checkin-chev, .checkin-row.is-due .checkin-sub { color: var(--teal-ink); opacity: 0.95; }
 .checkin-row.is-done .checkin-icon { color: var(--success); }
+/* the summary card for a submitted check-in (v82) */
+.checkin-card { background: var(--grad-raised); border-radius: var(--r-md); box-shadow: var(--elev-raised); overflow: hidden; }
+.checkin-card.in-entry { background: none; box-shadow: none; border-radius: 0; overflow: visible; }
+.cc-head { display: flex; align-items: center; gap: var(--s-3); width: 100%; min-height: 56px; padding: var(--s-3) 14px; border: 0; background: none; color: var(--text-primary); font: inherit; text-align: left; cursor: pointer; }
+.checkin-card.in-entry .cc-head { padding: 0; min-height: 44px; }
+.cc-check { display: inline-flex; flex: none; color: var(--success); }
+.cc-check .icon { width: 22px; height: 22px; stroke-width: 2.4; }
+.cc-line { flex: 1; min-width: 0; font-weight: 600; font-size: 17px; line-height: 1.3; }
+.cc-chev { display: inline-flex; flex: none; color: var(--text-muted); transition: transform var(--t-base) ease; }
+.cc-chev .icon { width: 22px; height: 22px; }
+.checkin-card.is-open .cc-chev { transform: rotate(90deg); }
+.cc-body { display: grid; gap: var(--s-3); padding: 0 14px 14px; }
+.checkin-card.in-entry .cc-body { padding: 0 0 var(--s-2); }
+.cc-list { margin: 0; display: grid; gap: var(--s-3); }
+.cc-row { display: grid; gap: 2px; }
+.cc-k { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); }
+.cc-v { margin: 0; font-size: 17px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.cc-v.is-num { font-family: var(--font-mono); font-weight: 500; }
+.cc-v.is-empty { color: var(--text-muted); }
+.cc-meta { margin: 0; display: grid; gap: 2px; font-size: 14px; color: var(--text-secondary); }
+.cc-edit { justify-self: start; min-width: 120px; }
+.wiz-cancel { display: block; margin: var(--s-3) auto 0; }
 .checkin-done { display: inline-flex; align-items: center; gap: var(--s-1); color: var(--success); font-weight: 600; }
 .checkin-done .icon { width: 18px; height: 18px; stroke-width: 2.4; }
 
