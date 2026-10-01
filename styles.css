@@ -1157,6 +1157,29 @@ body.is-readonly .workout .btn { display: none; }
 
 /* ---------- Exercise ---------- */
 .goals { display: flex; flex-direction: column; gap: var(--s-2); }
+.goal-wrap { display: flex; gap: var(--s-2); align-items: center; }
+.goal-wrap .goal { flex: 1; min-width: 0; display: grid; grid-template-columns: 28px minmax(0, 1fr); grid-template-areas: "box main" ". target"; column-gap: var(--s-3); row-gap: 2px; align-items: start; text-align: left; }
+.goal-wrap .goal .goal-box { grid-area: box; margin-top: 2px; }
+.goal-wrap .goal .goal-main { grid-area: main; }
+.goal-wrap .goal .goal-target { grid-area: target; margin: 0; font-size: 14px; }
+.timerbtn { flex: none; min-width: 68px; min-height: 48px; padding: 0 12px; }
+.ex-honest { margin: 0 0 var(--s-2); font-size: 15px; color: var(--text-secondary); }
+.stretch-empty { display: grid; gap: var(--s-3); }
+.stretch-empty p { margin: 0; color: var(--text-secondary); }
+/* the countdown sheet (v81) */
+.timer { display: grid; gap: var(--s-4); justify-items: center; text-align: center; }
+.timer-note { margin: 0; color: var(--text-secondary); max-width: 34ch; }
+.timer-face { position: relative; width: min(72vw, 260px); aspect-ratio: 1; }
+.timer-ring { position: absolute; inset: 0; border-radius: 50%; background: conic-gradient(var(--teal) calc(var(--p, 0) * 1%), var(--surface-sunken) 0); }
+.timer-clock { position: absolute; inset: 16px; border-radius: 50%; background: var(--surface); display: grid; place-items: center; font-family: var(--font-mono); font-size: clamp(40px, 12vw, 56px); font-weight: 500; font-variant-numeric: tabular-nums; color: var(--text-primary); box-shadow: var(--elev-sunken); }
+.timer-face.is-lead .timer-ring { background: var(--warm); }
+.timer-face.is-done .timer-ring { background: var(--success); }
+.timer-face.is-done .timer-clock { color: var(--success); }
+.timer-state { margin: 0; font-weight: 700; font-size: 19px; min-height: 28px; }
+.timer-state.is-done { color: var(--success); }
+.timer-controls { display: flex; flex-wrap: wrap; gap: var(--s-2); justify-content: center; width: 100%; }
+.timer-controls .btn { flex: 1 1 140px; }
+.timer-hint { margin: 0; font-size: 14px; color: var(--text-muted); max-width: 40ch; }
 .goal {
   display: flex; align-items: center; gap: var(--s-3); width: 100%; text-align: left;
   background: var(--grad-raised); border: 0; border-radius: var(--r-md); box-shadow: var(--elev-raised);

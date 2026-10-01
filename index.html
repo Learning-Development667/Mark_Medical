@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=80">
+  <link rel="stylesheet" href="styles.css?v=81">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -401,6 +401,18 @@
           <div id="ex-workouts-list" class="workouts"></div>
         </div>
 
+        <div id="ex-stretch-section">
+          <h2 class="section-title">Morning stretches</h2>
+          <p class="hint" id="ex-stretch-hint">Gentle and optional. Stop if anything hurts. They never count against your streak.</p>
+          <p class="ex-honest" id="ex-stretch-honest" hidden></p>
+          <div id="ex-stretch" class="goals"></div>
+          <p id="ex-stretch-not-today" class="muted ex-not-today" hidden></p>
+          <div id="ex-stretch-empty" class="stretch-empty" hidden>
+            <p>Some gentle stretches to start the day, if you would like them. Optional, and you can change or remove any of them.</p>
+            <button id="ex-stretch-add" class="btn btn-secondary btn-block" type="button">Add gentle morning stretches</button>
+          </div>
+        </div>
+
         <h2 class="section-title">Daily exercises</h2>
         <p class="hint">Check these with your team before starting, and go gently on low days.</p>
         <div id="ex-goals" class="goals"></div>
@@ -645,6 +657,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=80"></script>
+  <script type="module" src="scripts.js?v=81"></script>
 </body>
 </html>
