@@ -1193,12 +1193,19 @@ body.is-readonly .workout .btn { display: none; }
 
 /* ---------- Exercise ---------- */
 .goals { display: flex; flex-direction: column; gap: var(--s-2); }
-.goal-wrap { display: flex; gap: var(--s-2); align-items: center; }
-.goal-wrap .goal { flex: 1; min-width: 0; display: grid; grid-template-columns: 28px minmax(0, 1fr); grid-template-areas: "box main" ". target"; column-gap: var(--s-3); row-gap: 2px; align-items: start; text-align: left; }
-.goal-wrap .goal .goal-box { grid-area: box; margin-top: 2px; }
-.goal-wrap .goal .goal-main { grid-area: main; }
-.goal-wrap .goal .goal-target { grid-area: target; margin: 0; font-size: 14px; }
-.timerbtn { flex: none; min-width: 68px; min-height: 48px; padding: 0 12px; }
+/* every programme row: the tick button, then a side column of the same width (the reps or time pill, a Timer pill under it when timed) so the rows line up (v84) */
+.goal-wrap { display: grid; grid-template-columns: minmax(0, 1fr) 104px; gap: var(--s-2); align-items: stretch; }
+.goal-wrap .goal { min-width: 0; }
+.goal-side { display: grid; gap: 4px; align-content: center; }
+.goal-side .pill-target { display: block; margin: 0; min-width: 0; text-align: center; background: var(--surface-sunken); color: var(--text-secondary); border-radius: 14px; padding: 6px 8px; font-family: var(--font-mono); font-size: 13px; line-height: 1.3; white-space: normal; overflow-wrap: anywhere; box-shadow: var(--elev-sunken); }
+.timerbtn { min-height: 44px; border-radius: 999px; padding: 0 8px; font-size: 15px; }
+.exrow { display: grid; gap: var(--s-2); background: var(--grad-raised); border: 2px solid transparent; border-radius: var(--r-md); box-shadow: var(--elev-raised); padding: var(--s-3) 14px; }
+.exrow-pick { display: grid; gap: var(--s-2); width: 100%; text-align: left; background: none; border: 0; padding: 0; color: var(--text-primary); font: inherit; cursor: pointer; }
+.exrow-add { min-height: 44px; display: flex; align-items: center; gap: var(--s-2); font-weight: 600; }
+.exown { display: grid; gap: var(--s-2); margin-top: var(--s-2); }
+.exown-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--s-2); }
+.exown-row input { min-height: 48px; }
+.exdetail .exrow-add { margin-top: 2px; }
 /* the gentle exercises picker (v83) */
 .exwarn { border: 2px solid var(--warn-border); background: var(--warn-bg); color: var(--warn-ink); border-radius: var(--r-md); padding: var(--s-4); display: grid; gap: var(--s-2); font-size: 17px; }
 .exwarn p, .exwarn ul { margin: 0; }
@@ -1222,7 +1229,6 @@ body.is-readonly .workout .btn { display: none; }
 .expicker { display: grid; gap: var(--s-3); }
 .expicker .field { margin-top: var(--s-2); }
 .exlist { display: grid; gap: var(--s-2); }
-.exrow { display: grid; gap: var(--s-2); width: 100%; text-align: left; background: var(--grad-raised); border: 2px solid transparent; border-radius: var(--r-md); box-shadow: var(--elev-raised); padding: var(--s-3) 14px; color: var(--text-primary); font: inherit; cursor: pointer; }
 .exrow.is-on { border-color: var(--teal); }
 .exrow-main { display: grid; gap: 2px; min-width: 0; }
 .exrow-name { font-weight: 700; font-size: 17px; }
