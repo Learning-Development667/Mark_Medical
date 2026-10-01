@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '80';
+const APP_VERSION = '81';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -4068,7 +4068,7 @@ const CHECKIN_QUESTIONS = {
 const CHECKIN_LABELS = {
   sleep: 'Sleep', sleepHours: 'Hours slept', pain: 'Pain now', mood: 'Mood', symptoms: 'New or worse symptoms',
   lookingForward: 'Looking forward to', worstPain: 'Worst pain', sickness: 'Sickness', appetite: 'Appetite',
-  energy: 'Energy', settled: 'Settled since yesterday', goodThing: 'One good thing', noticed: 'What you noticed'
+  energy: 'Energy', settled: 'Settled since yesterday', goodThing: 'One good thing', noticed: 'What you noticed', stretches: 'Morning stretches'
 };
 /* A patient check-in, as opposed to the carer's view */
 function isPatientCheckin(e) { return e.type === 'checkin' && e.slot !== 'carer'; }
@@ -4142,15 +4142,18 @@ function sliderBlock(q, current, onChange) {
   return { nodes, value: () => (touched ? parseInt(range.value, 10) : null) };
 }
 
+/* The last morning question, only when the person has stretches in their programme: ticks go to the same place as the Exercise tab, so one record keeps everyone honest */
+const STRETCH_STEP = { key: 'stretches', kind: 'stretches', q: 'Gentle morning stretches' };
+function checkinSteps(slot) { return slot === 'morning' && !state.readOnly && stretchItems().length ? CHECKIN_QUESTIONS.morning.concat([STRETCH_STEP]) : CHECKIN_QUESTIONS[slot]; }
 function openCheckin(slot, initialDay) {
   const today = todayStr();
   let day = initialDay > today ? today : initialDay;
-  const qs = CHECKIN_QUESTIONS[slot];
-  let answers = {}, existing = null, step = 0, dir = 1;
+  const qs = checkinSteps(slot);
+  let answers = {}, existing = null, step = 0, dir = 1, stretchTicks = {};
 
   const load = () => {
     existing = findCheckin(day, slot);
-    answers = {};
+    answers = {}; stretchTicks = {};
     qs.forEach((q) => { answers[q.key] = existing && existing[q.key] !== undefined ? existing[q.key] : (q.kind === 'text' ? '' : null); });
     answers.sleepHours = existing && existing.sleepHours != null ? existing.sleepHours : null;
   };
@@ -4174,7 +4177,23 @@ function openCheckin(slot, initialDay) {
       wrap.append(h('p', { class: 'wiz-q', text: q.q }));
 
       let getVal;
-      if (q.kind === 'text') {
+      if (q.kind === 'stretches') {
+        const due = stretchItems().filter((it) => itemDue(it, day));
+        const rec = exerciseFor(day);
+        wrap.append(h('p', { class: 'wiz-hint', text: due.length ? 'Optional. Tick the ones you have done. These are the same ticks as on the Exercise tab.' : 'No stretches planned for this day.' }));
+        const rows = h('div', { class: 'goals' });
+        due.forEach((it) => {
+          const on = it.id in stretchTicks ? stretchTicks[it.id] : isItemDone(it, rec);
+          rows.append(h('button', { class: 'goal' + (on ? ' is-done' : ''), type: 'button', 'aria-pressed': on ? 'true' : 'false', onclick: async () => { stretchTicks[it.id] = !on; await toggleGoal(day, it.id); render(); } },
+            h('span', { class: 'goal-box' }, on ? icon('check') : null),
+            h('span', { class: 'goal-main' }, h('span', { class: 'goal-label', text: it.name }), it.note ? h('span', { class: 'goal-note', text: it.note }) : null),
+            h('span', { class: 'goal-target', text: itemTarget(it) })));
+        });
+        wrap.append(rows);
+        const honestLine = stretchHonesty();
+        if (honestLine) wrap.append(h('p', { class: 'ex-honest', text: honestLine }));
+        getVal = () => null;
+      } else if (q.kind === 'text') {
         const ta = h('textarea', { rows: '3', placeholder: q.ph || '' });
         ta.value = answers[q.key] || '';
         wrap.append(h('p', { class: 'wiz-hint', text: 'Optional. Skip if there is nothing to say.' }), ta, speakButton(ta) || '');
@@ -4206,8 +4225,9 @@ function openCheckin(slot, initialDay) {
       const list = h('ul', { class: 'wiz-summary' });
       qs.forEach((q, i) => {
         const v = answers[q.key];
-        const skipped = q.kind === 'text' ? !v : v == null;
-        const shown = skipped ? 'Skipped' : (q.kind === 'text' ? v : String(v) + (q.kind === 'sleep' && answers.sleepHours != null ? ' · ' + answers.sleepHours + ' h' : ''));
+        let skipped = q.kind === 'text' ? !v : v == null;
+        let shown = skipped ? 'Skipped' : (q.kind === 'text' ? v : String(v) + (q.kind === 'sleep' && answers.sleepHours != null ? ' · ' + answers.sleepHours + ' h' : ''));
+        if (q.kind === 'stretches') { const sm = stretchSummary(day); skipped = sm.done === 0; shown = sm.total ? (sm.done ? sm.done + ' of ' + sm.total + ' done' : 'None yet') : 'None planned'; }
         list.append(h('li', null, h('button', { type: 'button', onclick: () => { dir = -1; step = i; render(); } },
           h('span', { class: 'k', text: CHECKIN_LABELS[q.key] }),
           h('span', { class: 'v' + (skipped ? ' is-skipped' : (q.kind === 'text' ? '' : ' is-num')), text: shown }))));
@@ -6219,7 +6239,7 @@ function itemDue(item, day) {
 function exerciseFor(day) { return state.exercise[day] || {}; }
 /* done: every item due that day is ticked; rest: nothing due; missed: something due is not ticked */
 function dayStatus(day) {
-  const due = programmeItems().filter((it) => itemDue(it, day));
+  const due = countedItems().filter((it) => itemDue(it, day));
   if (!due.length) return 'rest';
   const rec = exerciseFor(day);
   return due.every((it) => isItemDone(it, rec)) ? 'done' : 'missed';
@@ -6258,14 +6278,153 @@ function itemFromWorkout(w) {
   return { ...base, name, kind: 'minutes', amount: Math.max(1, Math.round(w.minutes || 30)) };
 }
 
+/* ---- Morning stretches and timers (since v81) ----
+   Stretches are programme items in their own section ("stretch"), so ticks, days, notes, editing and
+   the timer all work like any other exercise. They are optional: they never make a day "missed" and
+   never break the streak. The starter set is only added when the person asks for it, after a notice. */
+const PROGRAMME_SECTIONS = [['exercise', 'Daily exercises'], ['stretch', 'Morning stretches'], ['physio', 'Physio plan']];
+const STRETCH_STARTER = [
+  { id: 'st-breath', name: 'Slow breathing', section: 'stretch', kind: 'minutes', amount: 1, note: 'Sitting or lying. In through the nose, out slowly. Let the shoulders drop.' },
+  { id: 'st-ankle', name: 'Ankle circles', section: 'stretch', kind: 'seconds', amount: 30, note: 'Sitting or lying. Slow circles one way, then the other, on each foot.' },
+  { id: 'st-wrist', name: 'Wrist and finger stretch', section: 'stretch', kind: 'seconds', amount: 30, note: 'Arm out, palm up. Gently ease the fingers back with the other hand. Both sides.' },
+  { id: 'st-shoulder', name: 'Shoulder rolls', section: 'stretch', kind: 'seconds', amount: 30, note: 'Slow circles, up, back and down. Only as far as is comfortable.' },
+  { id: 'st-hands', name: 'Hand opens and closes', section: 'stretch', kind: 'reps', amount: 10, note: 'Open the hands wide, then slowly close into a soft fist.' },
+  { id: 'st-knee', name: 'Seated knee straightening', section: 'stretch', kind: 'reps', amount: 10, note: 'On a firm chair, slowly straighten one leg, hold a moment, lower it. Each leg.' }
+];
+const STRETCH_NOTICE = 'These are general, very gentle moves, not medical advice. Check them with your physio or oncology team first, especially if cancer has reached your bones or spine, and stop if anything hurts or you feel unwell. You can change or remove any of them.';
+function stretchItems() { return programmeItems().filter((it) => it.section === 'stretch'); }
+/* The items that count towards "all done" and the streak: everything except the optional stretches */
+function countedItems() { return programmeItems().filter((it) => it.section !== 'stretch'); }
+function stretchSummary(day) {
+  const due = stretchItems().filter((it) => itemDue(it, day));
+  const rec = exerciseFor(day);
+  return { total: due.length, done: due.filter((it) => isItemDone(it, rec)).length };
+}
+/* The plain, unnagging line that keeps the person honest: how many of the last seven days had every stretch ticked */
+function stretchHonesty() {
+  const today = todayStr();
+  let counted = 0, full = 0;
+  for (let i = 0; i < 7; i++) {
+    const sm = stretchSummary(addDays(today, -i));
+    if (!sm.total) continue;
+    counted++;
+    if (sm.done === sm.total) full++;
+  }
+  if (!counted) return '';
+  if (counted === 1) return full ? 'All stretches done today.' : '';
+  return 'All stretches done on ' + full + ' of the last ' + counted + ' days.';
+}
+async function addStarterStretches() {
+  if (!(await confirmSheet('Before you start', STRETCH_NOTICE, 'Add the stretches', false))) return false;
+  const have = new Set(programmeItems().map((it) => it.id));
+  const today = todayStr();
+  const items = programmeItems().map((it) => ({ ...it })).concat(STRETCH_STARTER.filter((x) => !have.has(x.id)).map((x) => ({ ...x, since: today })));
+  try { await saveProgramme(items); toast('Added gentle morning stretches'); renderExercise(); return true; }
+  catch (e) { console.error(e); toast('Could not save'); return false; }
+}
+
+/* A countdown for anything counted in seconds or minutes: a plank for 1 minute, a stretch for 30 seconds.
+   Three seconds to get ready, then the time the person set; a beep and vibration at the end where the phone
+   allows them (an iPhone's silent switch mutes the beep), and the screen turns green either way. The clock
+   runs from an end time, not from counting ticks, so a locked or busy phone still shows the right time. */
+function timerSeconds(item) {
+  const n = Number(item.amount) || 0;
+  return item.kind === 'minutes' ? Math.round(n * 60) : item.kind === 'seconds' ? Math.round(n) : 0;
+}
+function fmtClock(sec) { sec = Math.max(0, Math.ceil(sec)); return Math.floor(sec / 60) + ':' + pad2(sec % 60); }
+function openTimerSheet(item, day) {
+  const total = timerSeconds(item);
+  const LEAD_MS = 3000;
+  let phase = 'ready', endAt = 0, remainingMs = total * 1000, lastLead = 0, wake = null, audio = null;
+  const ring = h('div', { class: 'timer-ring', 'aria-hidden': 'true' });
+  const clock = h('div', { class: 'timer-clock', role: 'timer', 'aria-label': 'Time left' });
+  const face = h('div', { class: 'timer-face' }, ring, clock);
+  const status = h('p', { class: 'timer-state', role: 'status' });
+  const controls = h('div', { class: 'timer-controls' });
+  const wrapEl = h('div', { class: 'timer' },
+    h('p', { class: 'timer-note', text: item.note || itemTarget(item) }), face, status, controls,
+    h('p', { class: 'timer-hint', text: 'Keeps the screen awake while it runs. An iPhone\'s silent switch mutes the beep, so watch for the screen turning green.' }));
+
+  const ensureAudio = () => {
+    if (!audio) { try { const AC = window.AudioContext || window.webkitAudioContext; if (AC) audio = new AC(); } catch (e) { audio = null; } }
+    try { if (audio && audio.state === 'suspended') audio.resume(); } catch (e) { /* no sound */ }
+  };
+  const beep = (freq, ms, delay) => {
+    if (!audio) return;
+    try {
+      const t = audio.currentTime + (delay || 0) / 1000;
+      const o = audio.createOscillator(), g = audio.createGain();
+      o.type = 'sine'; o.frequency.value = freq;
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.35, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + ms / 1000);
+      o.connect(g); g.connect(audio.destination); o.start(t); o.stop(t + ms / 1000 + 0.05);
+    } catch (e) { /* silent */ }
+  };
+  const holdAwake = async () => {
+    try { if (navigator.wakeLock && !wake) { wake = await navigator.wakeLock.request('screen'); wake.addEventListener('release', () => { wake = null; }); } } catch (e) { wake = null; }
+  };
+  const letGo = () => { try { if (wake) wake.release(); } catch (e) { /* fine */ } wake = null; };
+  const onVisible = () => { if (document.visibilityState === 'visible' && (phase === 'running' || phase === 'lead')) holdAwake(); };
+  document.addEventListener('visibilitychange', onVisible);
+
+  const btn = (label, cls, onclick) => h('button', { class: 'btn ' + cls, type: 'button', onclick }, label);
+  const start = () => { ensureAudio(); holdAwake(); phase = 'lead'; endAt = Date.now() + LEAD_MS; lastLead = 0; draw(); };
+  const pause = () => { remainingMs = Math.max(0, endAt - Date.now()); phase = 'paused'; letGo(); draw(); };
+  const resume = () => { ensureAudio(); holdAwake(); endAt = Date.now() + remainingMs; phase = 'running'; draw(); };
+  const again = () => { phase = 'ready'; remainingMs = total * 1000; letGo(); draw(); };
+  const finish = () => {
+    phase = 'done'; remainingMs = 0; letGo();
+    beep(880, 180, 0); beep(880, 180, 260); beep(1175, 450, 520);
+    try { if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 400]); } catch (e) { /* not on this phone */ }
+    draw();
+  };
+  const tickOff = async () => { await toggleGoal(day, item.id); closeSheet(); };
+
+  function draw() {
+    const rec = exerciseFor(day);
+    const isDone = isItemDone(item, rec);
+    let left = remainingMs, pct = 0, text = '', stateText = '';
+    if (phase === 'ready') { left = total * 1000; text = fmtClock(total); stateText = 'Ready when you are'; }
+    else if (phase === 'lead') { const l = Math.max(0, endAt - Date.now()); text = String(Math.max(1, Math.ceil(l / 1000))); stateText = 'Get ready'; }
+    else if (phase === 'running') { left = Math.max(0, endAt - Date.now()); pct = 100 * (1 - left / (total * 1000)); text = fmtClock(left / 1000); stateText = 'Go'; }
+    else if (phase === 'paused') { pct = 100 * (1 - remainingMs / (total * 1000)); text = fmtClock(remainingMs / 1000); stateText = 'Paused'; }
+    else { pct = 100; text = '0:00'; stateText = 'Time. Well done.'; }
+    ring.style.setProperty('--p', String(Math.round(pct * 10) / 10));
+    clock.textContent = text;
+    face.className = 'timer-face' + (phase === 'done' ? ' is-done' : phase === 'lead' ? ' is-lead' : '');
+    if (status.dataset.s !== stateText) { status.textContent = stateText; status.dataset.s = stateText; }
+    status.className = 'timer-state' + (phase === 'done' ? ' is-done' : '');
+    if (phase === 'ready') controls.replaceChildren(btn('Start', 'btn-primary', start));
+    else if (phase === 'lead') controls.replaceChildren(btn('Cancel', 'btn-secondary', again));
+    else if (phase === 'running') controls.replaceChildren(btn('Pause', 'btn-secondary', pause));
+    else if (phase === 'paused') controls.replaceChildren(btn('Resume', 'btn-primary', resume), btn('Start again', 'btn-secondary', again));
+    else controls.replaceChildren(isDone ? btn('Done', 'btn-primary', closeSheet) : btn('Tick it off', 'btn-primary', tickOff), btn('Again', 'btn-secondary', again));
+  }
+  const loop = setInterval(() => {
+    if (phase === 'lead') {
+      const l = Math.ceil((endAt - Date.now()) / 1000);
+      if (l !== lastLead && l > 0) { lastLead = l; beep(660, 90, 0); }
+      if (Date.now() >= endAt) { phase = 'running'; endAt = Date.now() + total * 1000; beep(988, 220, 0); }
+      draw();
+    } else if (phase === 'running') {
+      if (Date.now() >= endAt) finish(); else draw();
+    }
+  }, 200);
+  draw();
+  openSheet(item.name, wrapEl, () => { clearInterval(loop); letGo(); document.removeEventListener('visibilitychange', onVisible); try { if (audio) audio.close(); } catch (e) { /* fine */ } });
+}
+
 function goalRow(item, done, day) {
   const hp = itemHealth(item, exerciseFor(day));
-  return h('button', { class: 'goal' + (done ? ' is-done' : ''), type: 'button', 'aria-pressed': done ? 'true' : 'false', disabled: state.readOnly, onclick: () => toggleGoal(day, item.id) },
+  const btn = h('button', { class: 'goal' + (done ? ' is-done' : ''), type: 'button', 'aria-pressed': done ? 'true' : 'false', disabled: state.readOnly, onclick: () => toggleGoal(day, item.id) },
     h('span', { class: 'goal-box' }, done ? icon('check') : null),
     h('span', { class: 'goal-main' }, h('span', { class: 'goal-label', text: item.name }), item.note ? h('span', { class: 'goal-note', text: item.note }) : null,
       hp ? h('span', { class: 'goal-health', text: hp.text }) : null),
     h('span', { class: 'goal-target', text: itemTarget(item) })
   );
+  /* anything counted in seconds or minutes gets a countdown beside it; the row itself stays one plain button */
+  if (!timerSeconds(item) || state.readOnly) return btn;
+  return h('div', { class: 'goal-wrap' }, btn,
+    h('button', { class: 'btn btn-secondary timerbtn', type: 'button', 'aria-label': 'Start the ' + fmtSecondsWord(timerSeconds(item)) + ' timer for ' + item.name, onclick: () => openTimerSheet(item, day) }, 'Timer'));
 }
 
 function renderExercise() {
@@ -6314,6 +6473,13 @@ function renderExercise() {
     not.textContent = off.length ? 'Not today: ' + off.map((it) => it.name + ' (' + itemDaysText(it) + ')').join(', ') : '';
     return mine.length;
   };
+  const nSt = renderSection('stretch', 'ex-stretch', 'ex-stretch-not-today');
+  $('ex-stretch-section').hidden = nSt === 0 && state.readOnly;
+  $('ex-stretch-empty').hidden = nSt > 0 || state.readOnly;
+  $('ex-stretch-hint').hidden = nSt === 0;
+  const honest = nSt ? stretchHonesty() : '';
+  $('ex-stretch-honest').hidden = !honest;
+  $('ex-stretch-honest').textContent = honest;
   const nEx = renderSection('exercise', 'ex-goals', 'ex-not-today');
   $('ex-goals-empty').hidden = nEx > 0;
   const nPh = renderSection('physio', 'ex-physio', 'ex-physio-not-today');
@@ -6335,7 +6501,7 @@ async function toggleGoal(day, id) {
   if (item.match) off[id] = !next;
   const wasAll = allGoalsDone(day);
   const after = { ...rec, done, off };
-  const due = programmeItems().filter((it) => itemDue(it, day));
+  const due = countedItems().filter((it) => itemDue(it, day));
   const nowAll = due.length > 0 && due.every((it) => isItemDone(it, after));
   if (state.demo) {
     state.exercise[day] = { ...after, day };
@@ -6350,6 +6516,7 @@ async function toggleGoal(day, id) {
 }
 
 $('ex-steps-edit').addEventListener('click', () => openStepsSheet(state.exerciseDay));
+$('ex-stretch-add').addEventListener('click', () => addStarterStretches());
 
 /* Steps can be logged for any past day: the sheet has its own day picker, so
    yesterday's count can go in the next morning without hunting for the arrows. */
@@ -6479,10 +6646,10 @@ function openProgrammeSheet() {
   };
   function draw() {
     const rows = [];
-    for (const section of ['exercise', 'physio']) {
+    for (const [section, sectionLabel] of PROGRAMME_SECTIONS) {
       const mine = items.map((it, i) => ({ it, i })).filter((x) => x.it.section === section);
       if (!mine.length) continue;
-      rows.push(h('p', { class: 'prog-section', text: section === 'exercise' ? 'Daily exercises' : 'Physio plan' }));
+      rows.push(h('p', { class: 'prog-section', text: sectionLabel }));
       mine.forEach(({ it, i }, k) => {
         const del = h('button', { class: 'btn btn-link btn-small', type: 'button', 'aria-label': 'Remove ' + it.name }, 'Remove');
         del.addEventListener('click', () => {
@@ -6511,6 +6678,8 @@ function openProgrammeSheet() {
     h('div', { class: 'btnrow' },
       h('button', { class: 'btn btn-primary', type: 'button', onclick: () => openItemSheet({ id: newItemId(), name: '', section: 'exercise', kind: 'reps', amount: 10 }, true, () => openProgrammeSheet()) }, 'Add exercise'),
       h('button', { class: 'btn btn-secondary', type: 'button', onclick: () => openItemSheet({ id: newItemId(), name: '', section: 'physio', kind: 'sets', amount: 10, sets: 3 }, true, () => openProgrammeSheet()) }, 'Add physio exercise')),
+    h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => openItemSheet({ id: newItemId(), name: '', section: 'stretch', kind: 'seconds', amount: 30 }, true, () => openProgrammeSheet()) }, 'Add a stretch'),
+    stretchItems().length ? null : h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: async () => { await addStarterStretches(); openProgrammeSheet(); } }, 'Add gentle morning stretches'),
     explainAvailable() ? h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => importPlanPhotos() }, 'Add from a photo or PDF of the plan') : null,
     explainAvailable() ? h('p', { class: 'hint', text: 'Photograph the exercise sheet or physio plan, or choose the PDF or Word file if it was emailed, and Daybook reads it into the list for you to check. The file goes to Daybook\'s AI service and is not kept.' }) : null,
     h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => openPhysioDetailsSheet() }, (plan.from || plan.notes) ? 'Physio plan details' : 'Add physio plan details'),
@@ -6543,7 +6712,7 @@ function openItemSheet(item, isNew, after) {
   const kindRow = h('div', { class: 'chips', role: 'group', 'aria-label': 'How it is counted' });
   const dayRow = h('div', { class: 'chips', role: 'group', 'aria-label': 'Which days' });
   const chip = (label, on, onclick) => h('button', { class: 'preset' + (on ? ' is-active' : ''), type: 'button', 'aria-pressed': on ? 'true' : 'false', onclick }, label);
-  const drawSection = () => sectionRow.replaceChildren(chip('Exercise', it.section !== 'physio', () => { it.section = 'exercise'; drawSection(); }), chip('Physio', it.section === 'physio', () => { it.section = 'physio'; drawSection(); }));
+  const drawSection = () => sectionRow.replaceChildren(chip('Exercise', it.section !== 'physio' && it.section !== 'stretch', () => { it.section = 'exercise'; drawSection(); }), chip('Stretch', it.section === 'stretch', () => { it.section = 'stretch'; drawSection(); }), chip('Physio', it.section === 'physio', () => { it.section = 'physio'; drawSection(); }));
   const drawKind = () => {
     kindRow.replaceChildren(...PROGRAMME_KINDS.map((k) => chip(k.label, it.kind === k.key, () => { it.kind = k.key; drawKind(); })));
     setsField.hidden = it.kind !== 'sets';
@@ -6574,7 +6743,7 @@ function openItemSheet(item, isNew, after) {
     it.note = note.value.trim();
     if (!it.name) { toast('Give it a name'); name.focus(); return; }
     if (it.kind !== 'do' && !it.amount) { toast('How many?'); amount.focus(); return; }
-    const clean = { id: it.id, name: it.name, section: it.section === 'physio' ? 'physio' : 'exercise', kind: it.kind, amount: it.amount, days: it.days };
+    const clean = { id: it.id, name: it.name, section: it.section === 'physio' || it.section === 'stretch' ? it.section : 'exercise', kind: it.kind, amount: it.amount, days: it.days };
     if (it.sets) clean.sets = it.sets;
     if (it.kind === 'lengths') clean.pool = Math.max(1, parseInt(pool.value, 10) || 25);
     if (it.kind === 'distance') clean.dunit = it.dunit;

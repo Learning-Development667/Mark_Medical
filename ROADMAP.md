@@ -71,6 +71,8 @@ Daybook is one web app, so both stores get the same code. Android users can inst
 - Backgrounds on the data tabs. Decided against (see above).
 
 ## Done
+- v81 Morning stretches (optional, never counted against the streak, starter set behind a notice and ticked from the morning check-in) and a countdown timer on anything counted in seconds or minutes.
+- v80 Question numbers agree everywhere and close up when one is deleted. v79 Chart or table on every Trends card.
 - v79 Chart or table on every Trends card, remembered per card; the Treatment calendar spaced from the Sessions card and the measure chips in a proper grid (part of 6a).
 - v78 Sign-up and invites: nobody needs the Firebase console or the Actions tab to join or start a household. Per-household keys and limits confirmed done (item 9).
 - v77 the household helpers fixed (v76 loaded nothing after sign-in).
