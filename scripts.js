@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '85';
+const APP_VERSION = '86';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -971,6 +971,8 @@ function buildDemoFixture() {
 }
 
 function startDemoData() {
+  /* a hook for the Playwright harness, preview only: nothing here can reach Firestore */
+  window.daybookPreview = { state, addEntry, renderExercise, exerciseLogFor };
   const fixture = buildDemoFixture();
   state.medicines = SEED_MEDICINES.map((m, i) => ({ ...m, active: true, order: i + 1 }));
   state.recentFrom = addDays(todayStr(), -40);
@@ -1257,8 +1259,16 @@ function watchMeals() {
   }, (e) => console.error(e));
 }
 
+const lastExerciseWrite = new Map();   // "exId|who" -> { at, id }
 async function addEntry(data) {
   const at = data.at instanceof Date ? data.at : new Date();
+  /* safety net: the same exercise by the same person within seconds is one tap counted twice, so return the first id and write nothing */
+  const dupKey = data.type === 'exercise' ? (data.exId || data.note) + '|' + state.name : null;
+  if (dupKey) {
+    const prev = lastExerciseWrite.get(dupKey);
+    if (prev && Date.now() - prev.at < DUP_WINDOW_MS) return prev.id;
+  }
+  const remember = (id) => { if (dupKey) lastExerciseWrite.set(dupKey, { at: Date.now(), id }); return id; };
   const entry = {
     ...data,
     day: dayStr(at),
@@ -1274,11 +1284,11 @@ async function addEntry(data) {
     renderToday();
     renderMeds();
     if (!$('view-vitals').hidden) renderVitals();
-    return id;
+    return remember(id);
   }
   const ref = doc(hcol('entries'));
   setDoc(ref, entry).catch((e) => { console.error(e); toast('Could not save. It will retry when online.'); });
-  return ref.id;
+  return remember(ref.id);
 }
 
 /* Change fields on an existing entry (used when a night already has an Apple Health sleep entry) */
@@ -6398,9 +6408,33 @@ function tagPills(tags) {
   return wrap;
 }
 /* The exercises logged on a day, newest first */
+/* A second identical exercise entry (same exercise, same person) within this window is a double tap, not a second exercise */
+const DUP_WINDOW_MS = 5000;
 function exerciseLogFor(day) {
   const src = day === state.selectedDay && state.dayEntries.length ? state.dayEntries : state.recentEntries;
-  return src.filter((e) => e.type === 'exercise' && e.day === day).sort((a, b) => entryDate(b) - entryDate(a));
+  const all = src.filter((e) => e.type === 'exercise' && e.day === day).sort((a, b) => entryDate(a) - entryDate(b));
+  /* fold double taps: keep the first of a run of identical entries seconds apart, and note the strays for the clean-up */
+  const kept = [], lastBy = new Map();
+  all.forEach((e) => {
+    const key = (e.exId || e.note) + '|' + (e.addedBy || '');
+    const prev = lastBy.get(key);
+    if (prev && entryDate(e) - entryDate(prev) < DUP_WINDOW_MS) { duplicateIds.add(e.id); return; }
+    lastBy.set(key, e); kept.push(e);
+  });
+  return kept.reverse();
+}
+/* The strays exerciseLogFor() found (document ids). A family phone deletes them once, so they stop coming back from
+   Firestore on every listener update; the display fold above covers the moment until then and read-only accounts. */
+const duplicateIds = new Set();
+const duplicatesCleaned = new Set();
+function cleanDuplicateExercises() {
+  if (state.readOnly || state.viewer) return;
+  duplicateIds.forEach((id) => {
+    if (duplicatesCleaned.has(id)) return;
+    duplicatesCleaned.add(id);
+    deleteEntry(id).then(() => console.info('Removed a duplicate exercise entry', id)).catch((e) => { console.error(e); duplicatesCleaned.delete(id); });
+  });
+  duplicateIds.clear();
 }
 function exWarningBox() {
   return h('div', { class: 'exwarn', role: 'region', 'aria-label': EX_WARNING.title },
@@ -6430,7 +6464,7 @@ function openExercisePicker() {
     ticks.append(h('label', { class: 'check exfilter-check', for: 'exavoid-' + t }, box, h('span', { class: 'extag is-' + t, text: EX_TAGS[t] })));
   });
   filterBox.append(ticks, hiddenLine);
-  /* one tick box per exercise: ticked means it is in My stretches on the Exercise tab */
+  /* one tick box per exercise: ticked means it is in the Gentle exercises list on the Exercise tab */
   const list = h('div', { class: 'exlist' });
   EX_GROUPS.forEach(([k, label]) => {
     list.append(h('h3', { class: 'exgroup-title', text: label }));
@@ -6456,12 +6490,12 @@ function openExercisePicker() {
   const body = h('div', { class: 'expicker' },
     exWarningBox(),
     filterBox,
-    h('p', { class: 'hint', text: 'Tick the ones you want in My stretches. All optional. If you are new to this, the three marked Gentle start in each group are a place to begin, if your care team agrees.' }),
+    h('p', { class: 'hint', text: 'Tick the ones you want on the Exercise tab. All optional. If you are new to this, the three marked Gentle start in each group are a place to begin, if your care team agrees.' }),
     list,
     ownBox(),
     h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: closeSheet }, 'Done'));
   openSheet('Gentle exercises', body);
-  /* an exercise the list does not have (one a physio gave): a name here, then the usual sheet for how it is counted, into My stretches */
+  /* an exercise the list does not have (one a physio gave): a name here, then the usual sheet for how it is counted, into the Gentle exercises list */
   function ownBox() {
     if (state.readOnly) return null;
     const name = h('input', { type: 'text', placeholder: 'e.g. Heel slides', maxlength: '60', 'aria-label': 'Your own exercise' });
@@ -6473,14 +6507,14 @@ function openExercisePicker() {
     name.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); add.click(); } });
     return h('div', { class: 'exown' },
       h('p', { class: 'exfilter-title', text: 'Not in the list?' }),
-      h('p', { class: 'hint', text: 'Add your own, for an exercise your physio or team gave you. It goes into My stretches with its own reps or time.' }),
+      h('p', { class: 'hint', text: 'Add your own, for an exercise your physio or team gave you. It goes on the Exercise tab with its own reps or time.' }),
       h('div', { class: 'exown-row' }, name, add));
   }
 }
-const PROGRAMME_SECTIONS = [['exercise', 'Daily exercises'], ['stretch', 'My stretches'], ['physio', 'Physio plan']];
-/* Swipe a My stretches row to the left to reveal Remove (touch only; Edit programme and the picker's tick boxes are the other ways) */
+const PROGRAMME_SECTIONS = [['exercise', 'Daily exercises'], ['stretch', 'Gentle exercises'], ['physio', 'Physio plan']];
+/* Swipe a Gentle exercises row to the left to reveal Remove (touch only; Edit programme and the picker's tick boxes are the other ways) */
 function swipeToRemove(wrap, item) {
-  const behind = h('button', { class: 'swipe-remove', type: 'button', 'aria-label': 'Remove ' + item.name + ' from My stretches', onclick: async () => {
+  const behind = h('button', { class: 'swipe-remove', type: 'button', 'aria-label': 'Remove ' + item.name + ' from Gentle exercises', onclick: async () => {
     const items = programmeItems().map((it) => ({ ...it })).filter((it) => it.id !== item.id);
     try { await saveProgramme(items); renderExercise(); toast('Removed ' + item.name, { label: 'Undo', onClick: async () => { await saveProgramme(programmeItems().concat([item])); renderExercise(); } }); }
     catch (e) { console.error(e); toast('Could not save'); }
@@ -6496,7 +6530,7 @@ function swipeToRemove(wrap, item) {
 function stretchItems() { return programmeItems().filter((it) => it.section === 'stretch'); }
 /* The items that count towards "all done" today: everything except the optional stretches */
 function countedItems() { return programmeItems().filter((it) => it.section !== 'stretch'); }
-/* A library exercise as a programme item in the stretch section ("My stretches"): kind and amount drive the
+/* A library exercise as a programme item in the stretch section (the Gentle exercises list): kind and amount drive the
    timer (seconds or minutes when the target is purely a time), targetText keeps the library's own wording */
 function libToItem(ex) {
   const t = ex.target;
@@ -6510,7 +6544,7 @@ function inPlan(ex) { return programmeItems().some((it) => it.lib === ex.id); }
 async function setInPlan(ex, on) {
   const items = programmeItems().map((it) => ({ ...it })).filter((it) => it.lib !== ex.id);
   if (on) items.push(libToItem(ex));
-  try { await saveProgramme(items); toast(on ? ex.name + ' added to My stretches' : ex.name + ' removed from My stretches'); renderExercise(); return true; }
+  try { await saveProgramme(items); toast(on ? ex.name + ' added to Gentle exercises' : ex.name + ' removed from Gentle exercises'); renderExercise(); return true; }
   catch (e) { console.error(e); toast('Could not save'); return false; }
 }
 /* Everything done on a day: programme ticks plus exercises logged from the picker */
@@ -6643,6 +6677,7 @@ function renderExercise() {
   const logged = exerciseLogFor(day);
   $('ex-logged').replaceChildren(...logged.map((e) => h('div', { class: 'exlog-row' }, h('span', { class: 'exlog-time', text: fmtTime(entryDate(e)) }), h('span', { class: 'exlog-name', text: e.note }), h('span', { class: 'exlog-who', text: e.addedBy || '' }))));
   $('ex-logged').hidden = logged.length === 0;
+  cleanDuplicateExercises();
 
   /* Workouts Apple Health already recorded that day (walks, swims, anything on the watch) */
   const workouts = Array.isArray(rec.workouts) ? rec.workouts : [];
@@ -6675,7 +6710,7 @@ function renderExercise() {
     return mine.length;
   };
   const nSt = renderSection('stretch', 'ex-stretch', 'ex-stretch-not-today');
-  $('ex-stretch-section').hidden = nSt === 0;
+  $('ex-stretch-empty').hidden = nSt > 0;
   const nEx = renderSection('exercise', 'ex-goals', 'ex-not-today');
   $('ex-goals-empty').hidden = nEx > 0;
   const nPh = renderSection('physio', 'ex-physio', 'ex-physio-not-today');
@@ -6687,7 +6722,12 @@ function renderExercise() {
   renderStepsChart();
 }
 
+const goalTapAt = new Map();
 async function toggleGoal(day, id) {
+  /* a double tap would tick then untick; the second tap within 600 ms is ignored */
+  const now = Date.now();
+  if (now - (goalTapAt.get(id) || 0) < 600) return;
+  goalTapAt.set(id, now);
   const rec = exerciseFor(day);
   const item = programmeItems().find((it) => it.id === id) || { id };
   const next = !isItemDone(item, rec);
