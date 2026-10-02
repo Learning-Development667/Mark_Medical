@@ -12,7 +12,7 @@
    Firestore is written through its REST API with a Firebase service account, signed with
    WebCrypto. No Firebase SDK, no build step, nothing to install. */
 
-const ALLOWED_ORIGINS = ['https://learning-development667.github.io'];
+const ALLOWED_ORIGINS = ['https://app.mymedicaldaybook.co.uk', 'https://learning-development667.github.io'];
 
 export default {
   async fetch(request, env) {
@@ -312,8 +312,8 @@ function b64url(bytes) {
 /* Medicine reminders: push notifications at the times set in the app    */
 /* ------------------------------------------------------------------ */
 
-const APP_ORIGIN = 'https://learning-development667.github.io';
-const appUrl = (tab) => APP_ORIGIN + '/Mark_Medical/' + (tab ? '?tab=' + tab : '');
+const APP_ORIGIN = 'https://app.mymedicaldaybook.co.uk';
+const appUrl = (tab) => APP_ORIGIN + '/' + (tab ? '?tab=' + tab : '');
 const TZ = 'Europe/London';
 const REMINDER_WINDOW_MIN = 20;   // a time is "due" for this long after it (cron runs every five minutes)
 const NUDGE_AFTER_MIN = 30;       // one more notification if still not logged this long after the time
@@ -434,7 +434,7 @@ async function vapidHeader(env, endpoint) {
   const pub = b64url(concat(new Uint8Array([4]), b64urlDecode(jwk.x), b64urlDecode(jwk.y)));
   const key = await crypto.subtle.importKey('jwk', jwk, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
   const enc = (o) => b64url(new TextEncoder().encode(JSON.stringify(o)));
-  const unsigned = enc({ typ: 'JWT', alg: 'ES256' }) + '.' + enc({ aud: new URL(endpoint).origin, exp: Math.floor(Date.now() / 1000) + 12 * 3600, sub: APP_ORIGIN + '/Mark_Medical/' });
+  const unsigned = enc({ typ: 'JWT', alg: 'ES256' }) + '.' + enc({ aud: new URL(endpoint).origin, exp: Math.floor(Date.now() / 1000) + 12 * 3600, sub: APP_ORIGIN + '/' });
   const sig = new Uint8Array(await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, key, new TextEncoder().encode(unsigned)));
   return `vapid t=${unsigned}.${b64url(sig)}, k=${pub}`;
 }

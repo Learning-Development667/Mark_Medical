@@ -1,7 +1,7 @@
 # Daybook
 
-Private, shared health tracker for Mark and Shelley. Hosted on GitHub Pages from `main`, root.
-Live: https://learning-development667.github.io/Mark_Medical/
+Private, shared health tracker for Mark and Shelley. Hosted on GitHub Pages from `main`, root, at the custom domain in `CNAME`.
+Live: https://app.mymedicaldaybook.co.uk/ (since v91, 2 October 2026; the old address https://learning-development667.github.io/Mark_Medical/ redirects there)
 
 The full name is **My Medical Daybook** (since v89, Mark's decision of 1 October 2026 after a day of name screening found Daybook on its own taken by a journal app and every short health word crowded); inside the app it is simply **Daybook**, because once you are in, it is obviously yours. Named Daybook since v48 (it was Care Log until then; the repository, the Pages path and older notes below keep the old name). Strapline, on the sign-in screen and for any store listing: "Your companion between appointments."
 - The full name appears only on the cover: the opener (`.opener-pre` "My Medical" stacked above the big `.opener-brand` "Daybook", and its aria-label), the four sign-in screens (`#signin`, `#signup`, `#nohousehold`, `#noconfig`: `.brand-pre` above the brand in the card), the static `<title>` and the bare `setBrand()` title, `manifest.json` `name` (the store listing), `README.md`, `LICENSE`, and the pitch and user guide when they are written. It is never written on one line in the app's own type; it is always "My Medical" small and tracked over "Daybook" large, so it fits a 320px card.
@@ -25,7 +25,8 @@ Speech to text (since v48): `speakButton(textarea)` adds a big "Tap to speak" bu
 ## Branch and hosting
 - All work is committed directly to `main`. No feature branches, no pull requests.
 - Scope (Mark, 1 October 2026): only the Learning-Development667 repositories. Never read, write or search Innovation-mag (Mark's work organisation) unless Mark expressly gives permission in that conversation. Nothing in Daybook needs it.
-- GitHub Pages path is case-sensitive: `/Mark_Medical/`. `manifest.json` start_url and scope are `/Mark_Medical/`. `sw.js` is registered with scope `/Mark_Medical/`. All asset paths are relative.
+- Domains (bought by Mark on Cloudflare Registrar, 2 October 2026): `mymedicaldaybook.co.uk` (the main one; the website, the pitch, goes at its root) and `mymedicaldaybook.com` (points at the .co.uk). The app is `app.mymedicaldaybook.co.uk`: the `CNAME` file in the repository root sets it as the GitHub Pages custom domain, and a DNS-only CNAME record `app` to `learning-development667.github.io` in the Cloudflare zone points it at Pages. Written with capitals wherever people read it (MyMedicalDaybook.co.uk); a browser does not care.
+- The app is served at the root of its own host since v91, so `manifest.json` start_url and scope are `/` and `sw.js` is registered with scope `/` (derived from the page URL, so a local server works too). Until v91 the path was `/Mark_Medical/` on the GitHub address, which GitHub now redirects. All asset paths are relative. The bridge's `ALLOWED_ORIGINS` carries the new origin first and the old GitHub one still, and `APP_ORIGIN` (notification taps, invite links, the VAPID contact) is the new one. The move cost a one-time reinstall of the Home Screen app and reminders switched on again on each phone (push subscriptions belong to the origin; the bridge deletes the dead ones on its next 404 or 410).
 
 ## Stack
 - Vanilla HTML, CSS and JS. No frameworks, no build step.

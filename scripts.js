@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '90';
+const APP_VERSION = '91';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -7262,7 +7262,7 @@ function checkDayRollover() {
 setInterval(checkDayRollover, 60 * 1000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) checkDayRollover(); });
 
-/* Service worker: registered with the GitHub Pages scope /Mark_Medical/ (derived from the page URL so it also works locally) */
+/* Service worker: registered with the app's root scope (derived from the page URL, so it is / on app.mymedicaldaybook.co.uk and also works locally) */
 if ('serviceWorker' in navigator) {
   const scope = new URL('./', location.href).pathname;
   navigator.serviceWorker.register('sw.js', { scope }).catch((e) => console.warn('SW registration failed', e));
