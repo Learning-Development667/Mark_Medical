@@ -1155,6 +1155,12 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 .placecard { padding: var(--s-3) var(--s-4); margin-bottom: var(--s-3); }
 .placecard .place-seg { display: grid; grid-template-columns: 1fr 1fr; }
 .placecard .hint, .placecard .check { margin: var(--s-2) 0 0; }
+/* The entry view: one reading per line, label then value */
+.readings { display: grid; grid-template-columns: auto 1fr; gap: var(--s-2) var(--s-4); margin: 0 0 var(--s-3); align-items: baseline; }
+.readings dt { color: var(--text-secondary); }
+.readings dd { margin: 0; font-family: var(--font-mono, 'DM Mono', monospace); font-size: 20px; font-weight: 500; }
+.readings dd.lvl-amber { color: var(--warning); }
+.readings dd.lvl-red { color: var(--danger); }
 .pill-hosp.med-hosp { display: inline-block; margin: var(--s-1) 0; }
 .pill-hosp { background: var(--teal-light); color: var(--teal); margin-left: var(--s-2); vertical-align: middle; }
 .entry.type-med.is-hospital { --cat: var(--teal); }
