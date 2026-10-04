@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '96';
+const APP_VERSION = '97';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -1010,6 +1010,7 @@ function buildDemoFixture() {
     e(-1, '08:30', 'Mark', { type: 'bowel', none: false, bristol: 4 }),
     e(0, '07:50', 'Mark', { type: 'bowel', none: false, bristol: 5, note: 'Better than yesterday' }),
     e(-2, '11:20', 'Mark', { type: 'symptom', what: 'Sickness', value: 6, note: 'Queasy after the tablets' }),
+    e(-1, '10:30', 'Mark', { type: 'med', medId: null, medName: 'Sodium chloride 0.9%', dose: '1000 ml', route: 'drip', hospital: true, note: 'Over 4 hours' }),
     e(-1, '20:10', 'Mark', { type: 'symptom', what: 'Mouth', value: 3, note: 'Sore on the left' }),
     e(0, '11:40', 'Mark', { type: 'pain', value: 4 }),
     /* Three weekly cycles (sessions on -17, -10 and -3): energy and appetite dip on days 1 and 2, sickness peaks, all back by day 4 or 5 */
@@ -1438,6 +1439,7 @@ async function updateEntry(id, data) {
     sortEntries(state.recentEntries);
     state.dayEntries = state.recentEntries.filter((x) => x.day === state.selectedDay);
     renderToday();
+    renderMeds();
     if (!$('view-vitals').hidden) renderVitals();
     return;
   }
@@ -1667,7 +1669,7 @@ function renderToday() {
 
 function entryTitle(e) {
   switch (e.type) {
-    case 'med': return [h('span', { text: e.medName || 'Medicine' })];
+    case 'med': return [h('span', { text: e.medName || 'Medicine' }), e.hospital ? h('span', { class: 'pill pill-hosp', text: 'Given in hospital' }) : null];
     case 'temp': return [h('span', { class: 'val ' + tempClass(e.value), text: fmtTemp(e.value) })];
     case 'drink': return [h('span', { text: e.note || 'Drink' }), e.value ? h('span', { class: 'val', text: '  ' + e.value + ' ml' }) : null];
     case 'food': return [h('span', { text: e.note || 'Food' })];
@@ -1693,6 +1695,7 @@ function entryTitle(e) {
 function entrySub(e) {
   const bits = [];
   if (e.type === 'med' && e.dose) bits.push(e.dose);
+  if (e.type === 'med' && e.hospital && e.route) bits.push(ROUTE_WORDS[e.route] || e.route);
   if (e.type === 'med' && e.note) bits.push(e.note);
   if (e.type === 'temp' && e.note) bits.push(e.note);
   if (e.type === 'food') { const q = quantityText(e); if (q) bits.push(q); else if (e.amount) bits.push(e.amount); }
@@ -1727,7 +1730,7 @@ function sleepStages(e) {
 
 function renderEntry(e) {
   const d = entryDate(e);
-  const cls = 'entry type-' + e.type + (e.type === 'temp' ? ' ' + tempClass(e.value) : '');
+  const cls = 'entry type-' + e.type + (e.type === 'temp' ? ' ' + tempClass(e.value) : '') + (e.hospital ? ' is-hospital' : '');
   /* a check-in is the same summary card as on Today: open it to read every answer, Edit to change them */
   if (e.type === 'checkin') {
     return h('li', { class: cls + ' has-card' },
@@ -1750,11 +1753,11 @@ const EDITABLE_ENTRY_TYPES = ['food', 'drink', 'weight', 'note', 'question', 'bo
 
 function entryOptions(e) {
   const d = entryDate(e);
-  const canEdit = EDITABLE_ENTRY_TYPES.includes(e.type);
+  const canEdit = EDITABLE_ENTRY_TYPES.includes(e.type) || (e.type === 'med' && e.hospital);
   const body = h('div', null,
     h('p', null, h('strong', null, ...entryTitle(e).map((n) => n.cloneNode(true)))),
     h('p', { class: 'muted', text: `${fmtDayLong(e.day)} at ${fmtTime(d)}. ${entrySub(e)}` }),
-    canEdit ? h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => openAdd(e.type, e) }, 'Edit') : null,
+    canEdit ? h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => (e.type === 'med' ? openHospitalDose(e) : openAdd(e.type, e)) }, 'Edit') : null,
     e.type === 'checkin' ? h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => { closeSheet(); openCheckin(e.slot, e.day); } }, 'Edit this check-in') : null,
     e.type === 'question' && !state.readOnly ? h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => { closeSheet(); openAnswerSheet(e); } }, 'Record or write the answer') : null,
     e.type === 'question' ? h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: async () => {
@@ -1827,6 +1830,8 @@ function openDoseSheet() {
     sched.length ? h('p', { class: 'fieldlabel', text: 'Scheduled' }) : null,
     sched.length ? h('div', { class: 'doserows' }, ...sched.map((m) => { const n = countMedOnDay(m.id, today); return row(m, m.perDay ? { level: n >= m.perDay ? 'green' : 'teal', text: n + ' of ' + m.perDay + ' today' } : null); })) : null,
     !prn.length && !sched.length ? h('p', { class: 'empty', 'data-art': 'pill', text: 'No medicines set up yet. Add them on the Meds tab.' }) : null,
+    h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => openHospitalDose(null) }, 'Given in hospital'),
+    h('p', { class: 'hint', text: 'For a drip, an injection or anything the hospital gave that is not on your list.' }),
     h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Cancel')
   );
   openSheet('Log a dose', body);
@@ -4286,6 +4291,9 @@ function summaryRows(entries, from, to) {
   });
   if (prn.length) push(hitAny ? 'amber' : 'teal', 'When-needed medicines', `When-needed medicines: ${prn.join('; ')}.`);
 
+  const hosp = entries.filter((e) => e.type === 'med' && e.hospital).sort((a, b) => entryDate(a) - entryDate(b));
+  if (hosp.length) push('teal', 'Given in hospital', 'Given in hospital: ' + hosp.map((e) => [e.medName, e.dose, (ROUTE_WORDS[e.route] || '').toLowerCase()].filter(Boolean).join(' ') + ' on ' + fmtDayShort(e.day)).join('; ') + '.');
+
   return rows.sort((a, b) => LEVEL_RANK[a.level] - LEVEL_RANK[b.level]);
 }
 
@@ -4813,6 +4821,7 @@ function renderMeds() {
   if (!sched.length) $('meds-scheduled').append(h('p', { class: 'empty', 'data-art': 'pill', text: 'No scheduled medicines.' }));
   $('meds-prn').replaceChildren(...prn.map((m) => medCard(m, day)));
   if (!prn.length) $('meds-prn').append(h('p', { class: 'empty', 'data-art': 'pill', text: 'No when-needed medicines.' }));
+  renderHospitalDoses();
 }
 
 function prnStatus(m) {
@@ -4919,6 +4928,7 @@ function logMedAtTime(m) {
 
 /* Manage medicines */
 $('meds-manage').addEventListener('click', openManageMeds);
+$('meds-hospital-add').addEventListener('click', () => openHospitalDose(null));
 
 /* A medicine taken with food: the box in the editor, or, for medicines saved before it existed,
    "meal" in the how-and-when text (Creon's "With each meal") */
@@ -5077,6 +5087,102 @@ $('settings-private').addEventListener('change', async (ev) => {
   } catch (e) { console.error(e); ev.target.checked = !on; toast('Could not change this setting'); }
 });
 
+/* Given in hospital (since v97): a drip, an injection or anything the hospital gave that is not on the
+   medicines list, logged as an ordinary med entry with no medId, marked hospital: true and a route, so it
+   shows on the timeline and the Meds tab with a "Given in hospital" pill and in Notes for the team, and
+   never counts towards a listed medicine's doses. Read it from a photo fills the boxes through the bridge. */
+const ROUTE_WORDS = { drip: 'Drip (IV)', injection: 'Injection', mouth: 'By mouth', skin: 'On the skin', inhaled: 'Inhaled', other: 'Other' };
+function openHospitalDose(edit, prefill) {
+  const p = prefill || {};
+  const day = edit ? edit.day : state.selectedDay;
+  const name = h('input', { type: 'text', value: (edit && edit.medName) || p.name || '', autocomplete: 'off' });
+  const amount = h('input', { type: 'text', value: (edit && edit.dose) || p.amount || '', placeholder: 'e.g. 1000 ml', autocomplete: 'off' });
+  const route = h('input', { type: 'hidden', value: (edit && edit.route) || p.route || 'drip' });
+  const routes = presets(['drip', 'injection', 'mouth', 'other'].map((k) => ({ value: k, label: ROUTE_WORDS[k] })), route, route.value);
+  routes.setAttribute('role', 'group'); routes.setAttribute('aria-label', 'How it was given');
+  const dateIn = h('input', { type: 'date', value: day, max: todayStr() });
+  const time = timeInput(day);
+  if (edit) time.value = fmtTime(entryDate(edit));
+  const note = h('textarea', { rows: '2', placeholder: 'e.g. over 4 hours, for dehydration (optional)' });
+  note.value = (edit && edit.note) || p.note || '';
+  const alsoList = h('input', { type: 'checkbox' });
+  const body = h('div', null,
+    explainAvailable() && !edit ? h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => readMedicinePhoto((data) => openHospitalDose(null, data), () => openHospitalDose(null, p)) }, 'Read it from a photo') : null,
+    explainAvailable() && !edit ? h('p', { class: 'hint', text: 'A photo of the bag, box or label. The details fill in below for you to check.' }) : null,
+    field('What was given', name), field('Amount', amount),
+    h('p', { class: 'fieldlabel', text: 'How it was given' }), routes,
+    h('div', { class: 'field-row' }, field('Date', dateIn), field('Time', time)),
+    field('Note', note), speakButton(note) || '',
+    edit ? null : h('label', { class: 'check' }, alsoList, h('span', { text: 'Also add it to my medicines list, to keep taking at home' })),
+    h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
+      if (!name.value.trim()) { toast('Please say what was given'); name.focus(); return; }
+      if (!dateIn.value || dateIn.value > todayStr()) { toast('Please choose a date up to today'); return; }
+      const data = { type: 'med', medId: null, medName: name.value.trim(), dose: amount.value.trim(), route: route.value, hospital: true, note: note.value.trim() };
+      const at = atFromInputs(dateIn.value, time.value);
+      closeSheet();
+      if (edit) {
+        try { await updateEntry(edit.id, { ...data, at }); toast('Updated'); } catch (e) { console.error(e); toast('Could not save'); }
+        return;
+      }
+      const id = await addEntry({ ...data, at });
+      toast(data.medName + ' logged as given in hospital', { label: 'Undo', onClick: () => deleteEntry(id) });
+      if (alsoList.checked) openEditMed(null, { name: data.medName, dose: data.dose, how: p.how || '', purpose: p.purpose || '', whenNeeded: p.whenNeeded, perDay: p.perDay, maxPerDay: p.maxPerDay, minGapHours: p.minGapHours });
+    } }, edit ? 'Save changes' : 'Save'),
+    h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Cancel'));
+  openSheet('Given in hospital', body);
+}
+
+/* A photo of a bag, box, bottle or pharmacy label, read by Daybook's AI service into
+   { name, amount, route, how, purpose, whenNeeded, perDay, maxPerDay, minGapHours }. Nothing is saved
+   until the person checks the filled-in sheet and taps Save. */
+function readMedicinePhoto(onRead, onCancel) {
+  const input = h('input', { type: 'file', accept: 'image/*', style: 'display:none' });
+  document.body.append(input);
+  input.addEventListener('change', async () => {
+    const files = Array.from(input.files || []);
+    input.remove();
+    if (!files.length) return;
+    const status = h('p', { class: 'hint', role: 'status', text: 'Reading the label, about half a minute' });
+    openSheet('Reading the label', h('div', null, status, h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => { closeSheet(); onCancel(); } }, 'Cancel')));
+    try {
+      const read = await processFiles(files.slice(0, 1), (label) => { status.textContent = label; });
+      status.textContent = 'Reading the label, about half a minute';
+      const reply = await bridgeExplain({ kind: 'medicine', pages: read.pages.slice(0, 2).map((pg) => pg.data) });
+      const data = parseMedReply(reply.text);
+      if (!data.name) { toast('Could not read a medicine name in that photo. Fill it in by hand.'); onCancel(); return; }
+      onRead(data);
+    } catch (e) { console.warn(e); toast(e.message || 'Could not read the photo'); onCancel(); }
+  });
+  input.click();
+}
+function parseMedReply(text) {
+  let t = String(text || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  const a = t.indexOf('{'), b = t.lastIndexOf('}');
+  if (a >= 0 && b > a) t = t.slice(a, b + 1);
+  let d = {};
+  try { d = JSON.parse(t); } catch (e) { d = {}; }
+  const str = (v, n) => (v == null ? '' : String(v).trim().slice(0, n));
+  const num = (v) => { const x = parseFloat(v); return isFinite(x) && x > 0 ? x : null; };
+  return {
+    name: str(d.name, 80), amount: str(d.amount, 40), how: str(d.how, 160), purpose: str(d.purpose, 80),
+    route: ROUTE_WORDS[d.route] ? d.route : null, whenNeeded: d.whenNeeded === true,
+    perDay: num(d.perDay), maxPerDay: num(d.maxPerDay), minGapHours: num(d.minGapHours)
+  };
+}
+
+/* The Meds tab's Given in hospital list for the day on screen */
+function renderHospitalDoses() {
+  const box = $('meds-hospital');
+  if (!box) return;
+  const day = state.selectedDay;
+  const src = day >= (state.recentFrom || '') ? state.recentEntries : state.dayEntries;
+  const list = src.filter((e) => e.type === 'med' && e.hospital && e.day === day).sort((a, b) => entryDate(a) - entryDate(b));
+  box.replaceChildren(...list.map((e) => h('div', { class: 'card hosprow' },
+    h('p', { class: 'hosprow-name' }, h('span', { text: e.medName || 'Medicine' }), h('span', { class: 'pill pill-hosp', text: 'Given in hospital' })),
+    h('p', { class: 'muted', text: [e.dose, ROUTE_WORDS[e.route] || e.route, fmtTime(entryDate(e)), e.note].filter(Boolean).join(' \u00b7 ') }))));
+  if (!list.length) box.append(h('p', { class: 'muted', text: day === todayStr() ? 'Nothing logged as given in hospital today.' : 'Nothing logged as given in hospital this day.' }));
+}
+
 function openManageMeds() {
   const list = h('div', { class: 'medlist' });
   state.medicines.forEach((m) => {
@@ -5094,9 +5200,11 @@ function openManageMeds() {
   openSheet('Manage medicines', body);
 }
 
-function openEditMed(m) {
+function openEditMed(m, prefill) {
   const isNew = !m;
-  m = m || { name: '', dose: '', how: '', purpose: '', kind: 'scheduled', perDay: 1, active: true };
+  const pf = prefill || {};
+  m = m || { name: pf.name || '', dose: pf.amount || pf.dose || '', how: pf.how || '', purpose: pf.purpose || '',
+    kind: pf.whenNeeded ? 'prn' : 'scheduled', perDay: pf.perDay || 1, maxPerDay: pf.maxPerDay || null, minGapHours: pf.minGapHours || null, active: true };
   const name = h('input', { type: 'text', value: m.name, required: true });
   const dose = h('input', { type: 'text', value: m.dose || '' });
   const how = h('input', { type: 'text', value: m.how || '' });
@@ -5113,7 +5221,7 @@ function openEditMed(m) {
   /* Reminder times (a push notification at each, from the bridge) and the with-meals prompt */
   const times = (m.times || []).slice().sort();
   const timeChips = h('div', { class: 'presets timechips' });
-  const timeInputEl = h('input', { type: 'time' });
+  const timeInputEl = h('input', { type: 'time', 'aria-label': 'Reminder time to add' });
   const drawTimes = () => timeChips.replaceChildren(...times.map((t) => h('button', { class: 'preset is-active', type: 'button', 'aria-label': 'Remove ' + t, onclick: () => { times.splice(times.indexOf(t), 1); drawTimes(); } }, t + ' \u00d7')),
     ...(times.length ? [] : [h('span', { class: 'hint', text: 'No reminders yet' })]));
   drawTimes();
@@ -5132,6 +5240,8 @@ function openEditMed(m) {
   sync();
 
   const body = h('div', null,
+    isNew && explainAvailable() ? h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => readMedicinePhoto((data) => openEditMed(null, data), () => openEditMed(null, pf)) }, 'Read it from a photo') : null,
+    isNew && explainAvailable() ? h('p', { class: 'hint', text: 'A photo of the box or the pharmacy label. The details fill in below for you to check before adding.' }) : null,
     field('Name', name), field('Dose', dose), field('How and when', how), field('What it is for', purpose),
     field('Type', kind), schedFields, prnFields,
     isNew ? null : h('label', { class: 'check' }, active, h('span', { text: 'Currently in use' })),
@@ -5179,9 +5289,9 @@ function openEditMed(m) {
 
 $('vitals-log').addEventListener('click', () => openAdd('vitals'));
 
-document.querySelectorAll('#view-vitals .seg').forEach((b) => b.addEventListener('click', () => {
+document.querySelectorAll('#view-vitals .seg[data-range]').forEach((b) => b.addEventListener('click', () => {
   state.trendRange = parseInt(b.dataset.range, 10);
-  document.querySelectorAll('#view-vitals .seg').forEach((x) => x.classList.toggle('is-active', x === b));
+  document.querySelectorAll('#view-vitals .seg[data-range]').forEach((x) => x.classList.toggle('is-active', x === b));
   renderVitals();
 }));
 
