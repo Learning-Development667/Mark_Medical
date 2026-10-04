@@ -59,7 +59,8 @@ export default {
       }
       return withCors(request, json({ error: 'Not found' }, 404));
     } catch (e) {
-      return withCors(request, json({ error: String(e && e.message || e) }, 500));
+      console.error('bridge', e && e.message);
+      return withCors(request, json({ error: String(e && e.message || e), message: 'Daybook\'s bridge hit a problem: ' + String(e && e.message || e).slice(0, 160) }, 500));
     }
   },
   /* Cron (wrangler.toml, every five minutes): medicine reminders as push notifications */
@@ -498,7 +499,7 @@ const nowTs = () => ({ timestampValue: new Date().toISOString() });
    and calls the Messages API over plain fetch: no SDK, no dependency, the key never leaves
    here. Nothing about the letter is stored; the reply goes straight back to the phone. */
 
-const EXPLAIN_MODEL = 'claude-opus-5';
+const EXPLAIN_MODEL = 'claude-opus-5-5';
 const EXPLAIN_MAX_TOKENS = 4000;             // a letter's explanation or a question list; also the cost cap per call
 const EXPLAIN_LIMIT_REAL = 40;               // calls a day per household on the real project
 const EXPLAIN_LIMIT_DEMO = 12;               // calls a day from the shared demo (its guest sign-in is public)
@@ -701,7 +702,14 @@ async function handleExplain(request, env) {
     : kind === 'programme' ? 'The exercise or physiotherapy plan follows, as page photos or as text.'
     : kind === 'medicine' ? 'A photo of a medicine follows.' : 'Care notes from Daybook.';
   content.push({ type: 'text', text: head + (text.trim() ? '\n\n' + text : '\n\n(The document is in the attached page photos.)') });
-  const reply = await askClaude(env, EXPLAIN_SYSTEM[kind], content);
+  let reply;
+  try { reply = await askClaude(env, EXPLAIN_SYSTEM[kind], content); }
+  catch (e) {
+    /* Say what actually went wrong, and give the day's count back, since nothing was explained */
+    console.error('explain', e && e.message);
+    await fs.merge(hp(hid, 'bridge/explainLog'), demo ? { demo: { integerValue: String(used) } } : { real: { integerValue: String(used) } }).catch(() => {});
+    return json({ error: 'ai', status: e && e.status || 0, message: aiErrorMessage(e && e.status, e && (e.apiMessage || e.message)) }, 502);
+  }
   if (reply.refused) return json({ error: 'refused', message: 'The AI service declined to explain this one. Try Send to my AI app instead.' }, 422);
   /* Usage for Mark's own accounting (tokens only, never the text) */
   await fs.merge(hp(hid, 'bridge/explainLog'), { tokensIn: { integerValue: String(n('tokensIn') + reply.usage.input) }, tokensOut: { integerValue: String(n('tokensOut') + reply.usage.output) } }).catch(() => {});
@@ -716,16 +724,38 @@ async function askClaude(env, system, content) {
   let r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { ...headers, 'anthropic-beta': 'server-side-fallback-2026-07-01' }, body: JSON.stringify({ ...body, fallbacks: 'default' }) });
   if (r.status === 400) {
     const errText = await r.text();
-    if (!/fallback/i.test(errText)) throw new Error('Claude API 400: ' + errText.slice(0, 300));
+    if (!/fallback/i.test(errText)) throw claudeError(400, errText);
     r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers, body: JSON.stringify(body) }); // an account without the fallback beta
   }
-  if (!r.ok) throw new Error('Claude API ' + r.status + ': ' + (await r.text()).slice(0, 300));
+  if (!r.ok) throw claudeError(r.status, await r.text());
   const data = await r.json();
   const text = (data.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
   return {
     text, model: data.model, refused: data.stop_reason === 'refusal' || !text, cut: data.stop_reason === 'max_tokens',
     usage: { input: Number(data.usage && data.usage.input_tokens || 0), output: Number(data.usage && data.usage.output_tokens || 0) }
   };
+}
+
+function claudeError(status, raw) {
+  let apiMessage = '';
+  try { apiMessage = (JSON.parse(raw).error || {}).message || ''; } catch (e) { apiMessage = String(raw || '').slice(0, 200); }
+  const err = new Error('Claude API ' + status + ': ' + String(raw || '').slice(0, 300));
+  err.status = status; err.apiMessage = apiMessage;
+  return err;
+}
+
+/* The AI service's refusals in words a person can act on (the raw reason goes to the worker's log) */
+function aiErrorMessage(status, apiMessage) {
+  const why = String(apiMessage || '');
+  if (status === 401) return 'The AI key on the bridge was not accepted. Make a new key in the Anthropic Console and save it again as the ANTHROPIC_API_KEY secret.';
+  if (/credit balance/i.test(why)) return 'The AI account has no credit left. Add credit in the Anthropic Console under Billing, then try again.';
+  if (status === 403) return 'The AI key is not allowed to do this. Check the key in the Anthropic Console.';
+  if (status === 404) return 'The AI model Daybook asks for is not available on this account.';
+  if (status === 413 || /too large|too long/i.test(why)) return 'That was too large to send. Try a closer photo of just the label.';
+  if (status === 429) return 'The AI account has reached its limit for now. Try again in a minute.';
+  if (status >= 500) return 'The AI service is busy just now. Try again in a minute.';
+  if (!status) return 'The bridge could not reach the AI service. Try again in a moment.';
+  return 'The AI service turned this down (' + (why.slice(0, 140) || 'error ' + status) + ').';
 }
 
 /* Firebase ID token check: RS256 against Google's published keys, the project as audience */
@@ -760,7 +790,7 @@ async function googleKey(kid, fetchFn) {
 }
 
 /* For the test harness only (scratchpad): nothing in the app or the workflow uses these */
-export const _test = { verifyFirebaseToken, askClaude, EXPLAIN_SYSTEM, distanceKm, payloadFor, sha256Hex, hp, stretchNudgeDue, stretchTickedOn };
+export const _test = { verifyFirebaseToken, askClaude, aiErrorMessage, EXPLAIN_SYSTEM, distanceKm, payloadFor, sha256Hex, hp, stretchNudgeDue, stretchTickedOn };
 
 /* ------------------------------------------------------------------ */
 /* Plumbing                                                             */
