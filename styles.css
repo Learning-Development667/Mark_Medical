@@ -1147,9 +1147,11 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 .doserow { justify-content: space-between; }
 .doserow .pill { flex: none; }
 
-/* Settings > Units (since v95) */
-#settings-units .segmented { margin-bottom: var(--s-4); }
-#settings-units .fieldlabel { margin-top: 0; }
+/* The kg | st and lb switch (since v96): on the Weight chart and beside the weight box in Vitals */
+.unitswitch-row { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); flex-wrap: wrap; margin: var(--s-2) 0 var(--s-3); }
+.unitswitch-row .fieldlabel { margin: 0; }
+.unitswitch { flex: 0 0 auto; }
+.unitswitch .seg { flex: 0 0 auto; padding: 0 var(--s-4); white-space: nowrap; }
 
 /* Privacy, terms and About (since v90), in the sheet */
 .legal h3 { font-family: var(--font-head); font-size: var(--fs-lg); letter-spacing: 0.04em; color: var(--text-primary); margin: var(--s-5) 0 var(--s-1); }
