@@ -40,16 +40,22 @@ Everything the app needs to do before the look changes, so nothing is restyled t
 16. **The website at mymedicaldaybook.co.uk.** Claude builds a few pages in the chosen look: what Daybook is, who it is for, screenshots, the privacy page and terms, a support page, and how to install it (the web app now, the stores later). Mark reviews. The stores need its privacy and support addresses. Done when the site is live and the app links to it.
 
 ## Stage 5: App stores
-17. **Join the Apple Developer Programme.** Mark: enrol as the company (see Paperwork), about £79 a year; accept the agreements; make an App Store Connect API key and save it as a repository secret. Done when GitHub can upload a build.
+17. **Join the Apple Developer Programme.** Mark: enrol as Mark 1 Apps Ltd (see Paperwork), about £79 a year; accept the agreements; make an App Store Connect API key and save it as a repository secret. Done when GitHub can upload a build.
 18. **Build the iPhone and Android apps, with Siri.** Claude: a thin iPhone app around the same web code with Apple Health read directly and Siri actions ("Log a dose", "Read this medicine", "Summarise this letter"); an Android wrapper with Health Connect. Built on GitHub, no Mac needed. Done when "Hey Siri, log a dose" works on Mark's phone.
 19. **TestFlight, then both stores.** Mark and Shelley first, then a small group, then submission with a demo login for the reviewers. Google Play is a one-off $25 account. Done when both stores list Daybook.
 20. **Trade mark for "My Medical Daybook".** Mark: an IPO search in classes 9, 42 and 44, then about £170 for one class. Done when the application is in.
 
-## Paperwork, alongside (Mark, start any time)
-Mostly waiting, so it can run while Stages 1 to 4 are built. All of it must be done before action 17.
-- **A limited company.** Apple's guideline 5.1.1(ix) says apps that handle health information "should be submitted by a legal entity that provides these services, and not by an individual developer". Reviewers apply it to health apps often enough that an individual account risks rejection. A sole trader does not count; a limited company does (Mark 1 Apps Ltd, about £50 at Companies House, a day or two online). The other route is a charity, hospice or NHS team publishing it under their account. TestFlight for Mark and Shelley works on a personal account before any of this.
-- **A D-U-N-S number** for the company. Free from Dun and Bradstreet through Apple's own look-up, about two weeks.
-- **ICO registration**, about £52 a year, before anyone outside the family uses it.
+## Paperwork, alongside (Mark, started 4 October 2026)
+Decided: Mark is registering **Mark 1 Apps Ltd** (4 October 2026). A company that makes apps is what Apple's guideline 5.1.1(ix) asks for; it does not have to be a health or medical business, since Daybook gives no medical service. It also means a claim is against the company, not Mark's own home and savings. Mostly waiting, so it runs while Stages 1 to 4 are built. All of it must be done before action 17.
+- **Check the name.** Search "Mark 1 Apps" on the Companies House register; nothing with that exact name was found on 4 October (Mark 1 Associates Ltd and Mark1 Conversions Ltd exist, which does not block it).
+- **Verify Mark's identity with GOV.UK One Login.** Free, about 15 minutes with a passport or driving licence and the phone's camera. Required for every director since 2026, before the company can be registered.
+- **Register the company at Companies House online.** About £100 (it doubled from £50 on 1 February 2026; check the GOV.UK page for the current fee). Needed: the name, Mark as director and shareholder, the business type (SIC 62012, business and domestic software development), a registered email address (private), and a registered office address. That address is public on the register for good, so use a registered office service (about £20 to £60 a year) rather than home.
+- **Check benefits first.** Being a company director can affect means-tested benefits (Universal Credit, ESA) even before the company earns anything; PIP is not means-tested. Macmillan's free benefits advisers (0808 808 00 00) can check before the form is sent.
+- **Afterwards:** register for Corporation Tax with HMRC within three months of starting to trade; a yearly confirmation statement and accounts (an accountant or the free HMRC and Companies House tools for a very small company); a separate bank account.
+- **A D-U-N-S number** for the company. Free, through Apple's own D-U-N-S look-up once the company exists, about two weeks.
+- **ICO registration** in the company's name, about £52 a year, before anyone outside the family uses it.
+- **For Apple's organisation enrolment (action 17):** a public website and an email address on a domain the company uses. The mymedicaldaybook.co.uk site (action 16) naming Mark 1 Apps Ltd, and support@mymedicaldaybook.co.uk, should do; enrol only when the build is close, since the yearly fee starts on enrolment.
+- **Then Claude updates the wording:** Mark 1 Apps Ltd as the responsible party in the privacy page, the terms, About, the LICENSE, README and the Settings App card, with the company number.
 
 ## After the stores: more conditions
 One at a time, each a few days with its sources checked, on the profile mechanism from action 8. Each needs the tiles, the check-in questions, the Notes thresholds with sources, demo data and a test. The demo gains a profile switcher.
@@ -72,6 +78,7 @@ One at a time, each a few days with its sources checked, on the profile mechanis
 - An "AI used this month: about 12p" line under Settings, from the bridge's own token tally. Offered 4 October; build if wanted.
 
 ## Done
+- v107 Mark decided to register Mark 1 Apps Ltd; the Paperwork list became the steps to do it.
 - v106 The staged roadmap replaced by this plain action list: Build, UI, UX, Website, App stores, with the paperwork alongside.
 - v105 The entry menu became a proper view (titled Vitals, Temperature and so on, one line per reading, coloured by level) with Edit for temperature and vitals readings, opening the Vitals sheet with only that reading's boxes filled in; a changed date moves the reading.
 - v103 At home | In hospital switch at the top of the Meds tab, shared by both phones: at home the hospital medicines and the Given in hospital section stay out of the way; in hospital they show, Notes says "In hospital since", and medicine reminders can pause. Also a contrast fix on the amber temperature tile.
