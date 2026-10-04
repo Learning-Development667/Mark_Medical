@@ -88,6 +88,7 @@ Mark's observation: the app has bigger scope than cancer. Almost everything in i
 - Backgrounds on the data tabs. Decided against (see above).
 
 ## Done
+- v98 The bridge says why the AI service refused (no credit, key not accepted, busy) instead of "Could not reach Daybook's AI service", gives the day's count back on a failure, and uses claude-opus-5-5.
 - v97 Given in hospital: a drip, an injection or anything the hospital gave, logged from the Medicine tile or the Meds tab with a Given in hospital pill, listed on the Meds tab and in Notes for the team, never counted against a listed medicine. With the bridge's AI key on, "Read it from a photo" fills it in from a photo of the bag, box or label, and Add medicine can be filled the same way.
 - v96 Units simplified: everything metric, with one kg | st and lb switch on the Weight chart and beside the weight box (they share it), and a temperature typed in Fahrenheit caught and converted; the Units card went.
 - v95 Tap the date on Today, Meds or Exercise to pick any day from a calendar (logged days tinted), and a Units setting per phone: weight in kg, stones and pounds or pounds, temperature in °C or °F, everything stored metric and Notes for the team kept in kg and °C for the clinic.
