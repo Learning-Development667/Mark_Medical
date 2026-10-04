@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '91';
+const APP_VERSION = '92';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -911,6 +911,8 @@ function buildDemoFixture() {
     e(-2, '13:40', 'Mark', { type: 'bowel', none: false, bristol: 7 }),
     e(-1, '08:30', 'Mark', { type: 'bowel', none: false, bristol: 4 }),
     e(0, '07:50', 'Mark', { type: 'bowel', none: false, bristol: 5, note: 'Better than yesterday' }),
+    e(-2, '11:20', 'Mark', { type: 'symptom', what: 'Sickness', value: 6, note: 'Queasy after the tablets' }),
+    e(-1, '20:10', 'Mark', { type: 'symptom', what: 'Mouth', value: 3, note: 'Sore on the left' }),
     e(0, '11:40', 'Mark', { type: 'pain', value: 4 }),
     /* Three weekly cycles (sessions on -17, -10 and -3): energy and appetite dip on days 1 and 2, sickness peaks, all back by day 4 or 5 */
     ci(-17, 'evening', { pain: 3, mood: 6, worstPain: 4, sickness: 4, appetite: 4, energy: 5, symptoms: '', settled: '', goodThing: 'Session went smoothly' }),
@@ -1510,6 +1512,7 @@ function entryTitle(e) {
     case 'sleep': return [h('span', { class: 'val', text: fmtHm(e.value) }), h('span', { text: ' asleep' })];
     case 'checkin': return [h('span', { text: checkinTitle(e.slot) })];
     case 'pain': return [h('span', { class: 'val', text: 'Pain ' + e.value + '/10' })];
+    case 'symptom': return [h('span', { class: 'val', text: (e.what || 'Symptom') + ' ' + e.value + '/10' })];
     case 'bowel': return e.none ? [h('span', { text: 'No bowel movement' })] : [h('span', { class: 'val', text: 'Bowels: type ' + e.bristol }), h('span', { text: ', ' + bristolName(e.bristol).toLowerCase() })];
     case 'question': return [h('span', { text: e.note || 'Question' })];
     case 'exercise': return [h('span', { text: e.note || 'Exercise' })];
@@ -1543,6 +1546,7 @@ function entrySub(e) {
   }
   if (e.type === 'checkin') { const s = checkinSummary(e); if (s) bits.push(s); }
   if (e.type === 'pain' && e.note) bits.push(e.note);
+  if (e.type === 'symptom') { bits.push('Symptom'); if (e.note) bits.push(e.note); }
   if (e.type === 'bowel') { const f = bowelFlagWords(e); if (f) bits.push(f); if (e.note) bits.push(e.note); }
   if (e.type === 'question') bits.push(e.answered ? 'Question for the team, answered' : 'Question for the team');
   if (e.type === 'question' && e.answerText) bits.push('Answer: ' + excerpt(e.answerText, 90));
@@ -1580,7 +1584,7 @@ function renderEntry(e) {
 }
 
 /* Types openAdd() can pre-fill and update in place, given the original entry */
-const EDITABLE_ENTRY_TYPES = ['food', 'drink', 'weight', 'note', 'question', 'bowel'];
+const EDITABLE_ENTRY_TYPES = ['food', 'drink', 'weight', 'note', 'question', 'bowel', 'symptom'];
 
 function entryOptions(e) {
   const d = entryDate(e);
@@ -1639,7 +1643,32 @@ function renderTiles() {
 }
 
 /* Quick add */
-document.querySelectorAll('.qa').forEach((b) => b.addEventListener('click', () => openAdd(b.dataset.add)));
+document.querySelectorAll('.qa').forEach((b) => b.addEventListener('click', () => (b.dataset.add === 'medicine' ? openDoseSheet() : openAdd(b.dataset.add))));
+
+/* Log a dose from Today (since v92): the when-needed medicines first with their status, then today's
+   scheduled ones with the count so far; a tap logs it now through the same logMed() as the Meds tab
+   (so a blocked when-needed one still asks first). Another time means the Meds tab. */
+function openDoseSheet() {
+  const today = todayStr();
+  const row = (m, status) => {
+    const pill = status ? h('span', { class: 'pill pill-' + status.level, text: status.text }) : null;
+    return h('button', { class: 'pickrow doserow', type: 'button', onclick: async () => { closeSheet(); await logMed(m); } },
+      h('span', { class: 'pickrow-main' }, h('span', { class: 'pickrow-title', text: m.name }), h('span', { class: 'pickrow-sub', text: m.dose + (m.purpose ? ' · ' + m.purpose : '') })),
+      pill);
+  };
+  const prn = activePrn();
+  const sched = activeScheduled(today);
+  const body = h('div', null,
+    h('p', { class: 'wiz-hint', text: 'Tap a medicine to log a dose now. For another time, use the Meds tab.' }),
+    prn.length ? h('p', { class: 'fieldlabel', text: 'When needed' }) : null,
+    prn.length ? h('div', { class: 'doserows' }, ...prn.map((m) => row(m, prnStatus(m)))) : null,
+    sched.length ? h('p', { class: 'fieldlabel', text: 'Scheduled' }) : null,
+    sched.length ? h('div', { class: 'doserows' }, ...sched.map((m) => { const n = countMedOnDay(m.id, today); return row(m, m.perDay ? { level: n >= m.perDay ? 'green' : 'teal', text: n + ' of ' + m.perDay + ' today' } : null); })) : null,
+    !prn.length && !sched.length ? h('p', { class: 'empty', 'data-art': 'pill', text: 'No medicines set up yet. Add them on the Meds tab.' }) : null,
+    h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Cancel')
+  );
+  openSheet('Log a dose', body);
+}
 
 
 /* ---- Speech to text: a big "Tap to speak" button under a text box ----
@@ -1712,6 +1741,10 @@ function bristolArt(t) {
   svg.innerHTML = d;
   return svg;
 }
+
+/* Symptom (since v92): a between-times symptom with a 1 to 10 score, the way the Pain tile works, for
+   the things the evening check-in only asks about once a day. Stored { type "symptom", what, value, note }. */
+const SYMPTOMS = ['Sickness', 'Mouth', 'Skin', 'Breathing', 'Dizziness', 'Tingling', 'Tiredness', 'Other'];
 
 function openAdd(type, editEntry) {
   const day = editEntry ? editEntry.day : state.selectedDay;
@@ -2065,6 +2098,32 @@ function openAdd(type, editEntry) {
     };
   }
 
+  if (type === 'symptom') {
+    const known = editEntry && SYMPTOMS.includes(editEntry.what) ? editEntry.what : (editEntry ? 'Other' : '');
+    const whatHidden = h('input', { type: 'hidden', value: known });
+    const other = h('input', { type: 'text', placeholder: 'What is it?', maxlength: '40', value: editEntry && known === 'Other' ? editEntry.what : '' });
+    const otherField = field('Which symptom', other);
+    otherField.hidden = known !== 'Other';
+    const chips = presets(SYMPTOMS, whatHidden, known);
+    chips.setAttribute('role', 'group'); chips.setAttribute('aria-label', 'Which symptom');
+    chips.addEventListener('click', () => { otherField.hidden = whatHidden.value !== 'Other'; if (!otherField.hidden) other.focus(); });
+    const sl = sliderBlock({ kind: 'pain', q: 'How bad right now', low: '1 mild', high: '10 severe' }, editEntry ? editEntry.value : null);
+    const symNote = h('textarea', { rows: '2', placeholder: 'What it is like, what helped (optional)' });
+    if (editEntry && editEntry.note) symNote.value = editEntry.note;
+    body.append(
+      h('p', { class: 'wiz-q', text: 'Which symptom?' }), chips, otherField,
+      h('p', { class: 'wiz-q', text: 'How bad right now?' }), ...sl.nodes,
+      field('Time', time), field('Note', symNote), speakButton(symNote) || ''
+    );
+    getData = () => {
+      const what = whatHidden.value === 'Other' ? other.value.trim() : whatHidden.value;
+      if (!what) { toast('Tap the symptom first'); return { hold: true }; }
+      const v = sl.value();
+      if (v == null) { toast('Slide to a number first'); return { hold: true }; }
+      return { type: 'symptom', what, value: v, note: symNote.value.trim() };
+    };
+  }
+
   if (type === 'weight') {
     const last = state.recentEntries.find((e) => e.type === 'weight');
     const input = h('input', { type: 'number', step: '0.1', min: '20', max: '250', inputmode: 'decimal', value: editEntry ? Number(editEntry.value).toFixed(1) : (last ? Number(last.value).toFixed(1) : ''), placeholder: '0.0', required: true });
@@ -2232,7 +2291,7 @@ function openAdd(type, editEntry) {
     };
   }
 
-  const titles = { drink: 'Drink', food: 'Food', weight: 'Weight', note: 'Note', vitals: 'Vitals', sleep: 'Sleep', question: 'Question for the team', pain: 'Log pain', bowel: 'Bowels' };
+  const titles = { drink: 'Drink', food: 'Food', weight: 'Weight', note: 'Note', vitals: 'Vitals', sleep: 'Sleep', question: 'Question for the team', pain: 'Log pain', bowel: 'Bowels', symptom: 'Symptom' };
   const save = h('button', { class: 'btn btn-primary btn-block', type: 'button' }, 'Save');
   save.addEventListener('click', async () => {
     const data = getData();
@@ -3956,6 +4015,19 @@ function summaryRows(entries, from, to) {
     else fine.push(`eating (something every logged day${est ? ', ' + est : ''})`);
   }
 
+  /* Symptoms logged between check-ins: worst per symptom; 7 or more red, 5 or 6 amber, like pain */
+  const symptoms = entries.filter((e) => e.type === 'symptom' && e.value != null);
+  if (symptoms.length) {
+    const byWhat = {};
+    symptoms.forEach((e) => { const k = String(e.what || 'Symptom'); (byWhat[k] = byWhat[k] || []).push(e); });
+    const items = Object.keys(byWhat).map((k) => { const w = maxBy(byWhat[k], (e) => Number(e.value)); return { what: k, worst: Number(w.value), day: w.day, n: byWhat[k].length }; }).sort((a, b) => b.worst - a.worst);
+    const worst = items[0];
+    if (worst.worst >= 5) {
+      const text = items.filter((i) => i.worst >= 5).map((i) => `${i.what.toLowerCase()} up to ${i.worst}/10 on ${fmtDayShort(i.day)}${i.n > 1 ? ' (' + plural(i.n, 'reading') + ')' : ''}`).join('; ');
+      push(worst.worst >= 7 ? 'red' : 'amber', 'Symptoms', `Symptoms logged between check-ins: ${text}.`, worst.worst < 7 && symptoms.filter((e) => Number(e.value) >= 5).length === 1 ? `${worst.what.toLowerCase()} ${worst.worst}/10 on ${fmtDayShort(worst.day)}` : null);
+    } else fine.push(`symptoms (${plural(symptoms.length, 'reading')}, none above ${worst.worst}/10)`);
+  }
+
   /* Bowels: the UKONS triage lines. Loose means Bristol type 6 or 7. Red at 4 or more loose in a day
      (Macmillan: ring the team), any blood, or loose at night; amber at 1 to 3 loose a day or two days
      with none in a row; red at three days with none. "None" days only count where nothing else was logged. */
@@ -4041,6 +4113,7 @@ function noteContext(e) {
     }
     case 'med': return 'with ' + (e.medName || 'a medicine');
     case 'pain': return 'with pain ' + e.value + '/10';
+    case 'symptom': return 'with ' + String(e.what || 'a symptom').toLowerCase() + ' ' + e.value + '/10';
     case 'bowel': return e.none ? 'with no bowel movement that day' : 'with bowels type ' + e.bristol + (bowelFlagWords(e) ? ', ' + bowelFlagWords(e).toLowerCase() : '');
     default: return '';
   }
@@ -4092,7 +4165,7 @@ function buildNotesReport(entries, questionsAll, from, to, rangeLabel) {
   const days = [];
   for (let day = from; day <= to; day = addDays(day, 1)) {
     const list = (byDay[day] || []).slice().sort((a, b) => entryDate(a) - entryDate(b));
-    const notes = list.filter((e) => e.type === 'note' || (e.note && ['temp', 'weight', 'vitals', 'med', 'pain', 'bowel'].includes(e.type)))
+    const notes = list.filter((e) => e.type === 'note' || (e.note && ['temp', 'weight', 'vitals', 'med', 'pain', 'bowel', 'symptom'].includes(e.type)))
       .map((e) => ({ time: fmtTime(entryDate(e)), who: e.addedBy || 'unknown', text: e.note, context: e.type === 'note' ? '' : noteContext(e) }));
     list.filter((e) => e.type === 'checkin').forEach((e) => {
       const keys = e.slot === 'carer' ? REPORT_CARER_KEYS : REPORT_CHECKIN_KEYS;
