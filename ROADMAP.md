@@ -72,7 +72,8 @@ Daybook is one web app, so both stores get the same code. Android users can inst
 - Backgrounds on the data tabs. Decided against (see above).
 
 ## Done
-- v91 Bowels: a seventh quick-add tile, the Bristol chart sheet with the triage ticks and a "none today" record, the timeline, a Trends chart and table, and the Bowels line in Notes for the team with the UKONS and Macmillan thresholds. Symptom and Medicine tiles next, to complete the three by three grid.
+- v92 The Symptom tile (a between-times symptom with a 1 to 10 score, a Symptoms line in Notes) and the Medicine tile (log a dose from Today, when-needed first with their status), completing the three by three grid.
+- v91 Bowels: a seventh quick-add tile, the Bristol chart sheet with the triage ticks and a "none today" record, the timeline, a Trends chart and table, and the Bowels line in Notes for the team with the UKONS and Macmillan thresholds.
 - v90 Privacy, terms and About inside the app, in plain English, linked from Settings, the sign-in screens and the address.
 - v89 The name settled: My Medical Daybook on the opener, the sign-in screens, the manifest, the README and the LICENSE; Daybook alone inside the app.
 - v88 The opener rebuilt: Daybook as the glowing headline, the Mark 1 Apps film smaller and feathered, played on every start from one second in, the maker and copyright line at the foot.

@@ -64,6 +64,7 @@
   --cat-note: #546569;
   --cat-exercise: #3F7A5A;
   --cat-bowel: #8A6D3B;
+  --cat-symptom: #7A4E7E;
   /* Colour: body-area tags on the gentle exercises (v83), a fill and an ink each, 4.5:1 or better */
   --tag-arms: #DCEBF8; --tag-arms-ink: #1B4A73;
   --tag-legs: #E0F1E3; --tag-legs-ink: #1F5A33;
@@ -186,6 +187,7 @@
     --cat-note: #8FA0A6;
     --cat-exercise: #7FBF9C;
     --cat-bowel: #C9A86A;
+    --cat-symptom: #C48BC8;
     --tag-arms: #1B3A52; --tag-arms-ink: #BFDBF5;
     --tag-legs: #1C3B27; --tag-legs-ink: #BFE7CB;
     --tag-spine: #3A2444; --tag-spine-ink: #E5CDEF;
@@ -708,6 +710,7 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 .entry.type-question { --cat: var(--teal); }
 .entry.type-exercise { --cat: var(--cat-exercise); }
 .entry.type-bowel { --cat: var(--cat-bowel); }
+.entry.type-symptom { --cat: var(--cat-symptom); }
 /* Only new rows animate in; rows already on screen stay put when data updates */
 .entry.is-new, .docitem.is-new { animation: block-in var(--t-slow) var(--ease-out) both; animation-delay: calc(var(--i, 0) * 60ms); }
 .stages { margin-top: var(--s-1); }
@@ -1137,6 +1140,11 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 .bristol-name { display: block; font-weight: 600; }
 .bristol-hint { display: block; color: var(--text-secondary); font-size: var(--fs-sm); }
 .btn-plain { margin-top: var(--s-3); }
+
+/* Log a dose from Today (since v92): one row per medicine, tap to log now */
+.doserows { display: flex; flex-direction: column; gap: var(--s-2); margin: var(--s-2) 0 var(--s-3); }
+.doserow { justify-content: space-between; }
+.doserow .pill { flex: none; }
 
 /* Privacy, terms and About (since v90), in the sheet */
 .legal h3 { font-family: var(--font-head); font-size: var(--fs-lg); letter-spacing: 0.04em; color: var(--text-primary); margin: var(--s-5) 0 var(--s-1); }
