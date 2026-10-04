@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '90';
+const APP_VERSION = '91';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -907,6 +907,10 @@ function buildDemoFixture() {
     e(0, '08:20', 'Mark', { type: 'food', note: 'Toast and scrambled egg', amount: 'Most of it' }),
     e(0, '08:25', 'Mark', { type: 'note', note: 'Slept well, a little tired by afternoon.' }),
     e(-2, '15:30', 'Mark', { type: 'pain', value: 7, note: 'Back, worse sitting' }),
+    e(-2, '09:10', 'Mark', { type: 'bowel', none: false, bristol: 6, urgent: true }),
+    e(-2, '13:40', 'Mark', { type: 'bowel', none: false, bristol: 7 }),
+    e(-1, '08:30', 'Mark', { type: 'bowel', none: false, bristol: 4 }),
+    e(0, '07:50', 'Mark', { type: 'bowel', none: false, bristol: 5, note: 'Better than yesterday' }),
     e(0, '11:40', 'Mark', { type: 'pain', value: 4 }),
     /* Three weekly cycles (sessions on -17, -10 and -3): energy and appetite dip on days 1 and 2, sickness peaks, all back by day 4 or 5 */
     ci(-17, 'evening', { pain: 3, mood: 6, worstPain: 4, sickness: 4, appetite: 4, energy: 5, symptoms: '', settled: '', goodThing: 'Session went smoothly' }),
@@ -1506,6 +1510,7 @@ function entryTitle(e) {
     case 'sleep': return [h('span', { class: 'val', text: fmtHm(e.value) }), h('span', { text: ' asleep' })];
     case 'checkin': return [h('span', { text: checkinTitle(e.slot) })];
     case 'pain': return [h('span', { class: 'val', text: 'Pain ' + e.value + '/10' })];
+    case 'bowel': return e.none ? [h('span', { text: 'No bowel movement' })] : [h('span', { class: 'val', text: 'Bowels: type ' + e.bristol }), h('span', { text: ', ' + bristolName(e.bristol).toLowerCase() })];
     case 'question': return [h('span', { text: e.note || 'Question' })];
     case 'exercise': return [h('span', { text: e.note || 'Exercise' })];
     case 'weight': return [h('span', { class: 'val', text: Number(e.value).toFixed(1) + ' kg' })];
@@ -1538,6 +1543,7 @@ function entrySub(e) {
   }
   if (e.type === 'checkin') { const s = checkinSummary(e); if (s) bits.push(s); }
   if (e.type === 'pain' && e.note) bits.push(e.note);
+  if (e.type === 'bowel') { const f = bowelFlagWords(e); if (f) bits.push(f); if (e.note) bits.push(e.note); }
   if (e.type === 'question') bits.push(e.answered ? 'Question for the team, answered' : 'Question for the team');
   if (e.type === 'question' && e.answerText) bits.push('Answer: ' + excerpt(e.answerText, 90));
   if (e.type === 'question' && e.recordings) bits.push(plural(e.recordings, 'recording'));
@@ -1574,7 +1580,7 @@ function renderEntry(e) {
 }
 
 /* Types openAdd() can pre-fill and update in place, given the original entry */
-const EDITABLE_ENTRY_TYPES = ['food', 'drink', 'weight', 'note', 'question'];
+const EDITABLE_ENTRY_TYPES = ['food', 'drink', 'weight', 'note', 'question', 'bowel'];
 
 function entryOptions(e) {
   const d = entryDate(e);
@@ -1672,6 +1678,39 @@ function speakButton(target) {
     try { rec.start(); setState(true); } catch (e) { rec = null; toast('Speech is not available here. The keyboard microphone still works.'); }
   });
   return btn;
+}
+
+/* Bowels (since v91). The Bristol Stool Chart, types 1 to 7, with the wording used on NHS charts;
+   the extras are what the UKONS 24-hour triage tool and Macmillan ask about. Stored as
+   { type: "bowel", none (bool), bristol (1 to 7 or null), blood, black, mucus, urgent, pain, night (bools), note }. */
+const BRISTOL = [
+  { t: 1, name: 'Separate hard lumps', hint: 'Like nuts, hard to pass' },
+  { t: 2, name: 'Lumpy sausage', hint: 'Sausage shaped but lumpy' },
+  { t: 3, name: 'Cracked sausage', hint: 'Like a sausage with cracks on the surface' },
+  { t: 4, name: 'Smooth and soft', hint: 'Like a sausage or snake, smooth and soft' },
+  { t: 5, name: 'Soft blobs', hint: 'Soft blobs with clear edges, passed easily' },
+  { t: 6, name: 'Mushy', hint: 'Fluffy pieces with ragged edges' },
+  { t: 7, name: 'Watery', hint: 'Entirely liquid, no solid pieces' }
+];
+const BOWEL_FLAGS = [['blood', 'Blood (red)'], ['black', 'Black or tarry'], ['mucus', 'Mucus'], ['urgent', 'Urgent, or an accident'], ['pain', 'Pain or straining'], ['night', 'At night']];
+function bristolName(t) { const b = BRISTOL.find((x) => x.t === Number(t)); return b ? b.name : ''; }
+function bowelFlagWords(e) { return BOWEL_FLAGS.filter(([k]) => e[k]).map(([, label]) => label).join(' · '); }
+const isLoose = (e) => e.type === 'bowel' && !e.none && Number(e.bristol) >= 6;
+/* Small line drawings of the seven types, in the icon style (stroke, currentColor) */
+function bristolArt(t) {
+  const d = {
+    1: '<circle cx="10" cy="16" r="4"/><circle cx="22" cy="12" r="4"/><circle cx="34" cy="18" r="4"/><circle cx="48" cy="13" r="4"/>',
+    2: '<path d="M8 16c0-5 4-6 8-6 3 0 3 4 6 4s3-4 6-4 3 4 6 4 3-4 6-4 3 4 6 4c4 0 7 1 7 2 0 5-4 6-8 6-3 0-3-4-6-4s-3 4-6 4-3-4-6-4-3 4-6 4-3-4-6-4c-4 0-7-1-7-2z"/>',
+    3: '<rect x="6" y="9" width="52" height="14" rx="7"/><path d="M16 9v3M24 20v3M32 9v3M40 20v3M48 9v3"/>',
+    4: '<path d="M6 20c6-10 14-12 22-8s16 2 30-6"/><path d="M6 24c6-10 14-12 22-8s16 2 30-6" opacity=".5"/>',
+    5: '<path d="M8 20c0-4 3-7 8-7s8 3 8 7-3 5-8 5-8-1-8-5z"/><path d="M28 13c0-4 3-6 7-6s7 2 7 6-3 5-7 5-7-1-7-5z"/><path d="M46 22c0-4 2-6 6-6s6 2 6 6-2 4-6 4-6 0-6-4z"/>',
+    6: '<path d="M8 18c1-5 4-7 7-5 2-3 6-3 7 0 3-2 6 0 5 4 2 2 1 5-2 5-2 3-6 3-8 1-3 2-7 1-8-2-2 0-3-2-1-3z"/><path d="M34 20c1-4 4-6 7-4 2-3 6-2 7 1 3-1 5 1 4 4 1 2 0 4-3 4-2 2-5 2-7 0-3 2-6 1-7-2-2 0-2-2-1-3z"/>',
+    7: '<path d="M6 12c6-4 10 4 16 0s10 4 16 0 10 4 16 0"/><path d="M6 22c6-4 10 4 16 0s10 4 16 0 10 4 16 0"/>'
+  }[t] || '';
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 64 32'); svg.setAttribute('class', 'bristol-art'); svg.setAttribute('aria-hidden', 'true');
+  svg.innerHTML = d;
+  return svg;
 }
 
 function openAdd(type, editEntry) {
@@ -1983,6 +2022,49 @@ function openAdd(type, editEntry) {
     };
   }
 
+  if (type === 'bowel') {
+    /* The Bristol Stool Chart (the scale every nurse knows) as seven rows, one tap; the extras the
+       24-hour triage lines ask about as tick chips; and a way to record a day with none, since
+       constipation is an absence and cannot be flagged without it. */
+    let chosen = editEntry && !editEntry.none ? Number(editEntry.bristol) : null;
+    const rows = BRISTOL.map((b) => h('button', { class: 'bristol-row' + (chosen === b.t ? ' is-on' : ''), type: 'button', 'aria-pressed': chosen === b.t ? 'true' : 'false', dataset: { t: String(b.t) } },
+      bristolArt(b.t), h('span', null, h('span', { class: 'bristol-name', text: 'Type ' + b.t + ': ' + b.name }), h('span', { class: 'bristol-hint', text: b.hint }))));
+    const mark = () => rows.forEach((r) => { const on = Number(r.dataset.t) === chosen; r.classList.toggle('is-on', on); r.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+    rows.forEach((r) => r.addEventListener('click', () => { chosen = Number(r.dataset.t); mark(); }));
+    const flags = new Set(BOWEL_FLAGS.filter(([k]) => editEntry && editEntry[k]).map(([k]) => k));
+    const flagBtns = BOWEL_FLAGS.map(([k, label]) => h('button', { class: 'preset' + (flags.has(k) ? ' is-active' : ''), type: 'button', text: label, 'aria-pressed': flags.has(k) ? 'true' : 'false',
+      onclick: (ev) => { const b = ev.currentTarget; if (flags.has(k)) flags.delete(k); else flags.add(k); b.classList.toggle('is-active', flags.has(k)); b.setAttribute('aria-pressed', flags.has(k) ? 'true' : 'false'); } }));
+    const bowelNote = h('textarea', { rows: '2', placeholder: 'Anything else (optional)' });
+    if (editEntry && editEntry.note) bowelNote.value = editEntry.note;
+    const hasNone = (d) => [...state.dayEntries, ...state.recentEntries].find((e) => e.type === 'bowel' && e.none && e.day === d);
+    const hasReal = (d) => [...state.dayEntries, ...state.recentEntries].some((e) => e.type === 'bowel' && !e.none && e.day === d);
+    const noneBtn = h('button', { class: 'btn btn-secondary btn-block btn-plain', type: 'button', text: 'No bowel movement ' + (day === todayStr() ? 'today' : 'this day'), onclick: async () => {
+      if (hasReal(day)) { toast('One is already logged for ' + (day === todayStr() ? 'today' : fmtDayShort(day))); return; }
+      if (hasNone(day)) { toast('Already recorded for ' + (day === todayStr() ? 'today' : fmtDayShort(day))); return; }
+      closeSheet();
+      const id = await addEntry({ type: 'bowel', none: true, bristol: null, note: '', at: atFromInputs(day, time.value) });
+      toast('Recorded: no bowel movement', { label: 'Undo', onClick: () => deleteEntry(id) });
+    } });
+    body.append(
+      h('p', { class: 'wiz-q', text: 'What was it like?' }),
+      h('p', { class: 'wiz-hint', text: 'The Bristol Stool Chart, which the team uses. Tap the nearest.' }),
+      h('div', { class: 'bristol', role: 'group', 'aria-label': 'Bristol stool type' }, ...rows),
+      h('p', { class: 'fieldlabel', text: 'Anything else? Tick what applies' }),
+      h('div', { class: 'presets', role: 'group', 'aria-label': 'Anything else' }, ...flagBtns),
+      field('Time', time),
+      field('Note', bowelNote), speakButton(bowelNote) || '',
+      editEntry ? '' : noneBtn
+    );
+    getData = () => {
+      if (chosen == null) { toast('Tap the type first'); return { hold: true }; }
+      const d = { type: 'bowel', none: false, bristol: chosen, note: bowelNote.value.trim() };
+      for (const [k] of BOWEL_FLAGS) d[k] = flags.has(k);
+      /* a real movement replaces a "none" recorded earlier for the same day */
+      const n = hasNone(day); if (n) deleteEntry(n.id);
+      return d;
+    };
+  }
+
   if (type === 'weight') {
     const last = state.recentEntries.find((e) => e.type === 'weight');
     const input = h('input', { type: 'number', step: '0.1', min: '20', max: '250', inputmode: 'decimal', value: editEntry ? Number(editEntry.value).toFixed(1) : (last ? Number(last.value).toFixed(1) : ''), placeholder: '0.0', required: true });
@@ -2150,7 +2232,7 @@ function openAdd(type, editEntry) {
     };
   }
 
-  const titles = { drink: 'Drink', food: 'Food', weight: 'Weight', note: 'Note', vitals: 'Vitals', sleep: 'Sleep', question: 'Question for the team', pain: 'Log pain' };
+  const titles = { drink: 'Drink', food: 'Food', weight: 'Weight', note: 'Note', vitals: 'Vitals', sleep: 'Sleep', question: 'Question for the team', pain: 'Log pain', bowel: 'Bowels' };
   const save = h('button', { class: 'btn btn-primary btn-block', type: 'button' }, 'Save');
   save.addEventListener('click', async () => {
     const data = getData();
@@ -3874,6 +3956,38 @@ function summaryRows(entries, from, to) {
     else fine.push(`eating (something every logged day${est ? ', ' + est : ''})`);
   }
 
+  /* Bowels: the UKONS triage lines. Loose means Bristol type 6 or 7. Red at 4 or more loose in a day
+     (Macmillan: ring the team), any blood, or loose at night; amber at 1 to 3 loose a day or two days
+     with none in a row; red at three days with none. "None" days only count where nothing else was logged. */
+  const bowels = entries.filter((e) => e.type === 'bowel');
+  if (bowels.length) {
+    const real = bowels.filter((e) => !e.none);
+    const looseByDay = {};
+    real.filter(isLoose).forEach((e) => { looseByDay[e.day] = (looseByDay[e.day] || 0) + 1; });
+    const looseDays = Object.keys(looseByDay).sort();
+    const worstLoose = looseDays.length ? maxBy(looseDays, (d) => looseByDay[d]) : null;
+    const bloodDays = Object.keys(byDay).filter((d) => byDay[d].some((e) => e.type === 'bowel' && (e.blood || e.black))).sort();
+    const nightDays = Object.keys(byDay).filter((d) => byDay[d].some((e) => isLoose(e) && e.night)).sort();
+    const noneDays = new Set(bowels.filter((e) => e.none).map((e) => e.day).filter((d) => !real.some((r) => r.day === d)));
+    let run = 0, longest = 0, runEnd = null;
+    for (let d = from; d <= to; d = addDays(d, 1)) { if (noneDays.has(d)) { run++; if (run > longest) { longest = run; runEnd = d; } } else run = 0; }
+    const hardDays = daysWith((e) => e.type === 'bowel' && !e.none && Number(e.bristol) <= 2);
+    const parts = [];
+    if (looseDays.length) parts.push(`loose stools (type 6 or 7) on ${plural(looseDays.length, 'day')}, most ${looseByDay[worstLoose]} on ${fmtDayShort(worstLoose)}${looseByDay[worstLoose] >= 4 ? ' (4 or more in a day is the point to ring the team)' : ''}`);
+    if (bloodDays.length) parts.push(`blood or black stools on ${listDays(bloodDays)}`);
+    if (nightDays.length) parts.push(`loose at night on ${listDays(nightDays)}`);
+    if (longest >= 2) parts.push(`no bowel movement for ${longest} days in a row to ${fmtDayShort(runEnd)}`);
+    if (hardDays >= 3) parts.push(`hard stools (type 1 or 2) on ${plural(hardDays, 'day')}`);
+    const level = bloodDays.length || nightDays.length || (worstLoose && looseByDay[worstLoose] >= 4) || longest >= 3 ? 'red' : parts.length ? 'amber' : 'green';
+    if (level === 'green') {
+      const types = real.map((e) => Number(e.bristol)).filter((n) => n > 0);
+      fine.push(`bowels (${plural(real.length, 'movement')}${types.length ? ', types ' + Math.min(...types) + ' to ' + Math.max(...types) : ''}${noneDays.size ? ', none on ' + plural(noneDays.size, 'day') : ''})`);
+    } else {
+      const text = parts.join('; ');
+      push(level, 'Bowels', 'Bowels: ' + text + '.', level === 'amber' && parts.length === 1 && looseDays.length === 1 ? `loose stools on ${fmtDayShort(looseDays[0])}` : null);
+    }
+  }
+
   const moodDays = Object.keys(state.days).filter((d) => d >= from && d <= to && state.days[d].mood).sort();
   if (moodDays.length) {
     const low = moodDays.filter((d) => state.days[d].mood <= 2);
@@ -3927,6 +4041,7 @@ function noteContext(e) {
     }
     case 'med': return 'with ' + (e.medName || 'a medicine');
     case 'pain': return 'with pain ' + e.value + '/10';
+    case 'bowel': return e.none ? 'with no bowel movement that day' : 'with bowels type ' + e.bristol + (bowelFlagWords(e) ? ', ' + bowelFlagWords(e).toLowerCase() : '');
     default: return '';
   }
 }
@@ -3977,7 +4092,7 @@ function buildNotesReport(entries, questionsAll, from, to, rangeLabel) {
   const days = [];
   for (let day = from; day <= to; day = addDays(day, 1)) {
     const list = (byDay[day] || []).slice().sort((a, b) => entryDate(a) - entryDate(b));
-    const notes = list.filter((e) => e.type === 'note' || (e.note && ['temp', 'weight', 'vitals', 'med', 'pain'].includes(e.type)))
+    const notes = list.filter((e) => e.type === 'note' || (e.note && ['temp', 'weight', 'vitals', 'med', 'pain', 'bowel'].includes(e.type)))
       .map((e) => ({ time: fmtTime(entryDate(e)), who: e.addedBy || 'unknown', text: e.note, context: e.type === 'note' ? '' : noteContext(e) }));
     list.filter((e) => e.type === 'checkin').forEach((e) => {
       const keys = e.slot === 'carer' ? REPORT_CARER_KEYS : REPORT_CHECKIN_KEYS;
@@ -4804,7 +4919,7 @@ document.querySelectorAll('#view-vitals .seg').forEach((b) => b.addEventListener
    table of the same readings, newest first, date, time and value, with the same amber and red
    as the chart. The choice is remembered per card on this phone. The tables are built from the
    entries before Chart.js is fetched, so they work with no connection at all. ---- */
-const CHART_TABLE_KEYS = ['temp', 'pain', 'mood', 'heart', 'bp', 'oxygen', 'weight', 'sleep', 'drink'];
+const CHART_TABLE_KEYS = ['temp', 'pain', 'mood', 'heart', 'bp', 'oxygen', 'weight', 'sleep', 'drink', 'bowel'];
 const TABLE_VIEW_STORE = 'daybook.trends.tables';
 function tableViews() {
   if (!state.tableViews) {
@@ -4853,6 +4968,7 @@ function tableLevel(key, e) {
   if (key === 'oxygen') { const n = Number(e.oxygen); return n <= 90 ? 'red' : n <= 93 ? 'amber' : ''; }
   if (key === 'pain') { const n = e.type === 'pain' ? v : Number(e.pain); return n >= 7 ? 'red' : n >= 5 ? 'amber' : ''; }
   if (key === 'sleep') return v > 0 && v < 300 ? 'amber' : '';
+  if (key === 'bowel') return e.blood || e.black || (isLoose(e) && e.night) ? 'red' : isLoose(e) ? 'amber' : '';
   return '';
 }
 function renderChartTables(entries, from) {
@@ -4875,7 +4991,8 @@ function renderChartTables(entries, from) {
     sleep: { rows: inRange.filter((e) => e.type === 'sleep'), head: 'Asleep', timeHead: 'Bed to up',
       time: (e) => e.bedAt && e.wokeAt ? e.bedAt + ' to ' + e.wokeAt : '--',
       cell: (e) => { const st = ['deep', 'core', 'rem'].filter((k) => Number(e[k]) > 0).map((k) => (k === 'rem' ? 'REM' : k[0].toUpperCase() + k.slice(1)) + ' ' + fmtHm(Number(e[k]))); if (Number(e.awake) > 0) st.push('awake ' + fmtHm(Number(e.awake))); return [fmtHm(Number(e.value) || 0), sub(st.join(' · '))]; } },
-    drink: { rows: inRange.filter((e) => e.type === 'drink'), head: 'Amount', cell: (e) => [(Number(e.value) || 0) + ' ml', sub(e.note)], dayNote: (day) => 'Total ' + (drinkTotals[day] || 0) + ' ml' }
+    drink: { rows: inRange.filter((e) => e.type === 'drink'), head: 'Amount', cell: (e) => [(Number(e.value) || 0) + ' ml', sub(e.note)], dayNote: (day) => 'Total ' + (drinkTotals[day] || 0) + ' ml' },
+    bowel: { rows: inRange.filter((e) => e.type === 'bowel'), head: 'Bowels', cell: (e) => e.none ? ['None'] : ['Type ' + e.bristol, sub([bristolName(e.bristol), bowelFlagWords(e), e.note].filter(Boolean).join(' · '))] }
   };
   for (const key of CHART_TABLE_KEYS) {
     const box = $('table-' + key);
@@ -5005,6 +5122,20 @@ async function renderVitals() {
   /* Drinks per day */
   const perDay = days.map((d) => entries.filter((e) => e.type === 'drink' && e.day === d).reduce((s, e) => s + (Number(e.value) || 0), 0));
   makeChart('drink', barChart(T, days.map(dayLabel), perDay, { unit: (v) => v + ' ml', reduced }));
+
+  /* Bowel movements per day, stacked: types 1 to 5 in teal, loose (6 or 7) in warm */
+  const bowelReal = entries.filter((e) => e.type === 'bowel' && !e.none);
+  const firm = days.map((d) => bowelReal.filter((e) => e.day === d && !isLoose(e)).length);
+  const loose = days.map((d) => bowelReal.filter((e) => e.day === d && isLoose(e)).length);
+  const bar = (label, data, colour) => ({ label, data, backgroundColor: colour, borderRadius: 6, borderSkipped: 'bottom', maxBarThickness: 28, stack: 'bowel' });
+  makeChart('bowel', {
+    type: 'bar',
+    data: { labels: days.map(dayLabel), datasets: [bar('Types 1 to 5', firm, hexAlpha(T.teal, 0.7)), bar('Loose, type 6 or 7', loose, T.warm)] },
+    options: { responsive: true, maintainAspectRatio: false, layout: { padding: { top: 8, right: 4 } },
+      animation: reduced ? false : { duration: 700, easing: 'easeOutQuart' },
+      scales: { x: Object.assign(xAxisBase(T), { stacked: true }), y: Object.assign(yAxisBase(T), { stacked: true, beginAtZero: true, suggestedMax: 4, ticks: Object.assign(yAxisBase(T).ticks, { precision: 0 }) }) },
+      plugins: { legend: { display: false }, tooltip: Object.assign(tooltipStyle(T), { callbacks: { label: (i) => i.dataset.label + ': ' + i.raw } }) } }
+  });
 
   /* Weight */
   const weights = entries.filter((e) => e.type === 'weight');
