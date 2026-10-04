@@ -690,8 +690,9 @@ async function handleExplain(request, env) {
   /* The daily count, bumped before the call so parallel taps cannot slip past it */
   const day = londonNow().day;
   const logDoc = await fs.get(hp(hid, 'bridge/explainLog'));
-  const f = (logDoc && logDoc.fields && logDoc.fields.day && logDoc.fields.day.stringValue === day) ? logDoc.fields : {};
-  const n = (k) => Number(f[k] && f[k].integerValue || 0);
+  /* not called f: that name is the module's field reader, used above for the household and role */
+  const logFields = (logDoc && logDoc.fields && logDoc.fields.day && logDoc.fields.day.stringValue === day) ? logDoc.fields : {};
+  const n = (k) => Number(logFields[k] && logFields[k].integerValue || 0);
   const used = demo ? n('demo') : n('real');
   if (used >= (demo ? EXPLAIN_LIMIT_DEMO : EXPLAIN_LIMIT_REAL)) return json({ error: 'limit', message: demo ? 'The demo has used its explanations for today. Try again tomorrow, or use Send to my AI app.' : 'Daybook has used its explanations for today. Use Send to my AI app for now.' }, 429);
   await fs.set(hp(hid, 'bridge/explainLog'), { day: { stringValue: day }, real: { integerValue: String(n('real') + (demo ? 0 : 1)) }, demo: { integerValue: String(n('demo') + (demo ? 1 : 0)) }, tokensIn: { integerValue: String(n('tokensIn')) }, tokensOut: { integerValue: String(n('tokensOut')) }, updatedAt: { timestampValue: new Date().toISOString() } });
