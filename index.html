@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=90">
+  <link rel="stylesheet" href="styles.css?v=91">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -42,6 +42,7 @@
     <symbol id="i-chevron" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></symbol>
     <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3M8.5 21h7"/></symbol>
     <symbol id="i-question" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.6a2.4 2.4 0 1 1 3.4 2.2c-.7.4-1 .9-1 1.7"/><path d="M12 16.6h.01"/></symbol>
+    <symbol id="i-bowel" viewBox="0 0 24 24"><path d="M7.5 3.5h9v6h-9z"/><path d="M5 9.5h14v2.2a7 7 0 0 1-14 0z"/><path d="M8.5 18.3L7.5 21h9l-1-2.7"/></symbol>
     <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2.5L5 13.5h6l-1 8 8-11h-6z"/></symbol>
     <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
     <symbol id="i-image" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="M20.5 15.5l-4.5-4.5-7 7"/></symbol>
@@ -230,6 +231,7 @@
             <button class="qa" type="button" data-add="food"><svg class="icon qa-icon" aria-hidden="true"><use href="#i-food"/></svg>Food</button>
             <button class="qa" type="button" data-add="note"><svg class="icon qa-icon" aria-hidden="true"><use href="#i-note"/></svg>Note</button>
             <button class="qa" type="button" data-add="sleep"><svg class="icon qa-icon" aria-hidden="true"><use href="#i-moon"/></svg>Sleep</button>
+            <button class="qa" type="button" data-add="bowel"><svg class="icon qa-icon" aria-hidden="true"><use href="#i-bowel"/></svg>Bowels</button>
           </div>
         </div>
 
@@ -330,6 +332,11 @@
         <div class="card chart-card">
           <h2 class="section-title">Drinks per day</h2>
           <div class="chart-wrap"><canvas id="chart-drink"></canvas></div>
+        </div>
+        <div class="card chart-card">
+          <h2 class="section-title">Bowel movements per day</h2>
+          <div class="chart-wrap"><canvas id="chart-bowel"></canvas></div>
+          <p class="legend-note">Teal is types 1 to 5 on the Bristol chart, warm is loose (type 6 or 7). A day marked "none" shows as empty.</p>
         </div>
       </section>
 
@@ -790,6 +797,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=90"></script>
+  <script type="module" src="scripts.js?v=91"></script>
 </body>
 </html>
