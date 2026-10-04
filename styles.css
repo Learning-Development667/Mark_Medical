@@ -832,8 +832,9 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 .sheet-backdrop { position: absolute; inset: 0; background: rgba(24, 38, 43, 0.45); animation: fade-in var(--t-base) ease-out; }
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
 .sheet-panel {
-  position: absolute; left: 0; right: 0; bottom: 0;
-  max-height: 92vh; overflow: auto;
+  position: absolute; left: 0; right: 0; bottom: var(--kb, 0px);
+  max-height: min(92vh, calc(var(--vvh, 100vh) - 16px)); overflow: auto;
+  transition: bottom var(--t-base) ease;
   background: var(--surface);
   border-radius: var(--r-lg) var(--r-lg) 0 0;
   padding: var(--s-2) var(--s-5) calc(var(--s-5) + var(--safe-b));

@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '92';
+const APP_VERSION = '93';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -274,6 +274,28 @@ function closeSheet() {
   if (back && document.contains(back) && typeof back.focus === 'function') back.focus({ preventScroll: true });
 }
 document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && !$('sheet').hidden) { ev.preventDefault(); closeSheet(); } });
+/* The on-screen keyboard. iPhone Safari lays the keyboard over the page rather than shrinking it, so a
+   sheet anchored to the bottom ended up behind it and a check-in answer was typed blind (Mark, 5 October).
+   The visual viewport is the part still visible: the sheet sits on its bottom edge and is no taller than
+   it, and a focused field is scrolled to the middle of the sheet once the keyboard has risen. */
+(function keepSheetAboveKeyboard() {
+  const vv = window.visualViewport;
+  if (!vv) return;
+  const fit = () => {
+    const kb = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+    const st = $('sheet').style;
+    st.setProperty('--kb', kb + 'px');
+    st.setProperty('--vvh', Math.round(vv.height) + 'px');
+  };
+  vv.addEventListener('resize', fit);
+  vv.addEventListener('scroll', fit);
+  fit();
+  $('sheet').addEventListener('focusin', (ev) => {
+    const el = ev.target;
+    if (!el.matches('input:not([type=range]):not([type=checkbox]):not([type=radio]), textarea')) return;
+    setTimeout(() => { fit(); if (document.activeElement === el) el.scrollIntoView({ block: 'center', behavior: 'smooth' }); }, 320);
+  });
+})();
 function confirmSheet(title, message, okLabel, danger) {
   return new Promise((resolve) => {
     let result = false; // closing any other way (the X, the backdrop, Escape) counts as Cancel
@@ -2231,11 +2253,12 @@ function openAdd(type, editEntry) {
 
   if (type === 'vitals') {
     const lastT = state.recentEntries.find((e) => e.type === 'temp');
-    const temp = h('input', { type: 'number', step: '0.1', min: '34', max: '42', inputmode: 'decimal', placeholder: lastT ? Number(lastT.value).toFixed(1) : '37.0' });
+    /* No placeholder numbers: a grey last reading inside the box looked like one already typed in, so weights went unsaved (Mark, 5 October). The last reading is a line under the box instead. */
+    const temp = h('input', { type: 'number', step: '0.1', min: '34', max: '42', inputmode: 'decimal', 'aria-label': 'Temperature in degrees' });
     const tHint = h('p', { class: 'hint' });
     const tUpdate = () => {
       const v = parseFloat(temp.value);
-      tHint.textContent = isNaN(v) ? 'Leave blank if not taken' : tempWord(v);
+      tHint.textContent = isNaN(v) ? 'Leave blank if not taken.' + (lastT ? ' Last: ' + Number(lastT.value).toFixed(1) + ' \u00B0C, ' + whenLabel(lastT) + '.' : '') : tempWord(v);
       tHint.style.color = isNaN(v) ? '' : v >= 38 ? 'var(--red)' : v >= 37.5 ? 'var(--amber)' : 'var(--green)';
     };
     const tStep = (n) => {
@@ -2246,12 +2269,12 @@ function openAdd(type, editEntry) {
     };
     temp.addEventListener('input', tUpdate);
     tUpdate();
-    const hr = h('input', { type: 'number', inputmode: 'numeric', min: '30', max: '220', step: '1', placeholder: '0' });
-    const sys = h('input', { type: 'number', inputmode: 'numeric', min: '50', max: '250', step: '1', placeholder: '0' });
-    const dia = h('input', { type: 'number', inputmode: 'numeric', min: '30', max: '150', step: '1', placeholder: '0' });
-    const o2 = h('input', { type: 'number', inputmode: 'numeric', min: '50', max: '100', step: '1', placeholder: '0' });
+    const hr = h('input', { type: 'number', inputmode: 'numeric', min: '30', max: '220', step: '1' });
+    const sys = h('input', { type: 'number', inputmode: 'numeric', min: '50', max: '250', step: '1' });
+    const dia = h('input', { type: 'number', inputmode: 'numeric', min: '30', max: '150', step: '1' });
+    const o2 = h('input', { type: 'number', inputmode: 'numeric', min: '50', max: '100', step: '1' });
     const lastW = state.recentEntries.find((e) => e.type === 'weight');
-    const wt = h('input', { type: 'number', step: '0.1', min: '20', max: '250', inputmode: 'decimal', placeholder: lastW ? Number(lastW.value).toFixed(1) : '0.0' });
+    const wt = h('input', { type: 'number', step: '0.1', min: '20', max: '250', inputmode: 'decimal' });
     body.append(
       h('p', { class: 'hint', text: 'Fill in whichever readings you have. At least one is needed to save.' }),
       h('span', { class: 'fieldlabel', text: 'Temperature (\u00B0C)' }),
@@ -2265,6 +2288,7 @@ function openAdd(type, editEntry) {
       h('div', { class: 'field-row' }, field('Systolic', sys), field('Diastolic', dia)),
       field('Oxygen (%)', o2),
       field('Weight (kg)', wt),
+      lastW ? h('p', { class: 'hint hint-small', text: 'Last: ' + Number(lastW.value).toFixed(1) + ' kg, ' + whenLabel(lastW) + '.' }) : '',
       field('Time', time), field('Note', note)
     );
     getData = () => {
