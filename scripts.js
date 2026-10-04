@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '100';
+const APP_VERSION = '101';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -4844,11 +4844,12 @@ function medCard(m, day) {
   const isToday = day === todayStr();
   const count = countMedOnDay(m.id, day);
   const last = lastMedEntry(m.id);
-  const card = h('div', { class: 'card med' });
+  const card = h('div', { class: 'card med' + (m.hospital ? ' is-hospital' : '') });
   const head = h('div', { class: 'med-head' },
     h('div', null,
       h('div', { class: 'med-name', text: m.name }),
-      h('div', { class: 'med-dose', text: m.dose }),
+      m.hospital ? h('span', { class: 'pill pill-hosp med-hosp', text: 'Given in hospital' }) : null,
+      h('div', { class: 'med-dose', text: [m.dose, m.hospital && m.route ? ROUTE_WORDS[m.route] : ''].filter(Boolean).join(' \u00b7 ') }),
       h('div', { class: 'med-how', text: m.how })
     ),
     m.purpose ? h('span', { class: 'med-purpose', text: m.purpose }) : null
@@ -4904,8 +4905,9 @@ async function logMed(m, at, note) {
       if (!ok) return;
     }
   }
-  const id = await addEntry({ type: 'med', medId: m.id, medName: m.name, dose: m.dose, note: note || '', at: at || new Date() });
-  toast(m.name + ' logged', { label: 'Undo', onClick: () => deleteEntry(id) });
+  const hosp = m.hospital ? { hospital: true, route: m.route || null } : {};
+  const id = await addEntry({ type: 'med', medId: m.id, medName: m.name, dose: m.dose, note: note || '', ...hosp, at: at || new Date() });
+  toast(m.name + (m.hospital ? ' logged as given in hospital' : ' logged'), { label: 'Undo', onClick: () => deleteEntry(id) });
 }
 
 function logMedAtTime(m) {
@@ -4942,7 +4944,7 @@ const MEAL_MED_WINDOW_MS = 45 * 60 * 1000;
 function promptMealMeds(mealAt) {
   if (state.readOnly || state.viewer) return;
   const day = dayStr(mealAt);
-  const due = state.medicines.filter((m) => m.active !== false && m.kind !== 'prn' && medWithMeals(m) && (!m.courseEnd || m.courseEnd >= day))
+  const due = state.medicines.filter((m) => m.active !== false && m.kind !== 'prn' && !m.hospital && medWithMeals(m) && (!m.courseEnd || m.courseEnd >= day))
     .filter((m) => !state.recentEntries.some((e) => e.type === 'med' && e.medId === m.id && Math.abs(entryDate(e) - mealAt) <= MEAL_MED_WINDOW_MS));
   if (!due.length) return;
   const blocks = h('div', null);
@@ -5117,7 +5119,7 @@ function openHospitalDose(edit, prefill) {
     h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
       if (!name.value.trim()) { toast('Please say what was given'); name.focus(); return; }
       if (!dateIn.value || dateIn.value > todayStr()) { toast('Please choose a date up to today'); return; }
-      const data = { type: 'med', medId: null, medName: name.value.trim(), dose: amount.value.trim(), route: route.value, hospital: true, note: note.value.trim() };
+      const data = { type: 'med', medId: (edit && edit.medId) || null, medName: name.value.trim(), dose: amount.value.trim(), route: route.value, hospital: true, note: note.value.trim() };
       const at = atFromInputs(dateIn.value, time.value);
       closeSheet();
       if (edit) {
@@ -5204,7 +5206,8 @@ function openEditMed(m, prefill) {
   const isNew = !m;
   const pf = prefill || {};
   m = m || { name: pf.name || '', dose: pf.amount || pf.dose || '', how: pf.how || '', purpose: pf.purpose || '',
-    kind: pf.whenNeeded ? 'prn' : 'scheduled', perDay: pf.perDay || 1, maxPerDay: pf.maxPerDay || null, minGapHours: pf.minGapHours || null, active: true };
+    kind: pf.whenNeeded ? 'prn' : 'scheduled', perDay: pf.perDay || 1, maxPerDay: pf.maxPerDay || null, minGapHours: pf.minGapHours || null, active: true,
+    hospital: pf.hospital === true || pf.route === 'drip', route: pf.route || null };
   const name = h('input', { type: 'text', value: m.name, required: true });
   const dose = h('input', { type: 'text', value: m.dose || '' });
   const how = h('input', { type: 'text', value: m.how || '' });
@@ -5217,6 +5220,14 @@ function openEditMed(m, prefill) {
   const maxPerDay = h('input', { type: 'number', inputmode: 'numeric', min: '0', value: m.maxPerDay || '', placeholder: 'none' });
   const active = h('input', { type: 'checkbox' });
   active.checked = m.active !== false;
+  /* Given by the hospital (since v101): the nurses give it, so its doses are marked as given in hospital
+     and the bridge sends no reminder for it */
+  const hospital = h('input', { type: 'checkbox' });
+  hospital.checked = m.hospital === true;
+  const routeIn = h('input', { type: 'hidden', value: m.route || 'drip' });
+  const routeChips = presets(['drip', 'injection', 'mouth', 'other'].map((k) => ({ value: k, label: ROUTE_WORDS[k] })), routeIn, routeIn.value);
+  routeChips.setAttribute('role', 'group'); routeChips.setAttribute('aria-label', 'How it is given');
+  const hospFields = h('div', null, h('p', { class: 'fieldlabel', text: 'How it is given' }), routeChips);
 
   /* Reminder times (a push notification at each, from the bridge) and the with-meals prompt */
   const times = (m.times || []).slice().sort();
@@ -5235,14 +5246,24 @@ function openEditMed(m, prefill) {
     h('label', { class: 'check' }, withMeals, h('span', { text: 'Ask after every meal' })),
     h('p', { class: 'hint', text: 'After food is logged, Daybook asks whether this was taken with it.' }));
   const prnFields = h('div', null, field('Minimum hours between doses', minGap), field('Maximum doses per day', maxPerDay));
-  const sync = () => { schedFields.hidden = kind.value !== 'scheduled'; prnFields.hidden = kind.value !== 'prn'; };
+  /* reminder times and the after-meal prompt do not apply to a medicine the nurses give */
+  const remindBits = [...schedFields.children].slice(2);
+  const sync = () => {
+    schedFields.hidden = kind.value !== 'scheduled'; prnFields.hidden = kind.value !== 'prn';
+    hospFields.hidden = !hospital.checked;
+    remindBits.forEach((el) => { el.hidden = hospital.checked; });
+  };
   kind.addEventListener('change', sync);
+  hospital.addEventListener('change', sync);
   sync();
 
   const body = h('div', null,
     isNew && explainAvailable() ? h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => readMedicinePhoto((data) => openEditMed(null, data), () => openEditMed(null, pf)) }, 'Read it from a photo') : null,
     isNew && explainAvailable() ? h('p', { class: 'hint', text: 'A photo of the box or the pharmacy label. The details fill in below for you to check before adding.' }) : null,
     field('Name', name), field('Dose', dose), field('How and when', how), field('What it is for', purpose),
+    h('label', { class: 'check' }, hospital, h('span', { text: 'Given by the hospital (hospital monitored)' })),
+    h('p', { class: 'hint', text: 'Tick this for a drip, an injection or anything the nurses give. Its doses are marked as given in hospital, and Daybook sends no reminders for it.' }),
+    hospFields,
     field('Type', kind), schedFields, prnFields,
     isNew ? null : h('label', { class: 'check' }, active, h('span', { text: 'Currently in use' })),
     h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
@@ -5250,14 +5271,15 @@ function openEditMed(m, prefill) {
       const data = {
         name: name.value.trim(), dose: dose.value.trim(), how: how.value.trim(), purpose: purpose.value.trim(),
         kind: kind.value, active: active.checked,
+        hospital: hospital.checked, route: hospital.checked ? routeIn.value : null,
         order: m.order || (Math.max(0, ...state.medicines.map((x) => x.order || 0)) + 1)
       };
       if (kind.value === 'scheduled') {
         data.perDay = Math.max(1, parseInt(perDay.value, 10) || 1);
         data.courseEnd = courseEnd.value || null;
         data.minGapHours = null; data.maxPerDay = null;
-        data.times = times.slice();
-        data.withMeals = withMeals.checked;
+        data.times = hospital.checked ? [] : times.slice();
+        data.withMeals = hospital.checked ? false : withMeals.checked;
       } else {
         data.minGapHours = parseFloat(minGap.value) || null;
         data.maxPerDay = parseInt(maxPerDay.value, 10) || null;
