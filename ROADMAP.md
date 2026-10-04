@@ -88,6 +88,7 @@ Mark's observation: the app has bigger scope than cancer. Almost everything in i
 - Backgrounds on the data tabs. Decided against (see above).
 
 ## Done
+- v95 Tap the date on Today, Meds or Exercise to pick any day from a calendar (logged days tinted), and a Units setting per phone: weight in kg, stones and pounds or pounds, temperature in °C or °F, everything stored metric and Notes for the team kept in kg and °C for the clinic.
 - v94 Weights typed in Vitals were being dropped silently (the database held two of a daily routine): every Vitals box now reads whatever is typed, comma or full stop, refuses to save anything it cannot read and says which box, lists what it saved, and has a Date box so a reading filled in later lands on its own day.
 - v93 Sheets stay above the iPhone keyboard (the check-in text box was hidden behind it), and the Vitals boxes open empty with the last weight and temperature as a line underneath, since a grey last reading inside the box looked already filled in and daily weights went unsaved.
 - v92 The Symptom tile (a between-times symptom with a 1 to 10 score, a Symptoms line in Notes) and the Medicine tile (log a dose from Today, when-needed first with their status), completing the three by three grid.

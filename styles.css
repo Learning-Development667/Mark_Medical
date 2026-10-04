@@ -1147,6 +1147,10 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 .doserow { justify-content: space-between; }
 .doserow .pill { flex: none; }
 
+/* Settings > Units (since v95) */
+#settings-units .segmented { margin-bottom: var(--s-4); }
+#settings-units .fieldlabel { margin-top: 0; }
+
 /* Privacy, terms and About (since v90), in the sheet */
 .legal h3 { font-family: var(--font-head); font-size: var(--fs-lg); letter-spacing: 0.04em; color: var(--text-primary); margin: var(--s-5) 0 var(--s-1); }
 .legal p, .legal li { font-size: var(--fs-md); line-height: 1.5; }
