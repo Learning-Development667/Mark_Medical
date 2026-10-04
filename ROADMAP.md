@@ -79,6 +79,7 @@ The mechanism and Crohn's come in item 9; these follow one at a time, each a few
 - An "AI used this month: about 12p" line under Settings, from the bridge's own token tally. Offered 4 October; build if wanted.
 
 ## Done
+- v105 The entry menu became a proper view (titled Vitals, Temperature and so on, one line per reading, coloured by level) with Edit for temperature and vitals readings, opening the Vitals sheet with only that reading's boxes filled in; a changed date moves the reading.
 - v103 At home | In hospital switch at the top of the Meds tab, shared by both phones: at home the hospital medicines and the Given in hospital section stay out of the way; in hospital they show, Notes says "In hospital since", and medicine reminders can pause. Also a contrast fix on the amber temperature tile.
 - v102 Hospital medicines are counted, not scheduled: a second or third bag the same day reads "2 given today" with each time listed, never "1 of 1, Done for today"; the Today doses tile leaves them out; Notes for the team says "(2 times)".
 - v101 A medicine on the list can be ticked Given by the hospital (hospital monitored): a teal pill, how it is given, its doses marked as given in hospital, and no reminders for it. A photo of a drip bag arrives ticked.

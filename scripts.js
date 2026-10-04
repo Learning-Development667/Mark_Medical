@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '104';
+const APP_VERSION = '105';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -1754,11 +1754,14 @@ const EDITABLE_ENTRY_TYPES = ['food', 'drink', 'weight', 'note', 'question', 'bo
 
 function entryOptions(e) {
   const d = entryDate(e);
-  const canEdit = EDITABLE_ENTRY_TYPES.includes(e.type) || (e.type === 'med' && e.hospital);
+  const reading = e.type === 'temp' || e.type === 'vitals';
+  const canEdit = EDITABLE_ENTRY_TYPES.includes(e.type) || (e.type === 'med' && e.hospital) || reading;
+  const rows = readingRows(e);
   const body = h('div', null,
-    h('p', null, h('strong', null, ...entryTitle(e).map((n) => n.cloneNode(true)))),
+    rows.length ? null : h('p', null, h('strong', null, ...entryTitle(e).map((n) => n.cloneNode(true)))),
+    rows.length ? h('dl', { class: 'readings' }, ...rows.flatMap(([k, v, lvl]) => [h('dt', { text: k }), h('dd', { class: lvl ? 'lvl-' + lvl : null, text: v })])) : null,
     h('p', { class: 'muted', text: `${fmtDayLong(e.day)} at ${fmtTime(d)}. ${entrySub(e)}` }),
-    canEdit ? h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => (e.type === 'med' ? openHospitalDose(e) : openAdd(e.type, e)) }, 'Edit') : null,
+    canEdit && !state.readOnly ? h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => (e.type === 'med' ? openHospitalDose(e) : openAdd(reading ? 'vitals' : e.type, e)) }, 'Edit') : null,
     e.type === 'checkin' ? h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => { closeSheet(); openCheckin(e.slot, e.day); } }, 'Edit this check-in') : null,
     e.type === 'question' && !state.readOnly ? h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => { closeSheet(); openAnswerSheet(e); } }, 'Record or write the answer') : null,
     e.type === 'question' ? h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: async () => {
@@ -1775,7 +1778,18 @@ function entryOptions(e) {
     } }, 'Delete this entry'),
     h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Cancel')
   );
-  openSheet('Entry', body);
+  openSheet(ENTRY_SHEET_TITLES[e.type] || 'Entry', body);
+}
+const ENTRY_SHEET_TITLES = { temp: 'Temperature', vitals: 'Vitals', weight: 'Weight', med: 'Medicine', drink: 'Drink', food: 'Food', note: 'Note', sleep: 'Sleep', pain: 'Pain', bowel: 'Bowels', symptom: 'Symptom', question: 'Question for the team' };
+/* One line per reading for the entry view, coloured with the same levels as Trends' tables */
+function readingRows(e) {
+  if (e.type === 'temp') return [['Temperature', fmtTemp(e.value), tempClass(e.value) === 'is-red' ? 'red' : tempClass(e.value) === 'is-amber' ? 'amber' : null]];
+  if (e.type !== 'vitals') return [];
+  const rows = [];
+  if (e.heartRate) rows.push(['Heart rate', Math.round(e.heartRate) + ' bpm', e.heartRate >= 120 || e.heartRate <= 50 ? 'red' : e.heartRate >= 100 ? 'amber' : null]);
+  if (e.systolic && e.diastolic) rows.push(['Blood pressure', Math.round(e.systolic) + '/' + Math.round(e.diastolic) + ' mmHg', e.systolic >= 160 || e.diastolic >= 100 || e.systolic <= 90 ? 'red' : e.systolic >= 140 || e.diastolic >= 90 ? 'amber' : null]);
+  if (e.oxygen) rows.push(['Oxygen', Math.round(e.oxygen) + '%', e.oxygen <= 90 ? 'red' : e.oxygen <= 93 ? 'amber' : null]);
+  return rows;
 }
 
 function renderTiles() {
@@ -2422,20 +2436,36 @@ function openAdd(type, editEntry) {
     const o2 = h('input', { type: 'text', inputmode: 'numeric', autocomplete: 'off' });
     const lastW = state.recentEntries.find((e) => e.type === 'weight');
     const wIn = weightEntry(null);
-    body.append(
-      h('p', { class: 'hint', text: 'Fill in whichever readings you have. At least one is needed to save.' }),
+    /* Editing one saved reading (since v105): a temperature shows only the temperature box, a vitals entry only heart rate,
+       blood pressure and oxygen, each filled in with what was saved; weight has its own edit sheet */
+    const editing = editEntry && (editEntry.type === 'temp' || editEntry.type === 'vitals') ? editEntry.type : null;
+    const tempBlock = h('div', null,
       h('span', { class: 'fieldlabel', text: 'Temperature (\u00B0C)' }),
       h('div', { class: 'bigvalue' },
         h('button', { class: 'iconbtn', type: 'button', 'aria-label': 'Down', onclick: () => tStep(-0.1) }, '\u2212'),
         temp, h('span', { class: 'unit', text: '\u00B0C' }),
         h('button', { class: 'iconbtn', type: 'button', 'aria-label': 'Up', onclick: () => tStep(0.1) }, '+')
       ),
-      tHint,
+      tHint);
+    const vitalsBlock = h('div', null,
       field('Heart rate (bpm)', hr),
       h('div', { class: 'field-row' }, field('Systolic', sys), field('Diastolic', dia)),
-      field('Oxygen (%)', o2),
-      ...wIn.nodes,
-      lastW ? h('p', { class: 'hint hint-small', text: 'Last: ' + fmtKg(lastW.value) + ' (' + fmtStLb(lastW.value) + '), ' + whenLabel(lastW) + '.' }) : '',
+      field('Oxygen (%)', o2));
+    const weightBlock = h('div', null, ...wIn.nodes,
+      lastW ? h('p', { class: 'hint hint-small', text: 'Last: ' + fmtKg(lastW.value) + ' (' + fmtStLb(lastW.value) + '), ' + whenLabel(lastW) + '.' }) : '');
+    if (editing === 'temp') { temp.value = Number(editEntry.value).toFixed(1); tUpdate(); }
+    if (editing === 'vitals') {
+      if (editEntry.heartRate) hr.value = String(editEntry.heartRate);
+      if (editEntry.systolic) sys.value = String(editEntry.systolic);
+      if (editEntry.diastolic) dia.value = String(editEntry.diastolic);
+      if (editEntry.oxygen) o2.value = String(editEntry.oxygen);
+    }
+    tempBlock.hidden = editing === 'vitals';
+    vitalsBlock.hidden = editing === 'temp';
+    weightBlock.hidden = !!editing;
+    body.append(
+      h('p', { class: 'hint', text: editing ? 'Change what was saved, then Save changes. To remove the reading, use Delete in the entry menu instead.' : 'Fill in whichever readings you have. At least one is needed to save.' }),
+      tempBlock, vitalsBlock, weightBlock,
       h('div', { class: 'field-row' }, field('Date', dateIn), field('Time', time)),
       field('Note', note)
     );
@@ -2461,6 +2491,17 @@ function openAdd(type, editEntry) {
         return { hold: true };
       }
       const val = (name) => boxes.find((b) => b.name === name).value;
+      if (editing === 'temp') {
+        if (val('temperature') == null) { toast('Type the temperature, or use Delete to remove the reading'); temp.focus(); return { hold: true }; }
+        return [{ type: 'temp', value: Math.round(val('temperature') * 10) / 10, note: noteV }];
+      }
+      if (editing === 'vitals') {
+        if ((val('systolic') != null) !== (val('diastolic') != null)) { toast('Blood pressure needs both numbers, systolic and diastolic'); return { hold: true }; }
+        const r = (n) => (val(n) != null ? Math.round(val(n)) : null);
+        const one = { type: 'vitals', note: noteV, heartRate: r('heart rate'), systolic: r('systolic'), diastolic: r('diastolic'), oxygen: r('oxygen') };
+        if (one.heartRate == null && one.systolic == null && one.oxygen == null) { toast('Type at least one reading, or use Delete to remove it'); hr.focus(); return { hold: true }; }
+        return [one];
+      }
       const out = [];
       if (val('temperature') != null) out.push({ type: 'temp', value: Math.round(val('temperature') * 10) / 10, note: noteV });
       const data = { type: 'vitals', note: noteV };
@@ -2487,7 +2528,7 @@ function openAdd(type, editEntry) {
     const list = Array.isArray(data) ? data : [data];
     closeSheet();
     if (editId) {
-      try { await updateEntry(editId, { ...list[0], at }); toast(titles[type] + ' updated'); }
+      try { await updateEntry(editId, { ...list[0], at, ...(dateIn ? { day: saveDay } : {}) }); toast(titles[type] + ' updated'); }
       catch (e) { console.error(e); toast('Could not save'); }
       if (!$('view-food').hidden) renderFoodDiary();
       return;
@@ -2501,7 +2542,8 @@ function openAdd(type, editEntry) {
     if (type === 'food') promptMealMeds(at);
   });
   body.append(save, h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Cancel'));
-  openSheet(titles[type], body);
+  if (editId) save.textContent = 'Save changes';
+  openSheet(editId && type === 'vitals' ? (editEntry.type === 'temp' ? 'Edit temperature' : 'Edit vitals') : titles[type], body);
 }
 
 /* "temperature 36.8 °C, oxygen 95%, weight 80.6 kg": every reading a Vitals save wrote, so a missing one shows at once */
