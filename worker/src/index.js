@@ -384,6 +384,7 @@ async function runHouseholdReminders(env, fs, hid) {
     sentSet.add(key);
   };
   for (const m of medicines) {
+    if (f(m.fields, 'hospital') === true) continue; // given by the nurses: no reminders
     const times = (f(m.fields, 'times') || []).map(toMinutes).filter((t) => t != null);
     const name = f(m.fields, 'name') || 'Medicine', dose = f(m.fields, 'dose') || '';
     const taken = doseMinutes(m.id);
