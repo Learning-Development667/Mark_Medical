@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '93';
+const APP_VERSION = '94';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -316,6 +316,16 @@ function timeInput(defaultDay) {
   const now = new Date();
   const value = defaultDay === todayStr() ? fmtTime(now) : '12:00';
   return h('input', { type: 'time', value, required: true });
+}
+
+/* A number typed into a text box with a number keypad: a comma or a full stop for the decimal point,
+   spaces and a trailing unit allowed ("80,6", " 80.6 kg"). { empty } when nothing was typed;
+   value null when something was typed that is not a number. */
+function readNum(el) {
+  const raw = String(el.value || '').trim();
+  if (!raw) return { empty: true, value: null };
+  const cleaned = raw.replace(/\s+/g, '').replace(/(kg|bpm|%|°c|c)$/i, '').replace(',', '.');
+  return { empty: false, value: /^\d+(\.\d+)?$/.test(cleaned) ? parseFloat(cleaned) : null };
 }
 
 function atFromInputs(day, timeValue) {
@@ -1775,6 +1785,7 @@ function openAdd(type, editEntry) {
   const note = h('input', { type: 'text', placeholder: 'Optional note', value: (editEntry && editEntry.note) || '' });
   const body = h('div', null);
   let getData;
+  let dateIn = null; // set by sheets that show their own Date box (Vitals), which then decides the day saved
   let editId = editEntry ? editEntry.id : null;
 
   if (type === 'drink') {
@@ -2252,29 +2263,31 @@ function openAdd(type, editEntry) {
   }
 
   if (type === 'vitals') {
+    /* A Date box, so a reading filled in later lands on the day it was taken, not on whichever day Today shows (Mark, 5 October) */
+    dateIn = h('input', { type: 'date', value: day, max: todayStr(), required: true });
     const lastT = state.recentEntries.find((e) => e.type === 'temp');
     /* No placeholder numbers: a grey last reading inside the box looked like one already typed in, so weights went unsaved (Mark, 5 October). The last reading is a line under the box instead. */
-    const temp = h('input', { type: 'number', step: '0.1', min: '34', max: '42', inputmode: 'decimal', 'aria-label': 'Temperature in degrees' });
+    const temp = h('input', { class: 'input', type: 'text', inputmode: 'decimal', autocomplete: 'off', 'aria-label': 'Temperature in degrees' });
     const tHint = h('p', { class: 'hint' });
     const tUpdate = () => {
-      const v = parseFloat(temp.value);
-      tHint.textContent = isNaN(v) ? 'Leave blank if not taken.' + (lastT ? ' Last: ' + Number(lastT.value).toFixed(1) + ' \u00B0C, ' + whenLabel(lastT) + '.' : '') : tempWord(v);
-      tHint.style.color = isNaN(v) ? '' : v >= 38 ? 'var(--red)' : v >= 37.5 ? 'var(--amber)' : 'var(--green)';
+      const v = readNum(temp).value;
+      tHint.textContent = v == null || isNaN(v) ? 'Leave blank if not taken.' + (lastT ? ' Last: ' + Number(lastT.value).toFixed(1) + ' \u00B0C, ' + whenLabel(lastT) + '.' : '') : tempWord(v);
+      tHint.style.color = v == null || isNaN(v) ? '' : v >= 38 ? 'var(--red)' : v >= 37.5 ? 'var(--amber)' : 'var(--green)';
     };
     const tStep = (n) => {
-      const base = parseFloat(temp.value);
-      const v = isNaN(base) ? (lastT ? Number(lastT.value) : 37) : base;
+      const base = readNum(temp).value;
+      const v = base == null || isNaN(base) ? (lastT ? Number(lastT.value) : 37) : base;
       temp.value = (Math.round((v + n) * 10) / 10).toFixed(1);
       tUpdate();
     };
     temp.addEventListener('input', tUpdate);
     tUpdate();
-    const hr = h('input', { type: 'number', inputmode: 'numeric', min: '30', max: '220', step: '1' });
-    const sys = h('input', { type: 'number', inputmode: 'numeric', min: '50', max: '250', step: '1' });
-    const dia = h('input', { type: 'number', inputmode: 'numeric', min: '30', max: '150', step: '1' });
-    const o2 = h('input', { type: 'number', inputmode: 'numeric', min: '50', max: '100', step: '1' });
+    const hr = h('input', { type: 'text', inputmode: 'numeric', autocomplete: 'off' });
+    const sys = h('input', { type: 'text', inputmode: 'numeric', autocomplete: 'off' });
+    const dia = h('input', { type: 'text', inputmode: 'numeric', autocomplete: 'off' });
+    const o2 = h('input', { type: 'text', inputmode: 'numeric', autocomplete: 'off' });
     const lastW = state.recentEntries.find((e) => e.type === 'weight');
-    const wt = h('input', { type: 'number', step: '0.1', min: '20', max: '250', inputmode: 'decimal' });
+    const wt = h('input', { type: 'text', inputmode: 'decimal', autocomplete: 'off' });
     body.append(
       h('p', { class: 'hint', text: 'Fill in whichever readings you have. At least one is needed to save.' }),
       h('span', { class: 'fieldlabel', text: 'Temperature (\u00B0C)' }),
@@ -2289,28 +2302,35 @@ function openAdd(type, editEntry) {
       field('Oxygen (%)', o2),
       field('Weight (kg)', wt),
       lastW ? h('p', { class: 'hint hint-small', text: 'Last: ' + Number(lastW.value).toFixed(1) + ' kg, ' + whenLabel(lastW) + '.' }) : '',
-      field('Time', time), field('Note', note)
+      h('div', { class: 'field-row' }, field('Date', dateIn), field('Time', time)),
+      field('Note', note)
     );
     getData = () => {
-      const out = [];
       const noteV = note.value.trim();
-      const tV = parseFloat(temp.value);
-      if (!isNaN(tV)) {
-        if (tV < 30 || tV > 45) return null;
-        out.push({ type: 'temp', value: Math.round(tV * 10) / 10, note: noteV });
+      /* Every box is read as typed. Anything typed that cannot be read, or is outside a believable range,
+         stops the save and says which box, so a reading is never silently left out (Mark, 5 October:
+         daily weights typed and "saved", but only two ever reached the database). */
+      const boxes = [
+        ['temperature', temp, 30, 45], ['heart rate', hr, 20, 250], ['systolic', sys, 50, 260],
+        ['diastolic', dia, 20, 160], ['oxygen', o2, 50, 100], ['weight', wt, 20, 300]
+      ].map(([name, el, lo, hi]) => ({ name, el, lo, hi, ...readNum(el) }));
+      const bad = boxes.find((b) => !b.empty && (b.value == null || b.value < b.lo || b.value > b.hi));
+      if (bad) {
+        toast(`Could not read the ${bad.name} "${bad.el.value.trim()}". Type just the number${bad.name === 'weight' ? ', like 80.6' : ''}.`);
+        bad.el.focus();
+        return { hold: true };
       }
-      const hrV = parseInt(hr.value, 10);
-      const sysV = parseInt(sys.value, 10);
-      const diaV = parseInt(dia.value, 10);
-      const o2V = parseInt(o2.value, 10);
+      const val = (name) => boxes.find((b) => b.name === name).value;
+      const out = [];
+      if (val('temperature') != null) out.push({ type: 'temp', value: Math.round(val('temperature') * 10) / 10, note: noteV });
       const data = { type: 'vitals', note: noteV };
       let has = false;
-      if (!isNaN(hrV) && hrV > 0) { data.heartRate = hrV; has = true; }
-      if (!isNaN(sysV) && sysV > 0 && !isNaN(diaV) && diaV > 0) { data.systolic = sysV; data.diastolic = diaV; has = true; }
-      if (!isNaN(o2V) && o2V > 0) { data.oxygen = o2V; has = true; }
+      if (val('heart rate') != null) { data.heartRate = Math.round(val('heart rate')); has = true; }
+      if ((val('systolic') != null) !== (val('diastolic') != null)) { toast('Blood pressure needs both numbers, systolic and diastolic'); return { hold: true }; }
+      if (val('systolic') != null) { data.systolic = Math.round(val('systolic')); data.diastolic = Math.round(val('diastolic')); has = true; }
+      if (val('oxygen') != null) { data.oxygen = Math.round(val('oxygen')); has = true; }
       if (has) out.push(data);
-      const wV = parseFloat(wt.value);
-      if (!isNaN(wV) && wV > 0) out.push({ type: 'weight', value: Math.round(wV * 10) / 10, note: noteV });
+      if (val('weight') != null) out.push({ type: 'weight', value: Math.round(val('weight') * 10) / 10, note: noteV });
       return out.length ? out : null;
     };
   }
@@ -2321,7 +2341,9 @@ function openAdd(type, editEntry) {
     const data = getData();
     if (data && data.hold) return;
     if (!data) { toast('Please check the value'); return; }
-    const at = atFromInputs(day, time.value);
+    const saveDay = dateIn ? dateIn.value : day;
+    if (!saveDay || saveDay > todayStr()) { toast('Please choose a date up to today'); return; }
+    const at = atFromInputs(saveDay, time.value);
     const list = Array.isArray(data) ? data : [data];
     closeSheet();
     if (editId) {
@@ -2332,12 +2354,29 @@ function openAdd(type, editEntry) {
     }
     const ids = [];
     for (const d of list) { d.at = at; ids.push(await addEntry(d)); }
-    toast(titles[type] + ' saved', { label: 'Undo', onClick: () => ids.forEach((id) => deleteEntry(id)) });
+    const whenSaved = saveDay === todayStr() ? '' : ' for ' + fmtDayShort(saveDay);
+    const what = type === 'vitals' ? ': ' + savedVitalsText(list) : '';
+    toast(titles[type] + ' saved' + whenSaved + what, { label: 'Undo', onClick: () => ids.forEach((id) => deleteEntry(id)) });
     if (!$('view-food').hidden) renderFoodDiary();
     if (type === 'food') promptMealMeds(at);
   });
   body.append(save, h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Cancel'));
   openSheet(titles[type], body);
+}
+
+/* "temperature 36.8 °C, oxygen 95%, weight 80.6 kg": every reading a Vitals save wrote, so a missing one shows at once */
+function savedVitalsText(list) {
+  const bits = [];
+  for (const d of list) {
+    if (d.type === 'temp') bits.push('temperature ' + d.value.toFixed(1) + ' \u00B0C');
+    if (d.type === 'weight') bits.push('weight ' + d.value.toFixed(1) + ' kg');
+    if (d.type === 'vitals') {
+      if (d.heartRate) bits.push('heart rate ' + d.heartRate);
+      if (d.systolic) bits.push('blood pressure ' + d.systolic + '/' + d.diastolic);
+      if (d.oxygen) bits.push('oxygen ' + d.oxygen + '%');
+    }
+  }
+  return bits.join(', ');
 }
 
 /* A minus / number / plus control. step is the button step; the number can also be typed (halves are fine) */

@@ -368,7 +368,7 @@ code { font-family: var(--font-mono); font-size: 0.95em; }
   transition: border-color var(--t-base) ease, box-shadow var(--t-base) ease;
 }
 .field input:focus, .field textarea:focus, .field select:focus, textarea:focus { border-color: var(--teal); box-shadow: 0 0 0 4px var(--teal-light); }
-.field input[type="number"], .field input[type="time"], .field input[type="date"] { font-family: var(--font-mono); }
+.field input[type="number"], .field input[type="time"], .field input[type="date"], .field input[inputmode="decimal"], .field input[inputmode="numeric"] { font-family: var(--font-mono); }
 textarea { line-height: 1.5; resize: vertical; }
 .field-row { display: flex; flex-wrap: wrap; gap: 10px; }
 .field-row > .field { flex: 1 1 130px; min-width: 0; }
@@ -853,7 +853,7 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 .sheet-body .btn-block { margin-top: 10px; }
 .sheet-body .btn-block:first-of-type { margin-top: var(--s-4); }
 .bigvalue { display: flex; align-items: center; gap: var(--s-3); margin-bottom: 14px; }
-.bigvalue input { font-size: var(--fs-2xl); text-align: center; font-family: var(--font-mono); min-height: 64px; }
+.bigvalue input { font-size: var(--fs-2xl); text-align: center; font-family: var(--font-mono); min-height: 64px; flex: 1 1 0; min-width: 0; width: 100%; }
 .bigvalue .unit { font-size: 22px; color: var(--text-secondary); font-family: var(--font-mono); }
 .stepper { display: flex; gap: var(--s-2); }
 .stepper .iconbtn { box-shadow: none; background: var(--surface-sunken); font-size: 26px; }
