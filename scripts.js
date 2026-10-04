@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '94';
+const APP_VERSION = '95';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -181,6 +181,65 @@ function fmtDayShort(s) { return parseDay(s).toLocaleDateString('en-GB', { day: 
 function fmtDayNum(s) { return parseDay(s).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }); }
 function tempClass(v) { if (v >= 38) return 'is-red'; if (v >= 37.5) return 'is-amber'; return ''; }
 function tempWord(v) { if (v >= 38) return 'High. 38.0 or above'; if (v >= 37.5) return 'Raised. Keep an eye on it'; return 'Normal range'; }
+
+/* Units (since v95). Readings are always stored metric (kg, degrees C); each phone chooses how they are
+   shown and typed: weight in kg, stones and pounds, or pounds; temperature in C or F. Kept in
+   localStorage only, so Mark and Shelley can differ. Notes for the team, its PDF and copied text stay
+   metric whatever is chosen, since that is what NHS teams record. */
+const UNITS_KEY = 'daybook.units';
+const KG_PER_LB = 0.45359237;
+function units() {
+  try {
+    const u = JSON.parse(localStorage.getItem(UNITS_KEY) || '{}');
+    return { weight: ['kg', 'stlb', 'lb'].includes(u.weight) ? u.weight : 'kg', temp: u.temp === 'f' ? 'f' : 'c' };
+  } catch (e) { return { weight: 'kg', temp: 'c' }; }
+}
+function setUnits(patch) {
+  try { localStorage.setItem(UNITS_KEY, JSON.stringify({ ...units(), ...patch })); } catch (e) { /* private window: the choice lasts the session only */ }
+}
+const cToF = (c) => c * 9 / 5 + 32;
+const fToC = (f) => (f - 32) * 5 / 9;
+function tempUnit() { return units().temp === 'f' ? '\u00B0F' : '\u00B0C'; }
+function tempShown(c) { return units().temp === 'f' ? cToF(Number(c)) : Number(c); }
+function fmtTemp(c) { return tempShown(c).toFixed(1) + ' ' + tempUnit(); }
+function fmtWeight(kg) {
+  const u = units().weight, v = Number(kg);
+  if (u === 'lb') return (v / KG_PER_LB).toFixed(1) + ' lb';
+  if (u === 'stlb') { const lb = Math.round(v / KG_PER_LB); return Math.floor(lb / 14) + ' st ' + (lb % 14) + ' lb'; }
+  return v.toFixed(1) + ' kg';
+}
+/* The weight boxes for the chosen unit: one box for kg or lb, two (stones, pounds) for stones and pounds.
+   read() gives { empty } when nothing was typed, kg null when something typed is not a number. */
+function weightInputs(initialKg) {
+  const u = units().weight;
+  const box = () => h('input', { type: 'text', inputmode: 'decimal', autocomplete: 'off' });
+  if (u === 'stlb') {
+    const st = box(), lb = box();
+    if (initialKg != null) { const t = Math.round(Number(initialKg) / KG_PER_LB); st.value = String(Math.floor(t / 14)); lb.value = String(t % 14); }
+    return {
+      nodes: [h('div', { class: 'field-row' }, field('Weight: stones', st), field('and pounds', lb))],
+      first: st,
+      read: () => {
+        const a = readNum(st), b = readNum(lb);
+        if (a.empty && b.empty) return { empty: true, kg: null };
+        if ((!a.empty && a.value == null) || (!b.empty && b.value == null) || (!b.empty && b.value >= 14)) return { empty: false, kg: null, raw: (st.value + ' st ' + lb.value + ' lb').trim(), el: (!b.empty && (b.value == null || b.value >= 14)) ? lb : st };
+        return { empty: false, kg: ((a.value || 0) * 14 + (b.value || 0)) * KG_PER_LB };
+      }
+    };
+  }
+  const one = box();
+  if (initialKg != null) one.value = u === 'lb' ? (Number(initialKg) / KG_PER_LB).toFixed(1) : Number(initialKg).toFixed(1);
+  return {
+    nodes: [field('Weight (' + (u === 'lb' ? 'lb' : 'kg') + ')', one)],
+    first: one,
+    read: () => {
+      const r = readNum(one);
+      if (r.empty) return { empty: true, kg: null };
+      if (r.value == null) return { empty: false, kg: null, raw: one.value.trim(), el: one };
+      return { empty: false, kg: u === 'lb' ? r.value * KG_PER_LB : r.value };
+    }
+  };
+}
 function entryDate(e) { return e.at && typeof e.at.toDate === 'function' ? e.at.toDate() : new Date(); }
 function hoursAgo(d) { return (Date.now() - d.getTime()) / 36e5; }
 
@@ -324,7 +383,7 @@ function timeInput(defaultDay) {
 function readNum(el) {
   const raw = String(el.value || '').trim();
   if (!raw) return { empty: true, value: null };
-  const cleaned = raw.replace(/\s+/g, '').replace(/(kg|bpm|%|°c|c)$/i, '').replace(',', '.');
+  const cleaned = raw.replace(/\s+/g, '').replace(/(kg|lbs?|st|bpm|%|°[cf]|[cf])$/i, '').replace(',', '.');
   return { empty: false, value: /^\d+(\.\d+)?$/.test(cleaned) ? parseFloat(cleaned) : null };
 }
 
@@ -1476,7 +1535,7 @@ $('day-next').addEventListener('click', () => {
   if (state.selectedDay >= todayStr()) return;
   state.selectedDay = addDays(state.selectedDay, 1); refreshDay();
 });
-$('day-label').addEventListener('click', () => { state.selectedDay = todayStr(); refreshDay(); });
+$('day-label').addEventListener('click', () => openDayPicker(state.selectedDay, (d) => { state.selectedDay = d; refreshDay(); }, loggedDaysIn));
 
 /* The Meds tab shares Today's selected day, so a day picked on either one shows
    its own medicine adherence for that day, not always "right now". */
@@ -1485,7 +1544,87 @@ $('meds-day-next').addEventListener('click', () => {
   if (state.selectedDay >= todayStr()) return;
   state.selectedDay = addDays(state.selectedDay, 1); refreshDay();
 });
-$('meds-day-label').addEventListener('click', () => { state.selectedDay = todayStr(); refreshDay(); });
+$('meds-day-label').addEventListener('click', () => openDayPicker(state.selectedDay, (d) => { state.selectedDay = d; refreshDay(); }, loggedDaysIn));
+
+/* Settings > Units: per phone, re-draws Today and Trends in the new units at once */
+function syncUnitsCard() {
+  const u = units();
+  document.querySelectorAll('#settings-units [data-weight]').forEach((b) => { const on = b.dataset.weight === u.weight; b.classList.toggle('is-active', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+  document.querySelectorAll('#settings-units [data-temp]').forEach((b) => { const on = b.dataset.temp === u.temp; b.classList.toggle('is-active', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+}
+$('settings-units').addEventListener('click', (ev) => {
+  const b = ev.target.closest('[data-weight], [data-temp]');
+  if (!b) return;
+  setUnits(b.dataset.weight ? { weight: b.dataset.weight } : { temp: b.dataset.temp });
+  syncUnitsCard();
+  renderToday();
+  toast((b.dataset.weight ? 'Weight' : 'Temperature') + ' now shown in ' + b.getAttribute('aria-label').toLowerCase());
+});
+syncUnitsCard();
+
+/* Go to a day (since v95): tapping the date between the arrows opens a month calendar. Days with anything
+   logged are tinted, today is ringed, the day on screen is filled, days after today cannot be chosen.
+   The arrows still step a day at a time. marked(month) resolves to a Set of "YYYY-MM-DD". */
+const loggedMonths = {};
+async function loggedDaysIn(month) {
+  const set = new Set(state.recentEntries.filter((e) => e.day && e.day.startsWith(month)).map((e) => e.day));
+  if (state.demo || month >= (state.recentFrom || '').slice(0, 7)) return set;
+  if (!loggedMonths[month]) {
+    try {
+      const snap = await getDocs(query(hcol('entries'), where('day', '>=', month + '-01'), where('day', '<=', month + '-31')));
+      loggedMonths[month] = new Set(snap.docs.map((d) => d.data().day));
+    } catch (e) { console.error(e); return set; }
+  }
+  loggedMonths[month].forEach((d) => set.add(d));
+  return set;
+}
+function openDayPicker(current, onPick, marked) {
+  const today = todayStr();
+  let month = current.slice(0, 7);
+  const title = h('button', { class: 'cal-title', type: 'button', 'aria-label': 'Go to this month' });
+  const grid = h('div', { class: 'cal-grid' });
+  const prev = h('button', { class: 'iconbtn', type: 'button', 'aria-label': 'Previous month', text: '\u2039' });
+  const next = h('button', { class: 'iconbtn', type: 'button', 'aria-label': 'Next month', text: '\u203A' });
+  let drawn = 0;
+  const render = async () => {
+    const mine = ++drawn;
+    const [y, m] = month.split('-').map(Number);
+    title.textContent = new Date(y, m - 1, 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+    next.disabled = month >= today.slice(0, 7);
+    const draw = (logged) => {
+      const startDow = (new Date(y, m - 1, 1).getDay() + 6) % 7;
+      const cells = [];
+      for (let i = 0; i < startDow; i++) cells.push(h('div', { class: 'cal-cell is-empty' }));
+      for (let d = 1; d <= new Date(y, m, 0).getDate(); d++) {
+        const key = `${y}-${pad2(m)}-${pad2(d)}`;
+        const has = logged.has(key);
+        const cls = ['cal-cell'];
+        if (key === today) cls.push('is-today');
+        if (has) cls.push('is-logged');
+        if (key === current) cls.push('is-selected');
+        cells.push(h('button', { class: cls.join(' '), type: 'button', disabled: key > today,
+          'aria-label': fmtDayLong(key) + (has ? ', something logged' : '') + (key === current ? ', showing now' : ''),
+          'aria-current': key === current ? 'date' : null,
+          onclick: () => { closeSheet(); onPick(key); } }, h('span', { class: 'cal-num', text: String(d) })));
+      }
+      grid.replaceChildren(...cells);
+    };
+    draw(new Set());
+    const logged = marked ? await marked(month) : new Set();
+    if (mine === drawn) draw(logged);
+  };
+  prev.addEventListener('click', () => { month = shiftMonth(month, -1); render(); });
+  next.addEventListener('click', () => { if (month < today.slice(0, 7)) { month = shiftMonth(month, 1); render(); } });
+  title.addEventListener('click', () => { month = today.slice(0, 7); render(); });
+  const dow = h('div', { class: 'cal-dow', 'aria-hidden': 'true' }, ...['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => h('span', { text: d })));
+  const body = h('div', { class: 'cal daypicker' },
+    h('div', { class: 'cal-head' }, prev, title, next), dow, grid,
+    h('p', { class: 'cal-key' }, h('span', { class: 'key-dot key-done' }), 'Something logged'),
+    h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => { closeSheet(); onPick(today); } }, 'Go to today'),
+    h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Cancel'));
+  openSheet('Go to a day', body);
+  render();
+}
 
 /* Switching day: a live Firestore listener normally, or a local recompute in guest preview mode. */
 function refreshDay() {
@@ -1538,7 +1677,7 @@ function renderToday() {
 function entryTitle(e) {
   switch (e.type) {
     case 'med': return [h('span', { text: e.medName || 'Medicine' })];
-    case 'temp': return [h('span', { class: 'val ' + tempClass(e.value), text: Number(e.value).toFixed(1) + ' °C' })];
+    case 'temp': return [h('span', { class: 'val ' + tempClass(e.value), text: fmtTemp(e.value) })];
     case 'drink': return [h('span', { text: e.note || 'Drink' }), e.value ? h('span', { class: 'val', text: '  ' + e.value + ' ml' }) : null];
     case 'food': return [h('span', { text: e.note || 'Food' })];
     case 'sleep': return [h('span', { class: 'val', text: fmtHm(e.value) }), h('span', { text: ' asleep' })];
@@ -1548,7 +1687,7 @@ function entryTitle(e) {
     case 'bowel': return e.none ? [h('span', { text: 'No bowel movement' })] : [h('span', { class: 'val', text: 'Bowels: type ' + e.bristol }), h('span', { text: ', ' + bristolName(e.bristol).toLowerCase() })];
     case 'question': return [h('span', { text: e.note || 'Question' })];
     case 'exercise': return [h('span', { text: e.note || 'Exercise' })];
-    case 'weight': return [h('span', { class: 'val', text: Number(e.value).toFixed(1) + ' kg' })];
+    case 'weight': return [h('span', { class: 'val', text: fmtWeight(e.value) })];
     case 'vitals': {
       const parts = [];
       if (e.heartRate) parts.push(Math.round(e.heartRate) + ' bpm');
@@ -1651,7 +1790,7 @@ function renderTiles() {
   tileT.classList.remove('is-red', 'is-amber', 'is-green');
   if (temps.length) {
     const t = temps[0];
-    countTo($('tile-temp-value'), Number(t.value), { decimals: 1, unit: '°C' });
+    countTo($('tile-temp-value'), tempShown(t.value), { decimals: 1, unit: tempUnit() });
     $('tile-temp-sub').textContent = 'at ' + fmtTime(entryDate(t));
     const c = tempClass(t.value);
     tileT.classList.add(c || 'is-green');
@@ -2158,16 +2297,12 @@ function openAdd(type, editEntry) {
   }
 
   if (type === 'weight') {
-    const last = state.recentEntries.find((e) => e.type === 'weight');
-    const input = h('input', { type: 'number', step: '0.1', min: '20', max: '250', inputmode: 'decimal', value: editEntry ? Number(editEntry.value).toFixed(1) : (last ? Number(last.value).toFixed(1) : ''), placeholder: '0.0', required: true });
-    body.append(
-      h('div', { class: 'bigvalue' }, input, h('span', { class: 'unit', text: 'kg' })),
-      field('Time', time), field('Note', note)
-    );
+    const wIn = weightInputs(editEntry ? Number(editEntry.value) : null);
+    body.append(...wIn.nodes, field('Time', time), field('Note', note));
     getData = () => {
-      const v = parseFloat(input.value);
-      if (isNaN(v) || v <= 0) return null;
-      return { type: 'weight', value: Math.round(v * 10) / 10, note: note.value.trim() };
+      const w = wIn.read();
+      if (w.empty || w.kg == null || w.kg < 20 || w.kg > 300) { toast('Could not read the weight. Type just the number.'); return { hold: true }; }
+      return { type: 'weight', value: Math.round(w.kg * 10) / 10, note: note.value.trim() };
     };
   }
 
@@ -2270,13 +2405,14 @@ function openAdd(type, editEntry) {
     const temp = h('input', { class: 'input', type: 'text', inputmode: 'decimal', autocomplete: 'off', 'aria-label': 'Temperature in degrees' });
     const tHint = h('p', { class: 'hint' });
     const tUpdate = () => {
-      const v = readNum(temp).value;
-      tHint.textContent = v == null || isNaN(v) ? 'Leave blank if not taken.' + (lastT ? ' Last: ' + Number(lastT.value).toFixed(1) + ' \u00B0C, ' + whenLabel(lastT) + '.' : '') : tempWord(v);
+      const shown = readNum(temp).value;
+      const v = shown == null ? null : (units().temp === 'f' ? fToC(shown) : shown);
+      tHint.textContent = v == null || isNaN(v) ? 'Leave blank if not taken.' + (lastT ? ' Last: ' + fmtTemp(lastT.value) + ', ' + whenLabel(lastT) + '.' : '') : tempWord(v);
       tHint.style.color = v == null || isNaN(v) ? '' : v >= 38 ? 'var(--red)' : v >= 37.5 ? 'var(--amber)' : 'var(--green)';
     };
     const tStep = (n) => {
       const base = readNum(temp).value;
-      const v = base == null || isNaN(base) ? (lastT ? Number(lastT.value) : 37) : base;
+      const v = base == null || isNaN(base) ? (lastT ? tempShown(lastT.value) : tempShown(37)) : base;
       temp.value = (Math.round((v + n) * 10) / 10).toFixed(1);
       tUpdate();
     };
@@ -2287,21 +2423,21 @@ function openAdd(type, editEntry) {
     const dia = h('input', { type: 'text', inputmode: 'numeric', autocomplete: 'off' });
     const o2 = h('input', { type: 'text', inputmode: 'numeric', autocomplete: 'off' });
     const lastW = state.recentEntries.find((e) => e.type === 'weight');
-    const wt = h('input', { type: 'text', inputmode: 'decimal', autocomplete: 'off' });
+    const wIn = weightInputs(null);
     body.append(
       h('p', { class: 'hint', text: 'Fill in whichever readings you have. At least one is needed to save.' }),
-      h('span', { class: 'fieldlabel', text: 'Temperature (\u00B0C)' }),
+      h('span', { class: 'fieldlabel', text: 'Temperature (' + tempUnit() + ')' }),
       h('div', { class: 'bigvalue' },
         h('button', { class: 'iconbtn', type: 'button', 'aria-label': 'Down', onclick: () => tStep(-0.1) }, '\u2212'),
-        temp, h('span', { class: 'unit', text: '\u00B0C' }),
+        temp, h('span', { class: 'unit', text: tempUnit() }),
         h('button', { class: 'iconbtn', type: 'button', 'aria-label': 'Up', onclick: () => tStep(0.1) }, '+')
       ),
       tHint,
       field('Heart rate (bpm)', hr),
       h('div', { class: 'field-row' }, field('Systolic', sys), field('Diastolic', dia)),
       field('Oxygen (%)', o2),
-      field('Weight (kg)', wt),
-      lastW ? h('p', { class: 'hint hint-small', text: 'Last: ' + Number(lastW.value).toFixed(1) + ' kg, ' + whenLabel(lastW) + '.' }) : '',
+      ...wIn.nodes,
+      lastW ? h('p', { class: 'hint hint-small', text: 'Last: ' + fmtWeight(lastW.value) + ', ' + whenLabel(lastW) + '.' }) : '',
       h('div', { class: 'field-row' }, field('Date', dateIn), field('Time', time)),
       field('Note', note)
     );
@@ -2310,13 +2446,20 @@ function openAdd(type, editEntry) {
       /* Every box is read as typed. Anything typed that cannot be read, or is outside a believable range,
          stops the save and says which box, so a reading is never silently left out (Mark, 5 October:
          daily weights typed and "saved", but only two ever reached the database). */
+      /* temperature and weight are read in the phone's units and turned into C and kg; ranges are checked in those */
+      const tRead = readNum(temp);
+      if (!tRead.empty && tRead.value != null && units().temp === 'f') tRead.value = fToC(tRead.value);
+      const w = wIn.read();
       const boxes = [
-        ['temperature', temp, 30, 45], ['heart rate', hr, 20, 250], ['systolic', sys, 50, 260],
-        ['diastolic', dia, 20, 160], ['oxygen', o2, 50, 100], ['weight', wt, 20, 300]
-      ].map(([name, el, lo, hi]) => ({ name, el, lo, hi, ...readNum(el) }));
+        { name: 'temperature', el: temp, lo: 30, hi: 45, ...tRead },
+        ...[['heart rate', hr, 20, 250], ['systolic', sys, 50, 260], ['diastolic', dia, 20, 160], ['oxygen', o2, 50, 100]].map(([name, el, lo, hi]) => ({ name, el, lo, hi, ...readNum(el) })),
+        { name: 'weight', el: w.el || wIn.first, lo: 20, hi: 300, empty: w.empty, value: w.kg, raw: w.raw }
+      ];
       const bad = boxes.find((b) => !b.empty && (b.value == null || b.value < b.lo || b.value > b.hi));
       if (bad) {
-        toast(`Could not read the ${bad.name} "${bad.el.value.trim()}". Type just the number${bad.name === 'weight' ? ', like 80.6' : ''}.`);
+        const shown = bad.raw || bad.el.value.trim();
+        const like = bad.name === 'weight' ? (units().weight === 'stlb' ? ', like 12 and 10' : units().weight === 'lb' ? ', like 177.5' : ', like 80.6') : '';
+        toast(`Could not read the ${bad.name} "${shown}". Type just the number${like}.`);
         bad.el.focus();
         return { hold: true };
       }
@@ -2368,8 +2511,8 @@ function openAdd(type, editEntry) {
 function savedVitalsText(list) {
   const bits = [];
   for (const d of list) {
-    if (d.type === 'temp') bits.push('temperature ' + d.value.toFixed(1) + ' \u00B0C');
-    if (d.type === 'weight') bits.push('weight ' + d.value.toFixed(1) + ' kg');
+    if (d.type === 'temp') bits.push('temperature ' + fmtTemp(d.value));
+    if (d.type === 'weight') bits.push('weight ' + fmtWeight(d.value));
     if (d.type === 'vitals') {
       if (d.heartRate) bits.push('heart rate ' + d.heartRate);
       if (d.systolic) bits.push('blood pressure ' + d.systolic + '/' + d.diastolic);
@@ -5117,13 +5260,13 @@ function renderChartTables(entries, from) {
   for (const e of inRange) if (e.type === 'drink') drinkTotals[e.day] = (drinkTotals[e.day] || 0) + (Number(e.value) || 0);
   /* each: the entries, the value column heading, the value cell (a string or nodes), the time cell */
   const specs = {
-    temp: { rows: inRange.filter((e) => e.type === 'temp'), head: 'Temperature', cell: (e) => [Number(e.value).toFixed(1) + ' °C', sub(e.note)] },
+    temp: { rows: inRange.filter((e) => e.type === 'temp'), head: 'Temperature', cell: (e) => [fmtTemp(e.value), sub(e.note)] },
     pain: { rows: inRange.filter((e) => e.type === 'pain' || (isPatientCheckin(e) && e.pain != null)), head: 'Pain', cell: (e) => [(e.type === 'pain' ? Number(e.value) : Number(e.pain)) + '/10', sub(e.type === 'pain' ? (e.note ? 'Reading: ' + e.note : 'Reading') : checkinTitle(e.slot))] },
     mood: { rows: inRange.filter((e) => isPatientCheckin(e) && e.mood != null), head: 'Mood', cell: (e) => [Number(e.mood) + '/10', sub(checkinTitle(e.slot))] },
     heart: { rows: inRange.filter((e) => e.type === 'vitals' && e.heartRate), head: 'Heart rate', cell: (e) => [Math.round(Number(e.heartRate)) + ' bpm', sub(e.note)] },
     bp: { rows: inRange.filter((e) => e.type === 'vitals' && e.systolic && e.diastolic), head: 'Blood pressure', cell: (e) => [Math.round(Number(e.systolic)) + '/' + Math.round(Number(e.diastolic)) + ' mmHg', sub(e.note)] },
     oxygen: { rows: inRange.filter((e) => e.type === 'vitals' && e.oxygen), head: 'Oxygen', cell: (e) => [Math.round(Number(e.oxygen)) + '%', sub(e.note)] },
-    weight: { rows: inRange.filter((e) => e.type === 'weight' && Number(e.value) > 0), head: 'Weight', cell: (e) => [Number(e.value).toFixed(1) + ' kg', sub(e.note)] },
+    weight: { rows: inRange.filter((e) => e.type === 'weight' && Number(e.value) > 0), head: 'Weight', cell: (e) => [fmtWeight(e.value), sub(e.note)] },
     sleep: { rows: inRange.filter((e) => e.type === 'sleep'), head: 'Asleep', timeHead: 'Bed to up',
       time: (e) => e.bedAt && e.wokeAt ? e.bedAt + ' to ' + e.wokeAt : '--',
       cell: (e) => { const st = ['deep', 'core', 'rem'].filter((k) => Number(e[k]) > 0).map((k) => (k === 'rem' ? 'REM' : k[0].toUpperCase() + k.slice(1)) + ' ' + fmtHm(Number(e[k]))); if (Number(e.awake) > 0) st.push('awake ' + fmtHm(Number(e.awake))); return [fmtHm(Number(e.value) || 0), sub(st.join(' · '))]; } },
@@ -5168,7 +5311,7 @@ function renderVitalsLatest(entries) {
   const tile = $('vt-temp');
   tile.classList.remove('is-red', 'is-amber', 'is-green');
   if (t) {
-    countTo($('vt-temp-value'), Number(t.value), { decimals: 1, unit: '\u00B0C' });
+    countTo($('vt-temp-value'), tempShown(t.value), { decimals: 1, unit: tempUnit() });
     $('vt-temp-sub').textContent = whenLabel(t);
     tile.classList.add(tempClass(t.value) || 'is-green');
   } else { clearCount($('vt-temp-value'), '--'); $('vt-temp-sub').textContent = 'none yet'; }
@@ -5200,7 +5343,11 @@ function renderVitalsLatest(entries) {
   else { $('vt-sleep-value').textContent = '--'; $('vt-sleep-sub').textContent = 'none yet'; }
 
   const w = latest((e) => e.type === 'weight');
-  if (w) { countTo($('vt-weight-value'), Number(w.value), { decimals: 1, unit: 'kg' }); $('vt-weight-sub').textContent = whenLabel(w); }
+  if (w) {
+    if (units().weight === 'stlb') { clearCount($('vt-weight-value'), fmtWeight(w.value)); }
+    else countTo($('vt-weight-value'), units().weight === 'lb' ? Number(w.value) / KG_PER_LB : Number(w.value), { decimals: 1, unit: units().weight === 'lb' ? 'lb' : 'kg' });
+    $('vt-weight-sub').textContent = whenLabel(w);
+  }
   else { clearCount($('vt-weight-value'), '--'); $('vt-weight-sub').textContent = 'none yet'; }
 }
 
@@ -5238,8 +5385,9 @@ async function renderVitals() {
 
   /* Temperature: points in time across the range, with the 37.5 amber and 38.0 red thresholds as soft bands */
   const temps = entries.filter((e) => e.type === 'temp');
-  const tPoints = temps.map((e) => ({ x: entryDate(e).getTime(), y: Number(e.value) }));
-  const tempColour = (v) => v >= 38 ? T.red : v >= 37.5 ? T.amber : T.teal;
+  const tPoints = temps.map((e) => ({ x: entryDate(e).getTime(), y: tempShown(e.value) }));
+  const tc = (v) => (units().temp === 'f' ? fToC(v) : v); // thresholds are judged in C whatever is shown
+  const tempColour = (v) => tc(v) >= 38 ? T.red : tc(v) >= 37.5 ? T.amber : T.teal;
   const tLast = tPoints.length - 1;
   makeChart('temp', {
     type: 'line',
@@ -5247,11 +5395,11 @@ async function renderVitals() {
       lineSeries(T, T.teal, tPoints, { label: 'Temperature',
         pointBackgroundColor: (c) => { const v = c.raw && c.raw.y; return c.dataIndex === tLast ? tempColour(v) : hexAlpha(tempColour(v), 0.7); },
         pointBorderColor: (c) => c.dataIndex === tLast ? T.surface : 'transparent' }),
-      bandSeries(start, end, 38, 37.5, hexAlpha(T.amber, 0.16), 'band-amber'),
-      bandSeries(start, end, 40.5, 38, hexAlpha(T.red, 0.12), 'band-red')
+      bandSeries(start, end, tempShown(38), tempShown(37.5), hexAlpha(T.amber, 0.16), 'band-amber'),
+      bandSeries(start, end, tempShown(40.5), tempShown(38), hexAlpha(T.red, 0.12), 'band-red')
     ] },
-    options: lineOptions(Object.assign(yAxisBase(T), { min: 35, max: 40.5, ticks: Object.assign(yAxisBase(T).ticks, { stepSize: 1, maxTicksLimit: 8, includeBounds: false, callback: (v) => v.toFixed(1) }) }), {
-      title: pointTitle, label: (item) => item.raw.y.toFixed(1) + ' °C'
+    options: lineOptions(Object.assign(yAxisBase(T), { min: tempShown(35), max: tempShown(40.5), ticks: Object.assign(yAxisBase(T).ticks, { stepSize: units().temp === 'f' ? 2 : 1, maxTicksLimit: 8, includeBounds: false, callback: (v) => v.toFixed(units().temp === 'f' ? 0 : 1) }) }), {
+      title: pointTitle, label: (item) => item.raw.y.toFixed(1) + ' ' + tempUnit()
     }, false, tPoints.length)
   });
 
@@ -5275,15 +5423,17 @@ async function renderVitals() {
 
   /* Weight */
   const weights = entries.filter((e) => e.type === 'weight');
-  const wPoints = weights.map((e) => Number(e.value));
+  const wUnit = units().weight;
+  const wPoints = weights.map((e) => (wUnit === 'kg' ? Number(e.value) : Number(e.value) / KG_PER_LB));
+  const wTick = (v) => (wUnit === 'kg' ? v + ' kg' : wUnit === 'lb' ? Math.round(v) + ' lb' : Math.floor(Math.round(v) / 14) + ' st ' + (Math.round(v) % 14));
   makeChart('weight', {
     type: 'line',
-    data: { labels: weights.map((e) => dayLabel(e.day)), datasets: [lineSeries(T, T.teal, wPoints, { label: 'kg' })] },
+    data: { labels: weights.map((e) => dayLabel(e.day)), datasets: [lineSeries(T, T.teal, wPoints, { label: 'Weight' })] },
     options: { responsive: true, maintainAspectRatio: false, layout: { padding: { top: 8, right: 10 } },
       interaction: { mode: 'nearest', intersect: false },
       animation: reduced ? false : drawIn(wPoints.length),
-      scales: { x: xAxisBase(T), y: Object.assign(yAxisBase(T), { grace: '15%', ticks: Object.assign(yAxisBase(T).ticks, { precision: 1, callback: (v) => v + ' kg' }) }) },
-      plugins: { legend: { display: false }, tooltip: Object.assign(tooltipStyle(T), { callbacks: { label: (i) => Number(i.raw).toFixed(1) + ' kg' } }) } }
+      scales: { x: xAxisBase(T), y: Object.assign(yAxisBase(T), { grace: '15%', ticks: Object.assign(yAxisBase(T).ticks, { precision: 1, callback: wTick }) }) },
+      plugins: { legend: { display: false }, tooltip: Object.assign(tooltipStyle(T), { callbacks: { label: (i) => fmtWeight(wUnit === 'kg' ? Number(i.raw) : Number(i.raw) * KG_PER_LB) } }) } }
   });
 
   /* Sleep: hours asleep per night, stacked by stage (deep, core, REM). Bar height always
@@ -6632,7 +6782,8 @@ function newItemId() { return 'x' + Date.now().toString(36) + Math.random().toSt
 
 $('ex-prev').addEventListener('click', () => { state.exerciseDay = addDays(state.exerciseDay, -1); renderExercise(); });
 $('ex-next').addEventListener('click', () => { if (state.exerciseDay < todayStr()) { state.exerciseDay = addDays(state.exerciseDay, 1); renderExercise(); } });
-$('ex-label').addEventListener('click', () => { state.exerciseDay = todayStr(); renderExercise(); });
+$('ex-label').addEventListener('click', () => openDayPicker(state.exerciseDay, (d) => { state.exerciseDay = d; renderExercise(); },
+  async (month) => new Set(Object.keys(state.exercise || {}).filter((d) => d.startsWith(month) && (exerciseFor(d).steps || Object.values(exerciseFor(d).done || {}).some(Boolean))))));
 
 /* A programme item started from an Apple Health workout: a swim by its distance, anything else by its minutes, ticked from Health from then on */
 function itemFromWorkout(w) {
