@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '102';
+const APP_VERSION = '103';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -1213,6 +1213,7 @@ function watchProfile() {
     renderCalls();
     renderExercise();
     syncSettings();
+    renderMeds();
   }, (e) => console.error(e));
 }
 
@@ -1821,8 +1822,8 @@ function openDoseSheet() {
       h('span', { class: 'pickrow-main' }, h('span', { class: 'pickrow-title', text: m.name }), h('span', { class: 'pickrow-sub', text: m.dose + (m.purpose ? ' · ' + m.purpose : '') })),
       pill);
   };
-  const prn = activePrn();
-  const sched = activeScheduled(today);
+  const prn = activePrn().filter((m) => !hospitalHidden(m));
+  const sched = activeScheduled(today).filter((m) => !hospitalHidden(m));
   const body = h('div', null,
     h('p', { class: 'wiz-hint', text: 'Tap a medicine to log a dose now. For another time, use the Meds tab.' }),
     prn.length ? h('p', { class: 'fieldlabel', text: 'When needed' }) : null,
@@ -4292,6 +4293,7 @@ function summaryRows(entries, from, to) {
   if (prn.length) push(hitAny ? 'amber' : 'teal', 'When-needed medicines', `When-needed medicines: ${prn.join('; ')}.`);
 
   const hosp = entries.filter((e) => e.type === 'med' && e.hospital).sort((a, b) => entryDate(a) - entryDate(b));
+  if (state.profile && state.profile.inHospital && state.profile.inHospitalSince && state.profile.inHospitalSince <= to) push('teal', 'In hospital', 'In hospital since ' + fmtDayShort(state.profile.inHospitalSince) + '.');
   if (hosp.length) {
     const groups = new Map();
     hosp.forEach((e) => {
@@ -4820,10 +4822,42 @@ function lastMedEntry(medId) {
   return state.recentEntries.find((e) => e.type === 'med' && e.medId === medId) || null;
 }
 
+/* At home or in hospital (since v103): one switch for the household, in profile/main, so both phones agree.
+   At home the medicines the nurses give, and the Given in hospital section on a day with nothing in it, stay
+   out of the way; in hospital they show, and the bridge can pause medicine reminders. The viewer role cannot
+   read the profile, so it always sees everything. */
+function inHospital() { return Boolean(state.profile && state.profile.inHospital); }
+function hospitalHidden(m) { return m.hospital && !inHospital() && !state.viewer; }
+async function setPlace(patch) {
+  if (state.demo) { state.profile = { ...state.profile, ...patch }; renderMeds(); return; }
+  try { await setDoc(hdoc('profile', 'main'), patch, { merge: true }); }
+  catch (e) { console.error(e); toast('Could not save that'); }
+}
+function renderPlace() {
+  const box = $('meds-place');
+  if (!box) return;
+  box.hidden = state.viewer;
+  if (state.viewer) return;
+  const here = inHospital();
+  const since = state.profile && state.profile.inHospitalSince;
+  const pause = !(state.profile && state.profile.pauseRemindersInHospital === false);
+  const seg = (label, on, value) => h('button', { class: 'seg' + (on ? ' is-active' : ''), type: 'button', 'aria-pressed': String(on), disabled: state.readOnly || undefined,
+    onclick: () => { if (on) return; setPlace(value ? { inHospital: true, inHospitalSince: todayStr() } : { inHospital: false, inHospitalSince: null }); toast(value ? 'In hospital: hospital medicines are showing' : 'At home: hospital medicines are tucked away'); } }, label);
+  const pauseBox = h('input', { type: 'checkbox', disabled: state.readOnly || undefined });
+  pauseBox.checked = pause;
+  pauseBox.addEventListener('change', () => setPlace({ pauseRemindersInHospital: pauseBox.checked }));
+  box.replaceChildren(...[
+    h('div', { class: 'segmented place-seg', role: 'group', 'aria-label': 'Where are you?' }, seg('At home', !here, false), seg('In hospital', here, true)),
+    here ? h('p', { class: 'hint place-since', text: since ? 'In hospital since ' + fmtDayShort(since) + '.' : 'In hospital.' }) : null,
+    here ? h('label', { class: 'check' }, pauseBox, h('span', { text: 'Pause medicine reminders while in hospital' })) : null,
+    here ? h('p', { class: 'hint', text: 'The ward usually gives your medicines. A "Remind me in 15 minutes" you ask for still comes through.' }) : null].filter(Boolean));
+}
+
 function renderMeds() {
   const day = state.selectedDay;
-  const sched = activeScheduled(day);
-  const prn = activePrn();
+  const sched = activeScheduled(day).filter((m) => !hospitalHidden(m));
+  const prn = activePrn().filter((m) => !hospitalHidden(m));
+  renderPlace();
   $('meds-scheduled').replaceChildren(...sched.map((m) => medCard(m, day)));
   if (!sched.length) $('meds-scheduled').append(h('p', { class: 'empty', 'data-art': 'pill', text: 'No scheduled medicines.' }));
   $('meds-prn').replaceChildren(...prn.map((m) => medCard(m, day)));
@@ -5193,6 +5227,8 @@ function renderHospitalDoses() {
     h('p', { class: 'hosprow-name' }, h('span', { text: e.medName || 'Medicine' }), h('span', { class: 'pill pill-hosp', text: 'Given in hospital' })),
     h('p', { class: 'muted', text: [e.dose, ROUTE_WORDS[e.route] || e.route, fmtTime(entryDate(e)), e.note].filter(Boolean).join(' \u00b7 ') }))));
   if (!list.length) box.append(h('p', { class: 'muted', text: day === todayStr() ? 'Nothing logged as given in hospital today.' : 'Nothing logged as given in hospital this day.' }));
+  const section = $('meds-hospital-section');
+  if (section) section.hidden = !list.length && !inHospital() && !state.viewer;
 }
 
 function openManageMeds() {

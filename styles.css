@@ -39,6 +39,7 @@
   --success-light: #DFEEE4;
   --warning: #9A5B00;
   --warning-light: #F8EBD3;
+  --warning-ink: #8F5400;  /* amber words on the sunken status strip: 4.98:1 on --surface-sunken, where --warning is 4.42 */
   --danger: #A4262C;
   --danger-light: #F7E2E3;
   /* Colour: nutrition tag groups (Food diary). "-text" is the darker, WCAG-checked
@@ -167,6 +168,7 @@
     --success: #7BC496;
     --success-light: #1C3527;
     --warning: #E0A84A;
+    --warning-ink: #E0A84A;
     --warning-light: #3B2E14;
     --danger: #E27B80;
     --danger-light: #3D1F21;
@@ -563,7 +565,7 @@ body.is-readonly #calls-edit { display: none; }
 .status .tile-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .status .tile.is-red, .status .tile.is-amber { background: transparent; }
 .status .tile.is-red .tile-label, .status .tile.is-red .tile-sub { color: var(--danger); }
-.status .tile.is-amber .tile-label, .status .tile.is-amber .tile-sub { color: var(--warning); }
+.status .tile.is-amber .tile-label, .status .tile.is-amber .tile-sub { color: var(--warning-ink); }
 .status .tile + .tile { border-left: 1px solid color-mix(in srgb, var(--border-subtle) 70%, transparent); }
 
 /* Raised: everything here is tappable, with a light gradient and a lit top edge */
@@ -1150,6 +1152,9 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 .doserow .pill { flex: none; }
 
 /* Given in hospital (since v97): a calm teal pill, and a teal bar on the timeline */
+.placecard { padding: var(--s-3) var(--s-4); margin-bottom: var(--s-3); }
+.placecard .place-seg { display: grid; grid-template-columns: 1fr 1fr; }
+.placecard .hint, .placecard .check { margin: var(--s-2) 0 0; }
 .pill-hosp.med-hosp { display: inline-block; margin: var(--s-1) 0; }
 .pill-hosp { background: var(--teal-light); color: var(--teal); margin-left: var(--s-2); vertical-align: middle; }
 .entry.type-med.is-hospital { --cat: var(--teal); }

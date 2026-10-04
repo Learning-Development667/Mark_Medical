@@ -374,7 +374,12 @@ async function runHouseholdReminders(env, fs, hid) {
   const lf = logDoc ? logDoc.fields : {};
   const sent = f(lf, 'day') === now.day && lf.sent && lf.sent.mapValue ? Object.keys(lf.sent.mapValue.fields || {}) : [];
   const sentSet = new Set(sent);
-  const medicines = (await fs.list(hp(hid, 'medicines'))).filter((m) => f(m.fields, 'active') !== false && f(m.fields, 'kind') !== 'prn' && (!f(m.fields, 'courseEnd') || f(m.fields, 'courseEnd') >= now.day));
+  /* In hospital with reminders paused (profile/main, the switch on the Meds tab): the ward gives the medicines,
+     so no "is due" or "still to take" and no exercise nudge; a "Remind me in 15 minutes" asked for still goes */
+  const profile = await fs.get(hp(hid, 'profile/main'));
+  const pf = profile ? profile.fields : {};
+  const paused = f(pf, 'inHospital') === true && f(pf, 'pauseRemindersInHospital') !== false;
+  const medicines = paused ? [] : (await fs.list(hp(hid, 'medicines'))).filter((m) => f(m.fields, 'active') !== false && f(m.fields, 'kind') !== 'prn' && (!f(m.fields, 'courseEnd') || f(m.fields, 'courseEnd') >= now.day));
   const doses = await fs.query(hp(hid, 'entries'), { day: now.day, type: 'med' });
   const doseMinutes = (medId) => doses.filter((d) => f(d.fields, 'medId') === medId).map((d) => londonNow(new Date(f(d.fields, 'at'))).minutes);
   const out = [];
@@ -402,8 +407,7 @@ async function runHouseholdReminders(env, fs, hid) {
   }
   /* The gentle nudge at 10:00, household-wide, no medicine named, so the same body for a private phone */
   const nudgeKey = 'stretch|' + now.day;
-  if (now.minutes >= STRETCH_NUDGE_AT && now.minutes < STRETCH_NUDGE_AT + REMINDER_WINDOW_MIN && !sentSet.has(nudgeKey)) {
-    const profile = await fs.get(hp(hid, 'profile/main'));
+  if (!paused && now.minutes >= STRETCH_NUDGE_AT && now.minutes < STRETCH_NUDGE_AT + REMINDER_WINDOW_MIN && !sentSet.has(nudgeKey)) {
     const nudgeOn = !!(profile && f(profile.fields, 'stretchNudge') === true);
     if (nudgeOn) {
       const exEntries = await fs.query(hp(hid, 'entries'), { day: now.day, type: 'exercise' });
