@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '101';
+const APP_VERSION = '102';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -1798,7 +1798,7 @@ function renderTiles() {
   countTo($('tile-drink-value'), ml, { unit: ml >= 1000 ? 'L' : 'ml', format: (n) => ml >= 1000 ? (n / 1000).toFixed(2).replace(/0+$/, '').replace(/\.$/, '') : String(Math.round(n)) });
   $('tile-drink-sub').textContent = drinks.length === 1 ? '1 drink' : drinks.length + ' drinks';
 
-  const sched = activeScheduled(state.selectedDay);
+  const sched = activeScheduled(state.selectedDay).filter((m) => !m.hospital); // the nurses' doses are counted on their card, never owed
   const need = sched.reduce((s, m) => s + (m.perDay || 1), 0);
   const done = sched.reduce((s, m) => s + Math.min(m.perDay || 1, countMedOnDay(m.id, state.selectedDay)), 0);
   countTo($('tile-meds-value'), done, { format: (n) => Math.round(n) + ' of ' + need });
@@ -1828,7 +1828,7 @@ function openDoseSheet() {
     prn.length ? h('p', { class: 'fieldlabel', text: 'When needed' }) : null,
     prn.length ? h('div', { class: 'doserows' }, ...prn.map((m) => row(m, prnStatus(m)))) : null,
     sched.length ? h('p', { class: 'fieldlabel', text: 'Scheduled' }) : null,
-    sched.length ? h('div', { class: 'doserows' }, ...sched.map((m) => { const n = countMedOnDay(m.id, today); return row(m, m.perDay ? { level: n >= m.perDay ? 'green' : 'teal', text: n + ' of ' + m.perDay + ' today' } : null); })) : null,
+    sched.length ? h('div', { class: 'doserows' }, ...sched.map((m) => { const n = countMedOnDay(m.id, today); if (m.hospital) return row(m, n ? { level: 'teal', text: n + ' given today' } : null); return row(m, m.perDay ? { level: n >= m.perDay ? 'green' : 'teal', text: n + ' of ' + m.perDay + ' today' } : null); })) : null,
     !prn.length && !sched.length ? h('p', { class: 'empty', 'data-art': 'pill', text: 'No medicines set up yet. Add them on the Meds tab.' }) : null,
     h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => openHospitalDose(null) }, 'Given in hospital'),
     h('p', { class: 'hint', text: 'For a drip, an injection or anything the hospital gave that is not on your list.' }),
@@ -4292,7 +4292,14 @@ function summaryRows(entries, from, to) {
   if (prn.length) push(hitAny ? 'amber' : 'teal', 'When-needed medicines', `When-needed medicines: ${prn.join('; ')}.`);
 
   const hosp = entries.filter((e) => e.type === 'med' && e.hospital).sort((a, b) => entryDate(a) - entryDate(b));
-  if (hosp.length) push('teal', 'Given in hospital', 'Given in hospital: ' + hosp.map((e) => [e.medName, e.dose, (ROUTE_WORDS[e.route] || '').toLowerCase()].filter(Boolean).join(' ') + ' on ' + fmtDayShort(e.day)).join('; ') + '.');
+  if (hosp.length) {
+    const groups = new Map();
+    hosp.forEach((e) => {
+      const text = [e.medName, e.dose, (ROUTE_WORDS[e.route] || '').toLowerCase()].filter(Boolean).join(' ') + ' on ' + fmtDayShort(e.day);
+      groups.set(text, (groups.get(text) || 0) + 1);
+    });
+    push('teal', 'Given in hospital', 'Given in hospital: ' + [...groups].map(([text, n]) => text + (n > 1 ? ` (${n} times)` : '')).join('; ') + '.');
+  }
 
   return rows.sort((a, b) => LEVEL_RANK[a.level] - LEVEL_RANK[b.level]);
 }
@@ -4857,7 +4864,10 @@ function medCard(m, day) {
   card.append(head);
 
   const status = h('div', { class: 'med-status' });
-  if (m.kind === 'scheduled') {
+  if (m.hospital) {
+    /* given by the nurses as often as they decide (a second bag, a third): counted, never "1 of 1" */
+    if (count) status.append(h('span', { class: 'med-last', text: `${count} given ` + (isToday ? 'today' : 'this day') }));
+  } else if (m.kind === 'scheduled') {
     const perDay = m.perDay || 1;
     const dots = h('div', { class: 'dots' });
     for (let i = 0; i < perDay; i++) dots.append(h('span', { class: 'dot' + (i < count ? ' is-done' : '') }));
@@ -5252,6 +5262,7 @@ function openEditMed(m, prefill) {
     schedFields.hidden = kind.value !== 'scheduled'; prnFields.hidden = kind.value !== 'prn';
     hospFields.hidden = !hospital.checked;
     remindBits.forEach((el) => { el.hidden = hospital.checked; });
+    schedFields.children[0].hidden = hospital.checked; // doses per day: the nurses decide, each one is counted
   };
   kind.addEventListener('change', sync);
   hospital.addEventListener('change', sync);
@@ -5275,7 +5286,7 @@ function openEditMed(m, prefill) {
         order: m.order || (Math.max(0, ...state.medicines.map((x) => x.order || 0)) + 1)
       };
       if (kind.value === 'scheduled') {
-        data.perDay = Math.max(1, parseInt(perDay.value, 10) || 1);
+        data.perDay = hospital.checked ? null : Math.max(1, parseInt(perDay.value, 10) || 1);
         data.courseEnd = courseEnd.value || null;
         data.minGapHours = null; data.maxPerDay = null;
         data.times = hospital.checked ? [] : times.slice();
