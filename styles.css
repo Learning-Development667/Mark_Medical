@@ -460,6 +460,7 @@ textarea { line-height: 1.5; resize: vertical; }
 body.is-viewer #trends-reports,
 body.is-viewer #vitals-log,
 body.is-viewer #meds-manage,
+body.is-viewer #meds-hospital-add,
 body.is-viewer .med-actions,
 body.is-viewer #chemo-cycle-section,
 body.is-viewer #chemo-docs-section,
@@ -474,6 +475,7 @@ body.is-readonly .qa,
 body.is-readonly #food-nutrition-row,
 body.is-readonly #food-totals,
 body.is-readonly #meds-manage,
+body.is-readonly #meds-hospital-add,
 body.is-readonly .med-actions,
 body.is-readonly #meds-doc-add,
 body.is-readonly #vitals-log,
@@ -1146,6 +1148,14 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 .doserows { display: flex; flex-direction: column; gap: var(--s-2); margin: var(--s-2) 0 var(--s-3); }
 .doserow { justify-content: space-between; }
 .doserow .pill { flex: none; }
+
+/* Given in hospital (since v97): a calm teal pill, and a teal bar on the timeline */
+.pill-hosp { background: var(--teal-light); color: var(--teal); margin-left: var(--s-2); vertical-align: middle; }
+.entry.type-med.is-hospital { --cat: var(--teal); }
+.hosprow { padding: var(--s-3) var(--s-4); }
+.hosprow-name { margin: 0 0 var(--s-1); font-weight: 600; display: flex; align-items: center; flex-wrap: wrap; gap: var(--s-2); }
+.hosprow-name .pill-hosp { margin-left: 0; }
+#meds-hospital-add { margin-top: var(--s-2); }
 
 /* The kg | st and lb switch (since v96): on the Weight chart and beside the weight box in Vitals */
 .unitswitch-row { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); flex-wrap: wrap; margin: var(--s-2) 0 var(--s-3); }
