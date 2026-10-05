@@ -286,13 +286,233 @@ export async function fitReport(frame, R, opts = {}) {
     frame.srcdoc = html;
   });
   for (let i = 0; i < 60; i++) {
-    await write(reportHtml(R));
+    await write((opts.html || reportHtml)(R));
     const doc = frame.contentDocument;
     doc.documentElement.classList.add('capture');
     if (doc.fonts && doc.fonts.ready) await Promise.race([doc.fonts.ready, new Promise((r) => setTimeout(r, opts.fontWait || 3000))]);
     const over = overflowOf(doc);
     if (!over.length) return { ok: true, R, doc };
-    if (!shrink(R, over)) return { ok: false, over, R, doc };
+    if (!(opts.shrink || shrink)(R, over)) return { ok: false, over, R, doc };
   }
   return { ok: false, over: ['Report'], R };
+}
+
+
+/* ------------------------------------------------------------------ */
+/* The two-page Food diary (since v119), from the approved design      */
+/* (food-diary-report.html). The same page, type and colours as Notes  */
+/* for the team. Every figure arrives in F already worked out          */
+/* (buildFoodReport() in scripts.js); here it is only drawn.            */
+/* ------------------------------------------------------------------ */
+const FOOD_CSS = `
+body.food .banner{display:flex;gap:4mm;align-items:center;background:var(--teal-soft);border-left:1.6mm solid var(--teal);border-radius:0 2mm 2mm 0;padding:2.4mm 4mm}
+body.food .banner b{font-family:Fraunces,Georgia,serif;font-size:10.5pt;display:block;margin-bottom:.4mm}
+body.food .banner .when{flex:none;font-weight:600;color:var(--teal);font-size:8pt;width:19mm;line-height:1.25}
+body.food .tile{padding:2.6mm 3.2mm 2.4mm;min-height:21mm}
+body.food .tile .v{font-size:18pt}
+body.food .tile .v em{margin-left:.8mm}
+.card{border:1px solid var(--line);border-radius:2.4mm;padding:2.6mm 3.4mm}
+.card svg{display:block;width:100%;height:auto}
+.cardhead{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:1mm;gap:2mm}
+.cardhead h3{font-family:Inter,sans-serif;font-size:8.4pt;font-weight:600;letter-spacing:0}
+.cardhead span{font-size:7pt;color:var(--slate)}
+.two{flex:1;display:grid;grid-template-columns:1.2fr 1fr;gap:3mm;min-height:0}
+.col{display:flex;flex-direction:column;gap:3mm;min-height:0}
+.grow{flex:1;display:flex;flex-direction:column;min-height:0}
+.matrix{display:grid;grid-template-columns:19mm 1fr 10mm;column-gap:1.4mm;row-gap:.9mm;align-items:center}
+.matrix .lab{font-size:7.3pt;white-space:nowrap}
+.matrix .cnt{font-size:7pt;color:var(--slate);text-align:right;white-space:nowrap}
+.matrix .cells{display:grid;gap:.7mm}
+.matrix .cells i{aspect-ratio:1;border-radius:.7mm;background:var(--mist)}
+.matrix .cells i.on{background:var(--teal)}
+.matrix .cells i.warn{background:var(--amber)}
+.matrix .days{font-size:5.4pt;color:var(--slate);text-align:center;line-height:1}
+.matrix .grp{grid-column:1/-1;font-size:7pt;font-weight:600;color:#8A5E10;margin-top:1mm}
+.matrix .grp.good{color:var(--teal)}
+.note{font-size:6.8pt;color:var(--slate);line-height:1.4;margin-top:2mm}
+.pts{background:var(--mist);border-radius:2.4mm;padding:2.8mm 3.4mm}
+.pts h3{font-size:10.5pt;margin-bottom:1.8mm}
+.pts ul{list-style:none;display:flex;flex-direction:column;gap:1.4mm}
+.pts li{display:grid;grid-template-columns:2.6mm 1fr;gap:1.6mm;font-size:7.7pt;line-height:1.38}
+.pts li::before{content:"";width:1.7mm;height:1.7mm;border-radius:50%;background:var(--amber);margin-top:1.4mm}
+.nlines{background:var(--teal-soft);border-radius:2.4mm;padding:2.8mm 3.4mm;display:flex;flex-direction:column;flex:1;min-height:14mm}
+.nlines h3{font-family:Inter,sans-serif;font-size:8.4pt;font-weight:600;letter-spacing:0}
+.nlines .lines{flex:1;margin-top:1.4mm;position:relative;overflow:hidden}
+.nlines .lines i{position:absolute;left:0;right:0;height:0;border-top:1px solid rgba(30,127,134,.35)}
+body.food .c .stat.amber{background:var(--amber-soft);color:#8A5E10}
+.sw.hatch{background-color:#1E7F86;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'%3E%3Cpath d='M-1 1l2-2M0 4l4-4M3 5l2-2' stroke='%23fff' stroke-width='1.2'/%3E%3C/svg%3E")}
+.pills{display:flex;gap:1.4mm;flex-wrap:wrap;margin-bottom:1.6mm}
+.pills span{font-size:6.8pt;font-weight:600;background:#fff;border-radius:10mm;padding:.3mm 2mm}
+body.food .week{padding:2.8mm 3.4mm}
+body.food .week .wh{margin-bottom:1.2mm}
+body.food .week .theme{font-size:8.2pt}
+.chips{display:grid;grid-template-columns:repeat(7,1fr);gap:1mm;margin-bottom:2mm}
+.chip{border-radius:1.4mm;padding:1.6mm .4mm;text-align:center;font-size:6pt;line-height:1.25;background:#fff;color:var(--slate);border:1px solid transparent}
+.chip b{display:block;font-size:8pt;color:var(--ink);font-weight:600}
+.chip.met{background:var(--green-soft)}
+.chip.met b{color:var(--green)}
+.chip.near{background:var(--teal-soft)}
+.chip.na{background-color:#fff;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='5' height='5'%3E%3Cpath d='M-1 1l2-2M0 5l5-5M4 6l2-2' stroke='%23D5DEE5' stroke-width='1'/%3E%3C/svg%3E")}
+.chip.part{background:#fff;border:1px dashed var(--slate)}
+.chip.none{background:transparent;border:1px solid var(--line)}
+body.food .week ul{gap:2mm}
+body.food .week li{grid-template-columns:13mm 1fr;gap:1.8mm;font-size:8.2pt;line-height:1.4}
+.often{background:#fff;border-radius:2mm;padding:2.2mm 3mm;margin-top:auto}
+.often h4{font-family:Inter,sans-serif;font-size:7.6pt;font-weight:600;margin-bottom:1mm}
+.often ul{gap:.8mm}
+body.food .often li{display:block;font-size:7.8pt;line-height:1.35;padding-left:3mm;position:relative}
+.often li::before{content:"";position:absolute;left:0;top:1.3mm;width:1.5mm;height:1.5mm;border-radius:50%;background:var(--teal)}
+body.food .foot{gap:6mm}
+`;
+
+/* Bars, one per day, from a config: max, ticks, get, colour, hatch, values above, a dashed line, a note */
+export function foodBars(o, D, uid) {
+  const W = o.W, H = o.H, L = o.L || 24, R = 6, T = o.T || 8, B = 13, pw = W - L - R, ph = H - T - B, n = D.length;
+  const x = (i) => L + (i + 0.5) * pw / n, bw = pw / n * 0.64;
+  const y = (v) => T + ph - (Math.min(v, o.max) / o.max) * ph;
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(o.label)}"><defs><pattern id="hatch-${uid}" width="3" height="3" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="1.2" height="3" fill="#fff" opacity=".8"/></pattern></defs>`;
+  o.ticks.forEach((t) => {
+    s += `<line x1="${L}" x2="${W - R}" y1="${y(t).toFixed(1)}" y2="${y(t).toFixed(1)}" stroke="${C.line}" stroke-width=".6"/>`;
+    s += `<text x="${L - 3}" y="${(y(t) + 2.4).toFixed(1)}" font-size="6.4" fill="${C.slate}" text-anchor="end">${esc(o.tickFmt ? o.tickFmt(t) : t)}</text>`;
+  });
+  const any = D.some((d) => o.get(d) != null);
+  if (!any) s += `<text x="${L + pw / 2}" y="${T + ph / 2}" font-size="7" fill="${C.slate}" text-anchor="middle">${esc(o.empty || 'Nothing to show in this period')}</text>`;
+  else D.forEach((d, i) => {
+    const v = o.get(d);
+    if (v == null) {
+      if (d.leftOut) s += `<text x="${x(i).toFixed(1)}" y="${y(o.max * 0.08).toFixed(1)}" font-size="9" fill="${C.slate}" text-anchor="middle">?</text>`;
+      return;
+    }
+    const h = Math.max(0, y(0) - y(v));
+    s += `<rect x="${(x(i) - bw / 2).toFixed(1)}" y="${y(v).toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="1.2" fill="${o.color(v, d, i)}"/>`;
+    if (o.hatch && o.hatch(d)) s += `<rect x="${(x(i) - bw / 2).toFixed(1)}" y="${y(v).toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="1.2" fill="url(#hatch-${uid})"/>`;
+    if (o.values) s += `<text x="${x(i).toFixed(1)}" y="${(y(v) - 2.2).toFixed(1)}" font-size="6.2" fill="${C.ink}" stroke="#fff" stroke-width="2.4" paint-order="stroke" text-anchor="middle" font-weight="600">${esc(o.fmt ? o.fmt(v) : v)}</text>`;
+  });
+  if (o.line) {
+    s += `<line x1="${L}" x2="${W - R}" y1="${y(o.line.v).toFixed(1)}" y2="${y(o.line.v).toFixed(1)}" stroke="${C.ink}" stroke-width=".9" stroke-dasharray="3 2.4"/>`;
+    s += `<text x="${W - R}" y="${(y(o.line.v) - 2.4).toFixed(1)}" font-size="6.4" fill="${C.ink}" text-anchor="end" font-weight="600">${esc(o.line.t)}</text>`;
+  }
+  if (o.callout && D[o.callout.i]) {
+    const i = o.callout.i, right = x(i) + bw / 2 + 3, leftSide = right > W - 110;
+    s += `<text x="${(leftSide ? x(i) - bw / 2 - 3 : right).toFixed(1)}" y="${T + 9}" font-size="6.2" fill="${C.slate}" text-anchor="${leftSide ? 'end' : 'start'}">${esc(o.callout.t)}</text>`;
+  }
+  const marks = !n ? [] : o.all ? D.map((_, i) => i) : [...new Set([0, 0.33, 0.66, 1].map((f) => Math.round(f * (n - 1))))];
+  marks.forEach((i) => { s += `<text x="${x(i).toFixed(1)}" y="${H - 3}" font-size="${o.all ? 5.6 : 6.2}" fill="${C.slate}" text-anchor="middle">${esc(o.all ? D[i].short : D[i].label)}</text>`; });
+  return s + '</svg>';
+}
+/* Protein, carbs and fat stacked, one bar a day */
+function stackedMacros(D, uid) {
+  const W = 300, H = 138, L = 24, R = 6, T = 8, B = 13, pw = W - L - R, ph = H - T - B, n = D.length;
+  const top = Math.max(200, ...D.map((d) => (d.p == null ? 0 : d.p + d.c + d.f)));
+  const max = Math.ceil(top / 200) * 200;
+  const x = (i) => L + (i + 0.5) * pw / n, bw = pw / n * 0.64, y = (v) => T + ph - (v / max) * ph;
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Protein, carbs and fat each day"><defs><pattern id="hatch-${uid}" width="3" height="3" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="1.2" height="3" fill="#fff" opacity=".8"/></pattern></defs>`;
+  [0, max / 2, max].forEach((t) => { s += `<line x1="${L}" x2="${W - R}" y1="${y(t).toFixed(1)}" y2="${y(t).toFixed(1)}" stroke="${C.line}" stroke-width=".6"/><text x="${L - 3}" y="${(y(t) + 2.4).toFixed(1)}" font-size="6.4" fill="${C.slate}" text-anchor="end">${t}</text>`; });
+  if (!D.some((d) => d.p != null)) s += `<text x="${L + pw / 2}" y="${T + ph / 2}" font-size="7" fill="${C.slate}" text-anchor="middle">No food totals in this period</text>`;
+  D.forEach((d, i) => {
+    if (d.p == null) { if (d.leftOut) s += `<text x="${x(i).toFixed(1)}" y="${y(max * 0.08).toFixed(1)}" font-size="9" fill="${C.slate}" text-anchor="middle">?</text>`; return; }
+    let base = 0;
+    [[d.p, C.teal], [d.c, '#8FA6B8'], [d.f, C.amber]].forEach(([v, c]) => { s += `<rect x="${(x(i) - bw / 2).toFixed(1)}" y="${y(base + v).toFixed(1)}" width="${bw.toFixed(1)}" height="${(y(base) - y(base + v)).toFixed(1)}" fill="${c}"/>`; base += v; });
+    if (d.u > 0 || d.partial) s += `<rect x="${(x(i) - bw / 2).toFixed(1)}" y="${y(base).toFixed(1)}" width="${bw.toFixed(1)}" height="${(y(0) - y(base)).toFixed(1)}" fill="url(#hatch-${uid})"/>`;
+  });
+  (n ? [...new Set([0, 0.33, 0.66, 1].map((f) => Math.round(f * (n - 1))))] : []).forEach((i) => { s += `<text x="${x(i).toFixed(1)}" y="${H - 3}" font-size="6.2" fill="${C.slate}" text-anchor="middle">${esc(D[i].label)}</text>`; });
+  return s + '</svg>';
+}
+
+function foodWeekHtml(w, wide) {
+  const chips = w.chips.map((c) => `<div class="chip ${c.cls}">${esc(c.top)}<b>${esc(c.val)}</b></div>`).join('');
+  const items = w.entries.length ? `<ul>${w.entries.map((e) => `<li><time>${esc(e.when)}</time><span>${esc(e.text)}</span></li>`).join('')}</ul>` : '<p class="none">Nothing logged this week.</p>';
+  const often = w.often.length ? `<div class="often"><h4>What came up most</h4><ul>${w.often.map((o) => `<li>${esc(o)}</li>`).join('')}</ul></div>` : '';
+  return `<div class="week${wide ? ' wide' : ''}" data-sec="${esc(w.title)}"><div class="wh"><h3>${esc(w.title)}</h3><span>${esc(w.range)}</span></div>${w.pills.length ? `<div class="pills">${w.pills.map((p) => `<span>${esc(p)}</span>`).join('')}</div>` : ''}${w.theme ? `<div class="theme">${esc(w.theme)}</div>` : ''}${chips ? `<div class="chips">${chips}</div>` : ''}${items}${often}</div>`;
+}
+
+/* F: { patient, logged, prepared, period, banner { when1, when2, title, text }, tiles[4], days[] ({ label, short, p, k, c, f, l, e, u, partial, leftOut }),
+   target, callout?, grid { labels[], rows[{ n, g, s }] , days }, points[], weeks[], foot, bar? } */
+export function foodReportHtml(F) {
+  const D = F.days;
+  const target = F.target;
+  const protein = foodBars({ W: 640, H: 150, L: 24, T: 12, max: F.pMax, ticks: F.pTicks, label: 'Protein each day', get: (d) => d.p, values: D.length <= 21, all: D.length <= 21,
+    color: (v) => (target && v >= target ? C.green : C.teal), hatch: (d) => d.u > 0 || d.partial, line: target ? { v: target, t: 'Target ' + target + ' g' } : null, callout: F.callout,
+    empty: 'No protein figures. Switch on the calorie and macro estimates in Settings, or add day totals from a food app.' }, D, 'p');
+  const drinks = foodBars({ W: 300, H: 152, max: F.lMax, ticks: F.lTicks, label: 'Drinks each day', get: (d) => d.l, color: (v) => (v >= 4 ? C.amber : '#8FA6B8'), hatch: (d) => d.partial, line: { v: 4, t: '4 L' }, empty: 'No drinks logged' }, D, 'l');
+  const G = F.grid;
+  let grid = '';
+  if (G.rows.length) {
+    const cols = `grid-template-columns:repeat(${G.days.length},1fr)`;
+    grid = `<div></div><div class="cells days" style="${cols}">${G.days.map((d) => `<span>${esc(d)}</span>`).join('')}</div><div></div>`;
+    let last = '';
+    G.rows.forEach((t) => {
+      if (t.g !== last) { grid += `<div class="grp ${t.g === 'good' ? 'good' : ''}">${t.g === 'good' ? 'Food groups' : 'Worth a look (per 100 g of each food)'}</div>`; last = t.g; }
+      const cells = t.s.split('').map((c) => `<i class="${c === '1' ? (t.g === 'good' ? 'on' : 'warn') : ''}"></i>`).join('');
+      const n = t.s.split('').filter((c) => c === '1').length;
+      grid += `<div class="lab">${esc(t.n)}</div><div class="cells" style="${cols}">${cells}</div><div class="cnt">${n} of ${t.s.length}</div>`;
+    });
+  }
+  const charts = F.charts.map((c) => `<div class="c" data-sec="${esc(c.title)}"><div class="h"><h3>${esc(c.title)}</h3><span class="stat ${esc(c.tone || '')}">${esc(c.stat)}</span></div>${c.svg}</div>`).join('');
+  const key = `<div class="c key"><b>Key</b><span><i class="sw hatch"></i>Hatched: some items had no nutrition data, or the day is still in progress, so the total may be low</span>${D.some((d) => d.leftOut) ? '<span><b>?</b> totals left out (see Points to discuss)</span>' : ''}<span><i class="sw" style="background:#1E7F86"></i>Protein <i class="sw" style="background:#8FA6B8;margin-left:2mm"></i>Carbs <i class="sw" style="background:#E0A030;margin-left:2mm"></i>Fat</span></div>`;
+  const weeks = F.weeks.length ? F.weeks.map((w) => foodWeekHtml(w, F.weeks.length === 1)).join('')
+    : foodWeekHtml({ title: 'Food', range: F.period, pills: [], theme: '', chips: [], entries: [], often: [] }, true);
+  const bar = F.bar ? `<div class="bar"><span>${esc(F.bar)}</span><button type="button" onclick="window.print()">Print or save as PDF</button></div>` : '';
+  return `<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<title>Food diary | ${esc(F.patient)} | ${esc(F.period)}</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>${CSS}${FOOD_CSS}</style>
+</head>
+<body class="food">
+${bar}
+<section class="page" id="page1">
+  <div class="masthead" data-sec="Masthead">
+    <div><h1>Food diary</h1><div class="sub">What was eaten and drunk, summarised for the dietitian, nurse or doctor.</div></div>
+    <div class="who"><strong>${esc(F.patient)}</strong>Logged: ${esc(F.logged)}<br>Prepared: ${esc(F.prepared)}, from Daybook</div>
+  </div>
+  <div class="banner" data-sec="Banner"><div class="when">${esc(F.banner.when1)}<br>${esc(F.banner.when2)}</div><div><b>${esc(F.banner.title)}</b>${esc(F.banner.text)}</div></div>
+  <div class="tiles" data-sec="Tiles">${F.tiles.map(tileHtml).join('')}</div>
+  <div class="card" data-sec="Protein chart"><div class="cardhead"><h3>${esc(target ? 'Protein each day against the ' + target + ' g target' : 'Protein each day')}</h3><span>${esc(target ? 'Green: target met' : 'No target set')}</span></div>${protein}</div>
+  <div class="two">
+    <div class="col">
+      <div class="card" data-sec="Food groups"><div class="cardhead"><h3>Food groups, day by day</h3><span>${esc(G.span)}</span></div>${grid ? `<div class="matrix">${grid}</div>` : '<p class="note">No foods matched the food table in this period.</p>'}<div class="note">Tags follow UK food label rules per 100 g of each food, not portion sizes. A protein tag means a protein food was eaten, not that the target was met.</div></div>
+      <div class="card grow" data-sec="Drinks chart"><div class="cardhead"><h3>Drinks each day (litres)</h3><span>Amber: 4 L or over</span></div>${drinks}</div>
+    </div>
+    <div class="col">
+      <div class="pts" data-sec="Points to discuss"><h3>Points to discuss</h3><ul>${F.points.map((p) => `<li>${esc(p)}</li>`).join('')}</ul></div>
+      <div class="nlines" data-sec="Dietitian notes"><h3>Notes from the dietitian</h3><div class="lines">${(() => { let l = ''; for (let i = 1; i <= 40; i++) l += `<i style="top:calc(${i} * 5.2mm)"></i>`; return l; })()}</div></div>
+    </div>
+  </div>
+  <div class="foot"><span>${esc(F.caveat)}</span><span>Page 1 of 2</span></div>
+</section>
+<section class="page" id="page2">
+  <div class="runner"><h2>Trends and weekly summary</h2><span>${esc(F.patient)} · ${esc(F.period)}</span></div>
+  <div class="cgrid" data-sec="Charts">${charts}${key}</div>
+  <div class="wwrap" data-sec="Week by week">
+    <h2 class="sec" style="margin-bottom:2.2mm">Week by week <small>Weeks match Notes for the team. Chips show protein in grams each day.</small></h2>
+    <div class="weeks">${weeks}</div>
+  </div>
+  <div class="foot"><span>Daybook · Food diary</span><span>Page 2 of 2</span></div>
+</section>
+</body>
+</html>`;
+}
+export function foodChartSvg(kind, D, o) {
+  if (kind === 'stacked') return stackedMacros(D, o.uid);
+  return foodBars(o, D, o.uid);
+}
+/* One step of shortening for the Food diary: the weekly entries first (a sentence off the longest,
+   then the earliest entry), then the points to discuss */
+export function shrinkFood(F, over) {
+  const weekOver = F.weeks.filter((w) => over.includes(w.title) || over.includes('Week by week') || over.includes('Page 2'));
+  for (const w of weekOver) {
+    const long = w.entries.slice().sort((a, b) => b.text.length - a.text.length)[0];
+    if (long && long.text.length > 90) { const t = shorten(long.text); if (t !== long.text) { long.text = t; return true; } }
+    if (w.often.length > 2) { w.often.pop(); return true; }
+    if (w.entries.length > 2) { w.entries.splice(w.entries[0].lead ? 1 : 0, 1); return true; }
+    if (w.often.length) { w.often = []; return true; }
+  }
+  if (over.some((s) => /Points|Page 1|Food groups|Drinks|Dietitian/.test(s)) && F.points.length > 2) { F.points.pop(); return true; }
+  return false;
 }
