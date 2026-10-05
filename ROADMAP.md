@@ -11,6 +11,7 @@ Decisions already made, so they are not reopened:
 - Cost is no longer the constraint: the Apple Developer Programme and small running costs are accepted (Mark, 28 September 2026). The free tiers stay because they work.
 - The name is **My Medical Daybook** in full, Daybook inside the app (v89).
 - The data screens stay plain: no background pictures behind the cards and charts.
+- **One app, with condition profiles**, not an app per condition (Mark, 5 October 2026). Apple's guideline 4.3 refuses the same app under several names; one codebase means one fix and one submission; people have more than one condition (treatment brings on menopause, Crohn's and menopause overlap, a carer may look after two people); a condition in the app's name on a Home Screen is a disclosure; and "Assistant" already names the AI helper. Being found per condition comes from the store listing's keywords and a page per condition on the website. Most of the app is condition-neutral; a profile changes the tiles, the check-in questions, the Notes topics and thresholds and the Treatment tab (action 9).
 - The AI helper is called **Daybook Assistant** (v116, Mark: some people are wary of AI or have never heard of Claude). The privacy page, terms and About say once, plainly, that it is Claude, made by Anthropic in the US, reached through the bridge with Mark's own key and credit. The share-sheet route still names no assistant ("Send to my AI app").
 
 ## Stage 1: Build
