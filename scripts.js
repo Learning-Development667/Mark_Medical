@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '119';
+const APP_VERSION = '120';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
 const TEXT_LIMIT_BYTES = 800 * 1024;
@@ -287,7 +287,7 @@ function loadScript(src) {
     const s = document.createElement('script');
     s.src = src; s.async = true;
     s.onload = resolve;
-    s.onerror = () => reject(new Error('Could not load ' + src));
+    s.onerror = () => { delete loadScript.cache[src]; s.remove(); reject(new Error('Could not load ' + src)); };
     document.head.appendChild(s);
   });
   return loadScript.cache[src];
@@ -2760,7 +2760,7 @@ $('rep-food').addEventListener('click', () => openReport('food', 'vitals'));
 $('rep-notes').addEventListener('click', () => openReport('notes', 'vitals'));
 $('rep-docs').addEventListener('click', () => openDocs('vitals'));
 $('food-back').addEventListener('click', () => showTab(state.reportReturn || 'vitals'));
-$('food-print').addEventListener('click', () => openReportPage(true, 'food'));
+$('food-print').addEventListener('click', () => openReportViewer('food', true));
 /* ---- Report ranges: the 7/14/30/90 day presets, or a custom From and To ----
    Appointments do not fall on neat boundaries, so a custom range lets a
    report run from the last appointment to the next one. The last custom
@@ -2830,6 +2830,11 @@ function fmtMl(ml) {
 /* Saves the PDF that makeBlob() builds (the two-page reports since v117 and v119): to a folder on a
    desktop that can ask, else the share sheet where files can be shared, so on the phone it can go
    straight to Files, Mail or AirDrop; otherwise it downloads. */
+/* What went wrong making a PDF, in words: a library that would not load is the connection; anything
+   else is named, so a failure on a phone can be reported and fixed (v120: Mark saw only "needs a
+   connection" on his iPhone, which hid the real reason) */
+function errText(e) { return String((e && e.message) || e || 'unknown').slice(0, 160); }
+function pdfErrorText(e) { const m = errText(e); return /Could not load/.test(m) ? 'Making a PDF needs a connection. Try again when you have signal.' : 'Could not make the PDF (' + m + '). Use Preview, then Print, instead.'; }
 async function savePdf(filename, title, makeBlob) {
   /* On desktop Chrome/Edge, ask where to save (Desktop and all) straight away,
      before anything else, so the browser still counts this as a direct
@@ -2845,7 +2850,7 @@ async function savePdf(filename, title, makeBlob) {
     }
   }
   let blob = null;
-  try { blob = await makeBlob(); } catch (e) { console.error(e); toast('Saving a PDF needs a connection'); return; }
+  try { blob = await makeBlob(); } catch (e) { console.error(e); toast(pdfErrorText(e)); return; }
   if (!blob) return;
   if (saveHandle) {
     try {
@@ -3790,7 +3795,7 @@ $('food-totals').addEventListener('click', () => {
   );
   openSheet('Day totals from your food app', body);
 });
-$('food-preview').addEventListener('click', () => { if (state.foodPdf) openReportPage(false, 'food'); });
+$('food-preview').addEventListener('click', () => { if (state.foodPdf) openReportViewer('food', false); });
 
 /* macroText is the entry's estimate line, or '' (the setting off, or nothing to go on) */
 function diaryRow(e, nutri, macroText) {
@@ -3820,7 +3825,6 @@ const NOTES_PROMPT = 'Please turn these care notes into a short, clear list of q
   'The "worth mentioning" items are simple threshold checks made by the app, not a diagnosis.';
 
 $('notes-back').addEventListener('click', () => showTab(state.reportReturn || 'vitals'));
-$('notes-print').addEventListener('click', () => openReportPage(true));
 /* The range buttons (presets and Custom) are wired by wireReportRange('notes', ...) with the Food diary's */
 
 $('notes-share').addEventListener('click', async () => {
@@ -3940,14 +3944,14 @@ function openSendSheet(kind) {
   };
   const compose = (c) => {
     const fname = K.file(n);
-    let blob = null;
-    (async () => { try { blob = await K.blob(); } catch (e) { console.error(e); } })();
+    let blob = null, blobError = null;
+    (async () => { try { blob = await K.blob(); } catch (e) { console.error(e); blobError = e; } })();
     const subject = h('input', { type: 'text', id: 'send-subject', value: K.subject(range) });
     const note = h('textarea', { id: 'send-note', rows: '6' });
     note.value = `${greetingFor(c)}\n\n${K.words(range)} The PDF is attached.\n\nThank you,\n${state.name || ''}`.trim();
     const send = h('button', { class: 'btn btn-primary btn-block', type: 'button', id: 'send-go' }, 'Open in my Mail app');
     send.addEventListener('click', () => {
-      if (!blob) { toast('Still making the PDF. Try again in a moment.'); return; }
+      if (!blob) { toast(blobError ? pdfErrorText(blobError) : 'Still making the PDF. Try again in a moment.'); return; }
       const file = new File([blob], fname, { type: 'application/pdf' });
       copyText(c.email); // copied inside the tap, before the share sheet, for pasting into To
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
@@ -4411,13 +4415,16 @@ async function reportPdfBlob(res) {
   for (let i = 0; i < pages.length; i++) {
     /* drawn on a canvas that belongs to the report's own frame, where Fraunces and Inter are loaded;
        a canvas in the app's page would draw the words in a fallback font at the report's spacing */
-    const scale = 2.5, r = pages[i].getBoundingClientRect();
+    const scale = 2.2, r = pages[i].getBoundingClientRect();
     const canvas = res.doc.createElement('canvas');
     canvas.width = Math.floor(r.width * scale); canvas.height = Math.floor(r.height * scale);
     canvas.style.width = r.width + 'px'; canvas.style.height = r.height + 'px';
     await window.html2canvas(pages[i], { canvas, scale, width: r.width, height: r.height, backgroundColor: '#ffffff', logging: false, useCORS: true });
+    const data = canvas.toDataURL('image/jpeg', 0.9);
+    if (!data || data.length < 2000) throw new Error('the phone ran out of memory drawing page ' + (i + 1));
     if (i) pdf.addPage();
-    pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, 210, 297);
+    pdf.addImage(data, 'JPEG', 0, 0, 210, 297);
+    canvas.width = canvas.height = 0; // let the phone have the memory back before the next page
   }
   return pdf.output('blob');
 }
@@ -4719,22 +4726,43 @@ $('notes-weekly').addEventListener('click', () => {
 });
 $('notes-weekly-undo').addEventListener('click', () => { state.notesAI = null; if (state.notesPdf) renderWeeklyNotes(state.notesPdf.report); });
 
-/* Preview and Print: the fitted two pages in a new tab, with a Print button (Print starts printing) */
-function openReportPage(print, kind) {
+/* Preview and Print (since v120): the fitted two pages shown inside Daybook, in the ordinary sheet,
+   scaled to the screen, with Print and Save as PDF under the title. Until v119 they opened in a new
+   tab, which on an iPhone Home Screen app is a separate browser that cannot see what Daybook hands
+   it, so Mark saw about:blank. Print prints the frame's own document, so only the two pages print. */
+async function openReportViewer(kind, printNow) {
   const food = kind === 'food';
-  const win = window.open('', '_blank');
-  (async () => {
-    const res = await (food ? fittedFoodReport() : fittedReport()).catch((e) => { console.error(e); return null; });
-    if (!res) { if (win) win.close(); return; }
-    let html = (food ? reportModule.foodReportHtml : reportModule.reportHtml)({ ...res.R, bar: food ? 'Food diary, two A4 pages' : 'Notes for the team, two A4 pages' });
-    if (print) html = html.replace('</body>', '<script>(document.fonts ? document.fonts.ready : Promise.resolve()).then(function () { setTimeout(function () { window.print(); }, 300); });</script></body>');
-    const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
-    if (win) win.location = url;
-    else toast('Could not open the report. Check pop-ups are allowed.');
-  })();
+  const name = food ? 'Food diary' : 'Notes for the team';
+  const body = h('div', { class: 'viewer' }, h('p', { class: 'hint', text: 'Making the two pages, a few seconds.' }));
+  openSheet(name, body);
+  let res = null;
+  try { res = await (food ? fittedFoodReport() : fittedReport()); }
+  catch (e) { console.error(e); body.replaceChildren(h('p', { class: 'hint hint-warn', text: 'Could not make the report (' + errText(e) + ').' })); return; }
+  if (!res) { closeSheet(); return; }
+  if ($('sheet').hidden || !body.isConnected) return;
+  const html = (food ? reportModule.foodReportHtml : reportModule.reportHtml)(res.R);
+  const frame = h('iframe', { class: 'viewer-frame', title: name + ', two A4 pages' });
+  const print = h('button', { class: 'btn btn-tint tint-green', type: 'button', id: 'viewer-print' }, icon('print'), 'Print');
+  const save = h('button', { class: 'btn btn-tint tint-warm', type: 'button', id: 'viewer-save' }, icon('download'), 'Save as PDF');
+  const doPrint = () => { try { frame.contentWindow.focus(); frame.contentWindow.print(); } catch (e) { console.error(e); toast('Could not open printing (' + errText(e) + ').'); } };
+  print.addEventListener('click', doPrint);
+  const file = food ? state.foodPdf.filename : state.notesPdf.filename;
+  save.addEventListener('click', () => savePdf(file, name, () => reportPdfBlob(res)));
+  body.replaceChildren(h('div', { class: 'btnrow viewer-btns' }, print, save), frame,
+    h('p', { class: 'hint', text: 'Exactly as it prints, two A4 pages. Pinch to zoom in.' }));
+  /* scaled to the sheet's width; the scale is for the screen only, so printing is full size */
+  const zoom = Math.min(1, Math.max(0.3, (body.clientWidth - 4) / 826));
+  frame.style.height = Math.ceil((1123 * 2 + 3 * 16) * zoom + 8) + 'px';
+  frame.addEventListener('load', () => {
+    /* Escape still closes the sheet when focus is inside the pages (after Print, say) */
+    try { frame.contentDocument.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') { ev.preventDefault(); closeSheet(); } }); } catch (e) { /* same origin, so this does not happen */ }
+    if (printNow) setTimeout(doPrint, 400);
+  }, { once: true });
+  frame.srcdoc = html.replace('</head>', `<style id="viewer-zoom">@media screen{html{zoom:${zoom.toFixed(3)};background:#E7ECEF}.page{margin:16px auto}}</style></head>`);
 }
+$('notes-print').addEventListener('click', () => openReportViewer('notes', true));
 $('notes-pdf').addEventListener('click', () => { const n = state.notesPdf; if (n) savePdf(n.filename, n.title, notesReportBlob); });
-$('notes-preview').addEventListener('click', () => openReportPage(false));
+$('notes-preview').addEventListener('click', () => openReportViewer('notes', false));
 
 function excerpt(text, max) {
   const t = (text || '').trim();
