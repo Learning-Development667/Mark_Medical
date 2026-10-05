@@ -491,6 +491,7 @@ body.is-readonly #notes-explain,
 body.is-readonly #notes-send,
 body.is-readonly #notes-record,
 body.is-readonly #notes-record-hint,
+body.is-readonly #notes-weekly,
 body.is-readonly #doc-paste-summary,
 body.is-readonly #doc-save-explanation,
 body.is-readonly #doc-delete,
@@ -1417,3 +1418,7 @@ body.is-readonly .workout .btn { display: none; }
 .flag-more summary { cursor: pointer; color: var(--teal); font-weight: 600; min-height: 44px; display: inline-flex; align-items: center; }
 .answered-line { margin-top: var(--s-2); }
 .answered-line .muted { margin: 0; }
+
+/* Notes for the team in weekly blocks (v115) */
+.weekpoints { margin: var(--s-2) 0 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: var(--s-1); }
+.weekmore { margin: var(--s-2) 0 0; }

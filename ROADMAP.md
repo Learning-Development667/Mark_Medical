@@ -79,6 +79,7 @@ One at a time, each a few days with its sources checked, on the profile mechanis
 - An "AI used this month: about 12p" line under Settings, from the bridge's own token tally. Offered 4 October; build if wanted.
 
 ## Done
+- v115 The notes in Notes for the team come in weekly blocks with the few that say most, and Summarise each week turns each week into two to four points through Daybook's AI service, on a tap.
 - v114 A leaner Notes for the team: the summary as short talking points (the detail one tap away on screen), answered questions filed as "Questions answered" documents instead of printed, no letters, and no heading left alone at the foot of a page.
 - v113 Record the appointment: one recording for the whole appointment after everyone agrees, a tap on each question as its answer starts, then each answer playable from its own point, from Notes or from the question.
 - v112 Send to the team: the notes PDF with its charts, a subject and a covering message, handed to your own Mail app for a contact with an email address.
