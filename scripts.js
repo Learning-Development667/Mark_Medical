@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '120';
+const APP_VERSION = '121';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
 const TEXT_LIMIT_BYTES = 800 * 1024;
@@ -3758,6 +3758,7 @@ async function renderFoodDiary() {
   $('food-empty').hidden = sections.length > 0;
   state.foodPdf = { filename: 'Daybook food diary ' + to + '.pdf', title: 'Food diary', from, to, entries };
   loadPatientName();
+  warmReport('food');
 }
 
 $('food-pdf').addEventListener('click', () => { if (state.foodPdf) savePdf(state.foodPdf.filename, state.foodPdf.title, foodReportBlob); });
@@ -4388,22 +4389,55 @@ function buildTwoPage(n) {
 
 /* The report fitted into a hidden frame (two A4 pages or nothing), ready to print or turn into a PDF */
 let reportModule = null;
-function reportFrame() {
-  let f = document.getElementById('report-frame');
+/* One hidden frame per report (v121), so the fitted Notes for the team survives a Food diary fit */
+function reportFrame(kind) {
+  const id = 'report-frame-' + (kind || 'notes');
+  let f = document.getElementById(id);
   if (!f) {
-    f = h('iframe', { id: 'report-frame', title: 'Notes for the team, two pages', 'aria-hidden': 'true', tabindex: '-1' });
+    f = h('iframe', { id, class: 'report-frame', title: (kind === 'food' ? 'Food diary' : 'Notes for the team') + ', two pages', 'aria-hidden': 'true', tabindex: '-1' });
     document.body.append(f);
   }
   return f;
 }
-async function fittedReport() {
-  const n = state.notesPdf;
-  if (!n) return null;
-  if (!reportModule) reportModule = await import('./report.js?v=' + APP_VERSION);
-  const R = buildTwoPage(n);
-  const res = await reportModule.fitReport(reportFrame(), R);
-  if (!res.ok) { toast(`The report would run past two pages at: ${res.over.join(', ')}. Shorten that part and try again.`); return null; }
-  return res;
+/* Fitted pages are kept until what they were made from changes (v121: Mark found the buttons slow,
+   because every Preview, Print, Save and Send fitted the whole report again). The key is the report's
+   own data object (replaced on every redraw), the Daybook Assistant summary and the settings the
+   report reads; fits on one frame run one after another, never at once. */
+const fitMemo = { notes: null, food: null };
+const fitQueue = { notes: Promise.resolve(), food: Promise.resolve() };
+function fitKey(kind) {
+  const p = state.profile || {};
+  return kind === 'food' ? [state.foodPdf, p.reportName, state.patientName, p.proteinTarget, p.detailedNutrition, state.nutrition]
+    : [state.notesPdf, state.notesAI, p.reportName, state.patientName, p.proteinTarget];
+}
+function memoFit(kind, run) {
+  const key = fitKey(kind), m = fitMemo[kind];
+  if (m && m.key.length === key.length && m.key.every((x, i) => x === key[i])) return m.promise;
+  const promise = fitQueue[kind].then(run, run).then((res) => { if (!res && fitMemo[kind] && fitMemo[kind].promise === promise) fitMemo[kind] = null; return res; },
+    (e) => { if (fitMemo[kind] && fitMemo[kind].promise === promise) fitMemo[kind] = null; throw e; });
+  fitQueue[kind] = promise.catch(() => null);
+  fitMemo[kind] = { key, promise };
+  return promise;
+}
+/* Started quietly when a report screen is drawn, so the first tap finds the pages ready */
+function warmReport(kind) {
+  setTimeout(() => {
+    if ($(kind === 'food' ? 'view-food' : 'view-notes').hidden) return;
+    (kind === 'food' ? fittedFoodReport() : fittedReport()).catch(() => {});
+    loadScript(CDN.jspdf).catch(() => {});
+    loadScript(CDN.html2canvas).catch(() => {});
+  }, 900);
+}
+function fittedReport() {
+  return memoFit('notes', async () => {
+    const n = state.notesPdf;
+    if (!n) return null;
+    if (!reportModule) reportModule = await import('./report.js?v=' + APP_VERSION);
+    const R = buildTwoPage(n);
+    const res = await reportModule.fitReport(reportFrame('notes'), R);
+    if (!res.ok) { toast(`The report would run past two pages at: ${res.over.join(', ')}. Shorten that part and try again.`); return null; }
+    return res;
+  });
 }
 /* The PDF file: each fitted page drawn at about 240 dots an inch and placed on an A4 page */
 async function reportPdfBlob(res) {
@@ -4624,15 +4658,17 @@ function buildFoodReport(n) {
 }
 const NUMBER_WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
 function numberWord(n) { return NUMBER_WORDS[n] || String(n); }
-async function fittedFoodReport() {
-  const n = state.foodPdf;
-  if (!n) return null;
-  if (!reportModule) reportModule = await import('./report.js?v=' + APP_VERSION);
-  if (!foodIndex) await loadFoodTable();
-  const F = buildFoodReport(n);
-  const res = await reportModule.fitReport(reportFrame(), F, { html: reportModule.foodReportHtml, shrink: reportModule.shrinkFood });
-  if (!res.ok) { toast(`The food diary would run past two pages at: ${res.over.join(', ')}. Try a shorter range.`); return null; }
-  return res;
+function fittedFoodReport() {
+  return memoFit('food', async () => {
+    const n = state.foodPdf;
+    if (!n) return null;
+    if (!reportModule) reportModule = await import('./report.js?v=' + APP_VERSION);
+    if (!foodIndex) await loadFoodTable();
+    const F = buildFoodReport(n);
+    const res = await reportModule.fitReport(reportFrame('food'), F, { html: reportModule.foodReportHtml, shrink: reportModule.shrinkFood });
+    if (!res.ok) { toast(`The food diary would run past two pages at: ${res.over.join(', ')}. Try a shorter range.`); return null; }
+    return res;
+  });
 }
 async function foodReportBlob() {
   const res = await fittedFoodReport();
@@ -4730,7 +4766,16 @@ $('notes-weekly-undo').addEventListener('click', () => { state.notesAI = null; i
    scaled to the screen, with Print and Save as PDF under the title. Until v119 they opened in a new
    tab, which on an iPhone Home Screen app is a separate browser that cannot see what Daybook hands
    it, so Mark saw about:blank. Print prints the frame's own document, so only the two pages print. */
+/* An iPhone or iPad (iPadOS reports itself as a Mac with touch). Their Home Screen apps cannot print a
+   frame, so Print there makes the PDF and opens the share sheet, which has Print in it (v121). */
+const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+function printThroughShare(kind, makeBlob) {
+  const food = kind === 'food';
+  toast('Making the PDF. Choose Print in the share sheet.');
+  return savePdf(food ? state.foodPdf.filename : state.notesPdf.filename, food ? 'Food diary' : 'Notes for the team', makeBlob);
+}
 async function openReportViewer(kind, printNow) {
+  if (printNow && IS_IOS) { printThroughShare(kind, kind === 'food' ? foodReportBlob : notesReportBlob); return; }
   const food = kind === 'food';
   const name = food ? 'Food diary' : 'Notes for the team';
   const body = h('div', { class: 'viewer' }, h('p', { class: 'hint', text: 'Making the two pages, a few seconds.' }));
@@ -4744,7 +4789,10 @@ async function openReportViewer(kind, printNow) {
   const frame = h('iframe', { class: 'viewer-frame', title: name + ', two A4 pages' });
   const print = h('button', { class: 'btn btn-tint tint-green', type: 'button', id: 'viewer-print' }, icon('print'), 'Print');
   const save = h('button', { class: 'btn btn-tint tint-warm', type: 'button', id: 'viewer-save' }, icon('download'), 'Save as PDF');
-  const doPrint = () => { try { frame.contentWindow.focus(); frame.contentWindow.print(); } catch (e) { console.error(e); toast('Could not open printing (' + errText(e) + ').'); } };
+  const doPrint = () => {
+    if (IS_IOS) { printThroughShare(kind, () => reportPdfBlob(res)); return; }
+    try { frame.contentWindow.focus(); frame.contentWindow.print(); } catch (e) { console.error(e); toast('Could not open printing (' + errText(e) + ').'); }
+  };
   print.addEventListener('click', doPrint);
   const file = food ? state.foodPdf.filename : state.notesPdf.filename;
   save.addEventListener('click', () => savePdf(file, name, () => reportPdfBlob(res)));
@@ -5242,6 +5290,7 @@ async function renderNotesReport() {
 
   renderWeeklyNotes(report);
   $('notes-empty').hidden = true;
+  warmReport('notes');
 }
 
 /* ------------------------------------------------------------------ */

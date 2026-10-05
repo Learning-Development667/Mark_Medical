@@ -1422,7 +1422,7 @@ body.is-readonly .workout .btn { display: none; }
 .weekmore { margin: var(--s-2) 0 0; }
 
 /* The two-page Notes for the team (v117): fitted in a frame off screen, never seen there */
-#report-frame { position: fixed; left: -12000px; top: 0; width: 820px; height: 1200px; border: 0; pointer-events: none; }
+.report-frame { position: fixed; left: -12000px; top: 0; width: 820px; height: 1200px; border: 0; pointer-events: none; }
 .weektheme { font-weight: 600; margin: 0 0 var(--s-2); }
 .weekpoints li.is-alert b { color: var(--danger); }
 
