@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '117';
+const APP_VERSION = '118';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -1484,7 +1484,7 @@ document.querySelectorAll('.tab').forEach((btn) => {
 
 /* The topbar carries the page name ("Care Log: Food diary"), so the report
    pages and the Chemo tab no longer need a heading of their own */
-const PAGE_TITLES = { today: 'Today', meds: 'Medicines', vitals: 'Trends', chemo: 'Treatment plan', exercise: 'Exercise', more: 'More', food: 'Food diary', notes: 'Notes for the team', docs: 'Documents', settings: 'Settings' };
+const PAGE_TITLES = { today: 'Today', meds: 'Medicines', vitals: 'Reports', chemo: 'Treatment plan', exercise: 'Exercise', more: 'More', food: 'Food diary', notes: 'Notes for the team', docs: 'Documents', settings: 'Settings' };
 function setBrand(page) {
   $('brand').replaceChildren('Daybook', page ? h('span', { class: 'brand-page', text: ': ' + page }) : null);
   document.title = page ? 'Daybook: ' + page : 'My Medical Daybook';
@@ -3897,7 +3897,7 @@ async function renderFoodDiary() {
   } else { overview.hidden = true; overview.replaceChildren(); }
   $('food-days').replaceChildren(...sections);
   $('food-empty').hidden = sections.length > 0;
-  state.foodPdf = { filename: 'Daybook food diary ' + to + '.pdf', title: 'Food diary', subtitle: `${fmtDayNum(from)} to ${fmtDayNum(to)}, printed ${fmtDayNum(today)}`, blocks };
+  state.foodPdf = { filename: 'Daybook food diary ' + to + '.pdf', title: 'Food diary', subtitle: `${fmtDayNum(from)} to ${fmtDayNum(to)}, printed ${fmtDayNum(today)}`, blocks, from, to };
 }
 
 const foodPdfBlob = async () => { await loadScript(CDN.jspdf); return buildPdfBlob(state.foodPdf.title, state.foodPdf.subtitle, state.foodPdf.blocks); };
@@ -4042,11 +4042,34 @@ $('notes-copy').addEventListener('click', async () => {
 const TEAM_WORDS = /\b(ward|unit|team|clinic|department|hospice|surgery|centre|center|practice|office|desk|line)\b/i;
 function greetingFor(c) { return TEAM_WORDS.test(c.label) ? 'Hello,' : 'Hello ' + String(c.label).split(/\s+/)[0] + ','; }
 function sendableContacts() { return ((state.profile && state.profile.calls) || []).filter((c) => c.email && EMAIL_RE.test(c.email)); }
-function openSendSheet() {
-  const n = state.notesPdf;
+/* What each report sends (since v118 the Food diary too, for the dietitian): its file, subject,
+   covering words and attachment line */
+const SEND_KINDS = {
+  notes: {
+    data: () => state.notesPdf,
+    file: (n) => `Daybook notes for the team ${n.to}.pdf`,
+    blob: () => notesReportBlob(),
+    subject: (range) => `Notes before our appointment, ${range}`,
+    words: (range) => `Ahead of our next appointment, here are my notes from Daybook for ${range}: two pages, with a summary and my questions first, then charts of the readings and the notes week by week.`,
+    attached: (range) => `Attached: Notes for the team, ${range}, two pages.`,
+    check: ' Use Preview on the Notes screen to look at it first.'
+  },
+  food: {
+    data: () => state.foodPdf,
+    file: (n) => n.filename,
+    blob: () => foodPdfBlob(),
+    subject: (range) => `My food diary, ${range}`,
+    words: (range) => `Here is my food diary from Daybook for ${range}: what I ate and drank each day, with simple food tags from the UK food table${detailedNutritionOn() ? ' and rough calorie and protein estimates' : ''}.`,
+    attached: (range) => `Attached: Food diary, ${range}.`,
+    check: ' Use Preview on the Food diary to look at it first.'
+  }
+};
+function openSendSheet(kind) {
+  const K = SEND_KINDS[kind] || SEND_KINDS.notes;
+  const n = K.data();
   if (!n) return;
   loadScript(CDN.jspdf).catch(() => {}); // warmed now so the PDF is ready by the time Send is tapped
-  loadScript(CDN.html2canvas).catch(() => {});
+  if (K === SEND_KINDS.notes) loadScript(CDN.html2canvas).catch(() => {});
   const body = h('div');
   const range = `${fmtDayNum(n.from)} to ${fmtDayNum(n.to)}`;
   const pick = () => {
@@ -4057,17 +4080,17 @@ function openSendSheet() {
         ? h('div', { class: 'picklist' }, ...contacts.map((c) => h('button', { class: 'pickrow', type: 'button', onclick: () => compose(c) },
             h('span', { class: 'pickrow-main' }, h('span', { class: 'pickrow-title', text: c.label }), h('span', { class: 'pickrow-sub', text: [c.role, c.email].filter(Boolean).join(' · ') })),
             icon('chevron'))))
-        : h('p', { class: 'empty', 'data-art': 'call', text: 'No contacts with an email address yet. Add your nurse or the team under Who to contact.' }),
+        : h('p', { class: 'empty', 'data-art': 'call', text: 'No contacts with an email address yet. Add your nurse, dietitian or the team under Who to contact.' }),
       h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => { closeSheet(); setTimeout(() => $('calls-edit').click(), 50); } }, contacts.length ? 'Add or change contacts' : 'Add a contact'),
       h('button', { class: 'btn btn-link btn-block', type: 'button', onclick: closeSheet }, 'Cancel'));
   };
   const compose = (c) => {
-    const fname = `Daybook notes for the team ${n.to}.pdf`;
+    const fname = K.file(n);
     let blob = null;
-    (async () => { try { blob = await notesReportBlob(); } catch (e) { console.error(e); } })();
-    const subject = h('input', { type: 'text', id: 'send-subject', value: `Notes before our appointment, ${range}` });
+    (async () => { try { blob = await K.blob(); } catch (e) { console.error(e); } })();
+    const subject = h('input', { type: 'text', id: 'send-subject', value: K.subject(range) });
     const note = h('textarea', { id: 'send-note', rows: '6' });
-    note.value = `${greetingFor(c)}\n\nAhead of our next appointment, here are my notes from Daybook for ${range}: two pages, with a summary and my questions first, then charts of the readings and the notes week by week. The PDF is attached.\n\nThank you,\n${state.name || ''}`.trim();
+    note.value = `${greetingFor(c)}\n\n${K.words(range)} The PDF is attached.\n\nThank you,\n${state.name || ''}`.trim();
     const send = h('button', { class: 'btn btn-primary btn-block', type: 'button', id: 'send-go' }, 'Open in my Mail app');
     send.addEventListener('click', () => {
       if (!blob) { toast('Still making the PDF. Try again in a moment.'); return; }
@@ -4095,7 +4118,7 @@ function openSendSheet() {
         h('button', { class: 'btn-inline sendto-copy', type: 'button', onclick: () => { copyText(c.email); toast('Address copied'); } }, 'Copy address')),
       field('Subject', subject),
       field('Message', note),
-      h('p', { class: 'sendpdf' }, h('b', { text: `Attached: Notes for the team, ${range}, two pages.` }), ' Use Preview on the Notes screen to look at it first.'),
+      h('p', { class: 'sendpdf' }, h('b', { text: K.attached(range) }), K.check),
       h('p', { class: 'hint', text: 'Your Mail app opens with the PDF and this message, sent from your own email address. The address is copied as well, to paste into To if it is not filled in.' }),
       send,
       h('button', { class: 'btn btn-link btn-block', type: 'button', onclick: pick }, 'Choose someone else'));
@@ -4104,7 +4127,8 @@ function openSendSheet() {
   pick();
   openSheet('Send to the team', body);
 }
-$('notes-send').addEventListener('click', openSendSheet);
+$('notes-send').addEventListener('click', () => openSendSheet('notes'));
+$('food-send').addEventListener('click', () => openSendSheet('food'));
 $('notes-record').addEventListener('click', openAppointmentSheet);
 
 

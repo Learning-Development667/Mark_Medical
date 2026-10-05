@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=117">
+  <link rel="stylesheet" href="styles.css?v=118">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -40,6 +40,9 @@
     <symbol id="i-list" viewBox="0 0 24 24"><rect x="5.5" y="4" width="13" height="17" rx="2"/><path d="M9.5 3.5h5v2.5h-5z"/><path d="M9 11h6M9 14.5h6M9 18h3"/></symbol>
     <symbol id="i-doc" viewBox="0 0 24 24"><path d="M6.5 3h7.5l4.5 4.5V21h-12z"/><path d="M14 3v5h4.5"/><path d="M9.5 13h5M9.5 17h5"/></symbol>
     <symbol id="i-chevron" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11"/><path d="M7.5 10.5L12 15l4.5-4.5"/><path d="M5 19.5h14"/></symbol>
+    <symbol id="i-print" viewBox="0 0 24 24"><path d="M7 9V4h10v5"/><rect x="4" y="9" width="16" height="7.5" rx="2"/><path d="M7 14h10v6H7z"/></symbol>
+    <symbol id="i-send" viewBox="0 0 24 24"><path d="M21 3L10.5 13.5"/><path d="M21 3l-6.5 18-4-7.5-7.5-4z"/></symbol>
     <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3M8.5 21h7"/></symbol>
     <symbol id="i-question" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.6a2.4 2.4 0 1 1 3.4 2.2c-.7.4-1 .9-1 1.7"/><path d="M12 16.6h.01"/></symbol>
     <symbol id="i-bowel" viewBox="0 0 24 24"><path d="M7.5 3.5h9v6h-9z"/><path d="M5 9.5h14v2.2a7 7 0 0 1-14 0z"/><path d="M8.5 18.3L7.5 21h9l-1-2.7"/></symbol>
@@ -278,13 +281,14 @@
       <section id="view-vitals" class="view" data-view="vitals" hidden>
         <div id="trends-reports">
           <h2 class="section-title">Reports</h2>
-          <div class="reports">
-            <button id="rep-notes" class="report" type="button"><svg class="icon report-icon" aria-hidden="true"><use href="#i-list"/></svg>Notes for the team</button>
-            <button id="rep-food" class="report" type="button"><svg class="icon report-icon" aria-hidden="true"><use href="#i-food"/></svg>Food diary</button>
-            <button id="rep-docs" class="report" type="button"><svg class="icon report-icon" aria-hidden="true"><use href="#i-doc"/></svg>Documents</button>
+          <button id="rep-notes" class="report report-feature tint-teal" type="button"><svg class="icon report-icon" aria-hidden="true"><use href="#i-list"/></svg><span class="report-text"><span class="report-name">Notes for the team</span><span class="report-sub">Two pages for your next appointment: preview, print or email</span></span><svg class="icon report-go" aria-hidden="true"><use href="#i-chevron"/></svg></button>
+          <div class="reports reports-2">
+            <button id="rep-food" class="report tint-green" type="button"><svg class="icon report-icon" aria-hidden="true"><use href="#i-food"/></svg><span class="report-name">Food diary</span><span class="report-sub">For the dietitian</span></button>
+            <button id="rep-docs" class="report tint-plum" type="button"><svg class="icon report-icon" aria-hidden="true"><use href="#i-doc"/></svg><span class="report-name">Documents</span><span class="report-sub">Letters and results</span></button>
           </div>
         </div>
-        <h2 class="section-title">Latest</h2>
+        <h2 class="section-title">Trends</h2>
+        <p class="hint trends-hint">Your latest readings, then a chart of each.</p>
         <div class="status">
           <div class="tiles tiles-2" id="vitals-latest">
             <div class="tile" id="vt-temp"><span class="tile-label">Temperature</span><span class="tile-value" id="vt-temp-value">--</span><span class="tile-sub" id="vt-temp-sub"></span></div>
@@ -488,16 +492,9 @@
       <section id="view-food" class="view" data-view="food" hidden>
         <div class="diary-head">
           <button id="food-back" class="btn btn-link" type="button">&#8249; Back</button>
-          <button id="food-print" class="btn btn-secondary btn-small" type="button">Print</button>
+          <button id="food-print" class="btn btn-tint tint-green btn-small" type="button"><svg class="icon" aria-hidden="true"><use href="#i-print"/></svg>Print</button>
         </div>
         <p id="food-sub" class="muted"></p>
-        <label id="food-nutrition-row" class="check food-toggle">
-          <input id="food-nutrition" type="checkbox">
-          <span>Show calorie and macro estimates</span>
-        </label>
-        <button id="food-totals" class="btn btn-secondary btn-block" type="button">Day totals from your food app</button>
-        <p class="hint">Each food gets simple tags from the UK food table (McCance and Widdowson), matched on the words typed in and following UK food label rules per 100 g. They say what a food is like, not how much was eaten. A guide for the conversation, not medical advice.</p>
-        <div id="food-overview" class="status food-overview" role="group" aria-label="Days with each kind of food" hidden></div>
         <div class="segmented" role="group" aria-label="Range">
           <button class="seg" type="button" data-range="7">7 days</button>
           <button class="seg is-active" type="button" data-range="14">14 days</button>
@@ -510,10 +507,19 @@
           <label class="field"><span>To</span><input id="food-custom-to" type="date"></label>
         </div>
         <p id="food-custom-msg" class="hint hint-warn" hidden></p>
+        <button id="food-send" class="btn btn-primary btn-block" type="button"><svg class="icon" aria-hidden="true"><use href="#i-send"/></svg>Send by email</button>
         <div class="btnrow">
-          <button id="food-preview" class="btn btn-secondary" type="button">Preview</button>
-          <button id="food-pdf" class="btn btn-secondary" type="button">Save as PDF</button>
+          <button id="food-preview" class="btn btn-tint tint-plum" type="button"><svg class="icon" aria-hidden="true"><use href="#i-eye"/></svg>Preview</button>
+          <button id="food-pdf" class="btn btn-tint tint-warm" type="button"><svg class="icon" aria-hidden="true"><use href="#i-download"/></svg>Save as PDF</button>
         </div>
+        <p class="hint">Send by email puts the diary in an email from your own Mail app, to a contact with an email address, such as the dietitian.</p>
+        <label id="food-nutrition-row" class="check food-toggle">
+          <input id="food-nutrition" type="checkbox">
+          <span>Show calorie and macro estimates</span>
+        </label>
+        <button id="food-totals" class="btn btn-secondary btn-block" type="button">Day totals from your food app</button>
+        <p class="hint">Each food gets simple tags from the UK food table (McCance and Widdowson), matched on the words typed in and following UK food label rules per 100 g. They say what a food is like, not how much was eaten. A guide for the conversation, not medical advice.</p>
+        <div id="food-overview" class="status food-overview" role="group" aria-label="Days with each kind of food" hidden></div>
         <div id="food-days"></div>
         <p id="food-empty" class="empty" data-art="food" hidden>No food or drink logged in this period yet.</p>
       </section>
@@ -522,7 +528,7 @@
       <section id="view-notes" class="view" data-view="notes" hidden>
         <div class="diary-head">
           <button id="notes-back" class="btn btn-link" type="button">&#8249; Back</button>
-          <button id="notes-print" class="btn btn-secondary btn-small" type="button">Print</button>
+          <button id="notes-print" class="btn btn-tint tint-green btn-small" type="button"><svg class="icon" aria-hidden="true"><use href="#i-print"/></svg>Print</button>
         </div>
         <p id="notes-sub" class="muted"></p>
         <div class="segmented" role="group" aria-label="Range">
@@ -537,16 +543,16 @@
           <label class="field"><span>To</span><input id="notes-custom-to" type="date"></label>
         </div>
         <p id="notes-custom-msg" class="hint hint-warn" hidden></p>
-        <button id="notes-explain" class="btn btn-primary btn-block" type="button" hidden>Suggest questions to ask</button>
+        <button id="notes-send" class="btn btn-primary btn-block" type="button"><svg class="icon" aria-hidden="true"><use href="#i-send"/></svg>Send to the team</button>
         <div class="btnrow">
-          <button id="notes-share" class="btn btn-secondary" type="button">Send to my AI app</button>
-          <button id="notes-copy" class="btn btn-secondary" type="button">Copy for my AI app</button>
+          <button id="notes-preview" class="btn btn-tint tint-plum" type="button"><svg class="icon" aria-hidden="true"><use href="#i-eye"/></svg>Preview</button>
+          <button id="notes-pdf" class="btn btn-tint tint-warm" type="button"><svg class="icon" aria-hidden="true"><use href="#i-download"/></svg>Save as PDF</button>
         </div>
-        <button id="notes-weekly" class="btn btn-secondary btn-block" type="button" hidden>Summarise with Daybook Assistant</button>
-        <button id="notes-send" class="btn btn-primary btn-block" type="button">Send to the team</button>
+        <button id="notes-explain" class="btn btn-tint tint-blue btn-block" type="button" hidden>Suggest questions to ask</button>
+        <button id="notes-weekly" class="btn btn-tint tint-blue btn-block" type="button" hidden>Summarise with Daybook Assistant</button>
         <div class="btnrow">
-          <button id="notes-preview" class="btn btn-secondary" type="button">Preview</button>
-          <button id="notes-pdf" class="btn btn-secondary" type="button">Save as PDF</button>
+          <button id="notes-share" class="btn btn-tint tint-blue" type="button">Send to my AI app</button>
+          <button id="notes-copy" class="btn btn-tint tint-blue" type="button">Copy for my AI app</button>
         </div>
         <p class="hint">Two A4 pages to hand over or email: what is new, eight readings at a glance, your medicines and your questions with room to write the answers, then the charts and the notes week by week. Every figure comes from what was logged. <b>Preview</b> shows the two pages and prints them; <b>Send to the team</b> puts them in an email from your own Mail app, for a contact with an email address. <b>Summarise with Daybook Assistant</b> sends these notes and your questions to Daybook Assistant (AI from Anthropic, in the US) to write each week up in a few lines and tidy the spelling; without it the report shows the most telling note of each day. <b>Suggest questions to ask</b> sends them too, and offers questions you can add with one tap. Send or copy does the same through your own AI app. Any of these sends the notes to an AI company's servers, so leave out anything you would not want sent.</p>
         <h3 class="section-title">Questions for the team</h3>
@@ -587,7 +593,7 @@
             <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
           </button>
         </div>
-        <p class="hint">The Food diary and Notes for the team are under Trends.</p>
+        <p class="hint">The Food diary and Notes for the team are under Reports.</p>
         <h2 class="section-title">Who to contact</h2>
         <div id="calls" class="cards"></div>
         <button id="calls-edit" class="btn btn-secondary btn-block" type="button">Edit contacts</button>
@@ -684,7 +690,7 @@
     <nav id="tabs" class="tabs" aria-label="Sections">
       <button class="tab is-active" type="button" data-tab="today"><svg class="icon tab-icon" aria-hidden="true"><use href="#i-sun"/></svg>Today</button>
       <button class="tab" type="button" data-tab="meds"><svg class="icon tab-icon" aria-hidden="true"><use href="#i-pill"/></svg>Meds</button>
-      <button class="tab" type="button" data-tab="vitals"><svg class="icon tab-icon" aria-hidden="true"><use href="#i-trend"/></svg>Trends</button>
+      <button class="tab" type="button" data-tab="vitals"><svg class="icon tab-icon" aria-hidden="true"><use href="#i-list"/></svg>Reports</button>
       <button class="tab" type="button" data-tab="chemo"><svg class="icon tab-icon" aria-hidden="true"><use href="#i-party"/></svg>Treatment</button>
       <button class="tab" type="button" data-tab="exercise"><svg class="icon tab-icon" aria-hidden="true"><use href="#i-walk"/></svg>Exercise</button>
       <button class="tab" type="button" data-tab="more"><svg class="icon tab-icon" aria-hidden="true"><use href="#i-more"/></svg>More</button>
@@ -826,6 +832,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=117"></script>
+  <script type="module" src="scripts.js?v=118"></script>
 </body>
 </html>
