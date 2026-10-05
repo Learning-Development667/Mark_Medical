@@ -1425,3 +1425,29 @@ body.is-readonly .workout .btn { display: none; }
 #report-frame { position: fixed; left: -12000px; top: 0; width: 820px; height: 1200px; border: 0; pointer-events: none; }
 .weektheme { font-weight: 600; margin: 0 0 var(--s-2); }
 .weekpoints li.is-alert b { color: var(--danger); }
+
+/* Colour-coded actions and report cards (v118): one tint per kind of action, the same on every
+   report screen, so nothing that can be tapped is plain grey. Every pair is 4.5:1 or better:
+   teal 6.0, green 5.3, warm 5.0, plum 8.7, blue 7.6 in light; 6.0, 6.4, 6.7, 9.4, 8.3 in dark. */
+.tint-teal { background: var(--teal-light); color: var(--teal); }
+.tint-green { background: var(--success-light); color: var(--success); }
+.tint-warm { background: var(--warm-light); color: var(--warm-dark); }
+.tint-plum { background: var(--tag-spine); color: var(--tag-spine-ink); }
+.tint-blue { background: var(--tag-arms); color: var(--tag-arms-ink); }
+.btn-tint { border-color: transparent; font-weight: 600; box-shadow: var(--elev-raised); }
+.btn-tint:active { box-shadow: var(--elev-raised-pressed); transform: translateY(1px); }
+.btn .icon { width: 22px; height: 22px; flex: none; }
+.btn-small .icon { width: 18px; height: 18px; }
+/* Reports: Notes for the team as the feature card, the Food diary and Documents under it */
+.report.report-feature { flex-direction: row; justify-content: flex-start; text-align: left; gap: var(--s-3); padding: var(--s-4); min-height: 88px; width: 100%; margin-bottom: var(--s-2); box-shadow: var(--elev-raised); }
+.report-feature .report-icon { width: 34px; height: 34px; flex: none; }
+.report-feature .report-text { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+.report-feature .report-name { font-size: 19px; font-weight: 700; }
+.report-go { width: 22px; height: 22px; flex: none; }
+.reports.reports-2 { grid-template-columns: 1fr 1fr; }
+.report .report-name { font-weight: 700; }
+.report .report-sub { font-size: 16px; font-weight: 500; line-height: 1.25; }
+.report.tint-teal, .report.tint-green, .report.tint-plum { box-shadow: var(--elev-raised); }
+.report:active { box-shadow: var(--elev-raised-pressed); transform: translateY(1px); }
+.trends-hint { margin-top: calc(-1 * var(--s-2)); }
+.btnrow .btn-tint { padding-left: var(--s-3); padding-right: var(--s-3); }
