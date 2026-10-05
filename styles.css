@@ -1388,8 +1388,6 @@ body.is-readonly .workout .btn { display: none; }
 }
 
 /* Charts in the Notes for the team PDF (v111) */
-.chartpick { margin: var(--s-4) 0 var(--s-2); }
-.chartpick .presets { margin-bottom: var(--s-1); }
 
 /* Send to the team (v112) */
 .sendto { display: grid; grid-template-columns: auto 1fr; column-gap: var(--s-3); row-gap: 2px; align-items: baseline; padding: var(--s-3) 14px; margin-bottom: var(--s-3); border-radius: var(--r-md); background: var(--surface-sunken); box-shadow: var(--elev-sunken); }
@@ -1422,3 +1420,8 @@ body.is-readonly .workout .btn { display: none; }
 /* Notes for the team in weekly blocks (v115) */
 .weekpoints { margin: var(--s-2) 0 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: var(--s-1); }
 .weekmore { margin: var(--s-2) 0 0; }
+
+/* The two-page Notes for the team (v117): fitted in a frame off screen, never seen there */
+#report-frame { position: fixed; left: -12000px; top: 0; width: 820px; height: 1200px; border: 0; pointer-events: none; }
+.weektheme { font-weight: 600; margin: 0 0 var(--s-2); }
+.weekpoints li.is-alert b { color: var(--danger); }
