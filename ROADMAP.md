@@ -79,6 +79,7 @@ One at a time, each a few days with its sources checked, on the profile mechanis
 - An "AI used this month: about 12p" line under Settings, from the bridge's own token tally. Offered 4 October; build if wanted.
 
 ## Done
+- v120 Preview and Print open inside Daybook (the iPhone showed a blank page), and a PDF that cannot be made now says why.
 - v119 The Food diary became two A4 pages in the same design as Notes for the team: protein against the target, drinks, food groups and points to discuss with room for the dietitian, then the trends and two weeks. Both reports now share one way of counting food days and the same weeks.
 - v118 Trends renamed Reports, with Notes for the team as the big card at the top; the Food diary can be emailed (to the dietitian) like Notes; on both, Send, Preview and Save as PDF come first and every button has its own colour.
 - v117 Notes for the team became the two-page report from the approved design: the latest new symptom, eight tiles, the medicines strip and the questions with room to write on page 1, eight charts and two weekly cards on page 2, every figure worked out from the readings and always exactly two A4 pages. Preview prints it; Save as PDF and Send to the team attach it. Daybook Assistant can write each week up and tidy the spelling on a tap.
