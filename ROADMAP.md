@@ -77,6 +77,8 @@ One at a time, each a few days with its sources checked, on the profile mechanis
 - An "AI used this month: about 12p" line under Settings, from the bridge's own token tally. Offered 4 October; build if wanted.
 
 ## Done
+- v124 Ticking a gentle exercise and its Timer work on an iPhone again (the swipe-to-remove reacted to every touch). The At home | In hospital switch on the Meds tab went; hospital medicines always show.
+- v123 Medicine cards fit a small phone; the Given in hospital pill is easier to read.
 - v122 The rebrand: the whole app in the report look Mark chose (Direction D on the brand board): a warm white page, Fraunces headings and Inter text, the readings as soft coloured panels with a stripe (teal, green steady, amber worth a mention, red to raise), the quick-add buttons in their own colours. Choosing the look and restyling the app are done; the icon is next in Stage 2.
 - v121 The Food diary saves as a PDF on an iPhone; Print on an iPhone goes through the share sheet; the report preview no longer looks crowded; the report buttons answer faster.
 - v120 Preview and Print open inside Daybook (the iPhone showed a blank page), and a PDF that cannot be made now says why.
