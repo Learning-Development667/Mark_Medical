@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '112';
+const APP_VERSION = '113';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -4195,6 +4195,7 @@ function openSendSheet() {
   openSheet('Send to the team', body);
 }
 $('notes-send').addEventListener('click', openSendSheet);
+$('notes-record').addEventListener('click', openAppointmentSheet);
 
 $('notes-pdf').addEventListener('click', () => { const n = currentNotesPdf(); if (n) savePdf(n.filename, n.title, n.subtitle, n.blocks); });
 $('notes-preview').addEventListener('click', () => { const n = currentNotesPdf(); if (n) previewPdf(n.title, n.subtitle, n.blocks); });
@@ -4748,6 +4749,8 @@ async function renderNotesReport() {
   state.notesText = report.text;
   $('notes-explain').hidden = !explainAvailable();
   const charts = reportCharts(entries, from, to);
+  $('notes-record').hidden = $('notes-record-hint').hidden = state.readOnly || !canRecord();
+  renderAppointmentList(from, to);
   state.notesPdf = { filename: 'care-log-notes-' + to + '.pdf', title: 'Notes for the team', subtitle: `${fmtDayNum(from)} to ${fmtDayNum(to)}, printed ${fmtDayNum(today)}`, report, charts, from, to };
   renderChartPicker(charts, report.glance);
 
@@ -6553,9 +6556,209 @@ async function saveRecording(q, blob, mime, seconds) {
   return ref.id;
 }
 async function loadRecordings(questionId) {
-  if (state.demo) return state.demoRecordings.filter((r) => r.questionId === questionId);
-  const snap = await getDocs(query(hcol('recordings'), where('questionId', '==', questionId)));
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => entryDate(a) - entryDate(b));
+  if (state.demo) return state.demoRecordings.filter((r) => r.questionId === questionId || (r.questionIds || []).includes(questionId)).sort((a, b) => entryDate(a) - entryDate(b));
+  /* a question's own recordings, then any appointment recording with an answer marked for it
+     (two single-field queries, no composite index) */
+  const [own, appts] = await Promise.all([
+    getDocs(query(hcol('recordings'), where('questionId', '==', questionId))),
+    getDocs(query(hcol('recordings'), where('questionIds', 'array-contains', questionId)))]);
+  const seen = new Map();
+  [...own.docs, ...appts.docs].forEach((d) => seen.set(d.id, { id: d.id, ...d.data() }));
+  return [...seen.values()].sort((a, b) => entryDate(a) - entryDate(b));
+}
+
+/* Recording the whole appointment (since v113): one recording, up to an hour, with a mark for each
+   question as its answer starts. recordings/{id} { kind "appointment", questionId null, questionIds,
+   marks [{ questionId, n, text, s (seconds in) }], day, at (when it started), mime, ext, seconds,
+   bytes, parts, addedBy, createdAt }, the audio in parts like any recording. The parts go in batches
+   of eight (a Firestore write may not exceed 10 MB) and the record itself last, so a half-finished
+   upload never shows. */
+const APPT_MAX_SECONDS = 3600;
+const PARTS_PER_BATCH = 8;
+async function saveAppointmentRecording(blob, mime, seconds, marks) {
+  const b64 = await blobToB64(blob);
+  const parts = [];
+  for (let i = 0; i < b64.length; i += REC_PART_CHARS) parts.push(b64.slice(i, i + REC_PART_CHARS));
+  const started = new Date(Date.now() - seconds * 1000);
+  const meta = { kind: 'appointment', questionId: null, questionIds: [...new Set(marks.map((m) => m.questionId))], marks, questionText: '', day: dayStr(started), mime, ext: recExt(mime), seconds: Math.round(seconds), bytes: blob.size, parts: parts.length, addedBy: state.name };
+  if (state.demo) {
+    const id = fakeId('rec');
+    state.demoRecordings.push({ id, ...meta, at: demoTs(started), createdAt: demoTs(started), blob });
+    return id;
+  }
+  const ref = doc(hcol('recordings'));
+  for (let i = 0; i < parts.length; i += PARTS_PER_BATCH) {
+    const batch = writeBatch(db);
+    parts.slice(i, i + PARTS_PER_BATCH).forEach((data, k) => batch.set(hdoc('recordings', ref.id, 'parts', String(i + k)), { n: i + k, data }));
+    await batch.commit();
+  }
+  await setDoc(ref, { ...meta, at: Timestamp.fromDate(started), createdAt: serverTimestamp() });
+  return ref.id;
+}
+async function loadAppointmentRecordings(from, to) {
+  let list;
+  if (state.demo) list = state.demoRecordings.filter((r) => r.kind === 'appointment');
+  else {
+    const snap = await getDocs(query(hcol('recordings'), where('kind', '==', 'appointment')));
+    list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  }
+  return list.filter((r) => r.day >= from && r.day <= to).sort((a, b) => entryDate(b) - entryDate(a));
+}
+function apptFilename(rec) { const d = entryDate(rec); return `Daybook appointment ${dayStr(d)} ${fmtTime(d).replace(':', '-')}.${rec.ext || recExt(rec.mime || '')}`; }
+/* An audio player that starts at a given second (the mark for an answer) */
+function playFrom(player, rec, seconds, label) {
+  return recordingBlob(rec).then((blob) => {
+    const audio = h('audio', { controls: '', src: URL.createObjectURL(blob) });
+    audio.setAttribute('aria-label', label);
+    player.replaceChildren(audio);
+    const go = () => { try { if (seconds) audio.currentTime = seconds; } catch (e) { /* not seekable yet */ } audio.play().catch(() => {}); };
+    if (audio.readyState >= 1) go(); else audio.addEventListener('loadedmetadata', go, { once: true });
+    return audio;
+  });
+}
+/* Take the recording's marks off its questions' counts when it is deleted */
+async function deleteAppointmentRecording(rec) {
+  await deleteRecording(rec);
+  for (const id of rec.questionIds || []) {
+    const q = allQuestions().find((x) => x.id === id);
+    if (q) await updateEntry(id, { recordings: Math.max(0, (q.recordings || 1) - 1) });
+  }
+}
+
+/* The appointment sheet: consent first, then one recording with the open questions listed; a tap on
+   a question marks where its answer starts (a second tap moves the mark to now). Stopping, or
+   closing the sheet, saves it and marks each tapped question answered. The screen is kept awake,
+   since a locked iPhone stops recording. */
+function openAppointmentSheet() {
+  const nums = questionNumbers(allQuestions());
+  const open = allQuestions().filter((q) => !q.answered).sort((a, b) => nums.get(a.id) - nums.get(b.id));
+  const marks = new Map();
+  const status = h('p', { class: 'hint rec-status', role: 'status' });
+  const time = h('span', { class: 'rec-time mono', text: '' });
+  const label = h('span', { class: 'recbtn-label', text: 'Start recording' });
+  const recBtn = h('button', { class: 'recbtn', type: 'button', 'aria-pressed': 'false' }, icon('mic'), label, time);
+  let recorder = null, stream = null, chunks = [], startedAt = 0, ticker = null, wake = null, saved = false;
+  const elapsed = () => (Date.now() - startedAt) / 1000;
+  const keepAwake = async () => { try { if (navigator.wakeLock && !wake && recorder) { wake = await navigator.wakeLock.request('screen'); wake.addEventListener('release', () => { wake = null; }); } } catch (e) { wake = null; } };
+  const onVisible = () => { if (document.visibilityState === 'visible') keepAwake(); };
+  const rows = open.map((q) => {
+    const mark = h('span', { class: 'apptq-mark', text: 'Tap when they start answering' });
+    const row = h('button', { class: 'apptq-row', type: 'button', disabled: true, 'aria-pressed': 'false' },
+      h('span', { class: 'apptq-n', text: 'Q' + nums.get(q.id) }),
+      h('span', { class: 'apptq-main' }, h('span', { text: q.note || '' }), mark));
+    row.addEventListener('click', () => {
+      if (!recorder) return;
+      const s = Math.max(0, Math.floor(elapsed()) - 2); // a couple of seconds back, so the start of the answer is not clipped
+      marks.set(q.id, { questionId: q.id, n: nums.get(q.id), text: q.note || '', s });
+      row.classList.add('is-marked'); row.setAttribute('aria-pressed', 'true');
+      mark.textContent = 'Answer marked at ' + fmtSeconds(s) + '. Tap again to move it to now.';
+    });
+    return row;
+  });
+  const setRecording = (on) => {
+    recBtn.classList.toggle('is-recording', on); recBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    label.textContent = on ? 'Recording, tap to stop and save' : 'Start recording';
+    rows.forEach((r) => { r.disabled = !on; });
+    if (!on) time.textContent = '';
+  };
+  const stopStream = () => {
+    if (stream) { stream.getTracks().forEach((t) => t.stop()); stream = null; }
+    if (ticker) { clearInterval(ticker); ticker = null; }
+    if (wake) { wake.release().catch(() => {}); wake = null; }
+    document.removeEventListener('visibilitychange', onVisible);
+  };
+  async function start() {
+    try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+    catch (e) { toast('Daybook needs the microphone for this. Allow it in Settings and try again.'); return; }
+    const mime = recMime();
+    try { recorder = new MediaRecorder(stream, Object.assign({ audioBitsPerSecond: 32000 }, mime ? { mimeType: mime } : {})); }
+    catch (e) { try { recorder = new MediaRecorder(stream); } catch (e2) { toast('Recording is not available on this phone'); stopStream(); return; } }
+    chunks = [];
+    recorder.addEventListener('dataavailable', (ev) => { if (ev.data && ev.data.size) chunks.push(ev.data); });
+    recorder.addEventListener('stop', finish);
+    recorder.start(1000);
+    startedAt = Date.now();
+    setRecording(true);
+    keepAwake(); document.addEventListener('visibilitychange', onVisible);
+    status.textContent = 'Recording. Keep Daybook open on the screen. Up to an hour.';
+    ticker = setInterval(() => { const s = elapsed(); time.textContent = fmtSeconds(s); if (s >= APPT_MAX_SECONDS) stop(); }, 250);
+  }
+  function stop() { if (recorder && recorder.state !== 'inactive') recorder.stop(); }
+  async function finish() {
+    const seconds = elapsed();
+    const type = (recorder && recorder.mimeType) || recMime() || 'audio/webm';
+    stopStream(); setRecording(false);
+    const blob = new Blob(chunks, { type });
+    recorder = null;
+    if (!blob.size || seconds < 1) { status.textContent = 'Nothing was recorded.'; return; }
+    status.textContent = 'Saving the recording. Keep Daybook open until it says saved.';
+    try {
+      const list = [...marks.values()].sort((a, b) => a.s - b.s);
+      await saveAppointmentRecording(blob, type, seconds, list);
+      for (const m of list) {
+        const cur = allQuestions().find((x) => x.id === m.questionId) || {};
+        await updateEntry(m.questionId, { answered: true, answeredAt: stampNow(), recordings: (cur.recordings || 0) + 1 });
+      }
+      saved = true;
+      status.textContent = `Saved: ${fmtSeconds(seconds)}${list.length ? ', with ' + plural(list.length, 'answer') + ' marked' : ''}.`;
+      toast('Appointment recording saved' + (list.length ? '. ' + plural(list.length, 'question') + ' marked as answered.' : ''));
+      recBtn.hidden = true;
+      if (!$('view-notes').hidden) renderNotesReport();
+    } catch (e) { console.error(e); status.textContent = 'Could not save the recording.'; toast('Could not save the recording'); }
+  }
+  const consent = h('div', { class: 'consent', role: 'group', 'aria-label': 'Before recording' },
+    h('p', { class: 'consent-q', text: 'Has everyone agreed to be recorded?' }),
+    h('p', { class: 'hint', text: 'Ask at the start, before the questions. Recording starts only when you tap Yes.' }),
+    h('div', { class: 'btnrow' },
+      h('button', { class: 'btn btn-primary', type: 'button', onclick: () => { consent.hidden = true; recBtn.hidden = false; start(); } }, 'Yes, start recording'),
+      h('button', { class: 'btn btn-secondary', type: 'button', onclick: closeSheet }, 'Not now')));
+  recBtn.hidden = true;
+  recBtn.addEventListener('click', () => { if (recorder && recorder.state === 'recording') stop(); else if (!saved) start(); });
+  const body = h('div', null,
+    consent, recBtn, status,
+    open.length ? h('p', { class: 'fieldlabel', text: 'Your questions' }) : h('p', { class: 'hint', text: 'No open questions. The recording still works; add questions on Today for next time.' }),
+    open.length ? h('div', { class: 'apptq' }, ...rows) : '',
+    h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Close'));
+  openSheet('Appointment', body, () => { if (recorder && recorder.state === 'recording') stop(); else stopStream(); });
+}
+
+async function renderAppointmentList(from, to) {
+  const box = $('notes-appts');
+  const nums = questionNumbers(allQuestions());
+  let recs = [];
+  try { recs = await loadAppointmentRecordings(from, to); } catch (e) { console.error(e); }
+  box.replaceChildren(...recs.map((rec) => {
+    const player = h('div', { class: 'rec-player' });
+    const when = `${fmtDayShort(rec.day)} ${fmtTime(entryDate(rec))}`;
+    const chips = (rec.marks || []).map((m) => h('button', { class: 'markchip', type: 'button', 'aria-label': `Play the answer to question ${nums.get(m.questionId) || m.n} from ${fmtSeconds(m.s)}`,
+      onclick: () => playFrom(player, rec, m.s, 'Appointment ' + when).catch(() => toast('Could not load the recording')) }, `Q${nums.get(m.questionId) || m.n} ${fmtSeconds(m.s)}`));
+    const del = h('button', { class: 'btn btn-link btn-small', type: 'button' }, 'Delete');
+    del.addEventListener('click', () => {
+      const yes = h('button', { class: 'btn btn-danger btn-small', type: 'button', onclick: async () => {
+        yes.disabled = true;
+        try { await deleteAppointmentRecording(rec); toast('Recording deleted'); } catch (e) { console.error(e); toast('Could not delete'); }
+        renderNotesReport();
+      } }, 'Yes, delete for good');
+      const keep = h('button', { class: 'btn btn-secondary btn-small', type: 'button', onclick: () => { yes.replaceWith(del); keep.remove(); } }, 'Keep');
+      del.replaceWith(yes); yes.after(keep); yes.focus();
+    });
+    return h('div', { class: 'recrow apptrec' },
+      h('div', { class: 'recrow-title', text: `Appointment · ${when} · ${fmtSeconds(rec.seconds || 0)}` }),
+      chips.length ? h('div', { class: 'markchips', role: 'group', 'aria-label': 'Answers marked' }, ...chips) : '',
+      h('div', { class: 'recrow-btns' },
+        h('button', { class: 'btn btn-secondary btn-small', type: 'button', onclick: () => playFrom(player, rec, 0, 'Appointment ' + when).catch(() => toast('Could not load the recording')) }, 'Play'),
+        h('button', { class: 'btn btn-secondary btn-small', type: 'button', onclick: async () => {
+          try {
+            const blob = await recordingBlob(rec); const name = apptFilename(rec);
+            const file = new File([blob], name, { type: rec.mime });
+            if (navigator.canShare && navigator.canShare({ files: [file] })) { try { await navigator.share({ files: [file], title: name }); return; } catch (e) { if (e && e.name === 'AbortError') return; } }
+            const url = URL.createObjectURL(blob); const a = h('a', { href: url, download: name }); document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+            toast('Recording saved as ' + name);
+          } catch (e) { console.error(e); toast('Could not share the recording'); }
+        } }, 'Save or share'),
+        del),
+      player);
+  }));
 }
 async function recordingBlob(rec) {
   if (rec.blob) return rec.blob;
@@ -6625,6 +6828,16 @@ function openAnswerSheet(q) {
         try { const blob = await recordingBlob(rec); const audio = h('audio', { controls: '', src: URL.createObjectURL(blob) }); audio.setAttribute('aria-label', 'Recording ' + (i + 1)); player.replaceChildren(audio); audio.play().catch(() => {}); play.textContent = 'Hide'; }
         catch (e) { console.error(e); play.textContent = 'Play'; toast('Could not load the recording'); }
       } }, 'Play');
+      if (rec.kind === 'appointment') {
+        const m = (rec.marks || []).find((x) => x.questionId === q.id) || { s: 0 };
+        return h('div', { class: 'recrow' },
+          h('div', { class: 'recrow-head' },
+            h('div', { class: 'recrow-title', text: `Appointment recording · ${fmtDayShort(rec.day)} ${fmtTime(entryDate(rec))} · answer from ${fmtSeconds(m.s)}` }),
+            h('div', { class: 'recrow-btns' },
+              h('button', { class: 'btn btn-secondary btn-small', type: 'button', onclick: () => playFrom(player, rec, m.s, 'Appointment recording').catch(() => toast('Could not load the recording')) }, 'Play the answer'))),
+          h('p', { class: 'hint', text: 'Saved, shared or deleted from Notes for the team.' }),
+          player);
+      }
       return h('div', { class: 'recrow' },
         h('div', { class: 'recrow-head' },
           h('div', { class: 'recrow-title', text: `Recording ${i + 1} · ${fmtDayShort(rec.day || dayStr(entryDate(rec)))} ${fmtTime(entryDate(rec))} · ${fmtSeconds(rec.seconds || 0)}` }),

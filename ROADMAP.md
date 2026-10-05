@@ -79,6 +79,7 @@ One at a time, each a few days with its sources checked, on the profile mechanis
 - An "AI used this month: about 12p" line under Settings, from the bridge's own token tally. Offered 4 October; build if wanted.
 
 ## Done
+- v113 Record the appointment: one recording for the whole appointment after everyone agrees, a tap on each question as its answer starts, then each answer playable from its own point, from Notes or from the question.
 - v112 Send to the team: the notes PDF with its charts, a subject and a covering message, handed to your own Mail app for a contact with an email address.
 - v111 Charts in the Notes for the team PDF: temperature, sleep, pain, weight and anything the summary flags are drawn in by Daybook, with a tick list to add or leave out the rest.
 - v110 Who to contact: each contact has a name, role, phone and email, with Call and Email buttons (the first part of the appointment pack, asked for after a rushed first appointment).
