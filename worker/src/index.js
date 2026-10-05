@@ -532,6 +532,14 @@ const EXPLAIN_SYSTEM = {
     'The notes come grouped by week, each group headed "Week from YYYY-MM-DD". For each week give two to four short points of what stood out: symptoms and how bad they were, anything new or changing, anything the patient or carer was worried about. Keep their own words where they are clear. Leave out routine answers such as "nothing new". ' +
     'Reply with JSON only, no prose and no code fence, in exactly this shape: {"weeks": [{"from": "YYYY-MM-DD", "points": [string]}]}, one entry per week given, in the same order, "from" copied from its heading. Each point under 20 words. ' +
     'Do not add advice, interpretation, diagnosis or reassurance, and do not add anything the notes do not say. No em dashes.',
+  report: 'You prepare the notes part of a two-page summary a patient hands to their oncologist or specialist nurse, from the patient\'s and carer\'s own care notes written day by day in a health app, in plain UK English. ' +
+    'You are given the report period, the medicines on the list, the open questions for the team and the notes, grouped into weeks headed "Week N, YYYY-MM-DD to YYYY-MM-DD", each note with who wrote it, the date and time. ' +
+    'For each week write one theme sentence under 20 words summarising the week, then at most six short dated entries in date order, each one to three short lines (under 40 words). Summarise, do not copy every note: merge days with similar content into one entry with a "to" date, leave out routine answers such as "nothing new", keep the patient\'s meaning and their own words where they are clear, and where the patient raised a question inside a note keep it as a question. Mark an entry alert when it records a new or worsening symptom, a hospital visit or admission, or a high reading the note itself mentions. ' +
+    'Latest: if the single most recent note in the period describes a new or worsening symptom, give it as a title under 10 words and a text under 35 words with its day and time; otherwise null. ' +
+    'Questions: return each open question with only its spelling, obvious typos and punctuation corrected, in UK English, keeping the person\'s own wording and every part of it; never shorten or merge them. ' +
+    'Correct misspelt or misheard medicine names everywhere to the standard name (for example dakteparun to dalteparin, oromorph to Oramorph, Diazipam to diazepam), with generic names in lower case and brand names capitalised. ' +
+    'Reply with JSON only, no prose and no code fence, in exactly this shape: {"latest": {"day": "YYYY-MM-DD", "time": "HH:MM", "title": string, "text": string} or null, "weeks": [{"from": "YYYY-MM-DD", "theme": string, "entries": [{"day": "YYYY-MM-DD", "to": "YYYY-MM-DD" or null, "text": string, "alert": boolean}]}], "questions": [{"n": number, "text": string}]}, one week entry per week given, "from" copied from its heading. ' +
+    'Do not add advice, interpretation, diagnosis or reassurance, and nothing the notes do not say. Dates as "5 Oct". No em dashes.',
   notes: 'You turn a patient\'s care notes into a short, clear list of questions to ask their oncologist or specialist nurse at the next appointment, in plain UK English. ' +
     'Read the questions already listed, the summary and the day notes. Reply with a numbered list of at most eight questions, one per line, most important first, each specific to what the notes actually show and short enough to ask in a ten-minute appointment. ' +
     'Do not repeat a question the person has already written down. No preamble, no explanation, no headings, no em dashes, nothing after the list.'
@@ -691,7 +699,7 @@ async function handleExplain(request, env) {
 
   let body;
   try { body = await request.json(); } catch (e) { return json({ error: 'bad-request', message: 'Could not read what was sent. Try again.' }, 400); }
-  const kind = ['notes', 'programme', 'medicine', 'weekly'].includes(body.kind) ? body.kind : 'document';
+  const kind = ['notes', 'programme', 'medicine', 'weekly', 'report'].includes(body.kind) ? body.kind : 'document';
   const text = String(body.text || '').slice(0, EXPLAIN_MAX_TEXT_CHARS);
   const pages = Array.isArray(body.pages) ? body.pages.slice(0, EXPLAIN_MAX_PAGES).filter((p) => typeof p === 'string' && p.length > 100 && p.length <= EXPLAIN_MAX_PAGE_CHARS) : [];
   if (!text.trim() && !pages.length) return json({ error: 'bad-request', message: 'Nothing to explain.' }, 400);
@@ -711,7 +719,8 @@ async function handleExplain(request, env) {
     ? 'Document: ' + String(body.title || 'Untitled').slice(0, 200) + (body.date ? ' (dated ' + String(body.date).slice(0, 40) + ').' : '.')
     : kind === 'programme' ? 'The exercise or physiotherapy plan follows, as page photos or as text.'
     : kind === 'medicine' ? 'A photo of a medicine follows.'
-    : kind === 'weekly' ? 'Care notes from Daybook, grouped by week.' : 'Care notes from Daybook.';
+    : kind === 'weekly' ? 'Care notes from Daybook, grouped by week.'
+    : kind === 'report' ? 'Care notes and open questions from Daybook, for the two-page report.' : 'Care notes from Daybook.';
   content.push({ type: 'text', text: head + (text.trim() ? '\n\n' + text : '\n\n(The document is in the attached page photos.)') });
   let reply;
   try { reply = await askClaude(env, EXPLAIN_SYSTEM[kind], content); }

@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '116';
+const APP_VERSION = '117';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -26,7 +26,8 @@ const CDN = {
   pdf: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',
   pdfWorker: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js',
   mammoth: 'https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js',
-  jspdf: 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'
+  jspdf: 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+  html2canvas: 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'
 };
 
 const SEED_MEDICINES = [
@@ -511,8 +512,8 @@ const state = {
   notesCustomTo: null,
   notesText: '',
   notesPdf: null,
-  notesCharts: null, // the charts ticked for the Notes PDF this session (null: the defaults)
-  notesWeekly: null, // { range "from|to", weeks { weekStart: [points] } } from Summarise each week, this session only
+  notesAI: null, // { range "from|to", weeks { weekKey: { theme, entries } }, questions { id: text }, latest } from Daybook Assistant, this session only
+  patientName: '', // the patient's name from the household's members, for the report's masthead
   foodPdf: null,
   meals: [],
   currentDoc: null,
@@ -1227,6 +1228,9 @@ function syncSettings() {
   ['settings-nutrition', 'food-nutrition'].forEach((id) => { const box = $(id); if (box.checked !== on) box.checked = on; });
   const target = $('settings-protein');
   if (document.activeElement !== target) target.value = proteinTarget() ? String(proteinTarget()) : '';
+  const rname = $('settings-report-name');
+  if (document.activeElement !== rname) rname.value = (state.profile && state.profile.reportName) || '';
+  rname.disabled = Boolean(state.readOnly);
   /* Today's timeline reads the setting when it draws, so redraw it, and any open report */
   renderToday();
   if (!$('view-food').hidden) renderFoodDiary();
@@ -1359,6 +1363,12 @@ $('settings-protein').addEventListener('change', async (ev) => {
   catch (e) { console.error(e); toast('Could not save the target'); }
 });
 $('food-nutrition').addEventListener('change', (ev) => setDetailedNutrition(ev.target.checked, ev.target));
+$('settings-report-name').addEventListener('change', async (ev) => {
+  const reportName = ev.target.value.trim().slice(0, 60) || null;
+  if (state.demo) { state.profile = { ...state.profile, reportName }; toast(reportName ? 'Name on the report saved' : 'Name on the report cleared'); return; }
+  try { await setDoc(hdoc('profile', 'main'), { reportName }, { merge: true }); toast(reportName ? 'Name on the report saved' : 'Name on the report cleared'); }
+  catch (e) { console.error(e); toast('Could not save the name'); }
+});
 
 function watchDays() {
   state.unsub.days = onSnapshot(hcol('days'), (snap) => {
@@ -2929,114 +2939,8 @@ function buildPdfBlob(title, subtitle, blocks) {
     });
     y = Math.max(cy + r, ly) + 10;
   };
-  /* At-a-glance row: a coloured bar, the level word and topic in that colour, then the text */
-  const FLAG_RGB = { red: [164, 38, 44], amber: [154, 91, 0], teal: [30, 95, 116], green: [46, 107, 69] };
-  const flag = (b) => {
-    const size = 11, lh = size * 1.35, x = M + 12, w = maxW - 12;
-    const label = LEVEL_WORD[b.level] + ': ';
-    pdf.setFont('helvetica', 'bold'); pdf.setFontSize(size);
-    const labelW = pdf.getTextWidth(label);
-    pdf.setFont('helvetica', 'normal');
-    const first = pdf.splitTextToSize(b.text, Math.max(40, w - labelW));
-    const rest = first.length > 1 ? pdf.splitTextToSize(first.slice(1).join(' '), w) : [];
-    const lines = [first[0]].concat(rest);
-    const rh = lines.length * lh + 8;
-    if (y + rh > H - 48) { footer(); pdf.addPage(); y = M; }
-    pdf.setFillColor(...FLAG_RGB[b.level]); pdf.rect(M, y + 4, 3, rh - 8, 'F');
-    pdf.setFont('helvetica', 'bold'); pdf.setFontSize(size); pdf.setTextColor(...FLAG_RGB[b.level]);
-    pdf.text(label, x, y + 4 + size);
-    pdf.setFont('helvetica', 'normal'); pdf.setTextColor(0);
-    lines.forEach((ln, k) => pdf.text(ln, k === 0 ? x + labelW : x, y + 4 + size + k * lh));
-    y += rh;
-  };
-  /* A question with a box to tick in the appointment, then who asked it and when */
-  const question = (b) => {
-    const size = 11.5, lh = size * 1.35, x = M + 22;
-    const lines = pdf.splitTextToSize(`${b.n}. ${b.text}`, maxW - 22);
-    const rh = (lines.length + 1) * lh + 6;
-    if (y + rh + 66 > H - 48) { footer(); pdf.addPage(); y = M; }
-    pdf.setDrawColor(120); pdf.setLineWidth(0.8); pdf.rect(M + 2, y + 3, 11, 11);
-    pdf.setFont('helvetica', 'bold'); pdf.setFontSize(size); pdf.setTextColor(0);
-    lines.forEach((ln, k) => pdf.text(ln, x, y + size + k * lh));
-    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9.5); pdf.setTextColor(110);
-    pdf.text(`Asked by ${b.who}, ${fmtDayShort(b.day)}`, x, y + size + lines.length * lh);
-    y += rh;
-    /* Three faint lines to write the answer on in clinic */
-    pdf.setDrawColor(205); pdf.setLineWidth(0.3);
-    for (let k = 0; k < 3; k++) { y += 20; pdf.line(x, y, M + maxW, y); }
-    y += 6;
-  };
-  /* A written note: who wrote it (bold), when and in what context, then the note itself */
-  const note = (b) => {
-    const size = 10.5, lh = size * 1.35;
-    const head = `${b.who} · ${b.time}${b.context ? ' · ' + b.context : ''}`;
-    const lines = pdf.splitTextToSize(b.text, maxW - 10);
-    const rh = (lines.length + 1) * lh + 6;
-    if (y + rh > H - 48) { footer(); pdf.addPage(); y = M; }
-    pdf.setFont('helvetica', 'bold'); pdf.setFontSize(size); pdf.setTextColor(...FLAG_RGB.teal);
-    pdf.text(head, M + 10, y + size);
-    pdf.setFont('helvetica', 'normal'); pdf.setTextColor(0);
-    lines.forEach((ln, k) => pdf.text(ln, M + 10, y + size + (k + 1) * lh));
-    y += rh;
-  };
-  /* A chart drawn as vectors (since v111): shaded threshold bands, a light grid, day labels, then
-     bars (stacked) or lines with points, a legend when there is more than one series, and a note. */
-  const chart = (b) => {
-    const plotH = 120, legend = (b.series || []).filter((s) => s.label).length + (b.stacks || []).length > 1;
-    const blockH = 20 + plotH + 16 + (legend ? 16 : 0) + (b.note ? 14 : 0) + 14;
-    if (y + blockH > H - 48) { footer(); pdf.addPage(); y = M; }
-    pdf.setFont('helvetica', 'bold'); pdf.setFontSize(11.5); pdf.setTextColor(0);
-    pdf.text(b.title, M, y + 11);
-    const px = M + 42, pw = maxW - 42, py = y + 20, ph = plotH;
-    const X = (f) => px + f * pw;
-    const Y = (v) => py + ph - ((Math.min(Math.max(v, b.lo), b.hi) - b.lo) / (b.hi - b.lo)) * ph;
-    (b.bands || []).forEach((band) => { pdf.setFillColor(...band.rgb); const t = Y(Math.min(band.hi, b.hi)), btm = Y(Math.max(band.lo, b.lo)); if (btm > t) pdf.rect(px, t, pw, btm - t, 'F'); });
-    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8); pdf.setLineWidth(0.4);
-    b.ticks.forEach((v) => { pdf.setDrawColor(222); pdf.line(px, Y(v), px + pw, Y(v)); pdf.setTextColor(110); pdf.text(b.fmt(v), px - 5, Y(v) + 3, { align: 'right' }); });
-    pdf.setDrawColor(170); pdf.line(px, py + ph, px + pw, py + ph);
-    const n = b.days.length, slot = pw / n, every = Math.ceil(n / 8);
-    pdf.setTextColor(110);
-    b.days.forEach((d, i) => { if (i % every === 0 || (i === n - 1 && (n - 1) % every >= every / 2)) pdf.text(d, X((i + 0.5) / n), py + ph + 11, { align: 'center' }); });
-    if (b.stacks) {
-      const bw = Math.min(slot * 0.62, 22);
-      for (let i = 0; i < n; i++) {
-        let cum = 0;
-        b.stacks.forEach((st) => { const v = Number(st.values[i]) || 0; if (v <= 0) return; pdf.setFillColor(...st.rgb); const t = Y(cum + v), btm = Y(cum); pdf.rect(X((i + 0.5) / n) - bw / 2, t, bw, Math.max(0.5, btm - t), 'F'); cum += v; });
-      }
-    }
-    (b.series || []).forEach((sr) => {
-      const pts = sr.pts.slice().sort((a, c) => a.x - c.x);
-      if (sr.line !== false && pts.length > 1) {
-        pdf.setDrawColor(...sr.rgb); pdf.setLineWidth(1.4);
-        for (let k = 1; k < pts.length; k++) pdf.line(X(pts[k - 1].x), Y(pts[k - 1].y), X(pts[k].x), Y(pts[k].y));
-      }
-      pts.forEach((pt) => {
-        const rgb = pt.rgb || sr.rgb;
-        if (sr.hollow) { pdf.setDrawColor(...rgb); pdf.setFillColor(255, 255, 255); pdf.setLineWidth(1.2); pdf.circle(X(pt.x), Y(pt.y), 2.6, 'FD'); }
-        else { pdf.setFillColor(...rgb); pdf.circle(X(pt.x), Y(pt.y), 2.2, 'F'); }
-      });
-    });
-    let ly = py + ph + 26;
-    if (legend) {
-      let lx = px;
-      pdf.setFontSize(8.5); pdf.setTextColor(60);
-      [...(b.series || []).filter((sr) => sr.label), ...(b.stacks || [])].forEach((it) => {
-        pdf.setFillColor(...it.rgb);
-        if (it.hollow) { pdf.setDrawColor(...it.rgb); pdf.setFillColor(255, 255, 255); pdf.circle(lx + 4, ly - 3, 3, 'FD'); } else pdf.rect(lx, ly - 7, 8, 8, 'F');
-        pdf.text(it.label, lx + 12, ly);
-        lx += 12 + pdf.getTextWidth(it.label) + 14;
-      });
-      ly += 14;
-    }
-    if (b.note) { pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8.5); pdf.setTextColor(110); pdf.text(pdf.splitTextToSize(b.note, maxW)[0], M, ly); }
-    y += blockH;
-  };
   blocks.forEach((b) => {
-    if (b.kind === 'flag') flag(b);
-    else if (b.kind === 'chart') chart(b);
-    else if (b.kind === 'question') question(b);
-    else if (b.kind === 'note') note(b);
-    else if (b.kind === 'heading') { if (b.keep && y + b.keep > H - 48) { footer(); pdf.addPage(); y = M; } y += 10; write(b.text, 14, 'bold', PDF_TEAL, 0); pdf.setDrawColor(200); pdf.setLineWidth(0.5); pdf.line(M, y + 1, M + maxW, y + 1); y += 8; }
+    if (b.kind === 'heading') { if (b.keep && y + b.keep > H - 48) { footer(); pdf.addPage(); y = M; } y += 10; write(b.text, 14, 'bold', PDF_TEAL, 0); pdf.setDrawColor(200); pdf.setLineWidth(0.5); pdf.line(M, y + 1, M + maxW, y + 1); y += 8; }
     else if (b.kind === 'sub') { y += 4; write(b.text, 12, 'bold', 0, 2); }
     else if (b.kind === 'muted') write(b.text, 10.5, 'normal', 110, 3);
     else if (b.kind === 'table') table(b);
@@ -3047,7 +2951,7 @@ function buildPdfBlob(title, subtitle, blocks) {
   return pdf.output('blob');
 }
 
-async function savePdf(filename, title, subtitle, blocks) {
+async function savePdf(filename, title, makeBlob) {
   /* On desktop Chrome/Edge, ask where to save (Desktop and all) straight away,
      before anything else, so the browser still counts this as a direct
      response to the tap; not supported on phones (or Safari, or Firefox),
@@ -3061,8 +2965,9 @@ async function savePdf(filename, title, subtitle, blocks) {
       saveHandle = null;
     }
   }
-  try { await loadScript(CDN.jspdf); } catch (e) { toast('Saving a PDF needs a connection'); return; }
-  const blob = buildPdfBlob(title, subtitle, blocks);
+  let blob = null;
+  try { blob = await makeBlob(); } catch (e) { console.error(e); toast('Saving a PDF needs a connection'); return; }
+  if (!blob) return;
   if (saveHandle) {
     try {
       const writable = await saveHandle.createWritable();
@@ -3089,12 +2994,13 @@ async function savePdf(filename, title, subtitle, blocks) {
    built (which needs the jsPDF library to load first); filling it in only
    once that is ready, rather than opening the tab after the fact, is what
    stops browsers treating this as a blocked pop-up. */
-function previewPdf(title, subtitle, blocks) {
+function previewPdf(makeBlob) {
   const win = window.open('', '_blank');
   (async () => {
-    try { await loadScript(CDN.jspdf); }
+    let blob = null;
+    try { blob = await makeBlob(); }
     catch (e) { toast('Preview needs a connection'); if (win) win.close(); return; }
-    const blob = buildPdfBlob(title, subtitle, blocks);
+    if (!blob) { if (win) win.close(); return; }
     const url = URL.createObjectURL(blob);
     if (win) win.location = url;
     else toast('Could not open the preview. Check pop-ups are allowed.');
@@ -3994,7 +3900,8 @@ async function renderFoodDiary() {
   state.foodPdf = { filename: 'Daybook food diary ' + to + '.pdf', title: 'Food diary', subtitle: `${fmtDayNum(from)} to ${fmtDayNum(to)}, printed ${fmtDayNum(today)}`, blocks };
 }
 
-$('food-pdf').addEventListener('click', () => { if (state.foodPdf) savePdf(state.foodPdf.filename, state.foodPdf.title, state.foodPdf.subtitle, state.foodPdf.blocks); });
+const foodPdfBlob = async () => { await loadScript(CDN.jspdf); return buildPdfBlob(state.foodPdf.title, state.foodPdf.subtitle, state.foodPdf.blocks); };
+$('food-pdf').addEventListener('click', () => { if (state.foodPdf) savePdf(state.foodPdf.filename, state.foodPdf.title, foodPdfBlob); });
 
 /* Day totals typed in from a food app, for anyone without the Apple Health feed (Android, or no phone link) */
 $('food-totals').addEventListener('click', () => {
@@ -4029,7 +3936,7 @@ $('food-totals').addEventListener('click', () => {
   );
   openSheet('Day totals from your food app', body);
 });
-$('food-preview').addEventListener('click', () => { if (state.foodPdf) previewPdf(state.foodPdf.title, state.foodPdf.subtitle, state.foodPdf.blocks); });
+$('food-preview').addEventListener('click', () => { if (state.foodPdf) previewPdf(foodPdfBlob); });
 
 /* macroText is the entry's estimate line, or '' (the setting off, or nothing to go on) */
 function diaryRow(e, nutri, macroText) {
@@ -4059,7 +3966,7 @@ const NOTES_PROMPT = 'Please turn these care notes into a short, clear list of q
   'The "worth mentioning" items are simple threshold checks made by the app, not a diagnosis.';
 
 $('notes-back').addEventListener('click', () => showTab(state.reportReturn || 'vitals'));
-$('notes-print').addEventListener('click', () => window.print());
+$('notes-print').addEventListener('click', () => openReportPage(true));
 /* The range buttons (presets and Custom) are wired by wireReportRange('notes', ...) with the Food diary's */
 
 $('notes-share').addEventListener('click', async () => {
@@ -4139,6 +4046,7 @@ function openSendSheet() {
   const n = state.notesPdf;
   if (!n) return;
   loadScript(CDN.jspdf).catch(() => {}); // warmed now so the PDF is ready by the time Send is tapped
+  loadScript(CDN.html2canvas).catch(() => {});
   const body = h('div');
   const range = `${fmtDayNum(n.from)} to ${fmtDayNum(n.to)}`;
   const pick = () => {
@@ -4154,14 +4062,12 @@ function openSendSheet() {
       h('button', { class: 'btn btn-link btn-block', type: 'button', onclick: closeSheet }, 'Cancel'));
   };
   const compose = (c) => {
-    const pdf = currentNotesPdf();
-    const chartCount = pdf.blocks.filter((b) => b.kind === 'chart').length;
     const fname = `Daybook notes for the team ${n.to}.pdf`;
     let blob = null;
-    (async () => { try { await loadScript(CDN.jspdf); blob = buildPdfBlob(pdf.title, pdf.subtitle, pdf.blocks); } catch (e) { console.error(e); } })();
+    (async () => { try { blob = await notesReportBlob(); } catch (e) { console.error(e); } })();
     const subject = h('input', { type: 'text', id: 'send-subject', value: `Notes before our appointment, ${range}` });
     const note = h('textarea', { id: 'send-note', rows: '6' });
-    note.value = `${greetingFor(c)}\n\nAhead of our next appointment, here are my notes from Daybook for ${range}: my questions first, then a summary of the period${chartCount ? ' and charts of the readings' : ''}. The PDF is attached.\n\nThank you,\n${state.name || ''}`.trim();
+    note.value = `${greetingFor(c)}\n\nAhead of our next appointment, here are my notes from Daybook for ${range}: two pages, with a summary and my questions first, then charts of the readings and the notes week by week. The PDF is attached.\n\nThank you,\n${state.name || ''}`.trim();
     const send = h('button', { class: 'btn btn-primary btn-block', type: 'button', id: 'send-go' }, 'Open in my Mail app');
     send.addEventListener('click', () => {
       if (!blob) { toast('Still making the PDF. Try again in a moment.'); return; }
@@ -4189,7 +4095,7 @@ function openSendSheet() {
         h('button', { class: 'btn-inline sendto-copy', type: 'button', onclick: () => { copyText(c.email); toast('Address copied'); } }, 'Copy address')),
       field('Subject', subject),
       field('Message', note),
-      h('p', { class: 'sendpdf' }, h('b', { text: `Attached: Notes for the team, ${range}, ${chartCount ? plural(chartCount, 'chart') : 'no charts'}.` }), ' Change the charts on the Notes screen before sending.'),
+      h('p', { class: 'sendpdf' }, h('b', { text: `Attached: Notes for the team, ${range}, two pages.` }), ' Use Preview on the Notes screen to look at it first.'),
       h('p', { class: 'hint', text: 'Your Mail app opens with the PDF and this message, sent from your own email address. The address is copied as well, to paste into To if it is not filled in.' }),
       send,
       h('button', { class: 'btn btn-link btn-block', type: 'button', onclick: pick }, 'Choose someone else'));
@@ -4201,195 +4107,544 @@ function openSendSheet() {
 $('notes-send').addEventListener('click', openSendSheet);
 $('notes-record').addEventListener('click', openAppointmentSheet);
 
-$('notes-pdf').addEventListener('click', () => { const n = currentNotesPdf(); if (n) savePdf(n.filename, n.title, n.subtitle, n.blocks); });
-$('notes-preview').addEventListener('click', () => { const n = currentNotesPdf(); if (n) previewPdf(n.title, n.subtitle, n.blocks); });
 
-/* The PDF is for people (the clinic, the folder), so it carries the report without the request to the AI app */
-/* Charts for Notes for the team (since v111): the Trends charts redrawn as vectors in the PDF, for
-   the report's own range, so it reads like a report and needs no screenshots. Kilograms and degrees
-   Celsius, like the rest of the report. Colours are fixed RGB for white paper (PDFs are always light). */
-const PDF_RGB = { teal: [30, 95, 116], tealMid: [92, 150, 170], tealPale: [160, 196, 208], warm: [194, 112, 61], amber: [154, 91, 0], red: [164, 38, 44], grey: [176, 184, 188], amberBand: [251, 238, 214], redBand: [249, 224, 224] };
-const REPORT_CHART_ORDER = ['temp', 'heart', 'bp', 'oxygen', 'weight', 'sleep', 'pain', 'mood', 'drink', 'bowel'];
-const REPORT_CHART_NAME = { temp: 'Temperature', heart: 'Heart rate', bp: 'Blood pressure', oxygen: 'Oxygen', weight: 'Weight', sleep: 'Sleep', pain: 'Pain', mood: 'Mood', drink: 'Drinks', bowel: 'Bowels' };
-const CHART_TOPIC_KEY = { Temperature: 'temp', 'Heart rate': 'heart', 'Blood pressure': 'bp', Oxygen: 'oxygen', Weight: 'weight', Sleep: 'sleep', Pain: 'pain', Mood: 'mood', Drinks: 'drink', Bowels: 'bowel' };
-/* The charts ticked when nothing has been chosen: these four whenever they have readings, plus any flagged in the summary */
-const REPORT_CHART_DEFAULTS = ['temp', 'sleep', 'pain', 'weight'];
-function niceScale(lo, hi, maxTicks) {
-  if (!(hi > lo)) { lo -= 1; hi += 1; }
-  const rough = (hi - lo) / (maxTicks || 5);
-  const mag = Math.pow(10, Math.floor(Math.log10(rough)));
-  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= rough);
-  const a = Math.floor(lo / step) * step, b = Math.ceil(hi / step) * step;
-  const ticks = [];
-  for (let v = a; v <= b + step / 2; v += step) ticks.push(Math.round(v * 100) / 100);
-  return { lo: a, hi: b, ticks };
+/* ---------- The two-page Notes for the team (since v117) ---------- */
+/* Mark's brief of 5 October 2026 and the approved design: two A4 pages a patient hands to the
+   nurse or doctor. report.js draws it (lazily imported); everything it shows is worked out here,
+   from the readings, the questions and the notes, never typed in. Thresholds are the app's own
+   (the same as the Summary): temperature 37.5 amber and 38.0 red, heart rate 100 and 120, blood
+   pressure 140/90 amber and 160/100 red, oxygen 93 and 90, pain 5 amber and 7 red, nights under
+   5 hours, protein under target, low-mood days. With Daybook Assistant (one tap, "Summarise with
+   Daybook Assistant") the week cards, the latest-symptom banner and the tidied question wording
+   come from the bridge's "report" kind; without it, a plain version is made from the notes. */
+const MON3 = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const MON_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+function rDay(s) { const d = parseDay(s); return d.getDate() + ' ' + MON3[d.getMonth()]; }
+function rRange(a, b) {
+  const x = parseDay(a), y = parseDay(b);
+  if (a === b) return rDay(a);
+  if (x.getMonth() === y.getMonth() && x.getFullYear() === y.getFullYear()) return x.getDate() + ' to ' + rDay(b);
+  return rDay(a) + ' to ' + rDay(b);
 }
-function reportCharts(entries, from, to) {
+function rPeriod(from, to) {
+  const x = parseDay(from), y = parseDay(to);
+  return (x.getFullYear() === y.getFullYear() ? rDay(from) : rDay(from) + ' ' + x.getFullYear()) + ' to ' + rDay(to) + ' ' + y.getFullYear();
+}
+
+/* Medicine names as a clinician would write them: generic names in lower case, brand names
+   capitalised, and dictation slips put right ("dakteparun", "oromorph", "Diazipam"). Only words
+   close to a known medicine name are touched, and only with the same first letter. */
+const MED_WORDS = ['dalteparin', 'Oramorph', 'diazepam', 'paracetamol', 'morphine', 'sulphate', 'sodium', 'chloride', 'potassium', 'ondansetron', 'metoclopramide',
+  'dexamethasone', 'Macrogol', 'Laxido', 'Movicol', 'Creon', 'senna', 'docusate', 'lactulose', 'bisacodyl', 'codeine', 'oxycodone', 'OxyNorm', 'OxyContin', 'Zomorph',
+  'ibuprofen', 'naproxen', 'gabapentin', 'pregabalin', 'amitriptyline', 'lorazepam', 'haloperidol', 'levomepromazine', 'cyclizine', 'domperidone', 'lansoprazole',
+  'omeprazole', 'loperamide', 'Fragmin', 'Clexane', 'enoxaparin', 'apixaban', 'rivaroxaban', 'fentanyl', 'tramadol', 'Buscopan', 'hyoscine', 'prochlorperazine',
+  'nystatin', 'Difflam', 'mirtazapine', 'sertraline', 'zopiclone', 'temazepam', 'prednisolone', 'filgrastim', 'Fortisip', 'Ensure', 'Oramorph', 'Kapake', 'co-codamol'];
+const MED_CANON = new Map(MED_WORDS.map((w) => [w.toLowerCase(), w]));
+function medDistance(a, b, cap) {
+  if (Math.abs(a.length - b.length) > cap) return cap + 1;
+  let prev2 = null, prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    let best = i;
+    for (let j = 1; j <= b.length; j++) {
+      let v = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      if (prev2 && i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) v = Math.min(v, prev2[j - 2] + 1);
+      cur.push(v);
+      if (v < best) best = v;
+    }
+    if (best > cap) return cap + 1;
+    prev2 = prev; prev = cur;
+  }
+  return prev[b.length];
+}
+function medCanon(word) {
+  const lw = word.toLowerCase();
+  if (MED_CANON.has(lw)) return MED_CANON.get(lw);
+  if (lw.length < 6) return null;
+  const cap = lw.length >= 8 ? 2 : 1;
+  let best = null, bestD = cap + 1;
+  MED_CANON.forEach((canon, key) => {
+    if (key[0] !== lw[0] || key.length < 6) return;
+    const d = medDistance(lw, key, cap);
+    if (d < bestD) { best = canon; bestD = d; }
+  });
+  return best;
+}
+function fixMedWords(text) {
+  return String(text || '').replace(/[A-Za-z][A-Za-z-]{4,}/g, (w, at, all) => {
+    const canon = medCanon(w);
+    if (!canon) return w;
+    const start = at === 0 || /[.!?:]\s+$|\n\s*$/.test(all.slice(Math.max(0, at - 4), at));
+    return start ? canon.charAt(0).toUpperCase() + canon.slice(1) : canon;
+  });
+}
+function capFirst(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
+/* A medicine name for a list: the known words normalised, the rest as typed */
+function medListName(name) { return fixMedWords('x ' + String(name || '').trim()).slice(2); }
+
+/* The days of the report and their labels, as in the design: "22 Sep", "23", ..., "1 Oct", ..., "5 Oct" */
+function reportDays(from, to) {
   const days = [];
   for (let d = from; d <= to; d = addDays(d, 1)) days.push(d);
-  const labels = days.map((d) => parseDay(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }));
-  const start = parseDay(from).getTime(), end = parseDay(addDays(to, 1)).getTime();
-  const fx = (e) => (entryDate(e).getTime() - start) / (end - start);
-  const out = [];
-  const line = (key, title, series, o) => {
-    const all = series.flatMap((s) => s.pts.map((p) => p.y));
-    if (!all.length) return;
-    /* a minimum span (weight: 4 kg) so a small wobble is not drawn as a cliff */
-    let lo = Math.min(...all), hi = Math.max(...all);
-    if (o.minSpan && hi - lo < o.minSpan) { const mid = (hi + lo) / 2; lo = mid - o.minSpan / 2; hi = mid + o.minSpan / 2; }
-    const sc = o.fixed || niceScale(lo, hi, 5);
-    out.push({ key, title, block: { kind: 'chart', title, days: labels, lo: sc.lo, hi: sc.hi, ticks: sc.ticks, fmt: o.fmt, series, bands: o.bands, note: o.note } });
-  };
-  const bars = (key, title, stacks, o) => {
-    const totals = days.map((_, i) => stacks.reduce((t, s) => t + (Number(s.values[i]) || 0), 0));
-    if (!totals.some((v) => v > 0)) return;
-    const sc = niceScale(0, Math.max(o.min || 0, ...totals), 4);
-    out.push({ key, title, block: { kind: 'chart', title, days: labels, lo: 0, hi: sc.hi, ticks: sc.ticks, fmt: o.fmt, stacks, note: o.note } });
-  };
-  const ticks = (a, b, step) => { const t = []; for (let v = a; v <= b; v += step) t.push(v); return t; };
-  const temps = entries.filter((e) => e.type === 'temp' && Number(e.value) > 0);
-  line('temp', 'Temperature (°C)', [{ rgb: PDF_RGB.teal, pts: temps.map((e) => { const v = Number(e.value); return { x: fx(e), y: v, rgb: v >= 38 ? PDF_RGB.red : v >= 37.5 ? PDF_RGB.amber : PDF_RGB.teal }; }) }],
-    { fixed: { lo: 35, hi: 40, ticks: ticks(35, 40, 1) }, fmt: (v) => v.toFixed(1), bands: [{ lo: 37.5, hi: 38, rgb: PDF_RGB.amberBand }, { lo: 38, hi: 40, rgb: PDF_RGB.redBand }], note: 'Shaded: 37.5 to 37.9 °C amber, 38.0 °C and over red.' });
-  const vit = entries.filter((e) => e.type === 'vitals');
-  const hr = vit.filter((e) => Number(e.heartRate) > 0);
-  const hrVals = hr.map((e) => Number(e.heartRate));
-  line('heart', 'Heart rate (beats a minute)', [{ rgb: PDF_RGB.teal, pts: hr.map((e) => ({ x: fx(e), y: Number(e.heartRate) })) }],
-    { fixed: hrVals.length ? niceScale(Math.min(50, ...hrVals), Math.max(110, ...hrVals), 5) : null, fmt: (v) => String(v), bands: [{ lo: 100, hi: 120, rgb: PDF_RGB.amberBand }, { lo: 120, hi: 250, rgb: PDF_RGB.redBand }], note: 'Shaded: 100 to 119 amber, 120 and over red.' });
-  const bp = vit.filter((e) => Number(e.systolic) > 0 && Number(e.diastolic) > 0);
-  line('bp', 'Blood pressure (mmHg)', [{ label: 'Systolic', rgb: PDF_RGB.teal, pts: bp.map((e) => ({ x: fx(e), y: Number(e.systolic) })) }, { label: 'Diastolic', rgb: PDF_RGB.warm, pts: bp.map((e) => ({ x: fx(e), y: Number(e.diastolic) })) }], { fmt: (v) => String(v) });
-  const o2 = vit.filter((e) => Number(e.oxygen) > 0);
-  line('oxygen', 'Oxygen (%)', [{ rgb: PDF_RGB.teal, pts: o2.map((e) => ({ x: fx(e), y: Number(e.oxygen) })) }],
-    { fixed: { lo: 80, hi: 100, ticks: ticks(80, 100, 5) }, fmt: (v) => String(v), bands: [{ lo: 90, hi: 93, rgb: PDF_RGB.amberBand }, { lo: 80, hi: 90, rgb: PDF_RGB.redBand }], note: 'Shaded: 91 to 93% amber, 90% and under red.' });
-  const wts = entries.filter((e) => e.type === 'weight' && Number(e.value) > 0);
-  line('weight', 'Weight (kg)', [{ rgb: PDF_RGB.teal, pts: wts.map((e) => ({ x: fx(e), y: Number(e.value) })) }], { minSpan: 4, fmt: (v) => String(v) });
-  const night = days.map((d) => entries.filter((e) => e.type === 'sleep' && e.day === d).pop() || null);
-  const hrs = (m) => Math.round(Number(m || 0) / 6) / 10;
-  bars('sleep', 'Sleep (hours asleep a night)', [
-    { label: 'Deep', rgb: PDF_RGB.teal, values: night.map((e) => e ? hrs(e.deep) : 0) },
-    { label: 'Core', rgb: PDF_RGB.tealMid, values: night.map((e) => e ? hrs(e.core) : 0) },
-    { label: 'REM', rgb: PDF_RGB.tealPale, values: night.map((e) => e ? hrs(e.rem) : 0) },
-    { label: 'Not broken down', rgb: PDF_RGB.grey, values: night.map((e) => e ? hrs(Math.max(0, (Number(e.value) || 0) - (Number(e.deep) || 0) - (Number(e.core) || 0) - (Number(e.rem) || 0))) : 0) }
-  ].filter((st) => st.values.some((v) => v > 0)), { min: 8, fmt: (v) => v + ' h', note: 'Logged against the morning the night ended.' });
-  const ten = { lo: 0, hi: 10, ticks: [0, 2, 4, 6, 8, 10] };
+  const labels = days.map((d, i) => (i === 0 || i === days.length - 1 || d.endsWith('-01') ? rDay(d) : String(Number(d.slice(8)))));
+  return { days, labels };
+}
+const R_TONE = { red: 'red', amber: 'amber', green: 'green' };
+const toneOf = (red, amber) => (red ? 'red' : amber ? 'amber' : 'green');
+
+function twoPageCharts(entries, days) {
+  const by = (pred) => days.map((d) => entries.filter((e) => e.day === d && pred(e)));
+  const maxOf = (list, f) => (list.length ? Math.max(...list.map(f)) : null);
+  const minOf = (list, f) => (list.length ? Math.min(...list.map(f)) : null);
+  const avgOf = (list, f) => (list.length ? Math.round(list.reduce((t, e) => t + f(e), 0) / list.length * 10) / 10 : null);
+  const ink = REPORT_INK, teal = REPORT_TEAL, amber = REPORT_AMBER, red = REPORT_RED;
+  const vals = (d) => d.filter((v) => v != null);
+  const charts = [];
+
+  const temp = by((e) => e.type === 'temp' && Number(e.value) > 0).map((l) => maxOf(l, (e) => Number(e.value)));
+  const tv = vals(temp), tPeak = tv.length ? Math.max(...tv) : null;
+  charts.push({ key: 'temp', title: 'Temperature (°C)', stat: tPeak == null ? 'No readings' : 'Peak ' + tPeak.toFixed(1) + ' °C', tone: tPeak == null ? '' : toneOf(tPeak >= 38, tPeak >= 37.5),
+    min: Math.min(35, ...tv.map(Math.floor)), max: Math.max(41, ...tv.map(Math.ceil)), ticks: [36, 38, 40],
+    bands: [{ from: 37.5, to: 38, c: amber }, { from: 38, to: 45, c: red }], series: [{ d: temp, c: ink }] });
+
+  const hr = by((e) => e.type === 'vitals' && Number(e.heartRate) > 0).map((l) => maxOf(l, (e) => Number(e.heartRate)));
+  const hv = vals(hr), hPeak = hv.length ? Math.max(...hv) : null;
+  charts.push({ key: 'heart', title: 'Heart rate (bpm)', stat: hPeak == null ? 'No readings' : 'Peak ' + Math.round(hPeak) + ' bpm', tone: hPeak == null ? '' : toneOf(hPeak >= 120, hPeak >= 100 || Math.min(...hv) <= 50),
+    min: Math.min(40, ...hv.map((v) => Math.floor(v / 10) * 10 - 10)), max: Math.max(140, ...hv.map((v) => Math.ceil(v / 10) * 10 + 10)), ticks: [60, 100, 120],
+    bands: [{ from: 100, to: 120, c: amber }, { from: 120, to: 300, c: red }], series: [{ d: hr, c: ink }] });
+
+  /* Blood pressure: each day's reading with the highest systolic, so the pair stays together */
+  const bpDay = by((e) => e.type === 'vitals' && Number(e.systolic) > 0 && Number(e.diastolic) > 0).map((l) => (l.length ? l.reduce((a, b) => (Number(b.systolic) > Number(a.systolic) ? b : a)) : null));
+  const bpAll = entries.filter((e) => e.type === 'vitals' && Number(e.systolic) > 0 && Number(e.diastolic) > 0);
+  const bpRed = bpAll.filter((e) => e.systolic >= 160 || e.diastolic >= 100), bpAmber = bpAll.filter((e) => e.systolic >= 140 || e.diastolic >= 90);
+  const sysV = bpAll.map((e) => Number(e.systolic)), diaV = bpAll.map((e) => Number(e.diastolic));
+  const hiBp = bpAll.length ? bpAll.reduce((a, b) => (Number(b.systolic) > Number(a.systolic) ? b : a)) : null;
+  charts.push({ key: 'bp', title: 'Blood pressure (mmHg)',
+    stat: !bpAll.length ? 'No readings' : bpRed.length ? plural(bpRed.length, 'reading') + ' over 160/100' : bpAmber.length ? plural(bpAmber.length, 'reading') + ' over 140/90' : 'Highest ' + Math.round(hiBp.systolic) + '/' + Math.round(hiBp.diastolic),
+    tone: !bpAll.length ? '' : toneOf(bpRed.length, bpAmber.length || sysV.some((v) => v <= 90)),
+    min: Math.min(60, ...diaV.map((v) => Math.floor(v / 20) * 20 - 20)), max: Math.max(180, ...sysV.map((v) => Math.ceil(v / 20) * 20 + 20)), ticks: [80, 120, 160],
+    bands: [{ from: 140, to: 160, c: amber }, { from: 160, to: 300, c: red }],
+    series: [{ d: bpDay.map((e) => (e ? Number(e.systolic) : null)), c: ink }, { d: bpDay.map((e) => (e ? Number(e.diastolic) : null)), c: teal }] });
+
+  const ox = by((e) => e.type === 'vitals' && Number(e.oxygen) > 0).map((l) => minOf(l, (e) => Number(e.oxygen)));
+  const ov = vals(ox), oLow = ov.length ? Math.min(...ov) : null;
+  charts.push({ key: 'oxygen', title: 'Oxygen (%)', stat: oLow == null ? 'No readings' : 'Low ' + Math.round(oLow) + '%', tone: oLow == null ? '' : toneOf(oLow <= 90, oLow <= 93),
+    min: Math.min(85, ...ov.map((v) => Math.floor(v / 5) * 5 - 5)), max: 100, ticks: [90, 95, 100],
+    bands: [{ from: 90, to: 93, c: amber }, { from: 0, to: 90, c: red }], series: [{ d: ox, c: ink }] });
+
+  /* Weight: the day's last reading; the axis follows the period's own lowest and highest, with room */
+  const wt = by((e) => e.type === 'weight' && Number(e.value) > 0).map((l) => (l.length ? Number(l.slice().sort((a, b) => entryDate(a) - entryDate(b)).pop().value) : null));
+  const wv = vals(wt);
+  const wSorted = entries.filter((e) => e.type === 'weight' && Number(e.value) > 0).sort((a, b) => entryDate(a) - entryDate(b));
+  const wDrop = wSorted.length >= 2 ? Number(wSorted[0].value) - Number(wSorted[wSorted.length - 1].value) : 0;
+  let wLo = wv.length ? Math.floor(Math.min(...wv) - 1) : 70, wHi = wv.length ? Math.ceil(Math.max(...wv) + 1) : 80;
+  if (wHi - wLo < 4) { const extra = 4 - (wHi - wLo); wLo -= Math.floor(extra / 2); wHi += Math.ceil(extra / 2); }
+  const wStep = Math.max(1, Math.round((wHi - wLo) / 4));
+  charts.push({ key: 'weight', title: 'Weight (kg)', stat: !wv.length ? 'No readings' : wDrop >= 2 ? 'Down ' + wDrop.toFixed(1) + ' kg' : 'Steady', tone: !wv.length ? '' : toneOf(wDrop >= 4, wDrop >= 2),
+    min: wLo, max: wHi, ticks: [wLo + wStep, wLo + 2 * wStep, wLo + 3 * wStep].filter((t) => t < wHi), series: [{ d: wt, c: ink }] });
+
+  const nights = entries.filter((e) => e.type === 'sleep' && Number(e.value) > 0);
+  const shortN = nights.filter((e) => Number(e.value) < 300).length;
+  const sl = by((e) => e.type === 'sleep' && Number(e.value) > 0).map((l) => (l.length ? Math.round(Number(l[l.length - 1].value) / 6) / 10 : null));
+  charts.push({ key: 'sleep', title: 'Sleep (hours a night)', type: 'bars', flagBelow: 5,
+    stat: !nights.length ? 'No nights logged' : shortN ? `${shortN} of ${plural(nights.length, 'night')} under 5 h` : 'Average ' + fmtHm(nights.reduce((t, e) => t + Number(e.value), 0) / nights.length),
+    tone: !nights.length ? '' : shortN ? 'amber' : 'green', min: 0, max: Math.max(10, ...vals(sl).map(Math.ceil)), ticks: [0, 5, 10], series: [{ d: sl, c: teal }] });
+
+  /* Pain: the day's average of the patient's check-in scores (pain readings where there was no check-in score) */
   const ci = entries.filter(isPatientCheckin);
-  const spot = entries.filter((e) => e.type === 'pain');
-  const painSeries = [{ label: 'Check-in', rgb: PDF_RGB.teal, pts: ci.filter((e) => e.pain != null).map((e) => ({ x: fx(e), y: Number(e.pain) })) }];
-  if (spot.length) painSeries.push({ label: 'Extra reading', rgb: PDF_RGB.warm, hollow: true, line: false, pts: spot.map((e) => ({ x: fx(e), y: Number(e.value) })) });
-  if (painSeries.some((s) => s.pts.length)) line('pain', 'Pain (0 to 10)', painSeries, { fixed: ten, fmt: (v) => String(v) });
-  line('mood', 'Mood (0 to 10)', [{ rgb: PDF_RGB.teal, pts: ci.filter((e) => e.mood != null).map((e) => ({ x: fx(e), y: Number(e.mood) })) }], { fixed: ten, fmt: (v) => String(v) });
-  bars('drink', 'Drinks (ml a day)', [{ label: 'Drinks', rgb: PDF_RGB.teal, values: days.map((d) => entries.filter((e) => e.type === 'drink' && e.day === d).reduce((t, e) => t + (Number(e.value) || 0), 0)) }], { min: 1000, fmt: (v) => String(v) });
-  const bw = entries.filter((e) => e.type === 'bowel' && !e.none);
-  bars('bowel', 'Bowel movements a day', [
-    { label: 'Types 1 to 5', rgb: PDF_RGB.tealMid, values: days.map((d) => bw.filter((e) => e.day === d && !isLoose(e)).length) },
-    { label: 'Loose, type 6 or 7', rgb: PDF_RGB.warm, values: days.map((d) => bw.filter((e) => e.day === d && isLoose(e)).length) }
-  ], { min: 3, fmt: (v) => String(v) });
-  return out.sort((a, b) => REPORT_CHART_ORDER.indexOf(a.key) - REPORT_CHART_ORDER.indexOf(b.key));
+  const painDay = days.map((d) => {
+    const c = ci.filter((e) => e.day === d && e.pain != null).map((e) => Number(e.pain));
+    const r = c.length ? c : entries.filter((e) => e.type === 'pain' && e.day === d && e.value != null).map((e) => Number(e.value));
+    return r.length ? Math.round(r.reduce((t, v) => t + v, 0) / r.length * 10) / 10 : null;
+  });
+  const painAll = [];
+  ci.forEach((e) => { if (e.pain != null) painAll.push(Number(e.pain)); if (e.worstPain != null) painAll.push(Number(e.worstPain)); });
+  entries.filter((e) => e.type === 'pain' && e.value != null).forEach((e) => painAll.push(Number(e.value)));
+  const pv = vals(painDay), pAvg = pv.length ? pv.reduce((t, v) => t + v, 0) / pv.length : null, pWorst = painAll.length ? Math.max(...painAll) : null;
+  charts.push({ key: 'pain', title: 'Pain (1 to 10)', stat: pWorst == null ? 'No scores' : `Average ${(Math.round(pAvg * 10) / 10).toString()}, worst ${pWorst}`, tone: pWorst == null ? '' : toneOf(pWorst >= 7, pWorst >= 5),
+    min: 0, max: 10, ticks: [0, 5, 10], bands: [{ from: 7, to: 10, c: red }], series: [{ d: painDay, c: ink }] });
+
+  const moodDay = days.map((d) => avgOf(ci.filter((e) => e.day === d && e.mood != null), (e) => Number(e.mood)));
+  const lowMood = days.filter((d) => state.days[d] && state.days[d].mood && state.days[d].mood <= 2);
+  charts.push({ key: 'mood', title: 'Mood (1 to 10)', stat: !vals(moodDay).length && !lowMood.length ? 'No scores' : lowMood.length ? 'Low on ' + plural(lowMood.length, 'day') : 'Steady',
+    tone: !vals(moodDay).length && !lowMood.length ? '' : lowMood.length ? 'amber' : 'green', min: 0, max: 10, ticks: [0, 5, 10], series: [{ d: moodDay, c: teal }] });
+
+  return { charts, facts: { tv, tPeak, hv, hPeak, bpAll, bpRed, bpAmber, ov, oLow, wSorted, wDrop, nights, shortN, pAvg, pWorst, painAll, lowMood, moodDay } };
 }
-/* Which charts go in: the person's own ticks once they have touched them, otherwise the defaults
-   above plus anything the summary flagged amber or red. */
-function chosenReportCharts(charts, glance) {
-  if (state.notesCharts) return charts.filter((c) => state.notesCharts.has(c.key));
-  const flagged = new Set((glance || []).filter((g) => g.level === 'red' || g.level === 'amber').map((g) => CHART_TOPIC_KEY[g.topic]).filter(Boolean));
-  return charts.filter((c) => flagged.has(c.key) || REPORT_CHART_DEFAULTS.includes(c.key));
+const REPORT_INK = '#17263A', REPORT_TEAL = '#1E7F86', REPORT_AMBER = '#E0A030', REPORT_RED = '#C8453B';
+
+/* The eight tiles: vitals on the first row, then pain, sleep, protein and mood */
+function twoPageTiles(entries, from, to, f) {
+  const latestOf = (list, valueText) => { const e = list.slice().sort((a, b) => entryDate(a) - entryDate(b)).pop(); return e ? `Latest ${valueText(e)} on ${rDay(e.day)}.` : ''; };
+  const daysWith = (list) => new Set(list.map((e) => e.day)).size;
+  const tiles = [];
+  const temps = entries.filter((e) => e.type === 'temp' && Number(e.value) > 0);
+  if (!temps.length) tiles.push({ k: 'Temperature', v: 'None', note: 'No readings in this period.', tone: '' });
+  else {
+    const high = temps.filter((e) => Number(e.value) >= 38), raised = temps.filter((e) => Number(e.value) >= 37.5), low = temps.filter((e) => Number(e.value) < 36);
+    const peakE = temps.reduce((a, b) => (Number(b.value) > Number(a.value) ? b : a));
+    const latest = latestOf(temps, (e) => Number(e.value).toFixed(1) + ' °C');
+    const note = high.length ? `High on ${plural(daysWith(high), 'day')}, peak on ${rDay(peakE.day)}. ${latest}` : raised.length ? `Raised on ${plural(daysWith(raised), 'day')}, never 38.0. ${latest}` : `Steady. Never 37.5 or over.${low.length ? ' Under 36.0 on ' + plural(daysWith(low), 'day') + '.' : ''} ${latest}`;
+    tiles.push({ k: 'Temperature', v: Number(peakE.value).toFixed(1), unit: '°C peak', note: note.trim(), tone: toneOf(high.length, raised.length || low.length) });
+  }
+  const hrs = entries.filter((e) => e.type === 'vitals' && Number(e.heartRate) > 0);
+  if (!hrs.length) tiles.push({ k: 'Heart rate', v: 'None', note: 'No readings in this period.', tone: '' });
+  else {
+    const fast = hrs.filter((e) => e.heartRate >= 120), high = hrs.filter((e) => e.heartRate >= 100), slow = hrs.filter((e) => e.heartRate <= 50);
+    const times = (n) => (n === 1 ? 'once' : n === 2 ? 'twice' : n + ' times');
+    const latest = latestOf(hrs, (e) => Math.round(e.heartRate) + ' bpm');
+    const note = fast.length ? `120 or over ${times(fast.length)}. ${latest}` : high.length ? `100 or over ${times(high.length)}. ${latest}` : slow.length ? `50 or under ${times(slow.length)}. ${latest}` : `Steady. ${latest}`;
+    tiles.push({ k: 'Heart rate', v: String(Math.round(f.hPeak)), unit: 'bpm peak', note, tone: toneOf(fast.length, high.length || slow.length) });
+  }
+  const bps = f.bpAll;
+  const bpText = (e) => Math.round(e.systolic) + '/' + Math.round(e.diastolic);
+  if (!bps.length) tiles.push({ k: 'Blood pressure', v: 'None', note: 'No readings in this period.', tone: '' });
+  else {
+    const latest = latestOf(bps, bpText);
+    /* Each reading named as it was taken: "over 160/100" means either number crossed its line */
+    const listed = (list) => list.length <= 3 ? ': ' + list.slice().sort((a, b) => entryDate(a) - entryDate(b)).map((e) => bpText(e) + ' on ' + rDay(e.day)).join(', ') : '';
+    if (f.bpRed.length) tiles.push({ k: 'Blood pressure', v: String(f.bpRed.length), unit: f.bpRed.length === 1 ? 'reading' : 'readings', note: `Over 160/100${listed(f.bpRed)}. ${latest}`, tone: 'red' });
+    else if (f.bpAmber.length) tiles.push({ k: 'Blood pressure', v: String(f.bpAmber.length), unit: f.bpAmber.length === 1 ? 'reading' : 'readings', note: `Over 140/90${listed(f.bpAmber)}. ${latest}`, tone: 'amber' });
+    else {
+      const lowBp = bps.filter((e) => e.systolic <= 90);
+      const lo = bps.reduce((a, b) => (Number(b.systolic) < Number(a.systolic) ? b : a)), hi = bps.reduce((a, b) => (Number(b.systolic) > Number(a.systolic) ? b : a));
+      tiles.push({ k: 'Blood pressure', v: bpText(bps.slice().sort((a, b) => entryDate(a) - entryDate(b)).pop()), unit: 'latest', note: lowBp.length ? `Systolic 90 or under ${plural(lowBp.length, 'time')}, lowest ${bpText(lo)}.` : `Steady. Range ${bpText(lo)} to ${bpText(hi)}.`, tone: lowBp.length ? 'amber' : 'green' });
+    }
+  }
+  const oxs = entries.filter((e) => e.type === 'vitals' && Number(e.oxygen) > 0);
+  if (!oxs.length) tiles.push({ k: 'Oxygen', v: 'None', note: 'No readings in this period.', tone: '' });
+  else {
+    const loE = oxs.reduce((a, b) => (Number(b.oxygen) < Number(a.oxygen) ? b : a));
+    const latest = latestOf(oxs, (e) => Math.round(e.oxygen) + '%');
+    tiles.push({ k: 'Oxygen', v: String(Math.round(loE.oxygen)), unit: '% low', note: (loE.oxygen <= 93 ? `Down to ${Math.round(loE.oxygen)}% on ${rDay(loE.day)}. ` : 'Steady. ') + latest, tone: toneOf(loE.oxygen <= 90, loE.oxygen <= 93) });
+  }
+  /* Pain: amber at 5, red at 7, as in the app's own summary */
+  if (f.pWorst == null) tiles.push({ k: 'Pain', v: 'None', note: 'No pain scores in this period.', tone: '' });
+  else {
+    const worstDay = (() => { let d = null, v = -1; entries.forEach((e) => { const s = isPatientCheckin(e) ? Math.max(Number(e.pain ?? -1), Number(e.worstPain ?? -1)) : e.type === 'pain' ? Number(e.value) : -1; if (s > v) { v = s; d = e.day; } }); return d; })();
+    const highDays = new Set(entries.filter((e) => (isPatientCheckin(e) && (Number(e.pain) >= 5 || Number(e.worstPain) >= 5)) || (e.type === 'pain' && Number(e.value) >= 5)).map((e) => e.day)).size;
+    tiles.push({ k: 'Pain', v: f.pAvg == null ? String(f.pWorst) : (Math.round(f.pAvg * 10) / 10).toString(), unit: f.pAvg == null ? '/10 worst' : '/10 average',
+      note: f.pWorst >= 5 ? `Worst ${f.pWorst} out of 10 on ${rDay(worstDay)}. 5 or more on ${plural(highDays, 'day')}.` : `Steady. Worst ${f.pWorst} out of 10.`, tone: toneOf(f.pWorst >= 7, f.pWorst >= 5) });
+  }
+  if (!f.nights.length) tiles.push({ k: 'Sleep', v: 'None', note: 'No nights logged in this period.', tone: '' });
+  else {
+    const mean = fmtHm(f.nights.reduce((t, e) => t + Number(e.value), 0) / f.nights.length);
+    if (f.shortN) tiles.push({ k: 'Sleep', v: String(f.shortN), unit: 'of ' + plural(f.nights.length, 'night'), note: `Under 5 hours. Average ${mean} a night.`, tone: 'amber' });
+    else tiles.push({ k: 'Sleep', v: (Math.round(f.nights.reduce((t, e) => t + Number(e.value), 0) / f.nights.length / 6) / 10).toString(), unit: 'h a night', note: `Steady. No night under 5 hours (${plural(f.nights.length, 'night')} logged).`, tone: 'green' });
+  }
+  /* Protein: each eating day's figure from the food app where logged, else the app's estimate */
+  const today = todayStr();
+  const target = proteinTarget();
+  const protDays = [];
+  for (let d = from; d <= to && d < today; d = addDays(d, 1)) {
+    const l = loggedTotals(d);
+    if (l) { protDays.push({ day: d, prot: l.prot, logged: true }); continue; }
+    const m = dayMacros(entries.filter((e) => e.type === 'food' && e.day === d));
+    if (m) protDays.push({ day: d, prot: m.totals.prot, logged: false });
+  }
+  if (!protDays.length) tiles.push({ k: 'Protein', v: 'None', note: detailedNutritionOn() ? 'No food totals in this period.' : 'Not tracked. Food estimates are off in Settings.', tone: '' });
+  else {
+    const mean = Math.round(protDays.reduce((t, p) => t + p.prot, 0) / protDays.length);
+    const est = protDays.every((p) => p.logged) ? '' : ' (estimated)';
+    if (target) {
+      const under = protDays.filter((p) => p.prot < target).length;
+      tiles.push({ k: 'Protein', v: String(under), unit: 'of ' + plural(protDays.length, 'day'), note: under ? `Below the ${target} g target. Average ${mean} g a day${est}.` : `Steady. Target of ${target} g met every day${est}.`, tone: under ? 'amber' : 'green' });
+    } else tiles.push({ k: 'Protein', v: String(mean), unit: 'g a day', note: `Average${est}. No target set.`, tone: '' });
+  }
+  if (!f.lowMood.length && !f.moodDay.some((v) => v != null)) tiles.push({ k: 'Mood', v: 'None', note: 'No mood scores in this period.', tone: '' });
+  else if (f.lowMood.length) tiles.push({ k: 'Mood', v: String(f.lowMood.length), unit: f.lowMood.length === 1 ? 'day low' : 'days low', note: `Low on ${joinAnd(f.lowMood.map((d) => String(parseDay(d).getDate())).slice(0, -1).concat([rDay(f.lowMood[f.lowMood.length - 1])]))}.`, tone: 'amber' });
+  else { const mv = f.moodDay.filter((v) => v != null); tiles.push({ k: 'Mood', v: mv.length ? (Math.round(mv.reduce((t, v) => t + v, 0) / mv.length * 10) / 10).toString() : '0', unit: '/10 average', note: 'Steady. No low days.', tone: 'green' }); }
+  return tiles;
 }
-function renderChartPicker(charts, glance) {
-  const box = $('notes-charts-box');
-  box.hidden = !charts.length;
-  const on = new Set(chosenReportCharts(charts, glance).map((c) => c.key));
-  $('notes-charts').replaceChildren(...charts.map((c) => h('button', { class: 'preset' + (on.has(c.key) ? ' is-active' : ''), type: 'button', 'aria-pressed': on.has(c.key) ? 'true' : 'false', text: REPORT_CHART_NAME[c.key],
-    onclick: (ev) => {
-      if (!state.notesCharts) state.notesCharts = new Set(on);
-      const b = ev.currentTarget;
-      if (state.notesCharts.has(c.key)) state.notesCharts.delete(c.key); else state.notesCharts.add(c.key);
-      on.clear(); state.notesCharts.forEach((k) => on.add(k));
-      b.classList.toggle('is-active', on.has(c.key)); b.setAttribute('aria-pressed', on.has(c.key) ? 'true' : 'false');
-    } })));
+
+/* When-needed medicines and anything given in hospital, names normalised and case variants merged */
+function twoPageMeds(entries, from, to) {
+  const nDays = daysBetween(from, to) + 1;
+  const prnIds = new Map(state.medicines.filter((m) => m.kind === 'prn').map((m) => [m.id, m]));
+  const byName = new Map();
+  entries.filter((e) => e.type === 'med' && prnIds.has(e.medId) && !e.hospital).forEach((e) => {
+    const name = medListName(prnIds.get(e.medId).name || e.medName);
+    const key = name.toLowerCase();
+    if (!byName.has(key)) byName.set(key, { name, days: new Set() });
+    byName.get(key).days.add(e.day);
+  });
+  const prn = [...byName.values()].sort((a, b) => b.days.size - a.days.size || a.name.localeCompare(b.name))
+    .map((m) => m.name + (m.days.size >= nDays ? ' daily' : ' on ' + plural(m.days.size, 'day')));
+  const meds = prn.length ? capFirst(prn.join(', ')) + '.' : 'None taken in this period.';
+  const hosp = entries.filter((e) => e.type === 'med' && e.hospital);
+  let hospital = null;
+  if (hosp.length) {
+    const days = [...new Set(hosp.map((e) => e.day))].sort();
+    const names = [];
+    hosp.forEach((e) => { const n = medListName(e.medName); if (!names.some((x) => x.toLowerCase() === n.toLowerCase())) names.push(n); });
+    const dayText = days.length === 1 ? rDay(days[0]) : days.every((d) => d.slice(0, 7) === days[0].slice(0, 7)) ? joinAnd(days.slice(0, -1).map((d) => String(Number(d.slice(8)))).concat([rDay(days[days.length - 1])])) : joinAnd(days.map(rDay));
+    hospital = { label: `Given in hospital (${dayText}).`, text: capFirst(names.join(', ')) + '.' };
+  }
+  if (state.profile && state.profile.inHospital && state.profile.inHospitalSince && state.profile.inHospitalSince <= to) {
+    const since = `In hospital since ${rDay(state.profile.inHospitalSince)}.`;
+    hospital = hospital ? { label: since + ' ' + hospital.label, text: hospital.text } : { label: since, text: '' };
+  }
+  return { meds, hospital };
 }
-/* The Notes section on screen: one block per week, newest first */
+
+/* The weeks: blocks of seven days counted back from the last day of the period, so the period's
+   last day ends a week (Tuesday to Monday in the design, where the period began on a Tuesday) */
+function reportWeeks(from, to) {
+  const out = [];
+  for (let end = to; end >= from; end = addDays(end, -7)) {
+    const start = addDays(end, -6);
+    out.unshift({ key: start, from: start < from ? from : start, to: end });
+  }
+  return out.map((w, i) => ({ ...w, n: i + 1 }));
+}
+
+/* A plain version of a week, when Daybook Assistant has not been asked: the few most telling
+   notes, one a day, with alert days marked from the readings themselves */
+function plainWeek(w, report, entries) {
+  const inWeek = entries.filter((e) => e.day >= w.from && e.day <= w.to);
+  const rows = summaryRows(inWeek, w.from, w.to).filter((r) => r.level === 'red' || r.level === 'amber').slice(0, 2);
+  const theme = rows.length ? rows.map((r) => (r.short || r.text).replace(/\.$/, '')).join('. ') + '.' : inWeek.length ? "Nothing flagged by the app's checks." : '';
+  /* Alert days and why, from the readings themselves, so a red row always says what made it red */
+  const why = new Map();
+  const note = (day, text) => { if (!why.has(day)) why.set(day, []); if (!why.get(day).includes(text)) why.get(day).push(text); };
+  const worstPain = new Map();
+  inWeek.slice().sort((x, y) => entryDate(x) - entryDate(y)).forEach((e) => {
+    if (e.type === 'temp' && Number(e.value) >= 38) note(e.day, 'Temperature ' + Number(e.value).toFixed(1) + ' °C');
+    if (e.type === 'vitals') {
+      if (Number(e.heartRate) >= 120) note(e.day, 'heart rate ' + Math.round(e.heartRate));
+      if (Number(e.systolic) >= 160 || Number(e.diastolic) >= 100) note(e.day, 'blood pressure ' + Math.round(e.systolic) + '/' + Math.round(e.diastolic));
+      if (Number(e.oxygen) > 0 && Number(e.oxygen) <= 90) note(e.day, 'oxygen ' + Math.round(e.oxygen) + '%');
+    }
+    if (e.type === 'med' && e.hospital) note(e.day, 'given in hospital: ' + medListName(e.medName));
+    if (e.type === 'symptom' && Number(e.value) >= 7) note(e.day, String(e.what || 'symptom').toLowerCase() + ' ' + e.value + '/10');
+    const pain = e.type === 'pain' ? Number(e.value) : isPatientCheckin(e) ? Math.max(Number(e.pain ?? 0), Number(e.worstPain ?? 0)) : 0;
+    if (pain >= 7) worstPain.set(e.day, Math.max(worstPain.get(e.day) || 0, pain));
+    if (e.type === 'bowel' && (e.blood || e.black)) note(e.day, e.blood ? 'blood in a stool' : 'a black stool');
+  });
+  worstPain.forEach((v, day) => note(day, 'pain ' + v + '/10'));
+  const reason = (day) => (why.has(day) ? capFirst(joinAnd(why.get(day).slice(0, 3))) + '.' : '');
+  const alertDays = new Set(why.keys());
+  const byDay = new Map();
+  report.days.filter((d) => d.day >= w.from && d.day <= w.to).forEach((d) => {
+    const telling = d.notes.filter((n) => !isRoutineNote(n)).map((n) => ({ ...n, body: n.text.replace(/^(New or worse symptoms|Settled since yesterday|What the carer noticed): /, '') }));
+    if (!telling.length) return;
+    const best = telling.slice().sort((a, b) => (/check-in|carer/.test(a.context) ? 1 : 0) - (/check-in|carer/.test(b.context) ? 1 : 0) || b.body.length - a.body.length)[0];
+    let text = fixMedWords(best.body.trim());
+    if (text.length > 220) { const s = text.slice(0, 220); text = (s.match(/^[\s\S]*[.!?](?=\s|$)/) || [s.replace(/\s+\S*$/, '') + '…'])[0]; }
+    /* a note of a new or worsening symptom is an alert in its own right */
+    const worse = /^New or worse symptoms: /.test(best.text) || WORSE_WORDS.test(best.body);
+    byDay.set(d.day, { day: d.day, text: (alertDays.has(d.day) ? reason(d.day) + ' ' : '') + capFirst(text), alert: alertDays.has(d.day) || worse });
+  });
+  /* an alert day with no written note still gets its row */
+  alertDays.forEach((day) => { if (!byDay.has(day)) byDay.set(day, { day, text: reason(day), alert: true }); });
+  let entriesOut = [...byDay.values()].sort((a, b) => a.day.localeCompare(b.day));
+  if (entriesOut.length > 6) entriesOut = entriesOut.slice().sort((a, b) => (b.alert ? 1 : 0) - (a.alert ? 1 : 0) || b.text.length - a.text.length).slice(0, 6).sort((a, b) => a.day.localeCompare(b.day));
+  return { theme, entries: entriesOut.map((e) => ({ when: rDay(e.day), text: e.text, alert: e.alert })) };
+}
+
+/* The banner: the most recent note, if it is a new or worsening symptom, from the last two days of the period */
+const WORSE_WORDS = /\b(new|worse|worsening|worst|severe|stabb\w*|sharp|admitted|a&e|ambulance|bleed\w*|fever|shiver\w*|vomit\w*|can'?t|cannot|unbearable)\b/i;
+function plainLatest(report, to) {
+  const notes = report.days.filter((d) => d.day >= addDays(to, -1)).flatMap((d) => d.notes.map((n) => ({ ...n, day: d.day }))).filter((n) => !isRoutineNote(n));
+  const last = notes.sort((a, b) => (a.day + a.time).localeCompare(b.day + b.time)).pop();
+  if (!last) return null;
+  const isSymptom = /^New or worse symptoms: /.test(last.text) || /symptom|with pain [5-9]|with pain 10/.test(last.context || '') || WORSE_WORDS.test(last.text);
+  if (!isSymptom) return null;
+  const body = fixMedWords(last.text.replace(/^(New or worse symptoms|Settled since yesterday|What the carer noticed): /, '').trim());
+  const first = (body.match(/^[^.!?]+[.!?]?/) || [body])[0].trim();
+  const title = first.length <= 70 ? first.replace(/[.!?]$/, '') : first.split(/\s+/).slice(0, 8).join(' ') + '…';
+  let text = first.length <= 70 ? body.slice(first.length).trim() : body;
+  if (text.length > 240) text = text.slice(0, 240).replace(/\s+\S*$/, '') + '…';
+  return { day: last.day, time: last.time, title: capFirst(title), text };
+}
+function whenWords(day, today) {
+  if (day === today) return 'Today';
+  if (day === addDays(today, -1)) return 'Yesterday';
+  return parseDay(day).toLocaleDateString('en-GB', { weekday: 'long' });
+}
+
+/* The report's data for report.js: R in the design's terms */
+function buildTwoPage(n) {
+  const { from, to, report, entries } = n;
+  const today = todayStr();
+  const nDays = daysBetween(from, to) + 1;
+  const ai = state.notesAI && state.notesAI.range === from + '|' + to ? state.notesAI : null;
+  const { days, labels } = reportDays(from, to);
+  const { charts, facts } = twoPageCharts(entries, days);
+  const tiles = twoPageTiles(entries, from, to, facts);
+  const { meds, hospital } = twoPageMeds(entries, from, to);
+  /* Steady: the areas outside the tiles that the app's checks did not flag */
+  const fine = (report.glance.fine || []).filter((t) => !/^(temperature|heart rate|blood pressure|oxygen|pain|sleep|eating|mood)$/i.test(t));
+  const steady = fine.length ? capFirst(joinAnd(fine)) + (fine.length === 1 ? ' showed' : ' showed') + ' no flags in the app checks.' : null;
+  const qs = report.questions.map((q) => ({ n: q.n, text: capFirst(fixMedWords((ai && ai.questions[q.id]) || q.text).trim()), by: `Asked by ${q.who}, ${rDay(q.day)}` }));
+  const latestRaw = ai ? ai.latest : plainLatest(report, to);
+  const latest = latestRaw && latestRaw.day >= from && latestRaw.day <= to ? { when1: whenWords(latestRaw.day, today), when2: rDay(latestRaw.day) + (latestRaw.time ? ', ' + latestRaw.time : ''), title: fixMedWords(latestRaw.title), text: fixMedWords(latestRaw.text) } : null;
+  const allWeeks = reportWeeks(from, to);
+  const shown = allWeeks.slice(-2);
+  const weeks = shown.map((w) => {
+    const fromAi = ai && ai.weeks[w.key];
+    const body = fromAi ? { theme: fixMedWords(fromAi.theme), entries: fromAi.entries.map((e) => ({ when: e.to && e.to !== e.day ? rRange(e.day, e.to).replace(/ (\w{3})$/, (m) => (e.day.slice(0, 7) === e.to.slice(0, 7) ? '' : m)) : rDay(e.day), text: fixMedWords(e.text), alert: Boolean(e.alert) })) }
+      : plainWeek(w, report, entries);
+    return { title: 'Week ' + w.n, range: rRange(w.from, w.to), theme: body.theme, entries: body.entries };
+  }).filter((w) => w.entries.length || w.theme);
+  const period = rPeriod(from, to);
+  const word = nDays === 7 ? 'Week' : nDays === 14 ? 'Fortnight' : nDays + ' days';
+  const t = parseDay(to);
+  const patient = (state.profile && state.profile.reportName) || state.patientName || state.name || '';
+  return {
+    title: 'Notes for the team',
+    subtitle: `A patient summary for the nursing and medical team. ${word} to ${t.getDate()} ${MON_LONG[t.getMonth()]} ${t.getFullYear()}.`,
+    patient, period, prepared: rDay(today) + ' ' + parseDay(today).getFullYear(),
+    latest, tiles, meds, hospital, steady,
+    questions: qs.slice(0, 7), more: Math.max(0, qs.length - 7), lines: 3,
+    charts, days: labels, weeks,
+    weeksNote: ai ? 'Summarised from the daily notes by Daybook Assistant, an AI helper. Every note is in Daybook.' : 'The most telling note of each day. Every note is in Daybook.',
+    foot: 'Daybook · Notes for the team'
+  };
+}
+
+/* The report fitted into a hidden frame (two A4 pages or nothing), ready to print or turn into a PDF */
+let reportModule = null;
+function reportFrame() {
+  let f = document.getElementById('report-frame');
+  if (!f) {
+    f = h('iframe', { id: 'report-frame', title: 'Notes for the team, two pages', 'aria-hidden': 'true', tabindex: '-1' });
+    document.body.append(f);
+  }
+  return f;
+}
+async function fittedReport() {
+  const n = state.notesPdf;
+  if (!n) return null;
+  if (!reportModule) reportModule = await import('./report.js?v=' + APP_VERSION);
+  const R = buildTwoPage(n);
+  const res = await reportModule.fitReport(reportFrame(), R);
+  if (!res.ok) { toast(`The report would run past two pages at: ${res.over.join(', ')}. Shorten that part and try again.`); return null; }
+  return res;
+}
+/* The PDF file: each fitted page drawn at about 240 dots an inch and placed on an A4 page */
+async function reportPdfBlob(res) {
+  await Promise.all([loadScript(CDN.jspdf), loadScript(CDN.html2canvas)]);
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({ unit: 'mm', format: 'a4', compress: true });
+  pdf.setProperties({ title: `Notes for the team, ${res.R.patient}, ${res.R.period}`, creator: 'Daybook' });
+  const pages = [...res.doc.querySelectorAll('.page')];
+  for (let i = 0; i < pages.length; i++) {
+    /* drawn on a canvas that belongs to the report's own frame, where Fraunces and Inter are loaded;
+       a canvas in the app's page would draw the words in a fallback font at the report's spacing */
+    const scale = 2.5, r = pages[i].getBoundingClientRect();
+    const canvas = res.doc.createElement('canvas');
+    canvas.width = Math.floor(r.width * scale); canvas.height = Math.floor(r.height * scale);
+    canvas.style.width = r.width + 'px'; canvas.style.height = r.height + 'px';
+    await window.html2canvas(pages[i], { canvas, scale, width: r.width, height: r.height, backgroundColor: '#ffffff', logging: false, useCORS: true });
+    if (i) pdf.addPage();
+    pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, 210, 297);
+  }
+  return pdf.output('blob');
+}
+async function notesReportBlob() {
+  const res = await fittedReport();
+  return res ? reportPdfBlob(res) : null;
+}
+
+/* The Notes section on screen: one block per week (seven days counted back from the end of the
+   period, as on the report), newest first. With Daybook Assistant's summary each week shows its
+   theme and dated entries; without, its few most telling notes. */
+function aiWeek(w) { const s = state.notesAI; return s && state.notesPdf && s.range === state.notesPdf.from + '|' + state.notesPdf.to && s.weeks[w.key] ? s.weeks[w.key] : null; }
 function renderWeeklyNotes(report) {
   const box = $('notes-days');
   const btn = $('notes-weekly');
   btn.hidden = state.readOnly || !explainAvailable() || !report.weeks.length;
-  const summarised = report.weeks.some((w) => weekPoints(w));
+  const summarised = report.weeks.some((w) => aiWeek(w));
   $('notes-weekly-undo').hidden = !summarised;
   box.replaceChildren(...report.weeks.slice().reverse().map((w) => {
-    const pts = weekPoints(w);
+    const ai = aiWeek(w);
     return h('section', { class: 'diary-day weekblock' },
       h('h3', { class: 'diary-title' }, weekLabel(w), h('small', { text: plural(w.notes.length, 'note') })),
-      pts ? h('ul', { class: 'weekpoints' }, ...pts.map((p) => h('li', { text: p })))
+      ai ? h('div', null, ai.theme ? h('p', { class: 'weektheme', text: ai.theme }) : '',
+          h('ul', { class: 'weekpoints' }, ...ai.entries.map((e) => h('li', { class: e.alert ? 'is-alert' : '' }, h('b', { text: (e.to && e.to !== e.day ? rRange(e.day, e.to) : rDay(e.day)) + ' ' }), e.text))))
         : h('ul', { class: 'timeline' }, ...w.shown.map((n) => h('li', { class: 'entry type-note' },
             h('span', { class: 'entry-time', text: n.time }),
             h('div', { class: 'entry-main' },
               h('div', { class: 'entry-sub' }, h('span', { class: 'note-who', text: n.who }), ' · ' + fmtDayShort(n.day) + ' ' + n.time + (n.context ? ' · ' + n.context : '')),
               h('div', { class: 'entry-title', text: n.text }))))),
-      pts ? h('p', { class: 'muted weekmore', text: 'Summarised from the notes by Daybook Assistant, an AI helper. It can miss or misread things; every note is in Daybook.' })
+      ai ? h('p', { class: 'muted weekmore', text: 'Summarised from the notes by Daybook Assistant, an AI helper. It can miss or misread things; every note is in Daybook.' })
         : w.more > 0 ? h('p', { class: 'muted weekmore', text: `And ${plural(w.more, 'more note')} in Daybook, on Today for each day.` }) : '');
   }));
   if (!report.weeks.length) box.append(h('p', { class: 'muted', text: 'No written notes in this period.' }));
 }
-/* Summarise each week: the week's notes (routine answers left out) to Daybook's AI service, which
-   returns two to four points a week; kept for this session and this range only, never stored */
+/* Summarise with Daybook Assistant (one tap): the notes of the report's two weeks and the open
+   questions go to the bridge's "report" kind, which returns each week's theme and dated entries,
+   the latest new or worsening symptom (or none) and the questions with their spelling tidied.
+   Kept for this session and this range only, never stored. */
+function reportAiText(n) {
+  const weeks = n.report.weeks.slice(-2);
+  const meds = state.medicines.filter((m) => m.active !== false).map((m) => m.name);
+  const lines = [`Report period: ${n.from} to ${n.to}.`, 'Medicines on the list: ' + (meds.join(', ') || 'none') + '.', '', 'Open questions for the team:'];
+  n.report.questions.forEach((q) => lines.push(`Q${q.n}: ${q.text}`));
+  if (!n.report.questions.length) lines.push('None.');
+  weeks.forEach((w, i) => {
+    lines.push('', `Week ${i + 1}, ${w.from} to ${w.to}`);
+    w.notes.filter((x) => !isRoutineNote(x)).forEach((x) => lines.push(`- ${x.who}, ${x.day} ${x.time}${x.context ? ' (' + x.context + ')' : ''}: ${x.text}`));
+  });
+  return { text: lines.join('\n'), weeks };
+}
+function parseReportReply(raw, n, weeks) {
+  let t = String(raw || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  const a = t.indexOf('{'), b = t.lastIndexOf('}');
+  if (a >= 0 && b > a) t = t.slice(a, b + 1);
+  let parsed = {};
+  try { parsed = JSON.parse(t); } catch (e) { return null; }
+  const clean = (x) => String(x || '').replace(/\s*—\s*/g, ', ').trim();
+  const isDay = (d) => /^\d{4}-\d{2}-\d{2}$/.test(String(d || ''));
+  const out = { range: n.from + '|' + n.to, weeks: {}, questions: {}, latest: null };
+  (Array.isArray(parsed.weeks) ? parsed.weeks : []).forEach((w, i) => {
+    const wk = weeks.find((x) => x.from === w.from || x.key === w.from) || weeks[i];
+    if (!wk) return;
+    const entries = (Array.isArray(w.entries) ? w.entries : []).filter((e) => isDay(e.day) && clean(e.text)).slice(0, 6)
+      .map((e) => ({ day: e.day, to: isDay(e.to) && e.to > e.day ? e.to : null, text: clean(e.text), alert: Boolean(e.alert) }));
+    if (entries.length || clean(w.theme)) out.weeks[wk.key] = { theme: clean(w.theme), entries };
+  });
+  (Array.isArray(parsed.questions) ? parsed.questions : []).forEach((q) => {
+    const mine = n.report.questions.find((x) => String(x.n) === String(q.n));
+    if (mine && clean(q.text)) out.questions[mine.id] = clean(q.text);
+  });
+  const l = parsed.latest;
+  if (l && isDay(l.day) && clean(l.title)) out.latest = { day: l.day, time: /^\d{2}:\d{2}$/.test(String(l.time || '')) ? l.time : '', title: clean(l.title), text: clean(l.text) };
+  return Object.keys(out.weeks).length ? out : null;
+}
 $('notes-weekly').addEventListener('click', () => {
   const n = state.notesPdf;
   if (!n) return;
-  const weeks = n.report.weeks;
-  const text = weeks.map((w) => [`Week from ${w.key}`].concat(w.notes.filter((x) => !isRoutineNote(x)).map((x) => `- ${x.who}, ${fmtDayShort(x.day)} ${x.time}${x.context ? ' (' + x.context + ')' : ''}: ${x.text}`)).join('\n')).join('\n\n');
+  const { text, weeks } = reportAiText(n);
   withBusy($('notes-weekly'), 'Summarising, about half a minute', async () => {
     try {
-      const data = await bridgeExplain({ kind: 'weekly', text });
-      let t = String(data.text || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
-      const a = t.indexOf('{'), b = t.lastIndexOf('}');
-      if (a >= 0 && b > a) t = t.slice(a, b + 1);
-      let parsed = {};
-      try { parsed = JSON.parse(t); } catch (e) { parsed = {}; }
-      const out = {};
-      (Array.isArray(parsed.weeks) ? parsed.weeks : []).forEach((w) => {
-        const key = weeks.some((x) => x.key === w.from) ? w.from : null;
-        const pts = (Array.isArray(w.points) ? w.points : []).map((p) => String(p).replace(/\s*\u2014\s*/g, ', ').trim()).filter(Boolean).slice(0, 4);
-        if (key && pts.length) out[key] = pts;
-      });
-      if (!Object.keys(out).length) { toast('Could not read the summary. The notes are shown as they are.'); return; }
-      state.notesWeekly = { range: n.from + '|' + n.to, weeks: out };
+      const data = await bridgeExplain({ kind: 'report', text });
+      const out = parseReportReply(data.text, n, weeks);
+      if (!out) { toast('Could not read the summary. The notes are shown as they are.'); return; }
+      state.notesAI = out;
       renderWeeklyNotes(n.report);
-      toast('Each week summarised. The PDF and Send to the team use it.');
+      toast('Summarised. The report, Preview and Send to the team use it.');
     } catch (e) { toast(e.message || 'Could not summarise the notes'); }
   });
 });
-$('notes-weekly-undo').addEventListener('click', () => { state.notesWeekly = null; if (state.notesPdf) renderWeeklyNotes(state.notesPdf.report); });
+$('notes-weekly-undo').addEventListener('click', () => { state.notesAI = null; if (state.notesPdf) renderWeeklyNotes(state.notesPdf.report); });
 
-/* The PDF as it stands now, with the charts ticked at this moment */
-function currentNotesPdf() {
-  const n = state.notesPdf;
-  if (!n) return null;
-  return { filename: n.filename, title: n.title, subtitle: n.subtitle, blocks: notesPdfBlocks(n.report, chosenReportCharts(n.charts, n.report.glance)) };
+/* Preview and Print: the fitted two pages in a new tab, with a Print button (Print starts printing) */
+function openReportPage(print) {
+  const win = window.open('', '_blank');
+  (async () => {
+    const res = await fittedReport().catch((e) => { console.error(e); return null; });
+    if (!res) { if (win) win.close(); return; }
+    let html = reportModule.reportHtml({ ...res.R, bar: 'Notes for the team, two A4 pages' });
+    if (print) html = html.replace('</body>', '<script>(document.fonts ? document.fonts.ready : Promise.resolve()).then(function () { setTimeout(function () { window.print(); }, 300); });</script></body>');
+    const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
+    if (win) win.location = url;
+    else toast('Could not open the report. Check pop-ups are allowed.');
+  })();
 }
-
-function notesPdfBlocks(report, charts) {
-  const blocks = [{ kind: 'heading', text: 'Questions for the team' }];
-  if (report.questions.length) report.questions.forEach((q) => blocks.push({ kind: 'question', n: q.n, text: q.text, who: q.who, day: q.day }));
-  else blocks.push({ kind: 'muted', text: 'No open questions.' });
-  /* Answered questions are not printed (v114): they are filed as "Questions answered" documents */
-  blocks.push({ kind: 'heading', text: 'Summary' }, { kind: 'muted', text: report.rangeLabel + '. Highlights to talk about, from simple checks by the app; not medical advice. The detail for every day is in Daybook.' });
-  if (report.glance.length) report.glance.forEach((g) => blocks.push({ kind: 'flag', level: g.level, text: g.short || g.text }));
-  else blocks.push({ kind: 'text', text: 'No readings logged in this period.' });
-  if (charts && charts.length) {
-    blocks.push({ kind: 'heading', text: 'Charts', keep: 230 }, { kind: 'muted', text: 'Drawn by Daybook from the readings logged in this period.' });
-    charts.forEach((c) => blocks.push(c.block));
-  }
-  /* Letters are not part of the report (v114): they are the team's own, and stay in the app */
-  blocks.push({ kind: 'heading', text: 'Notes', keep: 90 });
-  if (report.weeks.length) report.weeks.forEach((w) => {
-    blocks.push({ kind: 'sub', text: `${weekLabel(w)} · ${plural(w.notes.length, 'note')}` });
-    const pts = weekPoints(w);
-    if (pts) { pts.forEach((p) => blocks.push({ kind: 'text', text: '\u2022 ' + p })); blocks.push({ kind: 'muted', text: 'Summarised from the notes by Daybook Assistant, an AI helper. It can miss or misread things; every note is in Daybook.' }); }
-    else {
-      w.shown.forEach((n) => blocks.push({ kind: 'note', who: n.who, time: fmtDayShort(n.day) + ' ' + n.time, context: n.context, text: n.text }));
-      if (w.more > 0) blocks.push({ kind: 'muted', text: `And ${plural(w.more, 'more note')} in Daybook.` });
-    }
-  });
-  else blocks.push({ kind: 'text', text: 'No written notes in this period.' });
-  return blocks;
-}
+$('notes-pdf').addEventListener('click', () => { const n = state.notesPdf; if (n) savePdf(n.filename, n.title, notesReportBlob); });
+$('notes-preview').addEventListener('click', () => openReportPage(false));
 
 function excerpt(text, max) {
   const t = (text || '').trim();
@@ -4475,8 +4730,8 @@ function summaryRows(entries, from, to) {
     const low = bps.filter((e) => e.systolic <= 90);
     /* The reading that crossed its line by the most, whichever number did the crossing */
     const worstOf = (list) => maxBy(list, (e) => Math.max(e.systolic - 140, (e.diastolic - 90) * 2));
-    if (red.length) { const w = worstOf(red); push('red', 'Blood pressure', `Blood pressure ${bp(w)} on ${when(w)}${red.length > 1 ? ', and over the 160/100 line on ' + plural(red.length, 'reading') + ' in all' : ''}; ${range}.`, null, `Blood pressure over 160/100 ${times(red.length)}, highest ${bp(w)}`); }
-    else if (amber.length) { const w = worstOf(amber); push('amber', 'Blood pressure', `Blood pressure over the 140/90 line on ${plural(amber.length, 'reading')} of ${bps.length}, highest ${bp(w)} on ${when(w)}; ${range}.`, amber.length === 1 ? `blood pressure ${bp(w)} on ${when(w)}` : null, `Blood pressure over 140/90 ${times(amber.length)}, highest ${bp(w)}`); }
+    if (red.length) { const w = worstOf(red); push('red', 'Blood pressure', `Blood pressure ${bp(w)} on ${when(w)}${red.length > 1 ? ', and over the 160/100 line on ' + plural(red.length, 'reading') + ' in all' : ''}; ${range}.`, null, `Blood pressure over 160/100 ${times(red.length)}${red.length <= 3 ? ': ' + red.slice().sort((a, b) => entryDate(a) - entryDate(b)).map(bp).join(', ') : ', highest systolic ' + bp(hi)}`); }
+    else if (amber.length) { const w = worstOf(amber); push('amber', 'Blood pressure', `Blood pressure over the 140/90 line on ${plural(amber.length, 'reading')} of ${bps.length}, highest ${bp(w)} on ${when(w)}; ${range}.`, amber.length === 1 ? `blood pressure ${bp(w)} on ${when(w)}` : null, `Blood pressure over 140/90 ${times(amber.length)}${amber.length <= 3 ? ': ' + amber.slice().sort((a, b) => entryDate(a) - entryDate(b)).map(bp).join(', ') : ', highest systolic ' + bp(hi)}`); }
     else if (low.length) { const w = minBy(low, (e) => Number(e.systolic)); push('amber', 'Blood pressure', `Low blood pressure ${bp(w)} on ${when(w)}${low.length > 1 ? ' and on ' + (low.length - 1) + ' other ' + (low.length === 2 ? 'reading' : 'readings') : ''}; ${range}.`, null, `Low blood pressure ${times(low.length)}, down to ${bp(w)}`); }
     else fine.push(`blood pressure (${bp(lo)} to ${bp(hi)})`);
   }
@@ -4680,7 +4935,9 @@ function summaryRows(entries, from, to) {
     push('teal', 'Given in hospital', 'Given in hospital: ' + [...groups].map(([text, n]) => text + (n > 1 ? ` (${n} times)` : '')).join('; ') + '.', null, 'Given in hospital: ' + [...new Set(hosp.map((e) => e.medName))].join(', '));
   }
 
-  return rows.sort((a, b) => LEVEL_RANK[a.level] - LEVEL_RANK[b.level]);
+  const sorted = rows.sort((a, b) => LEVEL_RANK[a.level] - LEVEL_RANK[b.level]);
+  sorted.fine = fine.map((x) => x.split(' (')[0]); // the topics with nothing flagged, for the report's Steady box
+  return sorted;
 }
 
 /* A document's explanation as the report shows it: the pasted "=== CARE LOG
@@ -4748,16 +5005,13 @@ async function loadQuestions() {
    shows its two to four points instead. The text for an AI app keeps every note, day by day. */
 const WEEK_NOTES_MAX = 4;
 const ROUTINE_ANSWER = /^(no|none|nope|nothing|nothing new|nothing to report|no change|same|same as (yesterday|before|usual)|n\/a|nil|ok|okay|fine|all good|good)\.?$/i;
-function weekStartOf(day) { const d = parseDay(day); return addDays(day, -((d.getDay() + 6) % 7)); }
 function isRoutineNote(n) { const t = String(n.text || ''); const body = t.includes(': ') ? t.slice(t.indexOf(': ') + 2) : t; return ROUTINE_ANSWER.test(body.trim()); }
 function notesByWeek(days, from, to) {
-  const weeks = new Map();
-  days.forEach((d) => {
-    const key = weekStartOf(d.day);
-    if (!weeks.has(key)) weeks.set(key, { key, from: key < from ? from : key, to: addDays(key, 6) > to ? to : addDays(key, 6), notes: [] });
-    d.notes.forEach((n) => weeks.get(key).notes.push({ ...n, day: d.day }));
-  });
-  return [...weeks.values()].sort((a, b) => a.key.localeCompare(b.key)).map((w) => {
+  return reportWeeks(from, to).map((w) => {
+    const notes = [];
+    days.filter((d) => d.day >= w.from && d.day <= w.to).forEach((d) => d.notes.forEach((n) => notes.push({ ...n, day: d.day })));
+    return { ...w, notes };
+  }).filter((w) => w.notes.length).map((w) => {
     const telling = w.notes.filter((n) => !isRoutineNote(n));
     const ranked = telling.slice().sort((a, b) => (/check-in|carer/.test(a.context) ? 1 : 0) - (/check-in|carer/.test(b.context) ? 1 : 0) || b.text.length - a.text.length);
     const shown = ranked.slice(0, WEEK_NOTES_MAX).sort((a, b) => (a.day + a.time).localeCompare(b.day + b.time));
@@ -4765,8 +5019,6 @@ function notesByWeek(days, from, to) {
   });
 }
 function weekLabel(w) { return w.from === w.to ? fmtDayLong(w.from) : `${w.from.slice(0, 7) === w.to.slice(0, 7) ? Number(w.from.slice(8)) : fmtDayShort(w.from)} to ${fmtDayShort(w.to)}`; }
-/* The week's summary points, when Summarise each week has been run for this range */
-function weekPoints(w) { const s = state.notesWeekly; return s && s.range === state.notesPdf.from + '|' + state.notesPdf.to && s.weeks[w.key] ? s.weeks[w.key] : null; }
 
 function buildNotesReport(entries, questionsAll, from, to, rangeLabel) {
   const glance = summaryRows(entries, from, to);
@@ -4812,6 +5064,16 @@ function buildNotesReport(entries, questionsAll, from, to, rangeLabel) {
   return { questions, answers, answered, glance, days, weeks: notesByWeek(days, from, to), rangeLabel, text: lines.join('\n') };
 }
 
+/* The name on the report: Settings' "Name on the report" if set, else the member whose relation is the patient */
+async function loadPatientName() {
+  if (state.patientName || state.demo || !state.household) return;
+  try {
+    const snap = await getDocs(hcol('members'));
+    const p = snap.docs.map((d) => d.data()).find((m) => m.relation === 'patient');
+    if (p && p.name) state.patientName = p.name;
+  } catch (e) { /* read-only members cannot list the household; the signed-in name stands in */ }
+}
+
 async function renderNotesReport() {
   const today = todayStr();
   const range = reportRange('notes');
@@ -4825,11 +5087,10 @@ async function renderNotesReport() {
   const report = buildNotesReport(entries, questionsAll, from, to, rangeLabel);
   state.notesText = report.text;
   $('notes-explain').hidden = !explainAvailable();
-  const charts = reportCharts(entries, from, to);
   $('notes-record').hidden = $('notes-record-hint').hidden = state.readOnly || !canRecord();
   renderAppointmentList(from, to);
-  state.notesPdf = { filename: 'Daybook notes for the team ' + to + '.pdf', title: 'Notes for the team', subtitle: `${fmtDayNum(from)} to ${fmtDayNum(to)}, printed ${fmtDayNum(today)}`, report, charts, from, to };
-  renderChartPicker(charts, report.glance);
+  state.notesPdf = { filename: 'Daybook notes for the team ' + to + '.pdf', title: 'Notes for the team', subtitle: `${fmtDayNum(from)} to ${fmtDayNum(to)}, printed ${fmtDayNum(today)}`, report, entries, from, to };
+  loadPatientName();
 
   $('notes-questions').replaceChildren(...report.questions.map((q) => h('div', { class: 'card question' },
     h('div', { class: 'question-text', text: `${q.n}. ${q.text}` }),

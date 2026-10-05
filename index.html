@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=116">
+  <link rel="stylesheet" href="styles.css?v=117">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -542,17 +542,13 @@
           <button id="notes-share" class="btn btn-secondary" type="button">Send to my AI app</button>
           <button id="notes-copy" class="btn btn-secondary" type="button">Copy for my AI app</button>
         </div>
-        <div id="notes-charts-box" class="chartpick" hidden>
-          <p class="fieldlabel" id="notes-charts-label">Charts in the PDF</p>
-          <div id="notes-charts" class="presets" role="group" aria-labelledby="notes-charts-label"></div>
-          <p class="hint">Tap to add or leave out. Temperature, sleep, pain, weight and anything the summary mentions start ticked.</p>
-        </div>
+        <button id="notes-weekly" class="btn btn-secondary btn-block" type="button" hidden>Summarise with Daybook Assistant</button>
         <button id="notes-send" class="btn btn-primary btn-block" type="button">Send to the team</button>
         <div class="btnrow">
           <button id="notes-preview" class="btn btn-secondary" type="button">Preview</button>
           <button id="notes-pdf" class="btn btn-secondary" type="button">Save as PDF</button>
         </div>
-        <p class="hint">Short enough for the appointment: your questions first, then highlights of the period, the charts, and the written notes with who wrote them. Answered questions are kept under Letters, results and paperwork. The detail for any one day stays in the app. <b>Suggest questions to ask</b> sends these notes to Daybook Assistant (AI from Anthropic, in the US) and offers questions you can add to the list above with one tap. Send or copy does the same through your own AI app. Either way the notes go to an AI company's servers, so leave out anything you would not want sent. <b>Send to the team</b> puts these notes and the ticked charts into an email from your own Mail app, for a contact with an email address. Save as PDF makes a copy for the clinic without any of that.</p>
+        <p class="hint">Two A4 pages to hand over or email: what is new, eight readings at a glance, your medicines and your questions with room to write the answers, then the charts and the notes week by week. Every figure comes from what was logged. <b>Preview</b> shows the two pages and prints them; <b>Send to the team</b> puts them in an email from your own Mail app, for a contact with an email address. <b>Summarise with Daybook Assistant</b> sends these notes and your questions to Daybook Assistant (AI from Anthropic, in the US) to write each week up in a few lines and tidy the spelling; without it the report shows the most telling note of each day. <b>Suggest questions to ask</b> sends them too, and offers questions you can add with one tap. Send or copy does the same through your own AI app. Any of these sends the notes to an AI company's servers, so leave out anything you would not want sent.</p>
         <h3 class="section-title">Questions for the team</h3>
         <button id="notes-record" class="recbtn recbtn-appt" type="button"><svg class="icon" aria-hidden="true"><use href="#i-mic"/></svg><span>Record the appointment</span></button>
         <p id="notes-record-hint" class="hint">One recording for the whole appointment. Tap a question's number as they start answering it, so each answer is easy to find later.</p>
@@ -562,8 +558,7 @@
         <p class="hint">Simple checks on the readings by the app, worst first. Not medical advice. Anything that worries you, call the team.</p>
         <div id="notes-flags" class="flags"></div>
         <h3 class="section-title">Notes</h3>
-        <p class="hint">Week by week: the longest written notes, and how many more are in Daybook. <b>Summarise each week</b> sends the notes to Daybook Assistant (AI from Anthropic, in the US) to pick out two to four points a week; it can miss or misread things.</p>
-        <button id="notes-weekly" class="btn btn-secondary btn-block" type="button" hidden>Summarise each week</button>
+        <p class="hint">Week by week, seven days at a time back from the last day: the longest written notes, and how many more are in Daybook, or each week in a few lines once Daybook Assistant has summarised them (it can miss or misread things).</p>
         <button id="notes-weekly-undo" class="btn btn-link btn-small" type="button" hidden>Show the notes instead</button>
         <div id="notes-days"></div>
         <p id="notes-empty" class="empty" data-art="note" hidden>No notes, moods or readings in this period yet.</p>
@@ -616,6 +611,14 @@
             <input id="settings-protein" type="number" inputmode="numeric" min="0" step="5" placeholder="e.g. 100">
           </label>
           <p class="hint">Each day's estimated protein is compared with it in the Food diary and in Notes for the team.</p>
+        </div>
+        <h2 class="section-title">Notes for the team</h2>
+        <div id="settings-report" class="card settings-group">
+          <label class="field">
+            <span>Name on the report</span>
+            <input id="settings-report-name" type="text" autocomplete="name" maxlength="60">
+          </label>
+          <p class="hint">Printed at the top of the two-page Notes for the team, for example your full name. Left empty, the report uses the first name of the household's patient.</p>
         </div>
         <h2 class="section-title">Reminders</h2>
         <div id="settings-reminders-group" class="card settings-group">
@@ -823,6 +826,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=116"></script>
+  <script type="module" src="scripts.js?v=117"></script>
 </body>
 </html>
