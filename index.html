@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=110">
+  <link rel="stylesheet" href="styles.css?v=111">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -539,6 +539,11 @@
           <button id="notes-share" class="btn btn-secondary" type="button">Send to my AI app</button>
           <button id="notes-copy" class="btn btn-secondary" type="button">Copy for my AI app</button>
         </div>
+        <div id="notes-charts-box" class="chartpick" hidden>
+          <p class="fieldlabel" id="notes-charts-label">Charts in the PDF</p>
+          <div id="notes-charts" class="presets" role="group" aria-labelledby="notes-charts-label"></div>
+          <p class="hint">Tap to add or leave out. Temperature, sleep, pain, weight and anything the summary mentions start ticked.</p>
+        </div>
         <div class="btnrow">
           <button id="notes-preview" class="btn btn-secondary" type="button">Preview</button>
           <button id="notes-pdf" class="btn btn-secondary" type="button">Save as PDF</button>
@@ -807,6 +812,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=110"></script>
+  <script type="module" src="scripts.js?v=111"></script>
 </body>
 </html>

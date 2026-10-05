@@ -1382,3 +1382,7 @@ body.is-readonly .workout .btn { display: none; }
   .view.is-entering > *, .entry.is-new, .docitem.is-new { animation: none !important; opacity: 1; transform: none; }
   .tab-indicator { transition: none; }
 }
+
+/* Charts in the Notes for the team PDF (v111) */
+.chartpick { margin: var(--s-4) 0 var(--s-2); }
+.chartpick .presets { margin-bottom: var(--s-1); }
