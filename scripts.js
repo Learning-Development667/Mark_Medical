@@ -13,9 +13,8 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '118';
+const APP_VERSION = '119';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
-const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
 const TEXT_LIMIT_BYTES = 800 * 1024;
 const PAGE_MAX_DIM = 1600;
@@ -2761,7 +2760,7 @@ $('rep-food').addEventListener('click', () => openReport('food', 'vitals'));
 $('rep-notes').addEventListener('click', () => openReport('notes', 'vitals'));
 $('rep-docs').addEventListener('click', () => openDocs('vitals'));
 $('food-back').addEventListener('click', () => showTab(state.reportReturn || 'vitals'));
-$('food-print').addEventListener('click', () => window.print());
+$('food-print').addEventListener('click', () => openReportPage(true, 'food'));
 /* ---- Report ranges: the 7/14/30/90 day presets, or a custom From and To ----
    Appointments do not fall on neat boundaries, so a custom range lets a
    report run from the last appointment to the next one. The last custom
@@ -2828,129 +2827,9 @@ function fmtMl(ml) {
   return ml >= 1000 ? (ml / 1000).toFixed(2).replace(/0+$/, '').replace(/\.$/, '') + ' L' : ml + ' ml';
 }
 
-/* Builds a simple text PDF (title, subtitle, then heading / sub / muted / text
-   blocks) and hands it to the share sheet where available, so on the phone it
-   can go straight to Files, Mail or AirDrop; otherwise it downloads. */
-function buildPdfBlob(title, subtitle, blocks) {
-  const { jsPDF } = window.jspdf;
-  const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
-  const W = pdf.internal.pageSize.getWidth(), H = pdf.internal.pageSize.getHeight();
-  const M = 48, maxW = W - M * 2;
-  let y = M;
-  const footer = () => {
-    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9); pdf.setTextColor(120);
-    pdf.text(`Daybook · ${title} · page ${pdf.getNumberOfPages()}`, M, H - 24);
-  };
-  const write = (text, size, style, color, gapAfter) => {
-    pdf.setFont('helvetica', style); pdf.setFontSize(size); pdf.setTextColor(color);
-    const lh = size * 1.35;
-    pdf.splitTextToSize(String(text), maxW).forEach((ln) => {
-      if (y + lh > H - 48) { footer(); pdf.addPage(); y = M; pdf.setFont('helvetica', style); pdf.setFontSize(size); pdf.setTextColor(color); }
-      pdf.text(ln, M, y + size);
-      y += lh;
-    });
-    y += gapAfter;
-  };
-  write(title, 22, 'bold', PDF_TEAL, 2);
-  write(subtitle, 11, 'normal', 100, 14);
-  /* Nutrition-group colours as PDF fill RGB (jsPDF wants 0-255 triples, not
-     hex or CSS vars); the same groups and hues as the on-screen tag chips. */
-  const GROUP_RGB = { veg: [46, 125, 79], protein: [156, 79, 156], carb: [192, 138, 21], dairy: [90, 102, 108], watch: [154, 78, 34] };
-  /* Two-column table: left column wraps, right column is either plain text or
-     an array of { label, group } tags, each drawn in its own colour and
-     wrapped word by word so a long tag list still breaks onto new lines. */
-  const table = (b) => {
-    const widths = b.widths || [0.64, 0.36];
-    const gap = 10, size = 10.5, lh = size * 1.35, pad = 4;
-    const colW = widths.map((w) => maxW * w - gap / 2);
-    const xs = [M, M + maxW * widths[0] + gap / 2];
-    const wrapTags = (tags, width) => {
-      const lines = []; let line = [], lineW = 0;
-      tags.forEach((t, i) => {
-        const text = t.label + (i < tags.length - 1 ? ', ' : '');
-        const w = pdf.getTextWidth(text);
-        if (lineW + w > width && line.length) { lines.push(line); line = []; lineW = 0; }
-        line.push({ text, rgb: GROUP_RGB[t.group] || [0, 0, 0] });
-        lineW += w;
-      });
-      if (line.length) lines.push(line);
-      return lines;
-    };
-    const row = (cells, bold, colour) => {
-      pdf.setFont('helvetica', bold ? 'bold' : 'normal'); pdf.setFontSize(size);
-      const cellData = cells.map((c, i) => Array.isArray(c) ? { tags: wrapTags(c, colW[i]) } : { plain: pdf.splitTextToSize(String(c || ''), colW[i]) });
-      const rh = Math.max(...cellData.map((c) => (c.tags || c.plain).length), 1) * lh + pad * 2;
-      if (y + rh > H - 48) { footer(); pdf.addPage(); y = M; pdf.setFont('helvetica', bold ? 'bold' : 'normal'); pdf.setFontSize(size); }
-      cellData.forEach((c, i) => {
-        if (c.tags) {
-          c.tags.forEach((line, k) => {
-            let x = xs[i];
-            line.forEach((run) => { pdf.setTextColor(...run.rgb); pdf.text(run.text, x, y + pad + size + k * lh); x += pdf.getTextWidth(run.text); });
-          });
-        } else {
-          pdf.setTextColor(colour);
-          c.plain.forEach((ln, k) => pdf.text(ln, xs[i], y + pad + size + k * lh));
-        }
-      });
-      y += rh;
-      pdf.setDrawColor(215); pdf.setLineWidth(0.5); pdf.line(M, y, M + maxW, y);
-    };
-    if (b.head) row(b.head, true, 90);
-    b.rows.forEach((r) => row(r, false, 0));
-    y += 6;
-  };
-  /* A day's nutrition-group mix as a solid pie (a white circle punched over
-     the middle gives the same donut look as the on-screen chart), with a
-     coloured-swatch legend to its right. */
-  const wedge = (cx, cy, r, fromDeg, toDeg) => {
-    const steps = Math.max(1, Math.ceil((toDeg - fromDeg) / 8));
-    const pt = (deg) => { const rad = deg * Math.PI / 180; return [cx + r * Math.sin(rad), cy - r * Math.cos(rad)]; };
-    for (let i = 0; i < steps; i++) {
-      const a0 = fromDeg + (toDeg - fromDeg) * i / steps, a1 = fromDeg + (toDeg - fromDeg) * (i + 1) / steps;
-      const [x0, y0] = pt(a0), [x1, y1] = pt(a1);
-      pdf.triangle(cx, cy, x0, y0, x1, y1, 'F');
-    }
-  };
-  const donut = (b) => {
-    const r = 30, rowH = r * 2 + 10;
-    if (y + rowH > H - 48) { footer(); pdf.addPage(); y = M; }
-    const cx = M + r, cy = y + r;
-    const total = NUTRI_GROUP_ORDER.reduce((s, g) => s + (b.groups[g] || 0), 0);
-    let at = 0;
-    NUTRI_GROUP_ORDER.forEach((g) => {
-      if (!b.groups[g]) return;
-      const from = at, to = at + (b.groups[g] / total) * 360;
-      pdf.setFillColor(...GROUP_RGB[g]);
-      wedge(cx, cy, r, from, to);
-      at = to;
-    });
-    pdf.setFillColor(255, 255, 255);
-    pdf.circle(cx, cy, r * 0.42, 'F');
-    let ly = cy - r + 8;
-    const lx = cx + r + 18;
-    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(10.5);
-    NUTRI_GROUP_ORDER.forEach((g) => {
-      if (!b.groups[g]) return;
-      pdf.setFillColor(...GROUP_RGB[g]);
-      pdf.rect(lx, ly - 8, 9, 9, 'F');
-      pdf.setTextColor(0);
-      pdf.text(`${NUTRI_GROUP_LABEL[g]} (${b.groups[g]})`, lx + 14, ly);
-      ly += 16;
-    });
-    y = Math.max(cy + r, ly) + 10;
-  };
-  blocks.forEach((b) => {
-    if (b.kind === 'heading') { if (b.keep && y + b.keep > H - 48) { footer(); pdf.addPage(); y = M; } y += 10; write(b.text, 14, 'bold', PDF_TEAL, 0); pdf.setDrawColor(200); pdf.setLineWidth(0.5); pdf.line(M, y + 1, M + maxW, y + 1); y += 8; }
-    else if (b.kind === 'sub') { y += 4; write(b.text, 12, 'bold', 0, 2); }
-    else if (b.kind === 'muted') write(b.text, 10.5, 'normal', 110, 3);
-    else if (b.kind === 'table') table(b);
-    else if (b.kind === 'donut') donut(b);
-    else write(b.text, 11, 'normal', 0, 4);
-  });
-  footer();
-  return pdf.output('blob');
-}
-
+/* Saves the PDF that makeBlob() builds (the two-page reports since v117 and v119): to a folder on a
+   desktop that can ask, else the share sheet where files can be shared, so on the phone it can go
+   straight to Files, Mail or AirDrop; otherwise it downloads. */
 async function savePdf(filename, title, makeBlob) {
   /* On desktop Chrome/Edge, ask where to save (Desktop and all) straight away,
      before anything else, so the browser still counts this as a direct
@@ -2989,23 +2868,6 @@ async function savePdf(filename, title, makeBlob) {
   toast('PDF saved');
 }
 
-/* Opens the PDF in a new tab to look at, without sending or downloading it.
-   The tab is opened straight away, synchronously, before the PDF itself is
-   built (which needs the jsPDF library to load first); filling it in only
-   once that is ready, rather than opening the tab after the fact, is what
-   stops browsers treating this as a blocked pop-up. */
-function previewPdf(makeBlob) {
-  const win = window.open('', '_blank');
-  (async () => {
-    let blob = null;
-    try { blob = await makeBlob(); }
-    catch (e) { toast('Preview needs a connection'); if (win) win.close(); return; }
-    if (!blob) { if (win) win.close(); return; }
-    const url = URL.createObjectURL(blob);
-    if (win) win.location = url;
-    else toast('Could not open the preview. Check pop-ups are allowed.');
-  })();
-}
 
 /* Every entry from a day onwards; null if the read failed */
 async function loadEntriesFrom(from) {
@@ -3837,7 +3699,6 @@ async function renderFoodDiary() {
   });
   const logged = Object.keys(byDay).sort();
   const sections = [];
-  const blocks = [];
   const daysWith = {};
   let dayCount = 0;
   if (logged.length) {
@@ -3877,12 +3738,6 @@ async function renderFoodDiary() {
         macroLine ? h('p', { class: 'diary-macros', text: macroLine }) : null,
         foods.length ? h('ul', { class: 'timeline' }, ...foods.map((e, i) => diaryRow(e, nutri[i], entryMacroText(i)))) : null
       ));
-      blocks.push({ kind: 'sub', text: `${fmtDayLong(day)} (${fmtDayNum(day)})` }, { kind: 'muted', text: sum + (tagLine ? ' · ' + tagLine : '') + (macroLine ? ' · ' + macroLine : '') });
-      if (gradient) blocks.push({ kind: 'donut', groups });
-      if (foods.length) blocks.push({ kind: 'table', head: ['What was eaten', 'Nutrition'], rows: foods.map((e, i) => [
-        `${fmtTime(entryDate(e))}  ${e.note || 'Food'}${quantityText(e) ? ', ' + quantityText(e) : (e.amount ? ', ' + e.amount.toLowerCase() : '')}${e.detail ? ' (' + e.detail + ')' : ''}, by ${e.addedBy || 'unknown'}${entryMacroText(i) ? '. ' + entryMacroText(i) : ''}`,
-        nutri[i] && nutri[i].tags.length ? nutri[i].tags.map((t) => ({ label: t, group: NUTRI_GROUP[t] })) : (nutri[i] && !nutri[i].matches.length ? 'Not in the food table' : '')
-      ]) });
     }
   }
   /* Overview: on how many of the days each kind of food turned up */
@@ -3893,15 +3748,14 @@ async function renderFoodDiary() {
       h('span', { class: 'tile-label', text: t }),
       h('span', { class: 'nutri-value' }, String(daysWith[t] || 0), h('small', { text: ' of ' + dayCount + ' days' }))
     ))));
-    blocks.unshift({ kind: 'muted', text: 'Days with: ' + FOOD_TAG_ORDER.map((t) => `${t} ${daysWith[t] || 0} of ${dayCount}`).join(' · ') + '. Tags follow UK food label rules per 100 g of each food named, from the McCance and Widdowson food table. Not portion sizes, not medical advice.' + (macrosOn ? ' Calorie and macro figures are estimates from typical portion sizes, scaled by how much was eaten, or entered from the packet.' : '') });
   } else { overview.hidden = true; overview.replaceChildren(); }
   $('food-days').replaceChildren(...sections);
   $('food-empty').hidden = sections.length > 0;
-  state.foodPdf = { filename: 'Daybook food diary ' + to + '.pdf', title: 'Food diary', subtitle: `${fmtDayNum(from)} to ${fmtDayNum(to)}, printed ${fmtDayNum(today)}`, blocks, from, to };
+  state.foodPdf = { filename: 'Daybook food diary ' + to + '.pdf', title: 'Food diary', from, to, entries };
+  loadPatientName();
 }
 
-const foodPdfBlob = async () => { await loadScript(CDN.jspdf); return buildPdfBlob(state.foodPdf.title, state.foodPdf.subtitle, state.foodPdf.blocks); };
-$('food-pdf').addEventListener('click', () => { if (state.foodPdf) savePdf(state.foodPdf.filename, state.foodPdf.title, foodPdfBlob); });
+$('food-pdf').addEventListener('click', () => { if (state.foodPdf) savePdf(state.foodPdf.filename, state.foodPdf.title, foodReportBlob); });
 
 /* Day totals typed in from a food app, for anyone without the Apple Health feed (Android, or no phone link) */
 $('food-totals').addEventListener('click', () => {
@@ -3936,7 +3790,7 @@ $('food-totals').addEventListener('click', () => {
   );
   openSheet('Day totals from your food app', body);
 });
-$('food-preview').addEventListener('click', () => { if (state.foodPdf) previewPdf(foodPdfBlob); });
+$('food-preview').addEventListener('click', () => { if (state.foodPdf) openReportPage(false, 'food'); });
 
 /* macroText is the entry's estimate line, or '' (the setting off, or nothing to go on) */
 function diaryRow(e, nutri, macroText) {
@@ -4057,10 +3911,10 @@ const SEND_KINDS = {
   food: {
     data: () => state.foodPdf,
     file: (n) => n.filename,
-    blob: () => foodPdfBlob(),
+    blob: () => foodReportBlob(),
     subject: (range) => `My food diary, ${range}`,
-    words: (range) => `Here is my food diary from Daybook for ${range}: what I ate and drank each day, with simple food tags from the UK food table${detailedNutritionOn() ? ' and rough calorie and protein estimates' : ''}.`,
-    attached: (range) => `Attached: Food diary, ${range}.`,
+    words: (range) => `Here is my food diary from Daybook for ${range}: two pages, with protein against the target, drinks and food groups first, then the trends and what I ate week by week.`,
+    attached: (range) => `Attached: Food diary, ${range}, two pages.`,
     check: ' Use Preview on the Food diary to look at it first.'
   }
 };
@@ -4356,16 +4210,10 @@ function twoPageTiles(entries, from, to, f) {
     if (f.shortN) tiles.push({ k: 'Sleep', v: String(f.shortN), unit: 'of ' + plural(f.nights.length, 'night'), note: `Under 5 hours. Average ${mean} a night.`, tone: 'amber' });
     else tiles.push({ k: 'Sleep', v: (Math.round(f.nights.reduce((t, e) => t + Number(e.value), 0) / f.nights.length / 6) / 10).toString(), unit: 'h a night', note: `Steady. No night under 5 hours (${plural(f.nights.length, 'night')} logged).`, tone: 'green' });
   }
-  /* Protein: each eating day's figure from the food app where logged, else the app's estimate */
-  const today = todayStr();
+  /* Protein: the same food-day calculation as the Food diary (v119): complete days with usable
+     totals, the food app's where it has them, food-app totals far below the entries left out */
   const target = proteinTarget();
-  const protDays = [];
-  for (let d = from; d <= to && d < today; d = addDays(d, 1)) {
-    const l = loggedTotals(d);
-    if (l) { protDays.push({ day: d, prot: l.prot, logged: true }); continue; }
-    const m = dayMacros(entries.filter((e) => e.type === 'food' && e.day === d));
-    if (m) protDays.push({ day: d, prot: m.totals.prot, logged: false });
-  }
+  const protDays = foodDaysFor(entries, from, to, foodIndex).days.filter((d) => !d.partial && d.p != null).map((d) => ({ day: d.day, prot: d.p, logged: d.source !== 'estimate' }));
   if (!protDays.length) tiles.push({ k: 'Protein', v: 'None', note: detailedNutritionOn() ? 'No food totals in this period.' : 'Not tracked. Food estimates are off in Settings.', tone: '' });
   else {
     const mean = Math.round(protDays.reduce((t, p) => t + p.prot, 0) / protDays.length);
@@ -4509,8 +4357,15 @@ function buildTwoPage(n) {
     const fromAi = ai && ai.weeks[w.key];
     const body = fromAi ? { theme: fixMedWords(fromAi.theme), entries: fromAi.entries.map((e) => ({ when: e.to && e.to !== e.day ? rRange(e.day, e.to).replace(/ (\w{3})$/, (m) => (e.day.slice(0, 7) === e.to.slice(0, 7) ? '' : m)) : rDay(e.day), text: fixMedWords(e.text), alert: Boolean(e.alert) })) }
       : plainWeek(w, report, entries);
-    return { title: 'Week ' + w.n, range: rRange(w.from, w.to), theme: body.theme, entries: body.entries };
+    return { title: 'Week ' + (shown.indexOf(w) + 1), range: rRange(w.from, w.to), theme: body.theme, entries: body.entries };
   }).filter((w) => w.entries.length || w.theme);
+  /* Anything earlier in the period leads in to the first card, as in the Food diary (v119) */
+  if (allWeeks.length > 2 && weeks.length && weeks[0].title === 'Week 1') {
+    const lead = { key: from, from, to: addDays(shown[0].from, -1) };
+    const pw = plainWeek(lead, report, entries);
+    const when = rRange(lead.from, lead.to).replace(/ \w{3}$/, (m) => (lead.from.slice(0, 7) === lead.to.slice(0, 7) ? '' : m));
+    weeks[0].entries.unshift({ when, text: 'Earlier in the period: ' + (pw.theme ? pw.theme.charAt(0).toLowerCase() + pw.theme.slice(1) : "nothing flagged by the app's checks."), alert: pw.entries.some((e) => e.alert), lead: true });
+  }
   const period = rPeriod(from, to);
   const word = nDays === 7 ? 'Week' : nDays === 14 ? 'Fortnight' : nDays + ' days';
   const t = parseDay(to);
@@ -4551,7 +4406,7 @@ async function reportPdfBlob(res) {
   await Promise.all([loadScript(CDN.jspdf), loadScript(CDN.html2canvas)]);
   const { jsPDF } = window.jspdf;
   const pdf = new jsPDF({ unit: 'mm', format: 'a4', compress: true });
-  pdf.setProperties({ title: `Notes for the team, ${res.R.patient}, ${res.R.period}`, creator: 'Daybook' });
+  pdf.setProperties({ title: res.R.docTitle || `Notes for the team, ${res.R.patient}, ${res.R.period}`, creator: 'Daybook' });
   const pages = [...res.doc.querySelectorAll('.page')];
   for (let i = 0; i < pages.length; i++) {
     /* drawn on a canvas that belongs to the report's own frame, where Fraunces and Inter are loaded;
@@ -4565,6 +4420,216 @@ async function reportPdfBlob(res) {
     pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, 210, 297);
   }
   return pdf.output('blob');
+}
+/* ---------- The two-page Food diary (since v119) ---------- */
+/* Mark's brief of 5 October 2026 and the approved design (food-diary-report.html). One calculation of
+   a food day serves both reports, so their protein figures agree when they cover the same days:
+   - the logged period runs from the first to the last day with a food or drink entry in the range;
+   - a day's totals come from the food app (Apple Health or typed in) where there are some, else the
+     app's own estimate (the Food setting on); a day whose food-app totals are under half of what its
+     logged entries add up to (three entries or more) is left out as unreliable and marked "?", until
+     Mark says which figure he trusts;
+   - complete days are every logged day but today; usable days are complete days with totals. */
+const FOOD_LEFT_OUT_SHARE = 0.5;
+function foodDaysFor(entries, from, to, index) {
+  const today = todayStr();
+  const fd = entries.filter((e) => (e.type === 'food' || e.type === 'drink') && e.day >= from && e.day <= to);
+  const logged = [...new Set(fd.map((e) => e.day))].sort();
+  if (!logged.length) return { days: [], first: null, last: null };
+  const first = logged[0], last = logged[logged.length - 1];
+  const out = [];
+  for (let d = first; d <= last; d = addDays(d, 1)) {
+    const foods = fd.filter((e) => e.type === 'food' && e.day === d).sort((a, b) => entryDate(a) - entryDate(b));
+    const ml = fd.filter((e) => e.type === 'drink' && e.day === d).reduce((t, e) => t + (Number(e.value) || 0), 0);
+    const est = foods.length ? dayMacros(foods) : null;
+    const lt = loggedTotals(d);
+    let t = null, leftOut = null, source = '';
+    if (lt) {
+      if (est && foods.length >= 3 && lt.kcal < FOOD_LEFT_OUT_SHARE * est.totals.kcal) {
+        leftOut = `The ${rDay(d)} totals came from ${lt.source === 'apple-health' ? 'Apple Health' : 'a food app'} (${Math.round(lt.kcal).toLocaleString('en-GB')} kcal, ${Math.round(lt.prot)} g protein) and do not match the ${foods.length} entries logged (about ${Math.round(est.totals.kcal).toLocaleString('en-GB')} kcal), so they are left out.`;
+      } else { t = lt; source = lt.source === 'apple-health' ? 'Apple Health' : 'food app'; }
+    } else if (est) { t = est.totals; source = 'estimate'; }
+    const tags = new Set();
+    if (index) foods.forEach((e) => { const n = entryNutrition(index, e); if (n) n.tags.forEach((x) => tags.add(x)); });
+    out.push({ day: d, foods, l: ml ? Math.round(ml / 10) / 100 : null, drinks: ml > 0, e: foods.length, u: source === 'estimate' ? est.excluded : 0,
+      p: t ? Math.round(t.prot) : null, k: t ? Math.round(t.kcal) : null, c: t ? Math.round(t.carb || 0) : null, f: t ? Math.round(t.fat || 0) : null,
+      partial: d === today, leftOut, source, tags });
+  }
+  return { days: out, first, last };
+}
+const fmtLitres = (l) => (Math.round(l * 10) / 10).toFixed(1);
+const fmtKcal = (k) => Math.round(k).toLocaleString('en-GB');
+/* A day's foods as people would say them: the meal names, a few at most */
+function foodNames(foods, max) {
+  const names = [];
+  foods.forEach((e) => { const n = String(e.note || '').trim(); if (n && !names.some((x) => x.toLowerCase() === n.toLowerCase())) names.push(n); });
+  const lower = (n) => (/^[A-Z][a-z]/.test(n) && !/^[A-Z][a-z]+ [A-Z]/.test(n) ? n.charAt(0).toLowerCase() + n.slice(1) : n);
+  const shown = names.slice(0, max).map(lower);
+  const more = names.length - shown.length;
+  return shown.length ? capFirst(joinAnd(more ? shown.concat([plural(more, 'more item')]) : shown)) : '';
+}
+function buildFoodReport(n) {
+  const today = todayStr();
+  const index = foodIndex;
+  const target = proteinTarget();
+  const { days, first, last } = foodDaysFor(n.entries, n.from, n.to, index);
+  const D = days.map((x, i) => ({ ...x, label: rDay(x.day), short: i === 0 || i === days.length - 1 || x.day.endsWith('-01') ? rDay(x.day) : String(Number(x.day.slice(8))) }));
+  const complete = D.filter((d) => !d.partial);
+  const usable = complete.filter((d) => d.p != null);
+  const leftOut = D.filter((d) => d.leftOut);
+  const partial = D.find((d) => d.partial);
+  const avg = (list, k) => (list.length ? list.reduce((t, d) => t + d[k], 0) / list.length : null);
+  const avgP = avg(usable, 'p'), avgK = avg(usable, 'k');
+  const met = target ? usable.filter((d) => d.p >= target) : [];
+  const near = target ? usable.filter((d) => d.p < target && d.p >= target - 10) : [];
+  const drinkDays = complete.filter((d) => d.drinks);
+  const avgL = avg(drinkDays, 'l');
+  const high = drinkDays.filter((d) => d.l >= 4), low = drinkDays.filter((d) => d.l < 1);
+  let streak = 0; for (let i = complete.length - 1; i >= 0 && complete[i].l != null && complete[i].l >= 4; i--) streak++;
+  const tagDays = (t) => D.filter((d) => d.tags.has(t)).length;
+  const period = first ? rPeriod(first, last) : rPeriod(n.from, n.to);
+  const uDays = complete.filter((d) => d.u > 0);
+  const noFood = complete.filter((d) => !d.e);
+
+  /* Banner: the protein picture, with its denominator */
+  const span = usable.length ? `Based on complete days from ${rDay(usable[0].day)} to ${rDay(usable[usable.length - 1].day)}${leftOut.length ? ', leaving out ' + joinAnd(leftOut.map((d) => rDay(d.day))) + ' (see Points to discuss)' : ''}.${partial ? ' ' + rDay(partial.day) + ' is still in progress.' : ''}` : '';
+  const banner = !D.length ? { when1: 'Food', when2: 'nothing logged', title: 'Nothing logged in this period.', text: 'Food and drinks logged on Today appear here.' }
+    : !usable.length ? { when1: 'Protein', when2: 'not tracked', title: 'No protein figures in this period.', text: 'Switch on the calorie and macro estimates under More > Settings, or add day totals from a food app.' }
+    : target ? { when1: 'Protein', when2: `target ${target} g`, title: `Met on ${met.length} of ${usable.length} days. Average ${Math.round(avgP)} g a day.`, text: span }
+    : { when1: 'Protein', when2: 'no target set', title: `Average ${Math.round(avgP)} g a day over ${plural(usable.length, 'day')}.`, text: span + ' A target from the dietitian can be set under More > Settings > Food.' };
+
+  /* Tiles */
+  const tiles = [];
+  if (avgP == null) tiles.push({ k: 'Protein, daily average', v: 'None', note: 'No protein figures in this period.', tone: '' });
+  else if (target) tiles.push({ k: 'Protein, daily average', v: String(Math.round(avgP)), unit: 'g', note: avgP < target ? `${Math.round(target - avgP)} g under the ${target} g target.${near.length ? ` ${near.length === 1 ? 'One more day' : capFirst(numberWord(near.length)) + ' more days'} came within 10 g.` : ''}` : `Above the ${target} g target on average. Met on ${met.length} of ${usable.length} days.`, tone: avgP < target ? 'amber' : 'green' });
+  else tiles.push({ k: 'Protein, daily average', v: String(Math.round(avgP)), unit: 'g', note: 'No target set.', tone: '' });
+  if (avgK == null) tiles.push({ k: 'Energy, daily average', v: 'None', note: 'No calorie figures in this period.', tone: '' });
+  else tiles.push({ k: 'Energy, daily average', v: fmtKcal(avgK), unit: 'kcal', note: usable.every((d) => d.source !== 'estimate') ? 'From the food app.' : uDays.length ? 'An estimate. Likely to be low where items had no data.' : 'An estimate from typical portions.', tone: '' });
+  if (avgL == null) tiles.push({ k: 'Drinks, daily average', v: 'None', note: 'No drinks logged in this period.', tone: '' });
+  else tiles.push({ k: 'Drinks, daily average', v: fmtLitres(avgL), unit: 'litres',
+    note: high.length ? `4 L or over on ${high.length} of ${drinkDays.length} days${streak >= 2 ? ', including the last ' + numberWord(streak) : ''}.${low.length ? ` Under 1 L on ${plural(low.length, 'day')}.` : ''}` : low.length ? `Under 1 L on ${low.length} of ${drinkDays.length} days.` : `Steady. Between ${fmtLitres(Math.min(...drinkDays.map((d) => d.l)))} and ${fmtLitres(Math.max(...drinkDays.map((d) => d.l)))} L a day.`,
+    tone: high.length || low.length ? 'amber' : 'green' });
+  if (!index || !D.length) tiles.push({ k: 'Fruit and veg, fibre', v: 'None', note: 'No foods matched the food table.', tone: '' });
+  else {
+    const fv = tagDays('Fruit and veg'), wg = tagDays('Wholegrain'), fb = tagDays('Fibre');
+    tiles.push({ k: 'Fruit and veg, fibre', v: String(fv), unit: 'of ' + plural(D.length, 'day'), note: `${fv === D.length ? 'Eaten every day logged.' : `Fibre on ${fb} days.`} Wholegrain on ${plural(wg, 'day')}.`, tone: fv >= D.length * 0.8 ? 'green' : fv < D.length / 2 ? 'amber' : '' });
+  }
+
+  /* The protein chart's scale, and a call-out for a day one food carried */
+  const maxP = Math.max(0, ...D.map((d) => d.p || 0));
+  const pMax = Math.max(200, Math.ceil(maxP / 50) * 50);
+  const pStep = pMax > 250 ? 100 : 50;
+  const pTicks = []; for (let t = 0; t <= pMax; t += pStep) pTicks.push(t);
+  let callout = null;
+  const top = D.reduce((a, d, i) => (d.p != null && (a == null || d.p > D[a].p) ? i : a), null);
+  if (top != null && index && D[top].source === 'estimate' && D[top].p >= 1.5 * (target || 100)) {
+    const big = D[top].foods.map((e) => ({ e, p: entryMacros(index, e).totals.prot })).sort((a, b) => b.p - a.p)[0];
+    if (big && big.p >= 0.4 * D[top].p) callout = { i: top, t: `Includes ${String(big.e.note || 'one food').toLowerCase()}, ${Math.round(big.p)} g` };
+  }
+  const maxL = Math.max(0, ...D.map((d) => d.l || 0));
+  const lMax = Math.max(6, Math.ceil(maxL / 2) * 2);
+  const lTicks = []; for (let t = 0; t <= lMax; t += 2) lTicks.push(t);
+
+  /* The food-group grid: one row a tag, one cell a day (the last 21 at most) */
+  const gridDays = D.slice(-21);
+  const GOOD = ['Protein', 'Fibre', 'Fruit and veg', 'Wholegrain', 'Dairy', 'Starchy carbs', 'Good fats'], WARN = ['High sat fat', 'High fat', 'High sugar'];
+  const grid = { days: gridDays.map((d) => String(Number(d.day.slice(8)))), span: gridDays.length ? (gridDays.length < D.length ? 'Last ' + gridDays.length + ' days, to ' : '') + rRange(gridDays[0].day, gridDays[gridDays.length - 1].day) : '',
+    rows: index && gridDays.length ? GOOD.map((t) => ({ n: t, g: 'good', s: gridDays.map((d) => (d.tags.has(t) ? '1' : '0')).join('') })).concat(WARN.map((t) => ({ n: t, g: 'warn', s: gridDays.map((d) => (d.tags.has(t) ? '1' : '0')).join('') }))) : [] };
+
+  /* Points to discuss: facts only */
+  const points = [];
+  if (target && usable.length) points.push(`Protein target met on ${met.length} of ${usable.length} days with usable totals.${near.length ? ` Another ${near.length === 1 ? 'day' : numberWord(near.length) + ' days'} came within 10 g.` : ''}`);
+  if (high.length) points.push(`Drinks were 4 L or more on ${high.length} of ${drinkDays.length} days${streak >= 3 ? `, including each of the last ${numberWord(streak)} complete days (${rRange(complete[complete.length - streak].day, complete[complete.length - 1].day)})` : streak === 2 ? ', including the last two complete days' : ''}.`);
+  if (low.length) points.push(`Drinks were under 1 litre on ${plural(low.length, 'day')}: ${joinAnd(low.map((d) => rDay(d.day)))}.`);
+  if (noFood.length) points.push(`Nothing eaten was logged on ${plural(noFood.length, 'day')}: ${joinAnd(noFood.map((d) => rDay(d.day)))}.`);
+  if (uDays.length) points.push(`Totals may be low on ${plural(uDays.length, 'day')}, where some items had no nutrition data.`);
+  leftOut.forEach((d) => points.push(d.leftOut));
+  if (!points.length) points.push(D.length ? "Nothing stood out in the app's simple checks." : 'Nothing was logged in this period.');
+
+  /* Page 2 charts */
+  const M = reportModule;
+  const kTop = Math.max(2000, Math.ceil(Math.max(0, ...D.map((d) => d.k || 0)) / 500) * 500);
+  const eTop = Math.max(10, Math.ceil(Math.max(0, ...D.map((d) => d.e)) / 5) * 5);
+  const uTop = Math.max(4, Math.ceil(Math.max(0, ...D.map((d) => d.u)) / 2) * 2);
+  const avgE = complete.length ? complete.reduce((t, d) => t + d.e, 0) / complete.length : 0;
+  const charts = [
+    { title: 'Energy (kcal a day)', stat: avgK == null ? 'No totals' : 'About ' + fmtKcal(Math.round(avgK / 10) * 10) + ' average', tone: '', svg: M.foodBars({ W: 300, H: 138, max: kTop, ticks: [0, kTop / 2, kTop], label: 'Energy each day', get: (d) => d.k, color: () => REPORT_TEAL, hatch: (d) => d.u > 0 || d.partial, empty: 'No calorie figures in this period' }, D, 'k') },
+    { title: 'Protein, carbs and fat (g a day)', stat: 'Protein in teal', tone: '', svg: M.foodChartSvg('stacked', D, { uid: 'm' }) },
+    { title: 'Entries logged (a day)', stat: complete.length ? `About ${Math.round(avgE)} a day` : 'None', tone: '', svg: M.foodBars({ W: 300, H: 138, max: eTop, ticks: [0, eTop / 2, eTop], label: 'Food entries logged each day', get: (d) => d.e, color: () => REPORT_INK }, D, 'e') },
+    { title: 'Items with no nutrition data (a day)', stat: !detailedNutritionOn() ? 'Estimates off' : uDays.length ? plural(uDays.length, 'day') + ' affected' : 'None', tone: !detailedNutritionOn() ? '' : uDays.length ? 'amber' : 'green', svg: M.foodBars({ W: 300, H: 138, max: uTop, ticks: [0, uTop / 2, uTop], label: 'Items not counted each day', get: (d) => (detailedNutritionOn() ? d.u : null), color: () => REPORT_AMBER, empty: 'Calorie and macro estimates are off' }, D, 'u') }
+  ];
+
+  /* Week by week: the same seven-day blocks as Notes for the team; earlier days lead in to the first card */
+  const blocks = reportWeeks(n.from, n.to).slice(-2);
+  const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const dayEntry = (d, low, high) => {
+    const parts = [];
+    if (d.partial) parts.push(`Day in progress. ${d.e === 1 ? 'One entry' : capFirst(numberWord(d.e)) + ' entries'} so far${d.p != null ? ', ' + d.p + ' g protein' : ''}.`);
+    else if (d.leftOut) parts.push('Totals left out (see Points to discuss).');
+    else if (d.p != null) parts.push(d === low ? `Lowest protein of the week at ${d.p} g.` : d === high ? `Highest protein at ${d.p} g.` : `Protein ${d.p} g.`);
+    const names = foodNames(d.foods, 4);
+    parts.push(names ? names + '.' : 'No food logged.');
+    if (d.u > 0 && !d.partial) parts.push(`${d.u === 1 ? 'One item' : capFirst(numberWord(d.u)) + ' items'} not counted.`);
+    if (d.l != null && d.l >= 4 && !d.partial) parts.push(`Drinks ${fmtLitres(d.l)} L.`);
+    return parts.join(' ');
+  };
+  const weeks = blocks.map((w, wi) => {
+    const wd = D.filter((d) => d.day >= w.from && d.day <= w.to);
+    const wu = wd.filter((d) => !d.partial && d.p != null), wc = wd.filter((d) => !d.partial && d.drinks);
+    const wP = avg(wu, 'p'), wK = avg(wu, 'k'), wL = avg(wc, 'l');
+    const pills = [wP != null ? `Protein ${Math.round(wP)} g` : null, wK != null ? `${fmtKcal(wK)} kcal` : null, wL != null ? `Drinks ${fmtLitres(wL)} L` : null].filter(Boolean);
+    const wMet = target ? wu.filter((d) => d.p >= target).length : 0, wHigh = wc.filter((d) => d.l >= 4).length;
+    const theme = !wd.length ? '' : (wP != null ? `Protein averaged ${Math.round(wP)} g${!target ? ' a day' : wMet ? `, with the target met on ${wMet} of ${plural(wu.length, 'day')}` : `, below the target on all ${plural(wu.length, 'day')}`}.` : `${plural(wd.length, 'day')} logged.`) + (wHigh ? ` Drinks were 4 L or more on ${plural(wHigh, 'day')}.` : '');
+    const low = wu.length > 2 ? wu.reduce((a, b) => (b.p < a.p ? b : a)) : null, high = wu.length > 2 ? wu.reduce((a, b) => (b.p > a.p ? b : a)) : null;
+    const chips = [];
+    for (let day = w.from; day <= w.to; day = addDays(day, 1)) {
+      const d = D.find((x) => x.day === day);
+      const top = WD[parseDay(day).getDay()] + ' ' + Number(day.slice(8));
+      if (!d || (!d.e && d.p == null)) chips.push({ top, val: day > today ? '' : 'None', cls: 'none' });
+      else if (d.leftOut) chips.push({ top, val: '?', cls: 'na' });
+      else if (d.p == null) chips.push({ top, val: 'n/a', cls: 'na' });
+      else if (d.partial) chips.push({ top, val: d.p + ' g', cls: 'part' });
+      else chips.push({ top, val: d.p + ' g', cls: target && d.p >= target ? 'met' : target && d.p >= target - 10 ? 'near' : '' });
+    }
+    const entries = wd.filter((d) => d.e || d.leftOut).map((d) => ({ when: rDay(d.day), text: dayEntry(d, low, high) }));
+    if (wi === 0) {
+      const lead = D.filter((d) => d.day < w.from);
+      if (lead.length) {
+        const lp = lead.filter((d) => d.p != null && !d.partial);
+        const all = [].concat(...lead.map((d) => d.foods));
+        const text = `Lead-in ${lead.length === 1 ? 'day' : 'days'}. ${lp.length ? (lp.length <= 3 ? 'Protein ' + joinAnd(lp.map((d) => String(d.p))) + ' g.' : `Protein averaged ${Math.round(avg(lp, 'p'))} g.`) : ''} ${foodNames(all, 4) ? 'Mostly ' + foodNames(all, 4).charAt(0).toLowerCase() + foodNames(all, 4).slice(1) + '.' : ''}`.replace(/\s+/g, ' ').trim();
+        entries.unshift({ when: rRange(lead[0].day, lead[lead.length - 1].day).replace(/ \w{3}$/, (m) => (lead[0].day.slice(0, 7) === lead[lead.length - 1].day.slice(0, 7) && lead.length > 1 ? '' : m)), text, lead: true });
+      }
+    }
+    const counts = new Map();
+    wd.forEach((d) => new Set(d.foods.map((e) => String(e.note || '').trim().toLowerCase()).filter(Boolean)).forEach((k) => counts.set(k, (counts.get(k) || 0) + 1)));
+    const often = [...counts].filter(([, c]) => c >= 2).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, c]) => `${capFirst(k)} on ${c} of ${plural(wd.length, 'day')}`);
+    return { title: 'Week ' + (wi + 1), range: rRange(w.from, w.to), pills, theme, chips, entries, often };
+  }).filter((w) => w.entries.length || w.theme);
+
+  const patient = (state.profile && state.profile.reportName) || state.patientName || state.name || '';
+  return {
+    docTitle: `Food diary, ${patient}, ${period}`,
+    patient, period, logged: first ? `${period} (${plural(D.length, 'day')})` : 'nothing in this period', prepared: rDay(today) + ' ' + parseDay(today).getFullYear(),
+    banner, tiles, days: D, target, pMax, pTicks, callout, lMax, lTicks, grid, points: points.slice(0, 5), charts, weeks,
+    caveat: (detailedNutritionOn() ? 'Calorie and macro figures are estimates from typical portion sizes, scaled by how much was eaten, or entered from the packet.' : 'Calorie and macro estimates are off in Settings.') + (D.some((d) => d.source === 'Apple Health' || d.source === 'food app') ? ' Days with food-app totals use those instead.' : '') + ' Not medical advice.'
+  };
+}
+const NUMBER_WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
+function numberWord(n) { return NUMBER_WORDS[n] || String(n); }
+async function fittedFoodReport() {
+  const n = state.foodPdf;
+  if (!n) return null;
+  if (!reportModule) reportModule = await import('./report.js?v=' + APP_VERSION);
+  if (!foodIndex) await loadFoodTable();
+  const F = buildFoodReport(n);
+  const res = await reportModule.fitReport(reportFrame(), F, { html: reportModule.foodReportHtml, shrink: reportModule.shrinkFood });
+  if (!res.ok) { toast(`The food diary would run past two pages at: ${res.over.join(', ')}. Try a shorter range.`); return null; }
+  return res;
+}
+async function foodReportBlob() {
+  const res = await fittedFoodReport();
+  return res ? reportPdfBlob(res) : null;
 }
 async function notesReportBlob() {
   const res = await fittedReport();
@@ -4655,12 +4720,13 @@ $('notes-weekly').addEventListener('click', () => {
 $('notes-weekly-undo').addEventListener('click', () => { state.notesAI = null; if (state.notesPdf) renderWeeklyNotes(state.notesPdf.report); });
 
 /* Preview and Print: the fitted two pages in a new tab, with a Print button (Print starts printing) */
-function openReportPage(print) {
+function openReportPage(print, kind) {
+  const food = kind === 'food';
   const win = window.open('', '_blank');
   (async () => {
-    const res = await fittedReport().catch((e) => { console.error(e); return null; });
+    const res = await (food ? fittedFoodReport() : fittedReport()).catch((e) => { console.error(e); return null; });
     if (!res) { if (win) win.close(); return; }
-    let html = reportModule.reportHtml({ ...res.R, bar: 'Notes for the team, two A4 pages' });
+    let html = (food ? reportModule.foodReportHtml : reportModule.reportHtml)({ ...res.R, bar: food ? 'Food diary, two A4 pages' : 'Notes for the team, two A4 pages' });
     if (print) html = html.replace('</body>', '<script>(document.fonts ? document.fonts.ready : Promise.resolve()).then(function () { setTimeout(function () { window.print(); }, 300); });</script></body>');
     const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
     if (win) win.location = url;
