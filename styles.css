@@ -489,6 +489,8 @@ body.is-readonly #doc-edit,
 body.is-readonly #doc-explain,
 body.is-readonly #notes-explain,
 body.is-readonly #notes-send,
+body.is-readonly #notes-record,
+body.is-readonly #notes-record-hint,
 body.is-readonly #doc-paste-summary,
 body.is-readonly #doc-save-explanation,
 body.is-readonly #doc-delete,
@@ -1395,3 +1397,16 @@ body.is-readonly .workout .btn { display: none; }
 .sendto-email { font-family: var(--font-mono); color: var(--text-secondary); overflow-wrap: anywhere; min-width: 0; }
 .sendto-copy { justify-self: start; min-height: 44px; }
 .sendpdf { margin: var(--s-2) 0; }
+
+/* Recording the whole appointment (v113) */
+.recbtn-appt { margin-top: var(--s-2); }
+.apptq { display: flex; flex-direction: column; gap: var(--s-2); margin: var(--s-3) 0; }
+.apptq-row { display: flex; align-items: flex-start; gap: var(--s-3); width: 100%; min-height: 56px; padding: var(--s-2) 14px; text-align: left; border: 2px solid var(--border-subtle); border-radius: var(--r-md); background: var(--surface); color: var(--text-primary); font-size: 17px; cursor: pointer; }
+.apptq-row:disabled { cursor: default; opacity: .75; }
+.apptq-row.is-marked { border-color: var(--teal); background: var(--teal-light); }
+.apptq-n { flex: none; min-width: 2.4em; font-family: var(--font-mono); font-weight: 600; color: var(--teal); }
+.apptq-main { flex: 1; min-width: 0; }
+.apptq-mark { display: block; font-family: var(--font-mono); font-size: 15px; color: var(--text-secondary); margin-top: 2px; }
+.apptq-row.is-marked .apptq-mark { color: var(--teal); }
+.markchips { display: flex; flex-wrap: wrap; gap: var(--s-2); margin: var(--s-1) 0 var(--s-2); }
+.markchip { min-height: 44px; padding: 0 14px; border-radius: var(--r-sm); border: 1.5px solid var(--teal); background: transparent; color: var(--teal); font-family: var(--font-mono); font-size: 15px; cursor: pointer; }
