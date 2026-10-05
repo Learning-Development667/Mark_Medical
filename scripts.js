@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '110';
+const APP_VERSION = '111';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -509,6 +509,7 @@ const state = {
   notesCustomTo: null,
   notesText: '',
   notesPdf: null,
+  notesCharts: null, // the charts ticked for the Notes PDF this session (null: the defaults)
   foodPdf: null,
   meals: [],
   currentDoc: null,
@@ -2974,8 +2975,61 @@ function buildPdfBlob(title, subtitle, blocks) {
     lines.forEach((ln, k) => pdf.text(ln, M + 10, y + size + (k + 1) * lh));
     y += rh;
   };
+  /* A chart drawn as vectors (since v111): shaded threshold bands, a light grid, day labels, then
+     bars (stacked) or lines with points, a legend when there is more than one series, and a note. */
+  const chart = (b) => {
+    const plotH = 120, legend = (b.series || []).filter((s) => s.label).length + (b.stacks || []).length > 1;
+    const blockH = 20 + plotH + 16 + (legend ? 16 : 0) + (b.note ? 14 : 0) + 14;
+    if (y + blockH > H - 48) { footer(); pdf.addPage(); y = M; }
+    pdf.setFont('helvetica', 'bold'); pdf.setFontSize(11.5); pdf.setTextColor(0);
+    pdf.text(b.title, M, y + 11);
+    const px = M + 42, pw = maxW - 42, py = y + 20, ph = plotH;
+    const X = (f) => px + f * pw;
+    const Y = (v) => py + ph - ((Math.min(Math.max(v, b.lo), b.hi) - b.lo) / (b.hi - b.lo)) * ph;
+    (b.bands || []).forEach((band) => { pdf.setFillColor(...band.rgb); const t = Y(Math.min(band.hi, b.hi)), btm = Y(Math.max(band.lo, b.lo)); if (btm > t) pdf.rect(px, t, pw, btm - t, 'F'); });
+    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8); pdf.setLineWidth(0.4);
+    b.ticks.forEach((v) => { pdf.setDrawColor(222); pdf.line(px, Y(v), px + pw, Y(v)); pdf.setTextColor(110); pdf.text(b.fmt(v), px - 5, Y(v) + 3, { align: 'right' }); });
+    pdf.setDrawColor(170); pdf.line(px, py + ph, px + pw, py + ph);
+    const n = b.days.length, slot = pw / n, every = Math.ceil(n / 8);
+    pdf.setTextColor(110);
+    b.days.forEach((d, i) => { if (i % every === 0 || (i === n - 1 && (n - 1) % every >= every / 2)) pdf.text(d, X((i + 0.5) / n), py + ph + 11, { align: 'center' }); });
+    if (b.stacks) {
+      const bw = Math.min(slot * 0.62, 22);
+      for (let i = 0; i < n; i++) {
+        let cum = 0;
+        b.stacks.forEach((st) => { const v = Number(st.values[i]) || 0; if (v <= 0) return; pdf.setFillColor(...st.rgb); const t = Y(cum + v), btm = Y(cum); pdf.rect(X((i + 0.5) / n) - bw / 2, t, bw, Math.max(0.5, btm - t), 'F'); cum += v; });
+      }
+    }
+    (b.series || []).forEach((sr) => {
+      const pts = sr.pts.slice().sort((a, c) => a.x - c.x);
+      if (sr.line !== false && pts.length > 1) {
+        pdf.setDrawColor(...sr.rgb); pdf.setLineWidth(1.4);
+        for (let k = 1; k < pts.length; k++) pdf.line(X(pts[k - 1].x), Y(pts[k - 1].y), X(pts[k].x), Y(pts[k].y));
+      }
+      pts.forEach((pt) => {
+        const rgb = pt.rgb || sr.rgb;
+        if (sr.hollow) { pdf.setDrawColor(...rgb); pdf.setFillColor(255, 255, 255); pdf.setLineWidth(1.2); pdf.circle(X(pt.x), Y(pt.y), 2.6, 'FD'); }
+        else { pdf.setFillColor(...rgb); pdf.circle(X(pt.x), Y(pt.y), 2.2, 'F'); }
+      });
+    });
+    let ly = py + ph + 26;
+    if (legend) {
+      let lx = px;
+      pdf.setFontSize(8.5); pdf.setTextColor(60);
+      [...(b.series || []).filter((sr) => sr.label), ...(b.stacks || [])].forEach((it) => {
+        pdf.setFillColor(...it.rgb);
+        if (it.hollow) { pdf.setDrawColor(...it.rgb); pdf.setFillColor(255, 255, 255); pdf.circle(lx + 4, ly - 3, 3, 'FD'); } else pdf.rect(lx, ly - 7, 8, 8, 'F');
+        pdf.text(it.label, lx + 12, ly);
+        lx += 12 + pdf.getTextWidth(it.label) + 14;
+      });
+      ly += 14;
+    }
+    if (b.note) { pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8.5); pdf.setTextColor(110); pdf.text(pdf.splitTextToSize(b.note, maxW)[0], M, ly); }
+    y += blockH;
+  };
   blocks.forEach((b) => {
     if (b.kind === 'flag') flag(b);
+    else if (b.kind === 'chart') chart(b);
     else if (b.kind === 'question') question(b);
     else if (b.kind === 'note') note(b);
     else if (b.kind === 'heading') { y += 10; write(b.text, 14, 'bold', PDF_TEAL, 0); pdf.setDrawColor(200); pdf.setLineWidth(0.5); pdf.line(M, y + 1, M + maxW, y + 1); y += 8; }
@@ -4067,11 +4121,118 @@ $('notes-copy').addEventListener('click', async () => {
   toast('Copied. Paste it into your AI app.');
 });
 
-$('notes-pdf').addEventListener('click', () => { if (state.notesPdf) savePdf(state.notesPdf.filename, state.notesPdf.title, state.notesPdf.subtitle, state.notesPdf.blocks); });
-$('notes-preview').addEventListener('click', () => { if (state.notesPdf) previewPdf(state.notesPdf.title, state.notesPdf.subtitle, state.notesPdf.blocks); });
+$('notes-pdf').addEventListener('click', () => { const n = currentNotesPdf(); if (n) savePdf(n.filename, n.title, n.subtitle, n.blocks); });
+$('notes-preview').addEventListener('click', () => { const n = currentNotesPdf(); if (n) previewPdf(n.title, n.subtitle, n.blocks); });
 
 /* The PDF is for people (the clinic, the folder), so it carries the report without the request to the AI app */
-function notesPdfBlocks(report) {
+/* Charts for Notes for the team (since v111): the Trends charts redrawn as vectors in the PDF, for
+   the report's own range, so it reads like a report and needs no screenshots. Kilograms and degrees
+   Celsius, like the rest of the report. Colours are fixed RGB for white paper (PDFs are always light). */
+const PDF_RGB = { teal: [30, 95, 116], tealMid: [92, 150, 170], tealPale: [160, 196, 208], warm: [194, 112, 61], amber: [154, 91, 0], red: [164, 38, 44], grey: [176, 184, 188], amberBand: [251, 238, 214], redBand: [249, 224, 224] };
+const REPORT_CHART_ORDER = ['temp', 'heart', 'bp', 'oxygen', 'weight', 'sleep', 'pain', 'mood', 'drink', 'bowel'];
+const REPORT_CHART_NAME = { temp: 'Temperature', heart: 'Heart rate', bp: 'Blood pressure', oxygen: 'Oxygen', weight: 'Weight', sleep: 'Sleep', pain: 'Pain', mood: 'Mood', drink: 'Drinks', bowel: 'Bowels' };
+const CHART_TOPIC_KEY = { Temperature: 'temp', 'Heart rate': 'heart', 'Blood pressure': 'bp', Oxygen: 'oxygen', Weight: 'weight', Sleep: 'sleep', Pain: 'pain', Mood: 'mood', Drinks: 'drink', Bowels: 'bowel' };
+/* The charts ticked when nothing has been chosen: these four whenever they have readings, plus any flagged in the summary */
+const REPORT_CHART_DEFAULTS = ['temp', 'sleep', 'pain', 'weight'];
+function niceScale(lo, hi, maxTicks) {
+  if (!(hi > lo)) { lo -= 1; hi += 1; }
+  const rough = (hi - lo) / (maxTicks || 5);
+  const mag = Math.pow(10, Math.floor(Math.log10(rough)));
+  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= rough);
+  const a = Math.floor(lo / step) * step, b = Math.ceil(hi / step) * step;
+  const ticks = [];
+  for (let v = a; v <= b + step / 2; v += step) ticks.push(Math.round(v * 100) / 100);
+  return { lo: a, hi: b, ticks };
+}
+function reportCharts(entries, from, to) {
+  const days = [];
+  for (let d = from; d <= to; d = addDays(d, 1)) days.push(d);
+  const labels = days.map((d) => parseDay(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }));
+  const start = parseDay(from).getTime(), end = parseDay(addDays(to, 1)).getTime();
+  const fx = (e) => (entryDate(e).getTime() - start) / (end - start);
+  const out = [];
+  const line = (key, title, series, o) => {
+    const all = series.flatMap((s) => s.pts.map((p) => p.y));
+    if (!all.length) return;
+    /* a minimum span (weight: 4 kg) so a small wobble is not drawn as a cliff */
+    let lo = Math.min(...all), hi = Math.max(...all);
+    if (o.minSpan && hi - lo < o.minSpan) { const mid = (hi + lo) / 2; lo = mid - o.minSpan / 2; hi = mid + o.minSpan / 2; }
+    const sc = o.fixed || niceScale(lo, hi, 5);
+    out.push({ key, title, block: { kind: 'chart', title, days: labels, lo: sc.lo, hi: sc.hi, ticks: sc.ticks, fmt: o.fmt, series, bands: o.bands, note: o.note } });
+  };
+  const bars = (key, title, stacks, o) => {
+    const totals = days.map((_, i) => stacks.reduce((t, s) => t + (Number(s.values[i]) || 0), 0));
+    if (!totals.some((v) => v > 0)) return;
+    const sc = niceScale(0, Math.max(o.min || 0, ...totals), 4);
+    out.push({ key, title, block: { kind: 'chart', title, days: labels, lo: 0, hi: sc.hi, ticks: sc.ticks, fmt: o.fmt, stacks, note: o.note } });
+  };
+  const ticks = (a, b, step) => { const t = []; for (let v = a; v <= b; v += step) t.push(v); return t; };
+  const temps = entries.filter((e) => e.type === 'temp' && Number(e.value) > 0);
+  line('temp', 'Temperature (°C)', [{ rgb: PDF_RGB.teal, pts: temps.map((e) => { const v = Number(e.value); return { x: fx(e), y: v, rgb: v >= 38 ? PDF_RGB.red : v >= 37.5 ? PDF_RGB.amber : PDF_RGB.teal }; }) }],
+    { fixed: { lo: 35, hi: 40, ticks: ticks(35, 40, 1) }, fmt: (v) => v.toFixed(1), bands: [{ lo: 37.5, hi: 38, rgb: PDF_RGB.amberBand }, { lo: 38, hi: 40, rgb: PDF_RGB.redBand }], note: 'Shaded: 37.5 to 37.9 °C amber, 38.0 °C and over red.' });
+  const vit = entries.filter((e) => e.type === 'vitals');
+  const hr = vit.filter((e) => Number(e.heartRate) > 0);
+  const hrVals = hr.map((e) => Number(e.heartRate));
+  line('heart', 'Heart rate (beats a minute)', [{ rgb: PDF_RGB.teal, pts: hr.map((e) => ({ x: fx(e), y: Number(e.heartRate) })) }],
+    { fixed: hrVals.length ? niceScale(Math.min(50, ...hrVals), Math.max(110, ...hrVals), 5) : null, fmt: (v) => String(v), bands: [{ lo: 100, hi: 120, rgb: PDF_RGB.amberBand }, { lo: 120, hi: 250, rgb: PDF_RGB.redBand }], note: 'Shaded: 100 to 119 amber, 120 and over red.' });
+  const bp = vit.filter((e) => Number(e.systolic) > 0 && Number(e.diastolic) > 0);
+  line('bp', 'Blood pressure (mmHg)', [{ label: 'Systolic', rgb: PDF_RGB.teal, pts: bp.map((e) => ({ x: fx(e), y: Number(e.systolic) })) }, { label: 'Diastolic', rgb: PDF_RGB.warm, pts: bp.map((e) => ({ x: fx(e), y: Number(e.diastolic) })) }], { fmt: (v) => String(v) });
+  const o2 = vit.filter((e) => Number(e.oxygen) > 0);
+  line('oxygen', 'Oxygen (%)', [{ rgb: PDF_RGB.teal, pts: o2.map((e) => ({ x: fx(e), y: Number(e.oxygen) })) }],
+    { fixed: { lo: 80, hi: 100, ticks: ticks(80, 100, 5) }, fmt: (v) => String(v), bands: [{ lo: 90, hi: 93, rgb: PDF_RGB.amberBand }, { lo: 80, hi: 90, rgb: PDF_RGB.redBand }], note: 'Shaded: 91 to 93% amber, 90% and under red.' });
+  const wts = entries.filter((e) => e.type === 'weight' && Number(e.value) > 0);
+  line('weight', 'Weight (kg)', [{ rgb: PDF_RGB.teal, pts: wts.map((e) => ({ x: fx(e), y: Number(e.value) })) }], { minSpan: 4, fmt: (v) => String(v) });
+  const night = days.map((d) => entries.filter((e) => e.type === 'sleep' && e.day === d).pop() || null);
+  const hrs = (m) => Math.round(Number(m || 0) / 6) / 10;
+  bars('sleep', 'Sleep (hours asleep a night)', [
+    { label: 'Deep', rgb: PDF_RGB.teal, values: night.map((e) => e ? hrs(e.deep) : 0) },
+    { label: 'Core', rgb: PDF_RGB.tealMid, values: night.map((e) => e ? hrs(e.core) : 0) },
+    { label: 'REM', rgb: PDF_RGB.tealPale, values: night.map((e) => e ? hrs(e.rem) : 0) },
+    { label: 'Not broken down', rgb: PDF_RGB.grey, values: night.map((e) => e ? hrs(Math.max(0, (Number(e.value) || 0) - (Number(e.deep) || 0) - (Number(e.core) || 0) - (Number(e.rem) || 0))) : 0) }
+  ].filter((st) => st.values.some((v) => v > 0)), { min: 8, fmt: (v) => v + ' h', note: 'Logged against the morning the night ended.' });
+  const ten = { lo: 0, hi: 10, ticks: [0, 2, 4, 6, 8, 10] };
+  const ci = entries.filter(isPatientCheckin);
+  const spot = entries.filter((e) => e.type === 'pain');
+  const painSeries = [{ label: 'Check-in', rgb: PDF_RGB.teal, pts: ci.filter((e) => e.pain != null).map((e) => ({ x: fx(e), y: Number(e.pain) })) }];
+  if (spot.length) painSeries.push({ label: 'Extra reading', rgb: PDF_RGB.warm, hollow: true, line: false, pts: spot.map((e) => ({ x: fx(e), y: Number(e.value) })) });
+  if (painSeries.some((s) => s.pts.length)) line('pain', 'Pain (0 to 10)', painSeries, { fixed: ten, fmt: (v) => String(v) });
+  line('mood', 'Mood (0 to 10)', [{ rgb: PDF_RGB.teal, pts: ci.filter((e) => e.mood != null).map((e) => ({ x: fx(e), y: Number(e.mood) })) }], { fixed: ten, fmt: (v) => String(v) });
+  bars('drink', 'Drinks (ml a day)', [{ label: 'Drinks', rgb: PDF_RGB.teal, values: days.map((d) => entries.filter((e) => e.type === 'drink' && e.day === d).reduce((t, e) => t + (Number(e.value) || 0), 0)) }], { min: 1000, fmt: (v) => String(v) });
+  const bw = entries.filter((e) => e.type === 'bowel' && !e.none);
+  bars('bowel', 'Bowel movements a day', [
+    { label: 'Types 1 to 5', rgb: PDF_RGB.tealMid, values: days.map((d) => bw.filter((e) => e.day === d && !isLoose(e)).length) },
+    { label: 'Loose, type 6 or 7', rgb: PDF_RGB.warm, values: days.map((d) => bw.filter((e) => e.day === d && isLoose(e)).length) }
+  ], { min: 3, fmt: (v) => String(v) });
+  return out.sort((a, b) => REPORT_CHART_ORDER.indexOf(a.key) - REPORT_CHART_ORDER.indexOf(b.key));
+}
+/* Which charts go in: the person's own ticks once they have touched them, otherwise the defaults
+   above plus anything the summary flagged amber or red. */
+function chosenReportCharts(charts, glance) {
+  if (state.notesCharts) return charts.filter((c) => state.notesCharts.has(c.key));
+  const flagged = new Set((glance || []).filter((g) => g.level === 'red' || g.level === 'amber').map((g) => CHART_TOPIC_KEY[g.topic]).filter(Boolean));
+  return charts.filter((c) => flagged.has(c.key) || REPORT_CHART_DEFAULTS.includes(c.key));
+}
+function renderChartPicker(charts, glance) {
+  const box = $('notes-charts-box');
+  box.hidden = !charts.length;
+  const on = new Set(chosenReportCharts(charts, glance).map((c) => c.key));
+  $('notes-charts').replaceChildren(...charts.map((c) => h('button', { class: 'preset' + (on.has(c.key) ? ' is-active' : ''), type: 'button', 'aria-pressed': on.has(c.key) ? 'true' : 'false', text: REPORT_CHART_NAME[c.key],
+    onclick: (ev) => {
+      if (!state.notesCharts) state.notesCharts = new Set(on);
+      const b = ev.currentTarget;
+      if (state.notesCharts.has(c.key)) state.notesCharts.delete(c.key); else state.notesCharts.add(c.key);
+      on.clear(); state.notesCharts.forEach((k) => on.add(k));
+      b.classList.toggle('is-active', on.has(c.key)); b.setAttribute('aria-pressed', on.has(c.key) ? 'true' : 'false');
+    } })));
+}
+/* The PDF as it stands now, with the charts ticked at this moment */
+function currentNotesPdf() {
+  const n = state.notesPdf;
+  if (!n) return null;
+  return { filename: n.filename, title: n.title, subtitle: n.subtitle, blocks: notesPdfBlocks(n.report, chosenReportCharts(n.charts, n.report.glance)) };
+}
+
+function notesPdfBlocks(report, charts) {
   const blocks = [{ kind: 'heading', text: 'Questions for the team' }];
   if (report.questions.length) report.questions.forEach((q) => blocks.push({ kind: 'question', n: q.n, text: q.text, who: q.who, day: q.day }));
   else blocks.push({ kind: 'muted', text: 'No open questions.' });
@@ -4087,6 +4248,10 @@ function notesPdfBlocks(report) {
   blocks.push({ kind: 'heading', text: 'Summary' }, { kind: 'muted', text: report.rangeLabel + '. Simple checks on the readings made by the app, not medical advice. The detail for any one day is in the app.' });
   if (report.glance.length) report.glance.forEach((g) => blocks.push({ kind: 'flag', level: g.level, text: g.text }));
   else blocks.push({ kind: 'text', text: 'No readings logged in this period.' });
+  if (charts && charts.length) {
+    blocks.push({ kind: 'heading', text: 'Charts' }, { kind: 'muted', text: 'Drawn by Daybook from the readings logged in this period.' });
+    charts.forEach((c) => blocks.push(c.block));
+  }
   blocks.push({ kind: 'heading', text: 'Letters and documents' });
   if (report.docs.length) report.docs.forEach((d) => {
     blocks.push({ kind: 'sub', text: `${fmtDayNum(d.docDate)} · ${d.title}${d.category === 'chemo' ? ' (treatment plan)' : ''}` });
@@ -4507,7 +4672,9 @@ async function renderNotesReport() {
   const report = buildNotesReport(entries, questionsAll, from, to, rangeLabel);
   state.notesText = report.text;
   $('notes-explain').hidden = !explainAvailable();
-  state.notesPdf = { filename: 'care-log-notes-' + to + '.pdf', title: 'Notes for the team', subtitle: `${fmtDayNum(from)} to ${fmtDayNum(to)}, printed ${fmtDayNum(today)}`, blocks: notesPdfBlocks(report) };
+  const charts = reportCharts(entries, from, to);
+  state.notesPdf = { filename: 'care-log-notes-' + to + '.pdf', title: 'Notes for the team', subtitle: `${fmtDayNum(from)} to ${fmtDayNum(to)}, printed ${fmtDayNum(today)}`, report, charts };
+  renderChartPicker(charts, report.glance);
 
   $('notes-questions').replaceChildren(...report.questions.map((q) => h('div', { class: 'card question' },
     h('div', { class: 'question-text', text: `${q.n}. ${q.text}` }),
