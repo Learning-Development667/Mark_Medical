@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '109';
+const APP_VERSION = '110';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -1082,7 +1082,7 @@ function buildDemoFixture() {
   exercise[day(-6)] = { day: day(-6), steps: 900, done: {} };
 
   const profile = {
-    calls: [{ label: 'Oncology ward (example)', number: '01234 567890' }, { label: 'Hospice at home (example)', number: '01234 567891' }],
+    calls: [{ label: 'Oncology ward (example)', role: 'Ward 7, 24 hours', number: '01234 567890' }, { label: 'Sam (example)', role: 'Oncology nurse specialist', number: '01234 567892', email: 'nurses@example.org' }, { label: 'Hospice at home (example)', number: '01234 567891' }],
     programme: { items: [
       { id: 'pressups', name: 'Press-ups', section: 'exercise', kind: 'reps', amount: 20 },
       { id: 'situps', name: 'Sit-ups', section: 'exercise', kind: 'reps', amount: 20 },
@@ -7808,44 +7808,68 @@ async function renderStepsChart() {
 /* More: calls and profile                                              */
 /* ------------------------------------------------------------------ */
 
+/* Who to contact (since v110; "Who to call" until then). Still stored as profile/main.calls, now
+   [{ label (the name), role?, number?, email? }]: a contact needs a name and a phone number or an
+   email address. Email opens the phone's own Mail app (mailto), so nothing goes through Daybook. */
+const telHref = (n) => 'tel:' + String(n || '').replace(/[^+\d]/g, '');
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 function renderCalls() {
   const wrap = $('calls');
   const calls = (state.profile && state.profile.calls) || [];
   wrap.replaceChildren(...calls.map((c) => h('div', { class: 'card callcard' },
-    h('div', null, h('div', { class: 'call-label', text: c.label }), h('div', { class: 'call-number', text: c.number })),
-    h('a', { class: 'btn btn-primary', href: 'tel:' + String(c.number || '').replace(/[^+\d]/g, '') }, 'Call')
+    h('div', { class: 'call-info' },
+      h('div', { class: 'call-label', text: c.label }),
+      c.role ? h('div', { class: 'call-role', text: c.role }) : '',
+      c.number ? h('div', { class: 'call-number', text: c.number }) : '',
+      c.email ? h('div', { class: 'call-email', text: c.email }) : ''),
+    h('div', { class: 'call-btns' },
+      c.number ? h('a', { class: 'btn btn-primary', href: telHref(c.number), 'aria-label': 'Call ' + c.label }, 'Call') : '',
+      c.email ? h('a', { class: 'btn btn-secondary', href: 'mailto:' + c.email, 'aria-label': 'Email ' + c.label }, 'Email') : '')
   )));
-  if (!calls.length) wrap.append(h('p', { class: 'empty', 'data-art': 'call', text: 'No numbers saved yet. Add the ward, hospice or GP so they are one tap away.' }));
+  if (!calls.length) wrap.append(h('p', { class: 'empty', 'data-art': 'call', text: 'No contacts saved yet. Add the ward, your nurse, the hospice or GP so they are one tap away.' }));
 }
 
 $('calls-edit').addEventListener('click', () => {
   const rows = h('div', { class: 'editlist' });
   const addRow = (c) => {
-    const label = h('input', { type: 'text', value: (c && c.label) || '', placeholder: 'e.g. Ward' });
-    const number = h('input', { type: 'tel', value: (c && c.number) || '', placeholder: '01234 567890' });
-    const row = h('div', { class: 'editrow' }, field('Name', label), field('Number', number),
-      h('button', { class: 'iconbtn', type: 'button', 'aria-label': 'Remove', onclick: () => row.remove() }, '×'));
+    const label = h('input', { type: 'text', value: (c && c.label) || '', placeholder: 'e.g. Sarah, or the ward', autocomplete: 'off' });
+    const role = h('input', { type: 'text', value: (c && c.role) || '', placeholder: 'e.g. Oncology nurse specialist', autocomplete: 'off' });
+    const number = h('input', { type: 'tel', value: (c && c.number) || '', placeholder: '01234 567890', autocomplete: 'off' });
+    const email = h('input', { type: 'email', value: (c && c.email) || '', placeholder: 'name@nhs.net', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false' });
+    const row = h('div', { class: 'contactrow' },
+      h('div', { class: 'contactrow-head' }, h('span', { class: 'contactrow-n' }),
+        h('button', { class: 'btn-inline btn-remove', type: 'button', onclick: () => { row.remove(); number_(); } }, 'Remove')),
+      field('Name', label), field('Role (optional)', role), field('Phone', number), field('Email', email));
     rows.append(row);
+    number_();
   };
+  /* "Contact 1", "Contact 2": a heading per block, so a long list stays readable */
+  const number_ = () => rows.querySelectorAll('.contactrow').forEach((r, i) => { r.querySelector('.contactrow-n').textContent = 'Contact ' + (i + 1); });
   ((state.profile && state.profile.calls) || []).forEach(addRow);
   if (!rows.children.length) addRow(null);
   const body = h('div', null,
+    h('p', { class: 'hint', text: 'A phone number, an email address, or both. Email opens your own Mail app.' }),
     rows,
-    h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => addRow(null) }, 'Add another'),
+    h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => { addRow(null); const all = rows.querySelectorAll('.contactrow'); all[all.length - 1].querySelector('input').focus(); } }, 'Add another'),
     h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
       const calls = [];
-      rows.querySelectorAll('.editrow').forEach((r) => {
-        const [l, n] = r.querySelectorAll('input');
-        if (l.value.trim() && n.value.trim()) calls.push({ label: l.value.trim(), number: n.value.trim() });
-      });
+      for (const r of rows.querySelectorAll('.contactrow')) {
+        const [l, ro, n, em] = [...r.querySelectorAll('input')];
+        const c = { label: l.value.trim(), role: ro.value.trim(), number: n.value.trim(), email: em.value.trim() };
+        if (!c.label && !c.role && !c.number && !c.email) continue;
+        if (!c.label) { toast('Add a name for each contact'); l.focus(); return; }
+        if (!c.number && !c.email) { toast('Add a phone number or an email for ' + c.label); n.focus(); return; }
+        if (c.email && !EMAIL_RE.test(c.email)) { toast('Check the email address for ' + c.label); em.focus(); return; }
+        calls.push(c);
+      }
       closeSheet();
-      if (state.demo) { state.profile = { ...state.profile, calls }; renderCalls(); toast('Numbers saved'); return; }
-      try { await setDoc(hdoc('profile', 'main'), { calls }, { merge: true }); toast('Numbers saved'); }
+      if (state.demo) { state.profile = { ...state.profile, calls }; renderCalls(); toast('Contacts saved'); return; }
+      try { await setDoc(hdoc('profile', 'main'), { calls }, { merge: true }); toast('Contacts saved'); }
       catch (e) { console.error(e); toast('Could not save'); }
     } }, 'Save'),
     h('button', { class: 'btn btn-link btn-block', type: 'button', onclick: closeSheet }, 'Cancel')
   );
-  openSheet('Who to call', body);
+  openSheet('Who to contact', body);
 });
 
 /* ------------------------------------------------------------------ */

@@ -79,6 +79,7 @@ One at a time, each a few days with its sources checked, on the profile mechanis
 - An "AI used this month: about 12p" line under Settings, from the bridge's own token tally. Offered 4 October; build if wanted.
 
 ## Done
+- v110 Who to contact: each contact has a name, role, phone and email, with Call and Email buttons (the first part of the appointment pack, asked for after a rushed first appointment).
 - v109 A bowel movement can be several Bristol types at once (tick every type in a mix); the timeline, the Trends table and Notes for the team say so, and Notes names hard and loose in the same movement.
 - v108 Shelley to be the company's director; the code assigned to the company and Shelley given the keys, so Daybook can carry on.
 - v107 Mark decided to register Mark 1 Apps Ltd; the Paperwork list became the steps to do it.

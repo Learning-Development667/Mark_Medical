@@ -827,9 +827,19 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 
 /* ---------- More ---------- */
 .callcard { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); }
+.callcard { flex-wrap: wrap; }
+.call-info { min-width: 0; flex: 1 1 160px; }
+.call-btns { display: flex; flex-direction: column; gap: var(--s-2); flex: 0 0 auto; }
 .callcard a.btn { margin-top: 0; min-width: 120px; }
 .call-label { font-weight: 700; font-size: 18px; }
+.call-role { color: var(--text-secondary); }
 .call-number { font-family: var(--font-mono); color: var(--text-secondary); font-size: 16px; }
+.call-email { font-family: var(--font-mono); color: var(--text-secondary); font-size: 15px; overflow-wrap: anywhere; }
+.contactrow { display: flex; flex-direction: column; gap: var(--s-1); padding: var(--s-3); border-radius: var(--r-md); background: var(--surface-sunken); box-shadow: var(--elev-sunken); }
+.contactrow .field { margin-bottom: var(--s-2); }
+.contactrow-head { display: flex; justify-content: space-between; align-items: center; }
+.contactrow-head .btn-remove { min-height: 44px; padding: 0 var(--s-2); }
+.contactrow-n { font-family: var(--font-mono); font-size: var(--fs-sm); letter-spacing: .06em; text-transform: uppercase; color: var(--text-secondary); }
 
 /* ---------- Bottom sheet (floating) ---------- */
 .sheet { position: fixed; inset: 0; z-index: 20; }
