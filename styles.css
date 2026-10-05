@@ -1176,9 +1176,6 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 .doserow .pill { flex: none; }
 
 /* Given in hospital (since v97): a calm teal pill, and a teal bar on the timeline */
-.placecard { padding: var(--s-3) var(--s-4); margin-bottom: var(--s-3); }
-.placecard .place-seg { display: grid; grid-template-columns: 1fr 1fr; }
-.placecard .hint, .placecard .check { margin: var(--s-2) 0 0; }
 /* The entry view: one reading per line, label then value */
 .readings { display: grid; grid-template-columns: auto 1fr; gap: var(--s-2) var(--s-4); margin: 0 0 var(--s-3); align-items: baseline; }
 .readings dt { color: var(--text-secondary); }

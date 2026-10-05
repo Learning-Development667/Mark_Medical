@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '123';
+const APP_VERSION = '124';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
 const TEXT_LIMIT_BYTES = 800 * 1024;
@@ -4257,10 +4257,6 @@ function twoPageMeds(entries, from, to) {
     const dayText = days.length === 1 ? rDay(days[0]) : days.every((d) => d.slice(0, 7) === days[0].slice(0, 7)) ? joinAnd(days.slice(0, -1).map((d) => String(Number(d.slice(8)))).concat([rDay(days[days.length - 1])])) : joinAnd(days.map(rDay));
     hospital = { label: `Given in hospital (${dayText}).`, text: capFirst(names.join(', ')) + '.' };
   }
-  if (state.profile && state.profile.inHospital && state.profile.inHospitalSince && state.profile.inHospitalSince <= to) {
-    const since = `In hospital since ${rDay(state.profile.inHospitalSince)}.`;
-    hospital = hospital ? { label: since + ' ' + hospital.label, text: hospital.text } : { label: since, text: '' };
-  }
   return { meds, hospital };
 }
 
@@ -5091,7 +5087,6 @@ function summaryRows(entries, from, to) {
   if (prn.length) push(hitAny ? 'amber' : 'teal', 'When-needed medicines', `When-needed medicines: ${prn.join('; ')}.`, null, 'When-needed medicines: ' + prnShort.join(', '));
 
   const hosp = entries.filter((e) => e.type === 'med' && e.hospital).sort((a, b) => entryDate(a) - entryDate(b));
-  if (state.profile && state.profile.inHospital && state.profile.inHospitalSince && state.profile.inHospitalSince <= to) push('teal', 'In hospital', 'In hospital since ' + fmtDayShort(state.profile.inHospitalSince) + '.');
   if (hosp.length) {
     const groups = new Map();
     hosp.forEach((e) => {
@@ -5626,42 +5621,15 @@ function lastMedEntry(medId) {
   return state.recentEntries.find((e) => e.type === 'med' && e.medId === medId) || null;
 }
 
-/* At home or in hospital (since v103): one switch for the household, in profile/main, so both phones agree.
-   At home the medicines the nurses give, and the Given in hospital section on a day with nothing in it, stay
-   out of the way; in hospital they show, and the bridge can pause medicine reminders. The viewer role cannot
-   read the profile, so it always sees everything. */
-function inHospital() { return Boolean(state.profile && state.profile.inHospital); }
-function hospitalHidden(m) { return m.hospital && !inHospital() && !state.viewer; }
-async function setPlace(patch) {
-  if (state.demo) { state.profile = { ...state.profile, ...patch }; renderMeds(); return; }
-  try { await setDoc(hdoc('profile', 'main'), patch, { merge: true }); }
-  catch (e) { console.error(e); toast('Could not save that'); }
-}
-function renderPlace() {
-  const box = $('meds-place');
-  if (!box) return;
-  box.hidden = state.viewer;
-  if (state.viewer) return;
-  const here = inHospital();
-  const since = state.profile && state.profile.inHospitalSince;
-  const pause = !(state.profile && state.profile.pauseRemindersInHospital === false);
-  const seg = (label, on, value) => h('button', { class: 'seg' + (on ? ' is-active' : ''), type: 'button', 'aria-pressed': String(on), disabled: state.readOnly || undefined,
-    onclick: () => { if (on) return; setPlace(value ? { inHospital: true, inHospitalSince: todayStr() } : { inHospital: false, inHospitalSince: null }); toast(value ? 'In hospital: hospital medicines are showing' : 'At home: hospital medicines are tucked away'); } }, label);
-  const pauseBox = h('input', { type: 'checkbox', disabled: state.readOnly || undefined });
-  pauseBox.checked = pause;
-  pauseBox.addEventListener('change', () => setPlace({ pauseRemindersInHospital: pauseBox.checked }));
-  box.replaceChildren(...[
-    h('div', { class: 'segmented place-seg', role: 'group', 'aria-label': 'Where are you?' }, seg('At home', !here, false), seg('In hospital', here, true)),
-    here ? h('p', { class: 'hint place-since', text: since ? 'In hospital since ' + fmtDayShort(since) + '.' : 'In hospital.' }) : null,
-    here ? h('label', { class: 'check' }, pauseBox, h('span', { text: 'Pause medicine reminders while in hospital' })) : null,
-    here ? h('p', { class: 'hint', text: 'The ward usually gives your medicines. A "Remind me in 15 minutes" you ask for still comes through.' }) : null].filter(Boolean));
-}
+/* Medicines given by the hospital (since v101) always show on the Meds lists with their pill. The v103
+   At home | In hospital switch went in v124 (Mark: not needed); the Given in hospital section still shows
+   only on a day with something in it, and the Medicine tile's Given in hospital button logs a new one. */
+function hospitalHidden() { return false; }
 
 function renderMeds() {
   const day = state.selectedDay;
   const sched = activeScheduled(day).filter((m) => !hospitalHidden(m));
   const prn = activePrn().filter((m) => !hospitalHidden(m));
-  renderPlace();
   $('meds-scheduled').replaceChildren(...sched.map((m) => medCard(m, day)));
   if (!sched.length) $('meds-scheduled').append(h('p', { class: 'empty', 'data-art': 'pill', text: 'No scheduled medicines.' }));
   $('meds-prn').replaceChildren(...prn.map((m) => medCard(m, day)));
@@ -6032,7 +6000,7 @@ function renderHospitalDoses() {
     h('p', { class: 'muted', text: [e.dose, ROUTE_WORDS[e.route] || e.route, fmtTime(entryDate(e)), e.note].filter(Boolean).join(' \u00b7 ') }))));
   if (!list.length) box.append(h('p', { class: 'muted', text: day === todayStr() ? 'Nothing logged as given in hospital today.' : 'Nothing logged as given in hospital this day.' }));
   const section = $('meds-hospital-section');
-  if (section) section.hidden = !list.length && !inHospital() && !state.viewer;
+  if (section) section.hidden = !list.length && !state.viewer;
 }
 
 function openManageMeds() {
@@ -8229,11 +8197,28 @@ function swipeToRemove(wrap, item) {
     catch (e) { console.error(e); toast('Could not save'); }
   } }, 'Remove');
   const shell = h('div', { class: 'swipe' }, behind, wrap);
-  let x0 = null, dx = 0, open = false;
+  /* Nothing on screen changes until the finger has really moved sideways (10px, and more across than down).
+     Until v124 the touch itself revealed the red Remove button, and an iPhone treats a tap that reveals
+     something as a hover, not a tap: the tick and the Timer did nothing (Mark, 5 October 2026). */
+  let x0 = null, y0 = 0, dx = 0, open = false, dragging = false;
   const set = (d) => { wrap.style.transform = d ? 'translateX(' + d + 'px)' : ''; };
-  wrap.addEventListener('touchstart', (ev) => { x0 = ev.touches[0].clientX; dx = 0; wrap.style.transition = 'none'; shell.classList.add('is-dragging'); }, { passive: true });
-  wrap.addEventListener('touchmove', (ev) => { if (x0 == null) return; dx = Math.max(-104, Math.min(0, ev.touches[0].clientX - x0 + (open ? -96 : 0))); set(dx); }, { passive: true });
-  wrap.addEventListener('touchend', () => { wrap.style.transition = ''; open = dx < -48; set(open ? -96 : 0); shell.classList.toggle('is-open', open); shell.classList.remove('is-dragging'); x0 = null; }, { passive: true });
+  wrap.addEventListener('touchstart', (ev) => { x0 = ev.touches[0].clientX; y0 = ev.touches[0].clientY; dx = open ? -96 : 0; dragging = false; }, { passive: true });
+  wrap.addEventListener('touchmove', (ev) => {
+    if (x0 == null) return;
+    const mx = ev.touches[0].clientX - x0, my = ev.touches[0].clientY - y0;
+    if (!dragging) {
+      if (Math.abs(my) > Math.abs(mx) && Math.abs(my) > 10) { x0 = null; return; } // scrolling the page
+      if (Math.abs(mx) < 10) return;
+      dragging = true; wrap.style.transition = 'none'; shell.classList.add('is-dragging');
+    }
+    dx = Math.max(-104, Math.min(0, mx + (open ? -96 : 0))); set(dx);
+  }, { passive: true });
+  wrap.addEventListener('touchend', () => {
+    x0 = null;
+    if (!dragging) return; // a plain tap: leave it to the tick or the Timer
+    dragging = false; wrap.style.transition = ''; open = dx < -48; set(open ? -96 : 0); shell.classList.toggle('is-open', open); shell.classList.remove('is-dragging');
+  }, { passive: true });
+  wrap.addEventListener('touchcancel', () => { x0 = null; if (dragging) { dragging = false; wrap.style.transition = ''; set(open ? -96 : 0); shell.classList.remove('is-dragging'); } }, { passive: true });
   return shell;
 }
 function stretchItems() { return programmeItems().filter((it) => it.section === 'stretch'); }
