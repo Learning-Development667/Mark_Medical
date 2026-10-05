@@ -528,8 +528,12 @@ const EXPLAIN_SYSTEM = {
     '"name" is the medicine as a patient would say it, with its strength when that is part of the name ("Sodium chloride 0.9%", "Paracetamol 500 mg"). "amount" is the amount in one dose or in the container ("1000 ml", "2 tablets"). "route" is how it is given: drip for an intravenous infusion bag. ' +
     '"how" is the directions on a dispensing label in plain UK English, or null when there are none (a hospital bag or a manufacturer\'s box has none). "purpose" only if it is printed. "whenNeeded" true only when the label says when needed or as required. perDay, maxPerDay and minGapHours only when the directions give them. ' +
     'Never guess anything that is not printed: use null. No em dashes.',
+  weekly: 'You summarise a patient\'s own care notes, written day by day in a health app, so their oncologist or specialist nurse can read them in a minute before an appointment, in plain UK English. ' +
+    'The notes come grouped by week, each group headed "Week from YYYY-MM-DD". For each week give two to four short points of what stood out: symptoms and how bad they were, anything new or changing, anything the patient or carer was worried about. Keep their own words where they are clear. Leave out routine answers such as "nothing new". ' +
+    'Reply with JSON only, no prose and no code fence, in exactly this shape: {"weeks": [{"from": "YYYY-MM-DD", "points": [string]}]}, one entry per week given, in the same order, "from" copied from its heading. Each point under 20 words. ' +
+    'Do not add advice, interpretation, diagnosis or reassurance, and do not add anything the notes do not say. No em dashes.',
   notes: 'You turn a patient\'s care notes into a short, clear list of questions to ask their oncologist or specialist nurse at the next appointment, in plain UK English. ' +
-    'Read the questions already listed, the summary, any letters and the day notes. Reply with a numbered list of at most eight questions, one per line, most important first, each specific to what the notes actually show and short enough to ask in a ten-minute appointment. ' +
+    'Read the questions already listed, the summary and the day notes. Reply with a numbered list of at most eight questions, one per line, most important first, each specific to what the notes actually show and short enough to ask in a ten-minute appointment. ' +
     'Do not repeat a question the person has already written down. No preamble, no explanation, no headings, no em dashes, nothing after the list.'
 };
 
@@ -687,7 +691,7 @@ async function handleExplain(request, env) {
 
   let body;
   try { body = await request.json(); } catch (e) { return json({ error: 'bad-request', message: 'Could not read what was sent. Try again.' }, 400); }
-  const kind = ['notes', 'programme', 'medicine'].includes(body.kind) ? body.kind : 'document';
+  const kind = ['notes', 'programme', 'medicine', 'weekly'].includes(body.kind) ? body.kind : 'document';
   const text = String(body.text || '').slice(0, EXPLAIN_MAX_TEXT_CHARS);
   const pages = Array.isArray(body.pages) ? body.pages.slice(0, EXPLAIN_MAX_PAGES).filter((p) => typeof p === 'string' && p.length > 100 && p.length <= EXPLAIN_MAX_PAGE_CHARS) : [];
   if (!text.trim() && !pages.length) return json({ error: 'bad-request', message: 'Nothing to explain.' }, 400);
@@ -706,7 +710,8 @@ async function handleExplain(request, env) {
   const head = kind === 'document'
     ? 'Document: ' + String(body.title || 'Untitled').slice(0, 200) + (body.date ? ' (dated ' + String(body.date).slice(0, 40) + ').' : '.')
     : kind === 'programme' ? 'The exercise or physiotherapy plan follows, as page photos or as text.'
-    : kind === 'medicine' ? 'A photo of a medicine follows.' : 'Care notes from Daybook.';
+    : kind === 'medicine' ? 'A photo of a medicine follows.'
+    : kind === 'weekly' ? 'Care notes from Daybook, grouped by week.' : 'Care notes from Daybook.';
   content.push({ type: 'text', text: head + (text.trim() ? '\n\n' + text : '\n\n(The document is in the attached page photos.)') });
   let reply;
   try { reply = await askClaude(env, EXPLAIN_SYSTEM[kind], content); }

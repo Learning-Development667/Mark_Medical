@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '114';
+const APP_VERSION = '115';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -510,6 +510,7 @@ const state = {
   notesText: '',
   notesPdf: null,
   notesCharts: null, // the charts ticked for the Notes PDF this session (null: the defaults)
+  notesWeekly: null, // { range "from|to", weeks { weekStart: [points] } } from Summarise each week, this session only
   foodPdf: null,
   meals: [],
   currentDoc: null,
@@ -4302,6 +4303,58 @@ function renderChartPicker(charts, glance) {
       b.classList.toggle('is-active', on.has(c.key)); b.setAttribute('aria-pressed', on.has(c.key) ? 'true' : 'false');
     } })));
 }
+/* The Notes section on screen: one block per week, newest first */
+function renderWeeklyNotes(report) {
+  const box = $('notes-days');
+  const btn = $('notes-weekly');
+  btn.hidden = state.readOnly || !explainAvailable() || !report.weeks.length;
+  const summarised = report.weeks.some((w) => weekPoints(w));
+  $('notes-weekly-undo').hidden = !summarised;
+  box.replaceChildren(...report.weeks.slice().reverse().map((w) => {
+    const pts = weekPoints(w);
+    return h('section', { class: 'diary-day weekblock' },
+      h('h3', { class: 'diary-title' }, weekLabel(w), h('small', { text: plural(w.notes.length, 'note') })),
+      pts ? h('ul', { class: 'weekpoints' }, ...pts.map((p) => h('li', { text: p })))
+        : h('ul', { class: 'timeline' }, ...w.shown.map((n) => h('li', { class: 'entry type-note' },
+            h('span', { class: 'entry-time', text: n.time }),
+            h('div', { class: 'entry-main' },
+              h('div', { class: 'entry-sub' }, h('span', { class: 'note-who', text: n.who }), ' · ' + fmtDayShort(n.day) + ' ' + n.time + (n.context ? ' · ' + n.context : '')),
+              h('div', { class: 'entry-title', text: n.text }))))),
+      pts ? h('p', { class: 'muted weekmore', text: 'Summarised from the notes by Daybook\'s AI service.' })
+        : w.more > 0 ? h('p', { class: 'muted weekmore', text: `And ${plural(w.more, 'more note')} in Daybook, on Today for each day.` }) : '');
+  }));
+  if (!report.weeks.length) box.append(h('p', { class: 'muted', text: 'No written notes in this period.' }));
+}
+/* Summarise each week: the week's notes (routine answers left out) to Daybook's AI service, which
+   returns two to four points a week; kept for this session and this range only, never stored */
+$('notes-weekly').addEventListener('click', () => {
+  const n = state.notesPdf;
+  if (!n) return;
+  const weeks = n.report.weeks;
+  const text = weeks.map((w) => [`Week from ${w.key}`].concat(w.notes.filter((x) => !isRoutineNote(x)).map((x) => `- ${x.who}, ${fmtDayShort(x.day)} ${x.time}${x.context ? ' (' + x.context + ')' : ''}: ${x.text}`)).join('\n')).join('\n\n');
+  withBusy($('notes-weekly'), 'Summarising, about half a minute', async () => {
+    try {
+      const data = await bridgeExplain({ kind: 'weekly', text });
+      let t = String(data.text || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+      const a = t.indexOf('{'), b = t.lastIndexOf('}');
+      if (a >= 0 && b > a) t = t.slice(a, b + 1);
+      let parsed = {};
+      try { parsed = JSON.parse(t); } catch (e) { parsed = {}; }
+      const out = {};
+      (Array.isArray(parsed.weeks) ? parsed.weeks : []).forEach((w) => {
+        const key = weeks.some((x) => x.key === w.from) ? w.from : null;
+        const pts = (Array.isArray(w.points) ? w.points : []).map((p) => String(p).replace(/\s*\u2014\s*/g, ', ').trim()).filter(Boolean).slice(0, 4);
+        if (key && pts.length) out[key] = pts;
+      });
+      if (!Object.keys(out).length) { toast('Could not read the summary. The notes are shown as they are.'); return; }
+      state.notesWeekly = { range: n.from + '|' + n.to, weeks: out };
+      renderWeeklyNotes(n.report);
+      toast('Each week summarised. The PDF and Send to the team use it.');
+    } catch (e) { toast(e.message || 'Could not summarise the notes'); }
+  });
+});
+$('notes-weekly-undo').addEventListener('click', () => { state.notesWeekly = null; if (state.notesPdf) renderWeeklyNotes(state.notesPdf.report); });
+
 /* The PDF as it stands now, with the charts ticked at this moment */
 function currentNotesPdf() {
   const n = state.notesPdf;
@@ -4323,9 +4376,14 @@ function notesPdfBlocks(report, charts) {
   }
   /* Letters are not part of the report (v114): they are the team's own, and stay in the app */
   blocks.push({ kind: 'heading', text: 'Notes', keep: 90 });
-  if (report.days.length) report.days.forEach((d) => {
-    blocks.push({ kind: 'sub', text: `${fmtDayLong(d.day)} (${fmtDayNum(d.day)})` });
-    d.notes.forEach((n) => blocks.push({ kind: 'note', who: n.who, time: n.time, context: n.context, text: n.text }));
+  if (report.weeks.length) report.weeks.forEach((w) => {
+    blocks.push({ kind: 'sub', text: `${weekLabel(w)} · ${plural(w.notes.length, 'note')}` });
+    const pts = weekPoints(w);
+    if (pts) { pts.forEach((p) => blocks.push({ kind: 'text', text: '\u2022 ' + p })); blocks.push({ kind: 'muted', text: 'Summarised from the notes by Daybook\'s AI service. Every note is in Daybook.' }); }
+    else {
+      w.shown.forEach((n) => blocks.push({ kind: 'note', who: n.who, time: fmtDayShort(n.day) + ' ' + n.time, context: n.context, text: n.text }));
+      if (w.more > 0) blocks.push({ kind: 'muted', text: `And ${plural(w.more, 'more note')} in Daybook.` });
+    }
   });
   else blocks.push({ kind: 'text', text: 'No written notes in this period.' });
   return blocks;
@@ -4679,6 +4737,33 @@ async function loadQuestions() {
 }
 
 /* from and to are the report's own range (inclusive), which need not end today */
+/* The Notes section in weekly blocks (since v115): Monday to Sunday, clipped to the report's range.
+   Without a summary each week shows its few most telling notes (written notes before check-in
+   answers, routine "nothing new" answers left out, the longest first, then in time order) and how
+   many more are in Daybook; with one (Summarise each week, Daybook's AI service, on a tap) the week
+   shows its two to four points instead. The text for an AI app keeps every note, day by day. */
+const WEEK_NOTES_MAX = 4;
+const ROUTINE_ANSWER = /^(no|none|nope|nothing|nothing new|nothing to report|no change|same|same as (yesterday|before|usual)|n\/a|nil|ok|okay|fine|all good|good)\.?$/i;
+function weekStartOf(day) { const d = parseDay(day); return addDays(day, -((d.getDay() + 6) % 7)); }
+function isRoutineNote(n) { const t = String(n.text || ''); const body = t.includes(': ') ? t.slice(t.indexOf(': ') + 2) : t; return ROUTINE_ANSWER.test(body.trim()); }
+function notesByWeek(days, from, to) {
+  const weeks = new Map();
+  days.forEach((d) => {
+    const key = weekStartOf(d.day);
+    if (!weeks.has(key)) weeks.set(key, { key, from: key < from ? from : key, to: addDays(key, 6) > to ? to : addDays(key, 6), notes: [] });
+    d.notes.forEach((n) => weeks.get(key).notes.push({ ...n, day: d.day }));
+  });
+  return [...weeks.values()].sort((a, b) => a.key.localeCompare(b.key)).map((w) => {
+    const telling = w.notes.filter((n) => !isRoutineNote(n));
+    const ranked = telling.slice().sort((a, b) => (/check-in|carer/.test(a.context) ? 1 : 0) - (/check-in|carer/.test(b.context) ? 1 : 0) || b.text.length - a.text.length);
+    const shown = ranked.slice(0, WEEK_NOTES_MAX).sort((a, b) => (a.day + a.time).localeCompare(b.day + b.time));
+    return { ...w, shown, more: w.notes.length - shown.length };
+  });
+}
+function weekLabel(w) { return w.from === w.to ? fmtDayLong(w.from) : `${w.from.slice(0, 7) === w.to.slice(0, 7) ? Number(w.from.slice(8)) : fmtDayShort(w.from)} to ${fmtDayShort(w.to)}`; }
+/* The week's summary points, when Summarise each week has been run for this range */
+function weekPoints(w) { const s = state.notesWeekly; return s && s.range === state.notesPdf.from + '|' + state.notesPdf.to && s.weeks[w.key] ? s.weeks[w.key] : null; }
+
 function buildNotesReport(entries, questionsAll, from, to, rangeLabel) {
   const glance = summaryRows(entries, from, to);
   const open = questionsAll.filter((q) => !q.answered).sort((a, b) => entryDate(a) - entryDate(b));
@@ -4720,7 +4805,7 @@ function buildNotesReport(entries, questionsAll, from, to, rangeLabel) {
     d.notes.forEach((n) => lines.push(`- ${n.who}, ${n.time}${n.context ? ' (' + n.context + ')' : ''}: ${n.text}`));
   });
   else lines.push('- No written notes in this period.');
-  return { questions, answers, answered, glance, days, rangeLabel, text: lines.join('\n') };
+  return { questions, answers, answered, glance, days, weeks: notesByWeek(days, from, to), rangeLabel, text: lines.join('\n') };
 }
 
 async function renderNotesReport() {
@@ -4772,18 +4857,7 @@ async function renderNotesReport() {
   if (!report.glance.length) $('notes-flags').append(h('p', { class: 'muted', text: 'No readings logged in this period.' }));
 
 
-  const shown = report.days.slice().reverse();
-  $('notes-days').replaceChildren(...shown.map((d) => h('section', { class: 'diary-day' },
-    h('h3', { class: 'diary-title' }, fmtDayLong(d.day), h('small', { text: d.day === today ? 'Today' : fmtDayNum(d.day) })),
-    h('ul', { class: 'timeline' }, ...d.notes.map((n) => h('li', { class: 'entry type-note' },
-      h('span', { class: 'entry-time', text: n.time }),
-      h('div', { class: 'entry-main' },
-        h('div', { class: 'entry-sub' }, h('span', { class: 'note-who', text: n.who }), ' · ' + n.time + (n.context ? ' · ' + n.context : '')),
-        h('div', { class: 'entry-title', text: n.text })
-      )
-    )))
-  )));
-  if (!report.days.length) $('notes-days').append(h('p', { class: 'muted', text: 'No written notes in this period.' }));
+  renderWeeklyNotes(report);
   $('notes-empty').hidden = true;
 }
 
