@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=115">
+  <link rel="stylesheet" href="styles.css?v=116">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -76,7 +76,7 @@
       <img class="signin-logo" src="icons/icon-192.png" alt="" width="72" height="72">
       <h1 class="brand"><span class="brand-pre">My Medical</span>Daybook</h1>
       <p class="strapline">Your companion between appointments.</p>
-      <p class="muted">Private. Only the people set up for this account can sign in.</p>
+      <p class="muted">Each household's records are seen only by its own members.</p>
       <form id="signin-form" autocomplete="on">
         <label class="field">
           <span>Email</span>
@@ -122,7 +122,7 @@
           <span>Invite code (only if someone sent you one)</span>
           <input id="signup-code" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="40">
         </label>
-        <p class="hint">Your entries are stored in Google's data centre in London and shared only with the people you invite. Not medical advice. By creating an account you agree to the <button class="btn-inline" type="button" data-page="terms">terms of use</button> and have read the <button class="btn-inline" type="button" data-page="privacy">privacy policy</button>.</p>
+        <p class="hint">Your entries are stored in Google's data centre in London and seen only by the people you invite, apart from anything you choose to send to an AI service. Not medical advice. By creating an account you agree to the <button class="btn-inline" type="button" data-page="terms">terms of use</button> and have read the <button class="btn-inline" type="button" data-page="privacy">privacy policy</button>.</p>
         <p id="signup-error" class="error" role="alert" hidden></p>
         <button id="signup-submit" class="btn btn-primary btn-block" type="submit">Create my account</button>
       </form>
@@ -157,7 +157,7 @@
     <div class="signin-card">
       <h1 class="brand"><span class="brand-pre">My Medical</span>Daybook</h1>
       <p><strong>config.js is missing.</strong></p>
-      <p class="muted">Copy <code>config.example.js</code> to <code>config.js</code>, paste in the Firebase web config and the two permitted email addresses, then commit it.</p>
+      <p class="muted">Copy <code>config.example.js</code> to <code>config.js</code>, paste in the Firebase web config, then commit it. Accounts and households are made from the app itself.</p>
     </div>
   </section>
 
@@ -469,12 +469,12 @@
           <p id="doc-auto-hint" class="hint" hidden>Kept up to date by Daybook from your answered questions. To take one off, reopen the question from its "..." menu on Today.</p>
           <div id="doc-explain-block">
           <h3 class="section-title">Plain English explanation</h3>
-          <button id="doc-explain" class="btn btn-primary btn-block" type="button" hidden>Explain in Daybook</button>
+          <button id="doc-explain" class="btn btn-primary btn-block" type="button" hidden>Explain with Daybook Assistant</button>
           <div class="btnrow">
             <button id="doc-share" class="btn btn-secondary" type="button">Send to my AI app</button>
             <button id="doc-copy" class="btn btn-secondary" type="button">Copy for my AI app</button>
           </div>
-          <p class="hint" id="doc-explain-hint">Two ways to get a plain English explanation. <b>Explain in Daybook</b> sends the letter to Daybook's own AI service and puts the reply below, no account needed. <b>Send to my AI app</b> opens the share sheet for Claude, ChatGPT, Copilot, Gemini or your phone's own Writing Tools; paste the reply below. Either way the letter leaves your phone and goes to an AI company's servers. Daybook's route is not used for training and nothing is kept after the reply, but no route is as private as keeping it to yourself. Leave out anything you would not want sent.</p>
+          <p class="hint" id="doc-explain-hint">Two ways to get a plain English explanation. <b>Explain with Daybook Assistant</b> sends the letter (its text, or up to 8 page photos) to Daybook Assistant, Daybook's AI helper, which runs on Claude, an AI made by Anthropic, a US company. You do not need an AI account of your own. The explanation is saved with this letter, and you can change or delete it. Anthropic does not train its models on it, and the bridge keeps only a count of words used. <b>Send to my AI app</b> opens the share sheet for Claude, ChatGPT, Copilot or Gemini; paste the reply below. Either way the letter leaves Daybook and goes to an AI company's servers, so leave out anything you would not want sent. AI can get things wrong: check anything that matters with your care team.</p>
           <button id="doc-paste-summary" class="btn btn-secondary btn-block" type="button">Paste summary</button>
           <textarea id="doc-explanation" rows="8" placeholder="Paste the explanation here, or use Paste summary above"></textarea>
           <p class="hint">This explanation is for context only. It is not medical advice. Always check changes with the medical team.</p>
@@ -552,7 +552,7 @@
           <button id="notes-preview" class="btn btn-secondary" type="button">Preview</button>
           <button id="notes-pdf" class="btn btn-secondary" type="button">Save as PDF</button>
         </div>
-        <p class="hint">Short enough for the appointment: your questions first, then highlights of the period, the charts, and the written notes with who wrote them. Answered questions are kept under Letters, results and paperwork. The detail for any one day stays in the app. <b>Suggest questions to ask</b> sends these notes to Daybook's own AI service and offers questions you can add to the list above with one tap. Send or copy does the same through your own AI app. Either way the notes go to an AI company's servers, so leave out anything you would not want sent. <b>Send to the team</b> puts these notes and the ticked charts into an email from your own Mail app, for a contact with an email address. Save as PDF makes a copy for the clinic without any of that.</p>
+        <p class="hint">Short enough for the appointment: your questions first, then highlights of the period, the charts, and the written notes with who wrote them. Answered questions are kept under Letters, results and paperwork. The detail for any one day stays in the app. <b>Suggest questions to ask</b> sends these notes to Daybook Assistant (AI from Anthropic, in the US) and offers questions you can add to the list above with one tap. Send or copy does the same through your own AI app. Either way the notes go to an AI company's servers, so leave out anything you would not want sent. <b>Send to the team</b> puts these notes and the ticked charts into an email from your own Mail app, for a contact with an email address. Save as PDF makes a copy for the clinic without any of that.</p>
         <h3 class="section-title">Questions for the team</h3>
         <button id="notes-record" class="recbtn recbtn-appt" type="button"><svg class="icon" aria-hidden="true"><use href="#i-mic"/></svg><span>Record the appointment</span></button>
         <p id="notes-record-hint" class="hint">One recording for the whole appointment. Tap a question's number as they start answering it, so each answer is easy to find later.</p>
@@ -562,7 +562,7 @@
         <p class="hint">Simple checks on the readings by the app, worst first. Not medical advice. Anything that worries you, call the team.</p>
         <div id="notes-flags" class="flags"></div>
         <h3 class="section-title">Notes</h3>
-        <p class="hint">Week by week: the notes that say most, and how many more are in Daybook.</p>
+        <p class="hint">Week by week: the longest written notes, and how many more are in Daybook. <b>Summarise each week</b> sends the notes to Daybook Assistant (AI from Anthropic, in the US) to pick out two to four points a week; it can miss or misread things.</p>
         <button id="notes-weekly" class="btn btn-secondary btn-block" type="button" hidden>Summarise each week</button>
         <button id="notes-weekly-undo" class="btn btn-link btn-small" type="button" hidden>Show the notes instead</button>
         <div id="notes-days"></div>
@@ -649,7 +649,7 @@
         <div id="settings-health" hidden>
           <h2 class="section-title">Apple Health</h2>
           <div class="card settings-group">
-            <p class="hint">Steps, sleep, workouts and food totals arrive through the Health Auto Export app. Its automation posts to the address below with this household's inbox key in the X-Care-Log-Key header. The key is this household's alone.</p>
+            <p class="hint">Steps, sleep, workouts and food totals arrive through the Health Auto Export app. Its automation posts to the address below with this household's inbox key in the X-Care-Log-Key header (Care Log was Daybook's first name). The key is this household's alone.</p>
             <p class="mono keybox" id="settings-health-url"></p>
             <button id="settings-health-key" class="btn btn-secondary btn-block" type="button">Show the inbox key</button>
             <p class="mono keybox" id="settings-health-keytext" hidden></p>
@@ -659,7 +659,7 @@
         <h2 class="section-title">App</h2>
         <div class="card">
           <p>Add Daybook to the Home Screen from the Share menu in Safari to use it like an app.</p>
-          <p>Meets WCAG 2.2 level AA, the web accessibility standard. Checked 28 September 2026.</p>
+          <p>Built to meet WCAG 2.2 level AA, the web accessibility standard. Last checked on 28 September 2026, with automated tests (axe-core) and by hand, in light and dark.</p>
           <p class="muted mono" id="app-version"></p>
           <div class="legal-links">
             <button class="btn btn-secondary btn-block" type="button" data-page="privacy">Privacy</button>
@@ -694,39 +694,41 @@
   <!-- Privacy, terms and About (since v90): plain English, opened in the sheet from the Settings App card,
        the sign-in and sign-up screens, or ?page=privacy|terms|about in the address (openLegal()). -->
   <template id="tpl-privacy">
-    <p class="legal-date mono">Last updated 1 October 2026</p>
+    <p class="legal-date mono">Last updated 5 October 2026</p>
     <p>My Medical Daybook (Daybook for short) is made and run by Mark Brown, trading as Mark 1 Apps, who is responsible for the information the app holds (the "data controller" in UK law). <span data-contact></span></p>
     <h3>The short version</h3>
     <ul>
-      <li>What you record in Daybook is yours. It lives in one locked folder for your household, and only the people you invite can see it.</li>
+      <li>What you record in Daybook is yours. It is kept in a separate folder for your household. Only the people you invite can see it, apart from the operator and the companies listed under "Who can see it", and anything you choose to send to an AI service.</li>
       <li>Nothing is sold, nothing is used for advertising, and nothing is used to train AI.</li>
-      <li>Your health information leaves your household's folder only when you tap a button that says so, and the app tells you what will be sent before you do.</li>
+      <li>Your health information leaves your household's folder only when you use a feature that sends it (listed below, each one started by a tap), or through the medicine reminders if you switch them on.</li>
       <li>You can delete any entry, document or recording yourself, and you can ask for everything to be exported or erased.</li>
       <li>No cookies, no tracking, no analytics.</li>
     </ul>
     <h3>What Daybook stores</h3>
     <p><b>Your sign-in:</b> your email address and password (held by Google's Firebase Authentication; Daybook never sees the password), your first name, your role in the household (family, read only, or medicines and treatment only), whether you are the patient or a carer, and which household you belong to.</p>
     <p><b>What your household records:</b> check-ins (pain, mood, sleep, sickness, appetite, energy and what you write), readings (temperature, heart rate, blood pressure, oxygen, weight), food and drink, notes, questions for the care team and their answers, including any voice recordings you choose to make, medicines, doses and reminder times, letters and documents you photograph or paste in and the explanations saved with them, treatment sessions and the calendar, exercise ticks, steps, sleep, workouts and food totals if you connect Apple Health, saved meals, who to contact (names, roles, phone numbers and email addresses), and your settings.</p>
-    <p><b>On your phone:</b> a copy of your account record, so the app opens quickly on a weak signal, and a few settings (which charts you view as tables, the exercise filter, the opener). Your browser holds these and they go when you clear its data.</p>
+    <p><b>On your phone:</b> a copy of your account record and of the records you have opened, so the app works on a weak signal, and a few settings (which charts you view as tables, the exercise filter, the weight unit, the opener). Your browser holds these and they go when you clear its data.</p>
+    <p><b>If you turn on reminders:</b> each phone's push address and browser type, so the reminder reaches it. <b>For Daybook Assistant:</b> a daily count per household of how many requests were made and how many words they used, for the cost.</p>
     <h3>Where it is kept</h3>
-    <p>In Google Cloud's Firestore database in London (the europe-west2 region), through Google's Firebase service and under Google's security measures. Everything travels encrypted (HTTPS). The app itself is served from GitHub Pages.</p>
+    <p>In Google Cloud's Firestore database in London (the europe-west2 region), through Google's Firebase service and under Google's security measures. Everything travels encrypted (HTTPS), and Google encrypts it when stored. It is not end-to-end encrypted, so Google's systems and the operator can technically reach it. Anything you send with an AI button goes to Anthropic in the United States. The app itself is served from GitHub Pages.</p>
     <h3>Who can see it</h3>
     <ul>
-      <li><b>The members of your household,</b> according to the access they were given. Family members can add, change and delete. A read-only member sees everything and changes nothing. A "medicines and treatment only" member sees medicines, the treatment calendar and the readings charts, and nothing else. The database itself enforces these rules, not just the app.</li>
-      <li><b>Mark 1 Apps,</b> as the operator, has administrative access to the database in order to run it. That access is used to fix a problem you have reported, and for the maintenance jobs described below. It is not used to read anyone's records.</li>
+      <li><b>The members of your household,</b> according to the access they were given. Family members can add, change and delete. A read-only member sees everything and changes nothing. A "medicines and treatment only" member sees medicines, the treatment calendar (with the mood marks) and the readings, sleep and drinks charts, and nothing else. The database itself enforces these rules, not just the app.</li>
+      <li><b>Mark 1 Apps,</b> as the operator, has administrative access to the database in order to run it. That access is used only to fix a problem you have reported or to keep the service running, not to read anyone's records.</li>
       <li><b>Google,</b> as the company hosting the database, under its own data processing terms.</li>
+      <li><b>Cloudflare,</b> which runs Daybook's bridge, and <b>Anthropic,</b> only for what you send with an AI button, as described below.</li>
       <li>Nobody else, unless the law requires it.</li>
     </ul>
     <h3>What leaves your household's folder, and when</h3>
     <ul>
-      <li><b>The AI service, only when you tap.</b> "Explain in Daybook" on a letter sends that letter's text or page photos to Anthropic's API through Daybook's own bridge. "Suggest questions to ask" sends the Notes for the team text. Anthropic does not use what is sent through its API to train its models and handles it under its own terms. Daybook keeps nothing of what was sent or returned except a count of words used, so the cost can be tracked. The reply is saved only if you save it. There is a daily limit per household.</li>
+      <li><b>Daybook Assistant, only when you tap.</b> Daybook Assistant is Daybook's name for its AI helper, which is Claude, an AI model made by Anthropic, a US company. Five features send something through Daybook's bridge to Anthropic for it: <b>Explain with Daybook Assistant</b> (a letter's text or page photos), <b>Suggest questions to ask</b> and <b>Summarise each week</b> (the Notes for the team text), <b>Read it from a photo</b> (a photo of a medicine) and <b>Add from a photo or PDF of the plan</b> (an exercise or physio plan). So that information goes to the United States. Anthropic does not use what is sent through its API to train its models and handles it under its own terms. The bridge keeps nothing of what was sent or returned, only a count of words used, for the cost. An explanation of a letter is saved with the letter, and you can change or delete it; the other replies are shown for you to check, and only what you then save is kept. There is a daily limit per household.</li>
       <li><b>Your own AI app.</b> "Send to my AI app" and "Copy for my AI app" put the text on your phone's share sheet or clipboard. Where it goes from there is between you and the app you choose.</li>
       <li><b>Save as PDF, Print, Share and Copy</b> make a copy for you to give to the clinic or someone else. Once it has left the app, it is in your hands.</li>
       <li><b>Tap to speak</b> uses your phone's own speech recognition (Apple's on an iPhone, Google's in Chrome). Depending on the phone, the audio may be processed on the phone or on that company's servers under their terms. Daybook receives only the words.</li>
       <li><b>Apple Health.</b> Nothing goes to Apple from Daybook. If you set up the Health Auto Export app to send steps, sleep, workouts and food totals, that data comes from your phone to Daybook's bridge and into your household's folder. The bridge keeps the last message it received, trimmed, so a problem with the feed can be checked.</li>
-      <li><b>Reminders.</b> If you turn on medicine reminders, each notification goes through your phone maker's push service (Apple, Google or Mozilla). The message is encrypted so that service cannot read it, and unless you switch it off it names no medicine ("A medicine is due"), so nothing shows on your lock screen.</li>
+      <li><b>Reminders.</b> If you turn on medicine reminders, each notification goes through your browser's push service (Apple, Google or Mozilla). The message is encrypted so that service cannot read it, and unless you switch it off it names no medicine ("A medicine is due"), so no medicine name shows on your lock screen.</li>
       <li><b>Fonts and chart code.</b> The app loads its fonts from Google Fonts and some code libraries from Cloudflare's cdnjs. Those servers see your phone's internet address when the app loads, as with any website. None of your entries go to them.</li>
-      <li><b>Daybook's bridge.</b> A small service on Cloudflare that handles sign-up, invites, the Apple Health feed, reminders and the AI requests. It checks who you are with your sign-in token and writes only to your household's folder. Cloudflare keeps standard request logs for a short time.</li>
+      <li><b>Daybook's bridge.</b> A small service on Cloudflare that handles sign-up, invites, the Apple Health feed, reminders and Daybook Assistant's requests. It checks your sign-in, or for the Apple Health feed your household's inbox key, and writes only your household's records and your own sign-up record. Cloudflare keeps standard request logs for a short time.</li>
     </ul>
     <h3>Why it is held</h3>
     <p>To provide the service you have asked for, with your explicit consent for the health information you choose to record. UK data protection law calls health information "special category data", which is why it is handled with the care above. You can withdraw consent at any time by deleting what you recorded or asking for it to be erased.</p>
@@ -743,7 +745,7 @@
   </template>
 
   <template id="tpl-terms">
-    <p class="legal-date mono">Last updated 1 October 2026</p>
+    <p class="legal-date mono">Last updated 5 October 2026</p>
     <h3>1. What Daybook is</h3>
     <p>My Medical Daybook (Daybook for short) is a personal record-keeping tool for a patient and the people looking after them, made by Mark Brown, trading as Mark 1 Apps. <span data-contact></span></p>
     <p>It is not a medical device, it gives no medical advice, and it does not replace your doctors, nurses or pharmacist. Everything it shows, including the summary lines, the flags, the food estimates and the AI explanations, is there to help you talk to your care team, not to decide anything for you. If you are worried about a symptom, contact your care team or NHS 111. In an emergency call 999.</p>
@@ -755,10 +757,10 @@
     <p>Daybook is for personal, non-commercial use. Do not try to get into another household's data, probe or overload the service, or use it for anything unlawful. Do not enter anyone's information without their agreement.</p>
     <h3>5. Recordings</h3>
     <p>"Record the answer" and "Record the appointment" record people speaking. Ask them first, every time; the app asks you to confirm that you have. You are responsible for any recording you make and for what you do with it.</p>
-    <h3>6. The AI features</h3>
-    <p>They are optional. When you use one, the text you chose goes to the AI service as the privacy policy describes. AI explanations can be wrong. Check anything that matters with your care team.</p>
+    <h3>6. Daybook Assistant (the AI features)</h3>
+    <p>They are optional. Daybook Assistant is an AI helper that runs on Claude, made by Anthropic. When you use it, the text or photo you chose goes to Anthropic in the United States, as the privacy policy describes. Anything it writes or reads, including explanations, summaries, suggested questions and details read from a label or plan, can be wrong. Check anything that matters with your care team.</p>
     <h3>7. Availability</h3>
-    <p>Daybook is provided free and as it is. It depends on Google, Cloudflare, GitHub and your phone's maker, and may be unavailable or change without notice. Mark 1 Apps may change, pause or withdraw it. If it is to be withdrawn you will be given reasonable notice and a way to take your records with you.</p>
+    <p>Daybook is provided free and as it is. It depends on Google, Cloudflare, GitHub, your phone's maker and, for Daybook Assistant, Anthropic, and may be unavailable or change without notice. Mark 1 Apps may change, pause or withdraw it. If it is to be withdrawn you will be given reasonable notice and a way to take your records with you.</p>
     <h3>8. No warranty, limited liability</h3>
     <p>As far as the law allows, Mark 1 Apps is not liable for loss arising from your use of the app, from an error in what it shows, or from anything decided on the basis of it. Nothing in these terms limits liability for death or personal injury caused by negligence, or for anything else the law does not allow to be limited.</p>
     <h3>9. The code and the name</h3>
@@ -777,9 +779,9 @@
     <p>Made by Mark Brown, Mark 1 Apps, first for his own cancer treatment and the people around him.</p>
     <p class="muted mono" data-version></p>
     <h3>Not medical advice</h3>
-    <p>Daybook helps you keep track and talk to your care team. It makes no diagnosis and gives no advice. If you are worried, contact your care team or NHS 111. In an emergency call 999.</p>
+    <p>Daybook helps you keep track and talk to your care team. It makes no diagnosis and is not medical advice. Any prompt to contact the team is general: follow what your own team and your alert card say. If you are worried, contact your care team or NHS 111. In an emergency call 999.</p>
     <h3>Accessibility</h3>
-    <p>Meets WCAG 2.2 level AA, the web accessibility standard, checked on every screen in light and dark. Text is at least 17px and every button is at least 48px, because the person using it may be tired.</p>
+    <p>Built to meet WCAG 2.2 level AA, the web accessibility standard, and checked on every screen in light and dark with automated tests and by hand. The main text is 17px and the buttons are large, because the person using it may be tired.</p>
     <h3>Add it to your Home Screen</h3>
     <p>On an iPhone, open Daybook in Safari, tap Share, then "Add to Home Screen". On Android, open it in Chrome and choose "Add to Home screen" from the menu. It then opens like any other app, and medicine reminders can be switched on.</p>
     <h3>Built with</h3>
@@ -787,6 +789,7 @@
       <li>Google Firebase (sign-in and the database, London)</li>
       <li>GitHub Pages (the app) and a Cloudflare Worker (the bridge)</li>
       <li>Chart.js, pdf.js, mammoth.js and jsPDF</li>
+      <li>Anthropic's Claude, behind Daybook Assistant (the optional AI features)</li>
       <li>The Bebas Neue, DM Sans and DM Mono typefaces</li>
     </ul>
     <h3>Data sources</h3>
@@ -820,6 +823,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=115"></script>
+  <script type="module" src="scripts.js?v=116"></script>
 </body>
 </html>

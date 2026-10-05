@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '115';
+const APP_VERSION = '116';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -180,7 +180,9 @@ function fmtDayLong(s) { return parseDay(s).toLocaleDateString('en-GB', { weekda
 function fmtDayShort(s) { return parseDay(s).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }); }
 function fmtDayNum(s) { return parseDay(s).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }); }
 function tempClass(v) { if (v >= 38) return 'is-red'; if (v >= 37.5) return 'is-amber'; return ''; }
-function tempWord(v) { if (v >= 38) return 'High. 38.0 or above'; if (v >= 37.5) return 'Raised. Keep an eye on it'; return 'Normal range'; }
+/* Words beside a typed temperature: no reassurance, and the alert card is the guide (v116; until then
+   anything under 37.5 read "Normal range" in green and 37.5 read "Keep an eye on it") */
+function tempWord(v) { if (v >= 38) return 'High, 38.0 or above. Follow your alert card.'; if (v >= 37.5) return 'Raised, 37.5 to 37.9. Check your alert card for when to call.'; if (v < 36) return 'Low, under 36.0. Check your alert card.'; return 'Under 37.5.'; }
 
 /* Weight is stored and reported in kg everywhere: the timeline, Notes for the team, its PDF, the copied
    text (what NHS teams record). One choice per phone, kg or stones and pounds, set from the small switch
@@ -1472,7 +1474,7 @@ document.querySelectorAll('.tab').forEach((btn) => {
 
 /* The topbar carries the page name ("Care Log: Food diary"), so the report
    pages and the Chemo tab no longer need a heading of their own */
-const PAGE_TITLES = { today: 'Today', meds: 'Medicines', vitals: 'Trends', chemo: 'Treatment plan', exercise: 'Exercise', more: 'More', food: 'Food diary', notes: 'Team notes', docs: 'Documents', settings: 'Settings' };
+const PAGE_TITLES = { today: 'Today', meds: 'Medicines', vitals: 'Trends', chemo: 'Treatment plan', exercise: 'Exercise', more: 'More', food: 'Food diary', notes: 'Notes for the team', docs: 'Documents', settings: 'Settings' };
 function setBrand(page) {
   $('brand').replaceChildren('Daybook', page ? h('span', { class: 'brand-page', text: ': ' + page }) : null);
   document.title = page ? 'Daybook: ' + page : 'My Medical Daybook';
@@ -2391,7 +2393,7 @@ function openAdd(type, editEntry) {
     woke.addEventListener('input', () => { wokeByHand = !!woke.value; if (woke.value) time.value = woke.value; });
     body.append(
       h('p', { class: 'hint', text: existing && existing.addedBy === 'Apple Health'
-        ? 'Apple Health sent this night automatically. Change anything that is wrong and save.'
+        ? 'This night came in from Apple Health through the Health Auto Export app. Change anything that is wrong and save.'
         : existing ? 'Editing the sleep already logged for this morning.' : 'Last night, logged against this morning. Type in what Apple Health shows.' }),
       field('In bed at', bed),
       asleep.row,
@@ -2449,7 +2451,7 @@ function openAdd(type, editEntry) {
       const v = r.value;
       tHint.textContent = v == null || isNaN(v) ? 'Leave blank if not taken.' + (lastT ? ' Last: ' + fmtTemp(lastT.value) + ', ' + whenLabel(lastT) + '.' : '')
         : (r.fromF != null ? r.fromF + ' \u00B0F is ' + fmtTemp(v) + '. ' : '') + tempWord(v);
-      tHint.style.color = v == null || isNaN(v) ? '' : v >= 38 ? 'var(--red)' : v >= 37.5 ? 'var(--amber)' : 'var(--green)';
+      tHint.style.color = v == null || isNaN(v) ? '' : v >= 38 ? 'var(--red)' : v >= 37.5 || v < 36 ? 'var(--amber)' : '';
     };
     const tStep = (n) => {
       const base = readNum(temp).value;
@@ -3989,7 +3991,7 @@ async function renderFoodDiary() {
   } else { overview.hidden = true; overview.replaceChildren(); }
   $('food-days').replaceChildren(...sections);
   $('food-empty').hidden = sections.length > 0;
-  state.foodPdf = { filename: 'care-log-food-diary-' + to + '.pdf', title: 'Food diary', subtitle: `${fmtDayNum(from)} to ${fmtDayNum(to)}, printed ${fmtDayNum(today)}`, blocks };
+  state.foodPdf = { filename: 'Daybook food diary ' + to + '.pdf', title: 'Food diary', subtitle: `${fmtDayNum(from)} to ${fmtDayNum(to)}, printed ${fmtDayNum(today)}`, blocks };
 }
 
 $('food-pdf').addEventListener('click', () => { if (state.foodPdf) savePdf(state.foodPdf.filename, state.foodPdf.title, state.foodPdf.subtitle, state.foodPdf.blocks); });
@@ -4320,7 +4322,7 @@ function renderWeeklyNotes(report) {
             h('div', { class: 'entry-main' },
               h('div', { class: 'entry-sub' }, h('span', { class: 'note-who', text: n.who }), ' · ' + fmtDayShort(n.day) + ' ' + n.time + (n.context ? ' · ' + n.context : '')),
               h('div', { class: 'entry-title', text: n.text }))))),
-      pts ? h('p', { class: 'muted weekmore', text: 'Summarised from the notes by Daybook\'s AI service.' })
+      pts ? h('p', { class: 'muted weekmore', text: 'Summarised from the notes by Daybook Assistant, an AI helper. It can miss or misread things; every note is in Daybook.' })
         : w.more > 0 ? h('p', { class: 'muted weekmore', text: `And ${plural(w.more, 'more note')} in Daybook, on Today for each day.` }) : '');
   }));
   if (!report.weeks.length) box.append(h('p', { class: 'muted', text: 'No written notes in this period.' }));
@@ -4379,7 +4381,7 @@ function notesPdfBlocks(report, charts) {
   if (report.weeks.length) report.weeks.forEach((w) => {
     blocks.push({ kind: 'sub', text: `${weekLabel(w)} · ${plural(w.notes.length, 'note')}` });
     const pts = weekPoints(w);
-    if (pts) { pts.forEach((p) => blocks.push({ kind: 'text', text: '\u2022 ' + p })); blocks.push({ kind: 'muted', text: 'Summarised from the notes by Daybook\'s AI service. Every note is in Daybook.' }); }
+    if (pts) { pts.forEach((p) => blocks.push({ kind: 'text', text: '\u2022 ' + p })); blocks.push({ kind: 'muted', text: 'Summarised from the notes by Daybook Assistant, an AI helper. It can miss or misread things; every note is in Daybook.' }); }
     else {
       w.shown.forEach((n) => blocks.push({ kind: 'note', who: n.who, time: fmtDayShort(n.day) + ' ' + n.time, context: n.context, text: n.text }));
       if (w.more > 0) blocks.push({ kind: 'muted', text: `And ${plural(w.more, 'more note')} in Daybook.` });
@@ -4399,7 +4401,7 @@ function plural(n, word) { return n + ' ' + word + (n === 1 ? '' : 's'); }
 /* The four levels the report uses, on screen (pill and bar colours), in the
    PDF and in the text: red is worth checking, amber worth mentioning, teal is
    context, green is fine. */
-const LEVEL_WORD = { red: 'Check', amber: 'Mention', teal: 'Context', green: 'Fine' };
+const LEVEL_WORD = { red: 'Check', amber: 'Mention', teal: 'Context', green: 'Within limits' };
 const LEVEL_RANK = { red: 0, amber: 1, teal: 2, green: 3 };
 
 /* The period summarised in a few plain sentences, worst first. Only topics
@@ -4565,6 +4567,8 @@ function summaryRows(entries, from, to) {
     }).filter(Boolean);
     const macros = perDay.length > 0;
     const anyLogged = perDay.some((p) => p.logged);
+    /* "Estimated protein" unless every day's figure came from a food app (v116) */
+    const protWord = perDay.length && perDay.every((p) => p.logged) ? 'Protein' : 'Estimated protein';
     const est = macros ? `about ${Math.round(avg(perDay.map((p) => p.kcal)))} kcal and ${Math.round(avg(perDay.map((p) => p.prot)))} g protein a day${anyLogged ? (perDay.every((p) => p.logged) ? ' (from your food app)' : ' (from your food app where logged, estimated otherwise)') : ''}` : '';
     /* Against the dietitian's daily protein target, day by day, when one is set */
     const target = proteinTarget();
@@ -4574,8 +4578,8 @@ function summaryRows(entries, from, to) {
       underDays = perDay.filter((p) => p.prot < target).length;
       targetText = `; against the ${target} g protein target, ${underDays ? 'under on ' + underDays + ' of ' + plural(targetDays, 'day') : 'met on every one of ' + plural(targetDays, 'day')}`;
     }
-    if (noFood.length) push('amber', 'Eating', `Nothing eaten logged on ${plural(noFood.length, 'day')} of the ${loggedDays.length} logged (${listDays(noFood)})${est ? '; on the other days ' + est : ''}${targetText}.`, noFood.length === 1 && !underDays ? `nothing eaten logged on ${fmtDayShort(noFood[0])}` : null, `Nothing eaten logged on ${plural(noFood.length, 'day')}${underDays ? `; protein under target on ${underDays} of ${targetDays} days` : ''}`);
-    else if (target && macros) push(underDays > targetDays / 2 ? 'amber' : 'green', 'Eating', `Eating: something every logged day, ${est}${targetText}.`, null, underDays ? `Protein under target on ${underDays} of ${targetDays} days` : 'Eating every day, protein target met');
+    if (noFood.length) push('amber', 'Eating', `Nothing eaten logged on ${plural(noFood.length, 'day')} of the ${loggedDays.length} logged (${listDays(noFood)})${est ? '; on the other days ' + est : ''}${targetText}.`, noFood.length === 1 && !underDays ? `nothing eaten logged on ${fmtDayShort(noFood[0])}` : null, `Nothing eaten logged on ${plural(noFood.length, 'day')}${underDays ? `; ${protWord.toLowerCase()} under target on ${underDays} of ${targetDays} days` : ''}`);
+    else if (target && macros) push(underDays > targetDays / 2 ? 'amber' : 'green', 'Eating', `Eating: something every logged day, ${est}${targetText}.`, null, underDays ? `${protWord} under target on ${underDays} of ${targetDays} days` : `Eating every day, ${protWord.toLowerCase()} at the target`);
     else fine.push(`eating (something every logged day${est ? ', ' + est : ''})`);
   }
 
@@ -4647,7 +4651,7 @@ function summaryRows(entries, from, to) {
   if (fine.length) {
     const list = fine.length > 1 ? fine.slice(0, -1).join(', ') + ' and ' + fine[fine.length - 1] : fine[0];
     const names = fine.map((f) => f.split(' (')[0]);
-    push('green', 'Nothing of concern', list.charAt(0).toUpperCase() + list.slice(1) + ': nothing of concern.', null, 'Steady: ' + joinAnd(names));
+    push('green', 'Within limits', list.charAt(0).toUpperCase() + list.slice(1) + ": within the app's simple limits.", null, "Within the app's limits: " + joinAnd(names));
   }
 
   const prn = [], prnShort = [];
@@ -4824,7 +4828,7 @@ async function renderNotesReport() {
   const charts = reportCharts(entries, from, to);
   $('notes-record').hidden = $('notes-record-hint').hidden = state.readOnly || !canRecord();
   renderAppointmentList(from, to);
-  state.notesPdf = { filename: 'care-log-notes-' + to + '.pdf', title: 'Notes for the team', subtitle: `${fmtDayNum(from)} to ${fmtDayNum(to)}, printed ${fmtDayNum(today)}`, report, charts, from, to };
+  state.notesPdf = { filename: 'Daybook notes for the team ' + to + '.pdf', title: 'Notes for the team', subtitle: `${fmtDayNum(from)} to ${fmtDayNum(to)}, printed ${fmtDayNum(today)}`, report, charts, from, to };
   renderChartPicker(charts, report.glance);
 
   $('notes-questions').replaceChildren(...report.questions.map((q) => h('div', { class: 'card question' },
@@ -5415,8 +5419,8 @@ async function bridgeCall(path, payload, fallbackMessage) {
   return data;
 }
 async function bridgeExplain(payload) {
-  const data = await bridgeCall('/explain', payload, 'Could not reach Daybook\'s AI service. Try again in a moment, or use Send to my AI app.');
-  if (!data.text) throw new Error('Could not reach Daybook\'s AI service. Try again in a moment, or use Send to my AI app.');
+  const data = await bridgeCall('/explain', payload, 'Could not reach Daybook Assistant. Try again in a moment, or use Send to my AI app.');
+  if (!data.text) throw new Error('Could not reach Daybook Assistant. Try again in a moment, or use Send to my AI app.');
   return data;
 }
 /* A button that shows its own progress while the reply comes back (about 20 to 60 seconds) */
@@ -5526,7 +5530,7 @@ function openHospitalDose(edit, prefill) {
   const alsoList = h('input', { type: 'checkbox' });
   const body = h('div', null,
     explainAvailable() && !edit ? h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => readMedicinePhoto((data) => openHospitalDose(null, data), () => openHospitalDose(null, p)) }, 'Read it from a photo') : null,
-    explainAvailable() && !edit ? h('p', { class: 'hint', text: 'A photo of the bag, box or label. The details fill in below for you to check.' }) : null,
+    explainAvailable() && !edit ? h('p', { class: 'hint', text: "A photo of the bag, box or label. Daybook Assistant (AI from Anthropic, in the US) reads it, and the details fill in below. It can misread a label, so check the name and amount before saving." }) : null,
     field('What was given', name), field('Amount', amount),
     h('p', { class: 'fieldlabel', text: 'How it was given' }), routes,
     h('div', { class: 'field-row' }, field('Date', dateIn), field('Time', time)),
@@ -5678,7 +5682,7 @@ function openEditMed(m, prefill) {
 
   const body = h('div', null,
     isNew && explainAvailable() ? h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => readMedicinePhoto((data) => openEditMed(null, data), () => openEditMed(null, pf)) }, 'Read it from a photo') : null,
-    isNew && explainAvailable() ? h('p', { class: 'hint', text: 'A photo of the box or the pharmacy label. The details fill in below for you to check before adding.' }) : null,
+    isNew && explainAvailable() ? h('p', { class: 'hint', text: "A photo of the box or the pharmacy label. Daybook Assistant (AI from Anthropic, in the US) reads it, and the details fill in below. It can misread a label, so check the name and dose before adding." }) : null,
     field('Name', name), field('Dose', dose), field('How and when', how), field('What it is for', purpose),
     h('label', { class: 'check' }, hospital, h('span', { text: 'Given by the hospital (hospital monitored)' })),
     h('p', { class: 'hint', text: 'Tick this for a drip, an injection or anything the nurses give. Its doses are marked as given in hospital, and Daybook sends no reminders for it.' }),
@@ -7129,7 +7133,7 @@ $('doc-explain').addEventListener('click', async () => {
       } else if (!(d.text || '').trim()) throw new Error('This document has no text to explain.');
       return bridgeExplain({ kind: 'document', title: d.title, date: fmtDayNum(d.docDate || ''), text: d.kind === 'text' ? (d.text || '') : '', pages });
     });
-    const text = reply.text + (reply.cut ? '\n\n(The explanation was cut short. Tap Explain in Daybook again for another go.)' : '') + '\n\n' + NOT_MEDICAL_ADVICE;
+    const text = reply.text + (reply.cut ? '\n\n(The explanation was cut short. Tap Explain with Daybook Assistant again for another go.)' : '') + '\n\n' + NOT_MEDICAL_ADVICE;
     $('doc-explanation').value = text;
     if (state.demo) { d.explanation = text; renderDocsList(); }
     else await updateDoc(hdoc('documents', d.id), { explanation: text, updatedAt: serverTimestamp() });
@@ -8192,7 +8196,7 @@ function openProgrammeSheet() {
     h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => openItemSheet({ id: newItemId(), name: '', section: 'stretch', kind: 'seconds', amount: 30 }, true, () => openProgrammeSheet()) }, 'Add a stretch'),
 
     explainAvailable() ? h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => importPlanPhotos() }, 'Add from a photo or PDF of the plan') : null,
-    explainAvailable() ? h('p', { class: 'hint', text: 'Photograph the exercise sheet or physio plan, or choose the PDF or Word file if it was emailed, and Daybook reads it into the list for you to check. The file goes to Daybook\'s AI service and is not kept.' }) : null,
+    explainAvailable() ? h('p', { class: 'hint', text: 'Photograph the exercise sheet or physio plan, or choose the PDF or Word file if it was emailed, and Daybook Assistant (AI from Anthropic, in the US) reads it into the list for you to check. The bridge keeps nothing of the file. It can misread a sheet, so check each exercise before adding it.' }) : null,
     h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => openPhysioDetailsSheet() }, (plan.from || plan.notes) ? 'Physio plan details' : 'Add physio plan details'),
     h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: closeSheet }, 'Done')
   );
@@ -8274,7 +8278,7 @@ function openItemSheet(item, isNew, after) {
     field('Name', name), h('p', { class: 'hint', text: 'Where it belongs' }), sectionRow,
     h('p', { class: 'hint', text: 'How it is counted' }), kindRow, amountField, unitRow, setsField, poolField, timeField,
     h('p', { class: 'hint', text: 'Which days' }), dayRow,
-    matchHint, matchRow, h('p', { class: 'hint hint-small', text: 'When a walk, swim, run or ride recorded on the phone or watch reaches the target, it ticks itself. You can still untick it.' }),
+    matchHint, matchRow, h('p', { class: 'hint hint-small', text: 'When a walk, swim, run or ride recorded on the phone or watch reaches the target, it ticks itself, if the Apple Health feed is set up under Settings. You can still untick it.' }),
     field('Note (optional)', note),
     saveBtn,
     h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => { if (after) after(); else closeSheet(); } }, 'Cancel'));
