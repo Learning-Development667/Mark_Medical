@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=113">
+  <link rel="stylesheet" href="styles.css?v=114">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -466,6 +466,8 @@
           <div id="doc-pages" class="pages"></div>
           <pre id="doc-text" class="doctext" hidden></pre>
           <button id="doc-edit" class="btn btn-link" type="button">Edit title, date or category</button>
+          <p id="doc-auto-hint" class="hint" hidden>Kept up to date by Daybook from your answered questions. To take one off, reopen the question from its "..." menu on Today.</p>
+          <div id="doc-explain-block">
           <h3 class="section-title">Plain English explanation</h3>
           <button id="doc-explain" class="btn btn-primary btn-block" type="button" hidden>Explain in Daybook</button>
           <div class="btnrow">
@@ -477,6 +479,7 @@
           <textarea id="doc-explanation" rows="8" placeholder="Paste the explanation here, or use Paste summary above"></textarea>
           <p class="hint">This explanation is for context only. It is not medical advice. Always check changes with the medical team.</p>
           <button id="doc-save-explanation" class="btn btn-primary btn-block" type="button">Save explanation</button>
+          </div>
           <button id="doc-delete" class="btn btn-danger btn-block" type="button">Delete this document</button>
         </div>
       </section>
@@ -549,7 +552,7 @@
           <button id="notes-preview" class="btn btn-secondary" type="button">Preview</button>
           <button id="notes-pdf" class="btn btn-secondary" type="button">Save as PDF</button>
         </div>
-        <p class="hint">Short enough for the appointment: your questions first, then a summary of the period, letters, and the written notes with who wrote them. The detail for any one day stays in the app. <b>Suggest questions to ask</b> sends these notes to Daybook's own AI service and offers questions you can add to the list above with one tap. Send or copy does the same through your own AI app. Either way the notes go to an AI company's servers, so leave out anything you would not want sent. <b>Send to the team</b> puts these notes and the ticked charts into an email from your own Mail app, for a contact with an email address. Save as PDF makes a copy for the clinic without any of that.</p>
+        <p class="hint">Short enough for the appointment: your questions first, then highlights of the period, the charts, and the written notes with who wrote them. Answered questions are kept under Letters, results and paperwork. The detail for any one day stays in the app. <b>Suggest questions to ask</b> sends these notes to Daybook's own AI service and offers questions you can add to the list above with one tap. Send or copy does the same through your own AI app. Either way the notes go to an AI company's servers, so leave out anything you would not want sent. <b>Send to the team</b> puts these notes and the ticked charts into an email from your own Mail app, for a contact with an email address. Save as PDF makes a copy for the clinic without any of that.</p>
         <h3 class="section-title">Questions for the team</h3>
         <button id="notes-record" class="recbtn recbtn-appt" type="button"><svg class="icon" aria-hidden="true"><use href="#i-mic"/></svg><span>Record the appointment</span></button>
         <p id="notes-record-hint" class="hint">One recording for the whole appointment. Tap a question's number as they start answering it, so each answer is easy to find later.</p>
@@ -558,8 +561,6 @@
         <h3 class="section-title">Summary</h3>
         <p class="hint">Simple checks on the readings by the app, worst first. Not medical advice. Anything that worries you, call the team.</p>
         <div id="notes-flags" class="flags"></div>
-        <h3 class="section-title">Letters and documents</h3>
-        <div id="notes-docs" class="cards"></div>
         <h3 class="section-title">Notes</h3>
         <div id="notes-days"></div>
         <p id="notes-empty" class="empty" data-art="note" hidden>No notes, moods or readings in this period yet.</p>
@@ -816,6 +817,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=113"></script>
+  <script type="module" src="scripts.js?v=114"></script>
 </body>
 </html>
