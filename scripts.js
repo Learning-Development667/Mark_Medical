@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '111';
+const APP_VERSION = '112';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PDF_TEAL = '#1E5F74';
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
@@ -4121,6 +4121,81 @@ $('notes-copy').addEventListener('click', async () => {
   toast('Copied. Paste it into your AI app.');
 });
 
+/* Send to the team (since v112): the notes PDF, with the charts ticked, handed to the phone's own
+   Mail app (the share sheet) with a subject and a short covering message, for a contact from Who to
+   contact who has an email address. Nothing goes through Daybook: the email is sent from the
+   person's own account, so the hospital knows the sender and replies come straight back. The share
+   sheet cannot fill in the recipient, so the address is copied for pasting into To. Where files
+   cannot be shared (most desktops) the PDF is downloaded and a new email opens addressed and
+   filled in, to attach it to. */
+const TEAM_WORDS = /\b(ward|unit|team|clinic|department|hospice|surgery|centre|center|practice|office|desk|line)\b/i;
+function greetingFor(c) { return TEAM_WORDS.test(c.label) ? 'Hello,' : 'Hello ' + String(c.label).split(/\s+/)[0] + ','; }
+function sendableContacts() { return ((state.profile && state.profile.calls) || []).filter((c) => c.email && EMAIL_RE.test(c.email)); }
+function openSendSheet() {
+  const n = state.notesPdf;
+  if (!n) return;
+  loadScript(CDN.jspdf).catch(() => {}); // warmed now so the PDF is ready by the time Send is tapped
+  const body = h('div');
+  const range = `${fmtDayNum(n.from)} to ${fmtDayNum(n.to)}`;
+  const pick = () => {
+    const contacts = sendableContacts();
+    body.replaceChildren(
+      h('p', { class: 'wiz-q', text: 'Who to?' }),
+      contacts.length
+        ? h('div', { class: 'picklist' }, ...contacts.map((c) => h('button', { class: 'pickrow', type: 'button', onclick: () => compose(c) },
+            h('span', { class: 'pickrow-main' }, h('span', { class: 'pickrow-title', text: c.label }), h('span', { class: 'pickrow-sub', text: [c.role, c.email].filter(Boolean).join(' · ') })),
+            icon('chevron'))))
+        : h('p', { class: 'empty', 'data-art': 'call', text: 'No contacts with an email address yet. Add your nurse or the team under Who to contact.' }),
+      h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => { closeSheet(); setTimeout(() => $('calls-edit').click(), 50); } }, contacts.length ? 'Add or change contacts' : 'Add a contact'),
+      h('button', { class: 'btn btn-link btn-block', type: 'button', onclick: closeSheet }, 'Cancel'));
+  };
+  const compose = (c) => {
+    const pdf = currentNotesPdf();
+    const chartCount = pdf.blocks.filter((b) => b.kind === 'chart').length;
+    const fname = `Daybook notes for the team ${n.to}.pdf`;
+    let blob = null;
+    (async () => { try { await loadScript(CDN.jspdf); blob = buildPdfBlob(pdf.title, pdf.subtitle, pdf.blocks); } catch (e) { console.error(e); } })();
+    const subject = h('input', { type: 'text', id: 'send-subject', value: `Notes before our appointment, ${range}` });
+    const note = h('textarea', { id: 'send-note', rows: '6' });
+    note.value = `${greetingFor(c)}\n\nAhead of our next appointment, here are my notes from Daybook for ${range}: my questions first, then a summary of the period${chartCount ? ' and charts of the readings' : ''}. The PDF is attached.\n\nThank you,\n${state.name || ''}`.trim();
+    const send = h('button', { class: 'btn btn-primary btn-block', type: 'button', id: 'send-go' }, 'Open in my Mail app');
+    send.addEventListener('click', () => {
+      if (!blob) { toast('Still making the PDF. Try again in a moment.'); return; }
+      const file = new File([blob], fname, { type: 'application/pdf' });
+      copyText(c.email); // copied inside the tap, before the share sheet, for pasting into To
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        navigator.share({ files: [file], title: subject.value.trim(), text: note.value.trim() })
+          .then(() => { closeSheet(); toast(c.email + ' is copied. Paste it into To if your Mail app has not.'); })
+          .catch((e) => { if (!e || e.name !== 'AbortError') toast('Could not open the share sheet'); });
+        return;
+      }
+      const url = URL.createObjectURL(blob);
+      const dl = h('a', { href: url, download: fname }); document.body.append(dl); dl.click(); dl.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      const mail = h('a', { href: 'mailto:' + encodeURIComponent(c.email) + '?subject=' + encodeURIComponent(subject.value.trim()) + '&body=' + encodeURIComponent(note.value.trim()) });
+      document.body.append(mail); mail.click(); mail.remove();
+      closeSheet();
+      toast('The PDF is in your Downloads as "' + fname + '". Attach it to the email that has opened.');
+    });
+    body.replaceChildren(
+      h('div', { class: 'sendto' },
+        h('span', { class: 'sendto-label', text: 'To' }),
+        h('span', { class: 'sendto-name', text: c.label + (c.role ? ', ' + c.role : '') }),
+        h('span', { class: 'sendto-email', text: c.email }),
+        h('button', { class: 'btn-inline sendto-copy', type: 'button', onclick: () => { copyText(c.email); toast('Address copied'); } }, 'Copy address')),
+      field('Subject', subject),
+      field('Message', note),
+      h('p', { class: 'sendpdf' }, h('b', { text: `Attached: Notes for the team, ${range}, ${chartCount ? plural(chartCount, 'chart') : 'no charts'}.` }), ' Change the charts on the Notes screen before sending.'),
+      h('p', { class: 'hint', text: 'Your Mail app opens with the PDF and this message, sent from your own email address. The address is copied as well, to paste into To if it is not filled in.' }),
+      send,
+      h('button', { class: 'btn btn-link btn-block', type: 'button', onclick: pick }, 'Choose someone else'));
+    subject.focus();
+  };
+  pick();
+  openSheet('Send to the team', body);
+}
+$('notes-send').addEventListener('click', openSendSheet);
+
 $('notes-pdf').addEventListener('click', () => { const n = currentNotesPdf(); if (n) savePdf(n.filename, n.title, n.subtitle, n.blocks); });
 $('notes-preview').addEventListener('click', () => { const n = currentNotesPdf(); if (n) previewPdf(n.title, n.subtitle, n.blocks); });
 
@@ -4673,7 +4748,7 @@ async function renderNotesReport() {
   state.notesText = report.text;
   $('notes-explain').hidden = !explainAvailable();
   const charts = reportCharts(entries, from, to);
-  state.notesPdf = { filename: 'care-log-notes-' + to + '.pdf', title: 'Notes for the team', subtitle: `${fmtDayNum(from)} to ${fmtDayNum(to)}, printed ${fmtDayNum(today)}`, report, charts };
+  state.notesPdf = { filename: 'care-log-notes-' + to + '.pdf', title: 'Notes for the team', subtitle: `${fmtDayNum(from)} to ${fmtDayNum(to)}, printed ${fmtDayNum(today)}`, report, charts, from, to };
   renderChartPicker(charts, report.glance);
 
   $('notes-questions').replaceChildren(...report.questions.map((q) => h('div', { class: 'card question' },
