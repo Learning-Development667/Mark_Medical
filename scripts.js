@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '126';
+const APP_VERSION = '127';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
 const TEXT_LIMIT_BYTES = 800 * 1024;
@@ -2494,6 +2494,37 @@ function openAdd(type, editEntry) {
       field('Oxygen (%)', o2));
     const weightBlock = h('div', null, ...wIn.nodes,
       lastW ? h('p', { class: 'hint hint-small', text: 'Last: ' + fmtKg(lastW.value) + ' (' + fmtStLb(lastW.value) + '), ' + whenLabel(lastW) + '.' }) : '');
+    /* Weight once a day (v127): when the chosen day already has a weight, typed or from Apple Health, the box gives way to
+       a line saying so, never a number inside the box (v93: a number there read as entered and was never saved).
+       Change it brings the box back, and the new weight replaces that day's rather than adding a second. */
+    let replaceW = null;
+    const wDoneText = h('p', { class: 'weightdone-text' });
+    const replaceHint = h('p', { class: 'hint hint-small', hidden: true });
+    const weightDone = h('div', { class: 'weightdone', role: 'group', 'aria-label': 'Weight' },
+      h('span', { class: 'fieldlabel', text: 'Weight' }), wDoneText,
+      h('button', { class: 'btn btn-secondary', type: 'button', onclick: () => {
+        replaceW = weightDone._entry;
+        weightDone.hidden = true; weightBlock.hidden = false;
+        replaceHint.hidden = false;
+        replaceHint.textContent = 'Saving a weight here replaces ' + fmtKg(replaceW.value) + ' for ' + (replaceW.day === todayStr() ? 'today' : fmtDayShort(replaceW.day)) + '.';
+        wIn.first.focus();
+      } }, 'Change it'));
+    weightBlock.append(replaceHint);
+    const syncWeightDay = () => {
+      if (editing) { weightDone.hidden = true; return; }
+      const d = dateIn.value || day;
+      const w = weightOnDay(d);
+      replaceW = null; replaceHint.hidden = true;
+      weightDone._entry = w;
+      if (w) {
+        const t = entryDate(w);
+        wDoneText.textContent = (d === todayStr() ? 'Today: ' : fmtDayShort(d) + ': ') + fmtKg(w.value) + ' (' + fmtStLb(w.value) + ')' + (Number(w.bmi) > 0 ? ', BMI ' + Number(w.bmi).toFixed(1) : '') +
+          (t ? ' at ' + fmtTime(t) : '') + (w.addedBy ? ', by ' + w.addedBy : '') + '. Done for the day.';
+      }
+      weightDone.hidden = !w;
+      weightBlock.hidden = !!w;
+    };
+    dateIn.addEventListener('change', syncWeightDay);
     if (editing === 'temp') { temp.value = Number(editEntry.value).toFixed(1); tUpdate(); }
     if (editing === 'vitals') {
       if (editEntry.heartRate) hr.value = String(editEntry.heartRate);
@@ -2504,9 +2535,10 @@ function openAdd(type, editEntry) {
     tempBlock.hidden = editing === 'vitals';
     vitalsBlock.hidden = editing === 'temp';
     weightBlock.hidden = !!editing;
+    syncWeightDay();
     body.append(
       h('p', { class: 'hint', text: editing ? 'Change what was saved, then Save changes. To remove the reading, use Delete in the entry menu instead.' : 'Fill in whichever readings you have. At least one is needed to save.' }),
-      tempBlock, vitalsBlock, weightBlock,
+      tempBlock, vitalsBlock, weightDone, weightBlock,
       h('div', { class: 'field-row' }, field('Date', dateIn), field('Time', time)),
       field('Note', note)
     );
@@ -2552,7 +2584,7 @@ function openAdd(type, editEntry) {
       if (val('systolic') != null) { data.systolic = Math.round(val('systolic')); data.diastolic = Math.round(val('diastolic')); has = true; }
       if (val('oxygen') != null) { data.oxygen = Math.round(val('oxygen')); has = true; }
       if (has) out.push(data);
-      if (val('weight') != null) out.push({ type: 'weight', value: Math.round(val('weight') * 10) / 10, note: noteV });
+      if (val('weight') != null) out.push({ type: 'weight', value: Math.round(val('weight') * 10) / 10, note: noteV, ...(replaceW ? { _replace: replaceW } : {}) });
       return out.length ? out : null;
     };
   }
@@ -2575,16 +2607,40 @@ function openAdd(type, editEntry) {
       return;
     }
     const ids = [];
-    for (const d of list) { d.at = at; ids.push(await addEntry(d)); }
+    const restore = [];
+    for (const d of list) {
+      d.at = at;
+      if (d._replace) {
+        /* the day's weight changed in place (v127), with Undo putting the old one back */
+        const old = d._replace; delete d._replace;
+        const was = { value: old.value, at: entryDate(old) || at, addedBy: old.addedBy || state.name }; // copied first: the update changes the entry itself
+        try {
+          await updateEntry(old.id, { value: d.value, at, addedBy: state.name, ...(d.note ? { note: d.note } : {}) });
+          restore.push(() => updateEntry(old.id, was));
+        } catch (e) { console.error(e); toast('Could not save the weight'); }
+        continue;
+      }
+      ids.push(await addEntry(d));
+    }
     const whenSaved = saveDay === todayStr() ? '' : ' for ' + fmtDayShort(saveDay);
     const what = type === 'vitals' ? ': ' + savedVitalsText(list) : '';
-    toast(titles[type] + ' saved' + whenSaved + what, { label: 'Undo', onClick: () => ids.forEach((id) => deleteEntry(id)) });
+    toast(titles[type] + ' saved' + whenSaved + what, { label: 'Undo', onClick: () => { ids.forEach((id) => deleteEntry(id)); restore.forEach((f) => f()); } });
     if (!$('view-food').hidden) renderFoodDiary();
     if (type === 'food') promptMealMeds(at);
   });
   body.append(save, h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Cancel'));
   if (editId) save.textContent = 'Save changes';
   openSheet(editId && type === 'vitals' ? (editEntry.type === 'temp' ? 'Edit temperature' : 'Edit vitals') : titles[type], body);
+}
+
+/* The weight already logged for a day (the latest, typed or from Apple Health), or null: the Vitals sheet asks once a day */
+function weightOnDay(d) {
+  const seen = new Set();
+  const list = [...(state.recentEntries || []), ...(state.dayEntries || [])].filter((e) => {
+    if (e.type !== 'weight' || e.day !== d || !(Number(e.value) > 0) || seen.has(e.id)) return false;
+    seen.add(e.id); return true;
+  });
+  return list.sort((a, b) => (entryDate(b) || 0) - (entryDate(a) || 0))[0] || null;
 }
 
 /* "temperature 36.8 °C, oxygen 95%, weight 80.6 kg": every reading a Vitals save wrote, so a missing one shows at once */

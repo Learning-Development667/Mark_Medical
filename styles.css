@@ -1499,3 +1499,8 @@ body.is-readonly .workout .btn { display: none; }
 h1, h2, h3 { font-weight: 600; }
 .section-title { margin: var(--s-6) 0 var(--s-3); }
 .chart-card .section-title { margin: 0; }
+
+/* Weight once a day in the Vitals sheet (v127): the day's weight as a sunken line with Change it */
+.weightdone { background: var(--surface-sunken); border-radius: var(--r-sm); padding: var(--s-3) var(--s-4); margin: var(--s-3) 0; display: grid; gap: var(--s-2); justify-items: start; }
+.weightdone .fieldlabel { margin: 0; }
+.weightdone-text { margin: 0; color: var(--text-primary); }
