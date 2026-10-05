@@ -17,7 +17,7 @@ Decisions already made, so they are not reopened:
 Everything the app needs to do before the look changes, so nothing is restyled twice.
 1. **Siri Shortcuts.** Claude: links that open Daybook with a sheet already filled in (`?add=temp&value=37.8` and the like), then a Shortcut per job ("Log my temperature", "Log a dose", "Question for the team") with the steps to add each to Siri. Free, no Apple Developer Programme needed. Done when "Hey Siri, log my temperature" opens Daybook with the number in the box on Mark's phone.
 2. **Try a real physio sheet.** Mark: photograph a real plan, or choose an emailed PDF, through "Add from a photo or PDF of the plan", and say what it missed. Claude: tune the reader. Done when a real plan comes through with nothing important missed.
-3. **Weight from Apple Health.** Mark: tick "Weight and Body Mass" in the Care Log automation in Health Auto Export. Claude: the bridge files it as `entries/{day}_weight` (`addedBy: "Apple Health"`). Done when a morning weigh-in shows on Today without being typed.
+3. **Weight from Apple Health.** Built in v126: Mark ticked Weight and BMI in Health Auto Export (5 October); the bridge files each day as `entries/{day}_weight` (`addedBy: "Apple Health"`, the day's last reading, with its BMI), shown on Today, the Latest tile and the weight chart and table. Done when a morning weigh-in shows on Today without being typed.
 4. **Turn saved recordings into text.** Claude: transcribe on the bridge (Cloudflare Workers AI first, the Anthropic credit if that is not good enough). Done when a recorded answer gains a transcript within a minute.
 5. **Finish the households move.** Mark, Actions tab: "Households, move the data in" with verify, then cleanup. Claude: take the TRANSITION block out of the rules and publish them. Mark checks on the phone: steps and sleep still arriving, sign-up switched on in Firebase, one test invite made and removed. Done when all of that passes.
 6. **Move to app.mymedicaldaybook.co.uk.** Mark: in Cloudflare a CNAME `app` to `learning-development667.github.io` (DNS only) and email routing for support@; the new address in Firebase's authorised domains. Claude: push the move (built and waiting on the `domain-move` branch), set the contact address, then the reinstall steps for both phones. Done when both phones run from the new address with reminders working.
@@ -77,6 +77,8 @@ One at a time, each a few days with its sources checked, on the profile mechanis
 - An "AI used this month: about 12p" line under Settings, from the bridge's own token tally. Offered 4 October; build if wanted.
 
 ## Done
+- v126 Weight and BMI arrive from Apple Health through the bridge (action 3 is waiting only for the first real weigh-in to show).
+- v125 Notes: the stretch fix confirmed on Mark's iPhone.
 - v124 Ticking a gentle exercise and its Timer work on an iPhone again (the swipe-to-remove reacted to every touch). The At home | In hospital switch on the Meds tab went; hospital medicines always show.
 - v123 Medicine cards fit a small phone; the Given in hospital pill is easier to read.
 - v122 The rebrand: the whole app in the report look Mark chose (Direction D on the brand board): a warm white page, Fraunces headings and Inter text, the readings as soft coloured panels with a stripe (teal, green steady, amber worth a mention, red to raise), the quick-add buttons in their own colours. Choosing the look and restyling the app are done; the icon is next in Stage 2.

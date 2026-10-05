@@ -1283,6 +1283,7 @@ body.is-readonly .workout .btn { display: none; }
 #chemo-cycle-section .section-title, #chemo-docs-section .section-title { margin-top: var(--s-6); } /* first children of their own wrappers, like the Meds documents section */
 #chemo-cycle-section .status { margin-top: var(--s-2); }
 #cycle-tile .tile-sub { white-space: normal; overflow: visible; text-overflow: clip; } /* "after the session on 25 Sep, next in 12 days" may take two lines */
+#vt-weight-sub { white-space: normal; overflow: visible; text-overflow: clip; } /* "today 07:30, BMI 24.8" (v126) may take two lines on a small phone */
 #carer-card { margin-top: var(--s-3); }
 /* Six measure chips in two rows of three: a grid, not a wrapped pill, so the track is a rounded
    box the chips actually fit in (v79) */

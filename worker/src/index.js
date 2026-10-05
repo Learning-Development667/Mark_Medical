@@ -101,10 +101,12 @@ async function handleHealth(request, env) {
   await fs.set(hp(hid, 'bridge/last'), { receivedAt: nowTs(), sample: strVal(JSON.stringify(body).slice(0, 20000)) });
 
   const metrics = (body.data && Array.isArray(body.data.metrics)) ? body.data.metrics : [];
-  const result = { steps: 0, sleep: 0, nutrition: 0, workouts: 0, skipped: [] };
+  const result = { steps: 0, sleep: 0, nutrition: 0, workouts: 0, weight: 0, skipped: [] };
   /* Food totals per day from whatever app writes them into Apple Health (MyFitnessPal, Nutracheck, Apple's own):
      gathered across the four metrics first, then written once per day */
   const foodDays = {};
+  /* Weight and BMI per day: the day's last reading of each, written once per day (see after the loop) */
+  const bodyDays = {};
 
   for (const m of metrics) {
     const name = String(m.name || '').toLowerCase();
@@ -154,6 +156,21 @@ async function handleHealth(request, env) {
         await fs.merge(hp(hid, 'entries/' + day + '_sleep'), fields);
         result.sleep++;
       }
+    } else if (WEIGHT_METRICS.includes(name) || BMI_METRICS.includes(name)) {
+      /* Weight (kg whatever unit Health used: lb and st converted) and BMI: the latest reading of each day */
+      const isBmi = BMI_METRICS.includes(name);
+      const units = String(m.units || 'kg').toLowerCase().trim();
+      const perUnit = isBmi ? 1 : /^(lb|lbs|pounds?)$/.test(units) ? 0.45359237 : /^(st|stone)$/.test(units) ? 6.35029318 : /^g$/.test(units) ? 0.001 : 1;
+      for (const r of rows) {
+        const day = dayOf(r.date);
+        const qty = Number(r.qty) * perUnit;
+        if (!day || !isFinite(qty) || qty <= 0) continue;
+        if (isBmi ? (qty < 10 || qty > 80) : (qty < 20 || qty > 300)) { result.skipped.push(name + ' ' + day + ' (out of range)'); continue; }
+        const b = bodyDays[day] = bodyDays[day] || {};
+        const at = toIso(r.date) || day + 'T08:00:00Z';
+        const k = isBmi ? 'bmi' : 'kg';
+        if (!b[k] || Date.parse(at) >= Date.parse(b[k].at)) b[k] = { v: qty, at };
+      }
     } else if (NUTRITION[name]) {
       const key = NUTRITION[name];
       const units = String(m.units || '').toLowerCase();
@@ -198,6 +215,20 @@ async function handleHealth(request, env) {
     for (const k of ['kcal', 'prot', 'carb', 'fat']) if (totals[k] > 0) fields[k] = doubleVal(Math.round(totals[k] * 10) / 10);
     await fs.merge(hp(hid, 'nutrition/' + day), fields);
     result.nutrition++;
+  }
+  /* Weight entries from Apple Health: one per day, entries/{day}_weight (deterministic, so re-sends update it),
+     a type "weight" entry like one typed in, with the day's BMI on it when Health has one. A BMI on a day with
+     no weight in this send is added to that day's existing entry, or left out until a weight arrives. */
+  for (const [day, b] of Object.entries(bodyDays)) {
+    const path = hp(hid, 'entries/' + day + '_weight');
+    const existing = await fs.get(path);
+    if (!b.kg && !existing) { result.skipped.push('bmi ' + day + ' (no weight that day)'); continue; }
+    const fields = { day: strVal(day), type: strVal('weight'), addedBy: strVal('Apple Health'), source: strVal('health-auto-export'), updatedAt: nowTs() };
+    if (b.kg) { fields.value = doubleVal(Math.round(b.kg.v * 10) / 10); fields.at = tsVal(b.kg.at); }
+    if (b.bmi) fields.bmi = doubleVal(Math.round(b.bmi.v * 10) / 10);
+    if (!existing) fields.createdAt = nowTs();
+    await fs.merge(path, fields);
+    result.weight++;
   }
   await fs.merge(hp(hid, 'bridge/last'), { result: strVal(JSON.stringify(result)) });
   return json({ ok: true, ...result });
@@ -486,6 +517,9 @@ function distanceKm(d) {
   return Math.round(qty * perUnit * 1000) / 1000;
 }
 
+/* Health Auto Export metric names for body weight and body mass index (lower-cased) */
+const WEIGHT_METRICS = ['weight_body_mass', 'body_mass', 'weight'];
+const BMI_METRICS = ['body_mass_index', 'bmi'];
 const NUTRITION = { dietary_energy: 'kcal', active_energy_dietary: 'kcal', protein: 'prot', carbohydrates: 'carb', total_fat: 'fat' };
 const tsVal = (iso) => ({ timestampValue: new Date(iso).toISOString() });
 const nowTs = () => ({ timestampValue: new Date().toISOString() });

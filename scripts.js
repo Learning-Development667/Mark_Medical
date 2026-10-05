@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '125';
+const APP_VERSION = '126';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
 const TEXT_LIMIT_BYTES = 800 * 1024;
@@ -1737,6 +1737,7 @@ function entrySub(e) {
   if (e.type === 'question') bits.push(e.answered ? 'Question for the team, answered' : 'Question for the team');
   if (e.type === 'question' && e.answerText) bits.push('Answer: ' + excerpt(e.answerText, 90));
   if (e.type === 'question' && e.recordings) bits.push(plural(e.recordings, 'recording'));
+  if (e.type === 'weight' && Number(e.bmi) > 0) bits.push('BMI ' + Number(e.bmi).toFixed(1));
   if (e.type === 'weight' && e.note) bits.push(e.note);
   if (e.type === 'vitals' && e.note) bits.push(e.note);
   if (e.type === 'exercise') { const ex = exById(e.exId); bits.push('Exercise' + (ex ? ', ' + ex.target : '')); }
@@ -6215,7 +6216,7 @@ function renderChartTables(entries, from) {
     heart: { rows: inRange.filter((e) => e.type === 'vitals' && e.heartRate), head: 'Heart rate', cell: (e) => [Math.round(Number(e.heartRate)) + ' bpm', sub(e.note)] },
     bp: { rows: inRange.filter((e) => e.type === 'vitals' && e.systolic && e.diastolic), head: 'Blood pressure', cell: (e) => [Math.round(Number(e.systolic)) + '/' + Math.round(Number(e.diastolic)) + ' mmHg', sub(e.note)] },
     oxygen: { rows: inRange.filter((e) => e.type === 'vitals' && e.oxygen), head: 'Oxygen', cell: (e) => [Math.round(Number(e.oxygen)) + '%', sub(e.note)] },
-    weight: { rows: inRange.filter((e) => e.type === 'weight' && Number(e.value) > 0), head: 'Weight', cell: (e) => [weightPref() === 'stlb' ? fmtStLb(e.value) : fmtKg(e.value), sub(weightPref() === 'stlb' ? [fmtKg(e.value), e.note].filter(Boolean).join(' · ') : e.note)] },
+    weight: { rows: inRange.filter((e) => e.type === 'weight' && Number(e.value) > 0), head: 'Weight', cell: (e) => [weightPref() === 'stlb' ? fmtStLb(e.value) : fmtKg(e.value), sub([weightPref() === 'stlb' ? fmtKg(e.value) : '', Number(e.bmi) > 0 ? 'BMI ' + Number(e.bmi).toFixed(1) : '', e.note].filter(Boolean).join(' · '))] },
     sleep: { rows: inRange.filter((e) => e.type === 'sleep'), head: 'Asleep', timeHead: 'Bed to up',
       time: (e) => e.bedAt && e.wokeAt ? e.bedAt + ' to ' + e.wokeAt : '--',
       cell: (e) => { const st = ['deep', 'core', 'rem'].filter((k) => Number(e[k]) > 0).map((k) => (k === 'rem' ? 'REM' : k[0].toUpperCase() + k.slice(1)) + ' ' + fmtHm(Number(e[k]))); if (Number(e.awake) > 0) st.push('awake ' + fmtHm(Number(e.awake))); return [fmtHm(Number(e.value) || 0), sub(st.join(' · '))]; } },
@@ -6295,7 +6296,7 @@ function renderVitalsLatest(entries) {
   const w = latest((e) => e.type === 'weight');
   if (w) {
     countTo($('vt-weight-value'), Number(w.value), { decimals: 1, unit: 'kg' });
-    $('vt-weight-sub').textContent = whenLabel(w);
+    $('vt-weight-sub').textContent = whenLabel(w) + (Number(w.bmi) > 0 ? ', BMI ' + Number(w.bmi).toFixed(1) : '');
   }
   else { clearCount($('vt-weight-value'), '--'); $('vt-weight-sub').textContent = 'none yet'; }
 }
