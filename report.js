@@ -20,7 +20,7 @@ const CSS = `
   --green:#3F8F6B; --green-soft:#E1F1E9;
 }
 *{box-sizing:border-box;margin:0;padding:0}
-html{background:#9AA7B2}
+html{background:#9AA7B2;-webkit-text-size-adjust:100%;text-size-adjust:100%}
 body{font-family:Inter,"Segoe UI",Arial,sans-serif;color:var(--ink);font-size:8.6pt;line-height:1.38;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 h1,h2,h3{font-family:Fraunces,Georgia,serif;font-weight:600;letter-spacing:-.01em}
 @page{size:A4;margin:0}
@@ -340,7 +340,8 @@ body.food .tile .v em{margin-left:.8mm}
 .nlines .lines{flex:1;margin-top:1.4mm;position:relative;overflow:hidden}
 .nlines .lines i{position:absolute;left:0;right:0;height:0;border-top:1px solid rgba(30,127,134,.35)}
 body.food .c .stat.amber{background:var(--amber-soft);color:#8A5E10}
-.sw.hatch{background-color:#1E7F86;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'%3E%3Cpath d='M-1 1l2-2M0 4l4-4M3 5l2-2' stroke='%23fff' stroke-width='1.2'/%3E%3C/svg%3E")}
+.sw.hatch{background:#1E7F86;overflow:hidden;vertical-align:-.5mm}
+.c.key svg.sw{display:inline-block;width:3mm;height:3mm;margin:0 1.4mm 0 0}
 .pills{display:flex;gap:1.4mm;flex-wrap:wrap;margin-bottom:1.6mm}
 .pills span{font-size:6.8pt;font-weight:600;background:#fff;border-radius:10mm;padding:.3mm 2mm}
 body.food .week{padding:2.8mm 3.4mm}
@@ -352,7 +353,7 @@ body.food .week .theme{font-size:8.2pt}
 .chip.met{background:var(--green-soft)}
 .chip.met b{color:var(--green)}
 .chip.near{background:var(--teal-soft)}
-.chip.na{background-color:#fff;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='5' height='5'%3E%3Cpath d='M-1 1l2-2M0 5l5-5M4 6l2-2' stroke='%23D5DEE5' stroke-width='1'/%3E%3C/svg%3E")}
+.chip.na{background:var(--mist);border:1px solid var(--line)}
 .chip.part{background:#fff;border:1px dashed var(--slate)}
 .chip.none{background:transparent;border:1px solid var(--line)}
 body.food .week ul{gap:2mm}
@@ -365,12 +366,24 @@ body.food .often li{display:block;font-size:7.8pt;line-height:1.35;padding-left:
 body.food .foot{gap:6mm}
 `;
 
+/* Hatching drawn as plain white lines across a bar. Never an SVG <pattern> or an SVG picture as a CSS
+   background: iPhone Safari marks a canvas drawn with those as unsafe, and the PDF then fails with
+   "The operation is insecure" (Mark's Food diary, v121). */
+function hatchLines(x, y, w, h) {
+  let s = '';
+  for (let k = -h; k < w; k += 3) {
+    const t0 = Math.max(0, -k / h), t1 = Math.min(1, (w - k) / h);
+    if (t1 <= t0) continue;
+    s += `<line x1="${(x + k + h * t0).toFixed(2)}" y1="${(y + h - h * t0).toFixed(2)}" x2="${(x + k + h * t1).toFixed(2)}" y2="${(y + h - h * t1).toFixed(2)}" stroke="#fff" stroke-width="1.1" opacity=".85"/>`;
+  }
+  return s;
+}
 /* Bars, one per day, from a config: max, ticks, get, colour, hatch, values above, a dashed line, a note */
 export function foodBars(o, D, uid) {
   const W = o.W, H = o.H, L = o.L || 24, R = 6, T = o.T || 8, B = 13, pw = W - L - R, ph = H - T - B, n = D.length;
   const x = (i) => L + (i + 0.5) * pw / n, bw = pw / n * 0.64;
   const y = (v) => T + ph - (Math.min(v, o.max) / o.max) * ph;
-  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(o.label)}"><defs><pattern id="hatch-${uid}" width="3" height="3" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="1.2" height="3" fill="#fff" opacity=".8"/></pattern></defs>`;
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(o.label)}">`;
   o.ticks.forEach((t) => {
     s += `<line x1="${L}" x2="${W - R}" y1="${y(t).toFixed(1)}" y2="${y(t).toFixed(1)}" stroke="${C.line}" stroke-width=".6"/>`;
     s += `<text x="${L - 3}" y="${(y(t) + 2.4).toFixed(1)}" font-size="6.4" fill="${C.slate}" text-anchor="end">${esc(o.tickFmt ? o.tickFmt(t) : t)}</text>`;
@@ -385,7 +398,7 @@ export function foodBars(o, D, uid) {
     }
     const h = Math.max(0, y(0) - y(v));
     s += `<rect x="${(x(i) - bw / 2).toFixed(1)}" y="${y(v).toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="1.2" fill="${o.color(v, d, i)}"/>`;
-    if (o.hatch && o.hatch(d)) s += `<rect x="${(x(i) - bw / 2).toFixed(1)}" y="${y(v).toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="1.2" fill="url(#hatch-${uid})"/>`;
+    if (o.hatch && o.hatch(d)) s += hatchLines(x(i) - bw / 2, y(v), bw, h);
     if (o.values) s += `<text x="${x(i).toFixed(1)}" y="${(y(v) - 2.2).toFixed(1)}" font-size="6.2" fill="${C.ink}" stroke="#fff" stroke-width="2.4" paint-order="stroke" text-anchor="middle" font-weight="600">${esc(o.fmt ? o.fmt(v) : v)}</text>`;
   });
   if (o.line) {
@@ -406,14 +419,14 @@ function stackedMacros(D, uid) {
   const top = Math.max(200, ...D.map((d) => (d.p == null ? 0 : d.p + d.c + d.f)));
   const max = Math.ceil(top / 200) * 200;
   const x = (i) => L + (i + 0.5) * pw / n, bw = pw / n * 0.64, y = (v) => T + ph - (v / max) * ph;
-  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Protein, carbs and fat each day"><defs><pattern id="hatch-${uid}" width="3" height="3" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="1.2" height="3" fill="#fff" opacity=".8"/></pattern></defs>`;
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Protein, carbs and fat each day">`;
   [0, max / 2, max].forEach((t) => { s += `<line x1="${L}" x2="${W - R}" y1="${y(t).toFixed(1)}" y2="${y(t).toFixed(1)}" stroke="${C.line}" stroke-width=".6"/><text x="${L - 3}" y="${(y(t) + 2.4).toFixed(1)}" font-size="6.4" fill="${C.slate}" text-anchor="end">${t}</text>`; });
   if (!D.some((d) => d.p != null)) s += `<text x="${L + pw / 2}" y="${T + ph / 2}" font-size="7" fill="${C.slate}" text-anchor="middle">No food totals in this period</text>`;
   D.forEach((d, i) => {
     if (d.p == null) { if (d.leftOut) s += `<text x="${x(i).toFixed(1)}" y="${y(max * 0.08).toFixed(1)}" font-size="9" fill="${C.slate}" text-anchor="middle">?</text>`; return; }
     let base = 0;
     [[d.p, C.teal], [d.c, '#8FA6B8'], [d.f, C.amber]].forEach(([v, c]) => { s += `<rect x="${(x(i) - bw / 2).toFixed(1)}" y="${y(base + v).toFixed(1)}" width="${bw.toFixed(1)}" height="${(y(base) - y(base + v)).toFixed(1)}" fill="${c}"/>`; base += v; });
-    if (d.u > 0 || d.partial) s += `<rect x="${(x(i) - bw / 2).toFixed(1)}" y="${y(base).toFixed(1)}" width="${bw.toFixed(1)}" height="${(y(0) - y(base)).toFixed(1)}" fill="url(#hatch-${uid})"/>`;
+    if (d.u > 0 || d.partial) s += hatchLines(x(i) - bw / 2, y(base), bw, y(0) - y(base));
   });
   (n ? [...new Set([0, 0.33, 0.66, 1].map((f) => Math.round(f * (n - 1))))] : []).forEach((i) => { s += `<text x="${x(i).toFixed(1)}" y="${H - 3}" font-size="6.2" fill="${C.slate}" text-anchor="middle">${esc(D[i].label)}</text>`; });
   return s + '</svg>';
@@ -449,7 +462,7 @@ export function foodReportHtml(F) {
     });
   }
   const charts = F.charts.map((c) => `<div class="c" data-sec="${esc(c.title)}"><div class="h"><h3>${esc(c.title)}</h3><span class="stat ${esc(c.tone || '')}">${esc(c.stat)}</span></div>${c.svg}</div>`).join('');
-  const key = `<div class="c key"><b>Key</b><span><i class="sw hatch"></i>Hatched: some items had no nutrition data, or the day is still in progress, so the total may be low</span>${D.some((d) => d.leftOut) ? '<span><b>?</b> totals left out (see Points to discuss)</span>' : ''}<span><i class="sw" style="background:#1E7F86"></i>Protein <i class="sw" style="background:#8FA6B8;margin-left:2mm"></i>Carbs <i class="sw" style="background:#E0A030;margin-left:2mm"></i>Fat</span></div>`;
+  const key = `<div class="c key"><b>Key</b><span><svg class="sw hatch" width="11" height="11" viewBox="0 0 12 12" aria-hidden="true"><rect width="12" height="12" fill="#1E7F86"/>${hatchLines(0, 0, 12, 12)}</svg>Hatched: some items had no nutrition data, or the day is still in progress, so the total may be low</span>${D.some((d) => d.leftOut) ? '<span><b>?</b> totals left out (see Points to discuss)</span>' : ''}<span><i class="sw" style="background:#1E7F86"></i>Protein <i class="sw" style="background:#8FA6B8;margin-left:2mm"></i>Carbs <i class="sw" style="background:#E0A030;margin-left:2mm"></i>Fat</span></div>`;
   const weeks = F.weeks.length ? F.weeks.map((w) => foodWeekHtml(w, F.weeks.length === 1)).join('')
     : foodWeekHtml({ title: 'Food', range: F.period, pills: [], theme: '', chips: [], entries: [], often: [] }, true);
   const bar = F.bar ? `<div class="bar"><span>${esc(F.bar)}</span><button type="button" onclick="window.print()">Print or save as PDF</button></div>` : '';
