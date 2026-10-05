@@ -488,6 +488,7 @@ body.is-readonly #doc-add,
 body.is-readonly #doc-edit,
 body.is-readonly #doc-explain,
 body.is-readonly #notes-explain,
+body.is-readonly #notes-send,
 body.is-readonly #doc-paste-summary,
 body.is-readonly #doc-save-explanation,
 body.is-readonly #doc-delete,
@@ -1386,3 +1387,11 @@ body.is-readonly .workout .btn { display: none; }
 /* Charts in the Notes for the team PDF (v111) */
 .chartpick { margin: var(--s-4) 0 var(--s-2); }
 .chartpick .presets { margin-bottom: var(--s-1); }
+
+/* Send to the team (v112) */
+.sendto { display: grid; grid-template-columns: auto 1fr; column-gap: var(--s-3); row-gap: 2px; align-items: baseline; padding: var(--s-3) 14px; margin-bottom: var(--s-3); border-radius: var(--r-md); background: var(--surface-sunken); box-shadow: var(--elev-sunken); }
+.sendto-label { grid-row: span 3; font-family: var(--font-mono); font-size: var(--fs-sm); letter-spacing: .06em; text-transform: uppercase; color: var(--text-secondary); }
+.sendto-name { font-weight: 600; min-width: 0; }
+.sendto-email { font-family: var(--font-mono); color: var(--text-secondary); overflow-wrap: anywhere; min-width: 0; }
+.sendto-copy { justify-self: start; min-height: 44px; }
+.sendpdf { margin: var(--s-2) 0; }
