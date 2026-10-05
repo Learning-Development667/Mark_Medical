@@ -669,10 +669,10 @@ async function handleRemoveMember(request, env) {
 }
 
 async function handleExplain(request, env) {
-  if (!env.ANTHROPIC_API_KEY) return json({ error: 'not-set-up', message: 'Explain in Daybook is not switched on yet.' }, 503);
+  if (!env.ANTHROPIC_API_KEY) return json({ error: 'not-set-up', message: 'Daybook Assistant is not switched on yet. Use Send to my AI app for now.' }, 503);
   const auth = request.headers.get('Authorization') || '';
   const idToken = auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';
-  if (!idToken) return json({ error: 'unauthorised', message: 'Sign in to use Explain in Daybook.' }, 401);
+  if (!idToken) return json({ error: 'unauthorised', message: 'Sign in to use Daybook Assistant.' }, 401);
   const sa = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT || '{}');
   const projects = [sa.project_id, env.DEMO_PROJECT_ID].filter(Boolean);
   let who;
@@ -686,7 +686,7 @@ async function handleExplain(request, env) {
     hid = rec && f(rec.fields, 'household');
     if (!hid) return json({ error: 'unauthorised', message: 'This account is not in a Daybook household yet.' }, 403);
     const mem = await fs.get(hp(hid, 'members/' + who.uid));
-    if (!mem || f(mem.fields, 'role') !== 'family') return json({ error: 'unauthorised', message: 'Only family accounts can use Explain in Daybook.' }, 403);
+    if (!mem || f(mem.fields, 'role') !== 'family') return json({ error: 'unauthorised', message: 'Only family members of the household can use Daybook Assistant.' }, 403);
   }
 
   let body;
@@ -703,7 +703,7 @@ async function handleExplain(request, env) {
   const logFields = (logDoc && logDoc.fields && logDoc.fields.day && logDoc.fields.day.stringValue === day) ? logDoc.fields : {};
   const n = (k) => Number(logFields[k] && logFields[k].integerValue || 0);
   const used = demo ? n('demo') : n('real');
-  if (used >= (demo ? EXPLAIN_LIMIT_DEMO : EXPLAIN_LIMIT_REAL)) return json({ error: 'limit', message: demo ? 'The demo has used its explanations for today. Try again tomorrow, or use Send to my AI app.' : 'Daybook has used its explanations for today. Use Send to my AI app for now.' }, 429);
+  if (used >= (demo ? EXPLAIN_LIMIT_DEMO : EXPLAIN_LIMIT_REAL)) return json({ error: 'limit', message: demo ? 'The demo has used Daybook Assistant for today. Try again tomorrow, or use Send to my AI app.' : 'Your household has used Daybook Assistant\'s requests for today (' + EXPLAIN_LIMIT_REAL + ' a day). Use Send to my AI app, or try again tomorrow.' }, 429);
   await fs.set(hp(hid, 'bridge/explainLog'), { day: { stringValue: day }, real: { integerValue: String(n('real') + (demo ? 0 : 1)) }, demo: { integerValue: String(n('demo') + (demo ? 1 : 0)) }, tokensIn: { integerValue: String(n('tokensIn')) }, tokensOut: { integerValue: String(n('tokensOut')) }, updatedAt: { timestampValue: new Date().toISOString() } });
 
   const content = pages.map((data) => ({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data } }));
@@ -721,7 +721,7 @@ async function handleExplain(request, env) {
     await fs.merge(hp(hid, 'bridge/explainLog'), demo ? { demo: { integerValue: String(used) } } : { real: { integerValue: String(used) } }).catch(() => {});
     return json({ error: 'ai', status: e && e.status || 0, message: aiErrorMessage(e && e.status, e && (e.apiMessage || e.message)) }, 502);
   }
-  if (reply.refused) return json({ error: 'refused', message: 'The AI service declined to explain this one. Try Send to my AI app instead.' }, 422);
+  if (reply.refused) return json({ error: 'refused', message: 'Daybook Assistant declined this one. Try Send to my AI app instead.' }, 422);
   /* Usage for Mark's own accounting (tokens only, never the text) */
   await fs.merge(hp(hid, 'bridge/explainLog'), { tokensIn: { integerValue: String(n('tokensIn') + reply.usage.input) }, tokensOut: { integerValue: String(n('tokensOut') + reply.usage.output) } }).catch(() => {});
   return json({ text: reply.text, model: reply.model, usage: reply.usage, cut: reply.cut });
@@ -758,15 +758,17 @@ function claudeError(status, raw) {
 /* The AI service's refusals in words a person can act on (the raw reason goes to the worker's log) */
 function aiErrorMessage(status, apiMessage) {
   const why = String(apiMessage || '');
-  if (status === 401) return 'The AI key on the bridge was not accepted. Make a new key in the Anthropic Console and save it again as the ANTHROPIC_API_KEY secret.';
-  if (/credit balance/i.test(why)) return 'The AI account has no credit left. Add credit in the Anthropic Console under Billing, then try again.';
-  if (status === 403) return 'The AI key is not allowed to do this. Check the key in the Anthropic Console.';
-  if (status === 404) return 'The AI model Daybook asks for is not available on this account.';
+  /* The first sentence is for whoever tapped the button; the part in brackets is for whoever runs Daybook (v116) */
+  const down = 'Daybook Assistant is not working just now. Use Send to my AI app, and let whoever set up Daybook know';
+  if (status === 401) return down + ' (the AI key was not accepted: make a new key in the Anthropic Console and save it as the ANTHROPIC_API_KEY secret).';
+  if (/credit balance/i.test(why)) return down + ' (the AI account has no credit left: add credit in the Anthropic Console under Billing).';
+  if (status === 403) return down + ' (the AI key is not allowed to do this: check it in the Anthropic Console).';
+  if (status === 404) return down + ' (the AI model Daybook asks for is not available on this account).';
   if (status === 413 || /too large|too long/i.test(why)) return 'That was too large to send. Try a closer photo of just the label.';
-  if (status === 429) return 'The AI account has reached its limit for now. Try again in a minute.';
-  if (status >= 500) return 'The AI service is busy just now. Try again in a minute.';
-  if (!status) return 'The bridge could not reach the AI service. Try again in a moment.';
-  return 'The AI service turned this down (' + (why.slice(0, 140) || 'error ' + status) + ').';
+  if (status === 429) return 'Daybook Assistant has reached its limit for now. Try again in a minute.';
+  if (status >= 500) return 'Daybook Assistant is busy just now. Try again in a minute.';
+  if (!status) return 'The bridge could not reach Daybook Assistant. Try again in a moment.';
+  return 'Daybook Assistant turned this down (' + (why.slice(0, 140) || 'error ' + status) + ').';
 }
 
 /* Firebase ID token check: RS256 against Google's published keys, the project as audience */
