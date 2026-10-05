@@ -781,7 +781,8 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 .legend-note { color: var(--text-secondary); font-size: 15px; margin: var(--s-3) 0 0; }
 
 .med { display: flex; flex-direction: column; gap: 10px; transition: box-shadow var(--t-base) ease; }
-.med-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.med-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 6px 10px; }
+.med-head > :first-child { min-width: 0; overflow-wrap: anywhere; }
 .med-name { font-size: var(--fs-lg); font-weight: 700; line-height: 1.2; }
 .med-dose { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text-secondary); font-size: 16px; margin-top: 2px; }
 .med-how { color: var(--text-secondary); font-size: 16px; }
@@ -1037,7 +1038,7 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 .speakbtn.is-listening { background: var(--warm-light); border-color: var(--warm); color: var(--warm-dark); animation: speak-pulse 1.2s ease-in-out infinite; }
 @keyframes speak-pulse { 0%, 100% { box-shadow: 0 0 0 0 var(--warm-light); } 50% { box-shadow: 0 0 0 10px transparent; } }
 @media (prefers-reduced-motion: reduce) { .speakbtn.is-listening { animation: none; } }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .speakbtn, :root:not([data-theme="light"]) .note-who, :root:not([data-theme="light"]) .diary-macros, :root:not([data-theme="light"]) .macro-total { color: var(--teal); } }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .speakbtn, :root:not([data-theme="light"]) .note-who, :root:not([data-theme="light"]) .diary-macros, :root:not([data-theme="light"]) .macro-total, :root:not([data-theme="light"]) .pill-hosp { color: var(--teal); } }
 .strapline { margin: 2px 0 var(--s-3); color: var(--teal); font-weight: 600; font-size: var(--fs-md); }
 .food-toggle { margin: var(--s-2) 0 0; }
 .question .question-text { font-weight: 600; margin-bottom: 4px; }
@@ -1185,7 +1186,7 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 .readings dd.lvl-amber { color: var(--warning); }
 .readings dd.lvl-red { color: var(--danger); }
 .pill-hosp.med-hosp { display: inline-block; margin: var(--s-1) 0; }
-.pill-hosp { background: var(--teal-light); color: var(--teal); margin-left: var(--s-2); vertical-align: middle; }
+.pill-hosp { background: var(--teal-light); color: var(--teal-dark); margin-left: var(--s-2); vertical-align: middle; }
 .entry.type-med.is-hospital { --cat: var(--teal); }
 .hosprow { padding: var(--s-3) var(--s-4); }
 .hosprow-name { margin: 0 0 var(--s-1); font-weight: 600; display: flex; align-items: center; flex-wrap: wrap; gap: var(--s-2); }
