@@ -1410,3 +1410,10 @@ body.is-readonly .workout .btn { display: none; }
 .apptq-row.is-marked .apptq-mark { color: var(--teal); }
 .markchips { display: flex; flex-wrap: wrap; gap: var(--s-2); margin: var(--s-1) 0 var(--s-2); }
 .markchip { min-height: 44px; padding: 0 14px; border-radius: var(--r-sm); border: 1.5px solid var(--teal); background: transparent; color: var(--teal); font-family: var(--font-mono); font-size: 15px; cursor: pointer; }
+
+/* Notes for the team: talking points with the detail one tap away (v114) */
+.flag-short { display: block; }
+.flag-more { margin-top: var(--s-1); color: var(--text-secondary); font-size: 15px; }
+.flag-more summary { cursor: pointer; color: var(--teal); font-weight: 600; min-height: 44px; display: inline-flex; align-items: center; }
+.answered-line { margin-top: var(--s-2); }
+.answered-line .muted { margin: 0; }
