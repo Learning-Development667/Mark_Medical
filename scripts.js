@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '134';
+const APP_VERSION = '135';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -8914,6 +8914,16 @@ async function renderStepsChart() {
    email address. Email opens the phone's own Mail app (mailto), so nothing goes through Daybook. */
 const telHref = (n) => 'tel:' + String(n || '').replace(/[^+\d]/g, '');
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+/* The extension or menu option after the number (v135, Mark: "you dial that number and then select option 2"), shown under it
+   as "Then option 2", "Then press 2" for bare digits, "Then ext 4521". Call dials the number alone: a phone menu or switchboard
+   answers in its own time, and a pause or wait in a tel: link is handled differently by each phone, so an automatic key press
+   could land before the menu listens, or stop the Call button working at all on an emergency line. */
+function extWords(ext) {
+  const t = String(ext || '').trim().replace(/^then\s+/i, '');
+  if (!t) return '';
+  if (/^[\d\s,]+$/.test(t)) return 'Then press ' + t;
+  return 'Then ' + t.charAt(0).toLowerCase() + t.slice(1);
+}
 function renderCalls() {
   const wrap = $('calls');
   const calls = (state.profile && state.profile.calls) || [];
@@ -8922,9 +8932,10 @@ function renderCalls() {
       h('div', { class: 'call-label', text: c.label }),
       c.role ? h('div', { class: 'call-role', text: c.role }) : '',
       c.number ? h('div', { class: 'call-number', text: c.number }) : '',
+      c.number && c.ext ? h('div', { class: 'call-ext', text: extWords(c.ext) }) : '',
       c.email ? h('div', { class: 'call-email', text: c.email }) : ''),
     h('div', { class: 'call-btns' },
-      c.number ? h('a', { class: 'btn btn-primary', href: telHref(c.number), 'aria-label': 'Call ' + c.label }, 'Call') : '',
+      c.number ? h('a', { class: 'btn btn-primary', href: telHref(c.number), 'aria-label': 'Call ' + c.label + (c.ext ? ', ' + extWords(c.ext).toLowerCase() : '') }, 'Call') : '',
       c.email ? h('a', { class: 'btn btn-secondary', href: 'mailto:' + c.email, 'aria-label': 'Email ' + c.label }, 'Email') : '')
   )));
   if (!calls.length) wrap.append(h('p', { class: 'empty', 'data-art': 'call', text: 'No contacts saved yet. Add the ward, your nurse, the hospice or GP so they are one tap away.' }));
@@ -8936,11 +8947,12 @@ $('calls-edit').addEventListener('click', () => {
     const label = h('input', { type: 'text', value: (c && c.label) || '', placeholder: 'e.g. Sarah, or the ward', autocomplete: 'off' });
     const role = h('input', { type: 'text', value: (c && c.role) || '', placeholder: 'e.g. Oncology nurse specialist', autocomplete: 'off' });
     const number = h('input', { type: 'tel', value: (c && c.number) || '', placeholder: '01234 567890', autocomplete: 'off' });
+    const ext = h('input', { type: 'text', value: (c && c.ext) || '', placeholder: 'e.g. option 2, or ext 4521', autocomplete: 'off' });
     const email = h('input', { type: 'email', value: (c && c.email) || '', placeholder: 'name@nhs.net', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false' });
     const row = h('div', { class: 'contactrow' },
       h('div', { class: 'contactrow-head' }, h('span', { class: 'contactrow-n' }),
         h('button', { class: 'btn-inline btn-remove', type: 'button', onclick: () => { row.remove(); number_(); } }, 'Remove')),
-      field('Name', label), field('Role (optional)', role), field('Phone', number), field('Email', email));
+      field('Name', label), field('Role (optional)', role), field('Phone', number), field('Extension or option (optional)', ext), field('Email', email));
     rows.append(row);
     number_();
   };
@@ -8949,17 +8961,18 @@ $('calls-edit').addEventListener('click', () => {
   ((state.profile && state.profile.calls) || []).forEach(addRow);
   if (!rows.children.length) addRow(null);
   const body = h('div', null,
-    h('p', { class: 'hint', text: 'A phone number, an email address, or both. Email opens your own Mail app.' }),
+    h('p', { class: 'hint', text: 'A phone number, an email address, or both. Email opens your own Mail app. If the line asks you to press an option or an extension, put it in its own box; it shows under the number.' }),
     rows,
     h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => { addRow(null); const all = rows.querySelectorAll('.contactrow'); all[all.length - 1].querySelector('input').focus(); } }, 'Add another'),
     h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
       const calls = [];
       for (const r of rows.querySelectorAll('.contactrow')) {
-        const [l, ro, n, em] = [...r.querySelectorAll('input')];
-        const c = { label: l.value.trim(), role: ro.value.trim(), number: n.value.trim(), email: em.value.trim() };
-        if (!c.label && !c.role && !c.number && !c.email) continue;
+        const [l, ro, n, x, em] = [...r.querySelectorAll('input')];
+        const c = { label: l.value.trim(), role: ro.value.trim(), number: n.value.trim(), ext: x.value.trim(), email: em.value.trim() };
+        if (!c.label && !c.role && !c.number && !c.ext && !c.email) continue;
         if (!c.label) { toast('Add a name for each contact'); l.focus(); return; }
         if (!c.number && !c.email) { toast('Add a phone number or an email for ' + c.label); n.focus(); return; }
+        if (c.ext && !c.number) { toast('Add the phone number that goes with the extension for ' + c.label); n.focus(); return; }
         if (c.email && !EMAIL_RE.test(c.email)) { toast('Check the email address for ' + c.label); em.focus(); return; }
         calls.push(c);
       }
