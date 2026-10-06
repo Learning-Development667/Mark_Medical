@@ -65,6 +65,7 @@ h2.sec small{font-family:Inter,sans-serif;font-weight:400;font-size:7.6pt;color:
 .q .no{flex:none;min-width:6.4mm;height:6.4mm;padding:0 1mm;border-radius:3.2mm;background:var(--ink);color:#fff;display:grid;place-items:center;font-weight:600;font-size:8pt;margin-top:.2mm}
 .q h3{font-family:Inter,sans-serif;font-size:8.7pt;font-weight:600;letter-spacing:0;line-height:1.35}
 .q .by{font-size:7pt;color:var(--slate);margin-top:.6mm}
+.q .team{display:inline-block;font-size:6.6pt;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--teal);background:var(--teal-soft);border-radius:1.4mm;padding:.3mm 1.6mm;margin-bottom:.8mm}
 .q .lines{flex:1;margin-top:1.2mm;position:relative;overflow:hidden}
 .q .lines i{position:absolute;left:0;right:0;height:0;border-top:1px solid var(--line)}
 .q.extra{background:var(--teal-soft);border-color:transparent}
@@ -162,8 +163,9 @@ function tileHtml(t) {
   return `<div class="tile ${esc(t.tone || '')}" data-k="${esc(t.k)}"><div class="k">${esc(t.k)}</div><div class="v">${esc(t.v)}${t.unit ? `<em>${esc(t.unit)}</em>` : ''}</div><div class="n">${esc(t.note)}</div></div>`;
 }
 
+/* A question card: who it is for as a small label (v133; a number until then), the question, who asked it and when, then ruled lines to write the reply */
 function questionHtml(q, extra) {
-  return `<article class="q${extra ? ' extra' : ''}" data-sec="${extra ? 'Other points' : 'Question ' + esc(q.n)}"><header><div class="no">${extra ? '+' : esc(q.n)}</div><div><h3>${esc(q.text)}</h3><div class="by">${esc(q.by)}</div></div></header><div class="lines" style="min-height:${(q.lines || 1) * 4.6 + 2.4}mm">${lines(40)}</div></article>`;
+  return `<article class="q${extra ? ' extra' : ''}" data-sec="${extra ? 'Other points' : 'Question ' + esc(q.i)}"><header>${extra ? '<div class="no">+</div>' : ''}<div>${q.team ? `<div class="team">${esc(q.team)}</div>` : ''}<h3>${esc(q.text)}</h3><div class="by">${esc(q.by)}</div></div></header><div class="lines" style="min-height:${(q.lines || 1) * 4.6 + 2.4}mm">${lines(40)}</div></article>`;
 }
 
 function weekHtml(w, wide) {
@@ -174,13 +176,13 @@ function weekHtml(w, wide) {
 }
 
 /* R: { title, subtitle, patient, period, prepared, latest?, tiles[8], meds, hospital?, steady?,
-   questions[{ n, text, by }], more, lines, otherBy, charts[], days[], weeks[], foot, bar? } */
+   questions[{ team, text, by }], more, lines, otherBy, charts[], days[], weeks[], foot, bar? } */
 export function reportHtml(R) {
   const strip = [];
   const medsHtml = `<div data-sec="Medicines"><b>When-needed medicines.</b> ${esc(R.meds)}${R.hospital ? `<br><b>${esc(R.hospital.label)}</b> ${esc(R.hospital.text)}` : ''}</div>`;
   strip.push(medsHtml);
   if (R.steady) strip.push(`<div class="steady" data-sec="Steady"><b>Steady.</b> ${esc(R.steady)}</div>`);
-  const qs = R.questions.map((q) => questionHtml({ ...q, lines: R.lines }, false));
+  const qs = R.questions.map((q, i) => questionHtml({ ...q, i: i + 1, lines: R.lines }, false));
   const other = questionHtml({ text: 'Other points from today', by: R.otherBy || 'For anything raised in the appointment', lines: R.lines }, true);
   /* An odd number of questions leaves the Other points card the empty half; otherwise it takes the full width */
   const otherCard = R.questions.length % 2 ? other : other.replace('class="q extra"', 'class="q extra wide"');
@@ -335,6 +337,13 @@ body.food .tile .v em{margin-left:.8mm}
 .pts ul{list-style:none;display:flex;flex-direction:column;gap:1.4mm}
 .pts li{display:grid;grid-template-columns:2.6mm 1fr;gap:1.6mm;font-size:7.7pt;line-height:1.38}
 .pts li::before{content:"";width:1.7mm;height:1.7mm;border-radius:50%;background:var(--amber);margin-top:1.4mm}
+.dq{background:var(--surface,#fff);border:1px solid var(--line);border-radius:2.4mm;padding:2.8mm 3.4mm}
+.dq h3{font-size:10.5pt;margin-bottom:1.8mm}
+.dq ul{list-style:none;display:flex;flex-direction:column;gap:1.6mm}
+.dq li{font-size:7.7pt;line-height:1.38}
+.dq li b{display:block;font-weight:600}
+.dq li span{font-size:7pt;color:var(--slate)}
+.dq .more{font-size:7pt;color:var(--slate);margin-top:1.4mm}
 .nlines{background:var(--teal-soft);border-radius:2.4mm;padding:2.8mm 3.4mm;display:flex;flex-direction:column;flex:1;min-height:14mm}
 .nlines h3{font-family:Inter,sans-serif;font-size:8.4pt;font-weight:600;letter-spacing:0}
 .nlines .lines{flex:1;margin-top:1.4mm;position:relative;overflow:hidden}
@@ -494,6 +503,7 @@ ${bar}
     </div>
     <div class="col">
       <div class="pts" data-sec="Points to discuss"><h3>Points to discuss</h3><ul>${F.points.map((p) => `<li>${esc(p)}</li>`).join('')}</ul></div>
+      ${F.questions && F.questions.length ? `<div class="dq" data-sec="Questions"><h3>Questions for the dietitian</h3><ul>${F.questions.map((q) => `<li><b>${esc(q.text)}</b><span>${esc(q.by)}</span></li>`).join('')}</ul>${F.more ? `<p class="more">Plus ${esc(F.more)} more ${F.more === 1 ? 'question' : 'questions'} in the app.</p>` : ''}</div>` : ''}
       <div class="nlines" data-sec="Dietitian notes"><h3>Notes from the dietitian</h3><div class="lines">${(() => { let l = ''; for (let i = 1; i <= 40; i++) l += `<i style="top:calc(${i} * 5.2mm)"></i>`; return l; })()}</div></div>
     </div>
   </div>
@@ -526,6 +536,7 @@ export function shrinkFood(F, over) {
     if (w.entries.length > 2) { w.entries.splice(w.entries[0].lead ? 1 : 0, 1); return true; }
     if (w.often.length) { w.often = []; return true; }
   }
-  if (over.some((s) => /Points|Page 1|Food groups|Drinks|Dietitian/.test(s)) && F.points.length > 2) { F.points.pop(); return true; }
+  if (over.some((s) => /Points|Questions|Page 1|Food groups|Drinks|Dietitian/.test(s)) && F.questions && F.questions.length > 1) { F.questions.pop(); F.more = (F.more || 0) + 1; return true; }
+  if (over.some((s) => /Points|Questions|Page 1|Food groups|Drinks|Dietitian/.test(s)) && F.points.length > 2) { F.points.pop(); return true; }
   return false;
 }

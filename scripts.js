@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '132';
+const APP_VERSION = '133';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -1745,7 +1745,7 @@ function entrySub(e) {
   if (e.type === 'pain' && e.note) bits.push(e.note);
   if (e.type === 'symptom') { bits.push('Symptom'); if (e.note) bits.push(e.note); }
   if (e.type === 'bowel') { const ts = bowelTypes(e); if (ts.length > 1) bits.push(ts.map((t) => bristolName(t)).join(', ')); const f = bowelFlagWords(e); if (f) bits.push(f); if (e.note) bits.push(e.note); }
-  if (e.type === 'question') bits.push(e.answered ? 'Question for the team, answered' : 'Question for the team');
+  if (e.type === 'question') bits.push((isDietitianQ(e) ? 'Question for the dietitian' : 'Question for the team') + (e.answered ? ', answered' : '') + (isDietitianQ(e) ? '' : ' · ' + teamLabel(teamOf(e))));
   if (e.type === 'question' && e.answerText) bits.push('Answer: ' + excerpt(e.answerText, 90));
   if (e.type === 'question' && e.recordings) bits.push(plural(e.recordings, 'recording'));
   if (e.type === 'weight' && Number(e.bmi) > 0) bits.push('BMI ' + Number(e.bmi).toFixed(1));
@@ -2448,15 +2448,25 @@ function openAdd(type, editEntry) {
   /* A question for the oncologist or nurse: it goes to the top of Notes for the
      team and stays there, whatever the range, until marked as answered */
   if (type === 'question') {
-    const text = h('textarea', { rows: '4', placeholder: 'What do you want to ask the oncologist or nurse?' });
+    const text = h('textarea', { rows: '4', placeholder: 'What do you want to ask?' });
     if (editEntry) text.value = editEntry.note || '';
+    /* Who is it for (v133): a label, not a number. A dietitian question goes to the Food diary report instead of Notes for the team. */
+    let team = editEntry ? teamOf(editEntry) : 'general';
+    const teamRow = h('div', { class: 'chips', role: 'group', 'aria-label': 'Who is it for' });
+    const teamHint = h('p', { class: 'hint' });
+    const drawTeams = () => {
+      teamRow.replaceChildren(...QUESTION_TEAMS.map(([k, label]) => h('button', { class: 'preset' + (team === k ? ' is-active' : ''), type: 'button', 'aria-pressed': team === k ? 'true' : 'false', onclick: () => { team = k; drawTeams(); } }, label)));
+      teamHint.textContent = team === 'dietitian' ? 'Goes on the Food diary screen and report, for the dietitian, and stays there until it is marked as answered.' : 'Goes to the top of Notes for the team, and stays there until it is marked as answered.';
+    };
+    drawTeams();
     body.append(
-      h('p', { class: 'hint', text: 'Goes to the top of Notes for the team, and stays there until it is marked as answered.' }),
-      field('Question', text), speakButton(text) || '', field('Time', time)
+      field('Question', text), speakButton(text) || '',
+      h('div', { class: 'field' }, h('span', { text: 'Who is it for?' }), teamRow), teamHint,
+      field('Time', time)
     );
     getData = () => {
       if (!text.value.trim()) return null;
-      return { type: 'question', note: text.value.trim(), answered: Boolean(editEntry && editEntry.answered) };
+      return { type: 'question', note: text.value.trim(), team, answered: Boolean(editEntry && editEntry.answered) };
     };
   }
 
@@ -3824,7 +3834,11 @@ async function renderFoodDiary() {
   } else { overview.hidden = true; overview.replaceChildren(); }
   $('food-days').replaceChildren(...sections);
   $('food-empty').hidden = sections.length > 0;
-  state.foodPdf = { filename: 'Daybook food diary ' + to + '.pdf', title: 'Food diary', from, to, entries };
+  /* Questions for the dietitian (v133): the open ones labelled Dietitian, on this screen and on the report's first page */
+  const dietQs = sortQuestions(allQuestions().filter((q) => !q.answered && isDietitianQ(q))).map((q) => ({ id: q.id, team: 'dietitian', teamLabel: 'Dietitian', text: q.note, who: q.addedBy || 'unknown', day: q.day }));
+  $('food-questions-section').hidden = !dietQs.length;
+  $('food-questions').replaceChildren(...dietQs.map((q) => questionCard(q, renderFoodDiary)));
+  state.foodPdf = { filename: 'Daybook food diary ' + to + '.pdf', title: 'Food diary', from, to, entries, questions: dietQs };
   loadPatientName();
   warmReport('food');
 }
@@ -3942,7 +3956,7 @@ function openSuggestedQuestions(text) {
     const row = h('div', { class: 'suggest-row' }, h('p', { class: 'suggest-text', text: q }), add);
     add.addEventListener('click', async () => {
       add.disabled = true;
-      await addEntry({ type: 'question', note: q, answered: false, at: new Date() });
+      await addEntry({ type: 'question', note: q, team: 'general', answered: false, at: new Date() });
       add.replaceChildren(icon('check'), ' Added');
       add.classList.add('is-added');
     });
@@ -3986,7 +4000,7 @@ const SEND_KINDS = {
     file: (n) => n.filename,
     blob: () => foodReportBlob(),
     subject: (range) => `My food diary, ${range}`,
-    words: (range) => `Here is my food diary from Daybook for ${range}: two pages, with protein against the target, drinks and food groups first, then the trends and what I ate week by week.`,
+    words: (range, n) => `Here is my food diary from Daybook for ${range}: two pages, with protein against the target, drinks and food groups first, then the trends and what I ate week by week.${n && n.questions && n.questions.length ? ` My ${n.questions.length === 1 ? 'question' : 'questions'} for you ${n.questions.length === 1 ? 'is' : 'are'} on the first page.` : ''}`,
     attached: (range) => `Attached: Food diary, ${range}, two pages.`,
     check: ' Use Preview on the Food diary to look at it first.'
   }
@@ -4017,7 +4031,7 @@ function openSendSheet(kind) {
     (async () => { try { blob = await K.blob(); } catch (e) { console.error(e); blobError = e; } })();
     const subject = h('input', { type: 'text', id: 'send-subject', value: K.subject(range) });
     const note = h('textarea', { id: 'send-note', rows: '6' });
-    note.value = `${greetingFor(c)}\n\n${K.words(range)} The PDF is attached.\n\nThank you,\n${state.name || ''}`.trim();
+    note.value = `${greetingFor(c)}\n\n${K.words(range, n)} The PDF is attached.\n\nThank you,\n${state.name || ''}`.trim();
     const send = h('button', { class: 'btn btn-primary btn-block', type: 'button', id: 'send-go' }, 'Open in my Mail app');
     send.addEventListener('click', () => {
       if (!blob) { toast(blobError ? pdfErrorText(blobError) : 'Still making the PDF. Try again in a moment.'); return; }
@@ -4417,7 +4431,7 @@ function buildTwoPage(n) {
   /* Steady: the areas outside the tiles that the app's checks did not flag */
   const fine = (report.glance.fine || []).filter((t) => !/^(temperature|heart rate|blood pressure|oxygen|pain|sleep|eating|mood)$/i.test(t));
   const steady = fine.length ? capFirst(joinAnd(fine)) + (fine.length === 1 ? ' showed' : ' showed') + ' no flags in the app checks.' : null;
-  const qs = report.questions.map((q) => ({ n: q.n, text: capFirst(fixMedWords((ai && ai.questions[q.id]) || q.text).trim()), by: `Asked by ${q.who}, ${rDay(q.day)}` }));
+  const qs = report.questions.map((q) => ({ team: q.teamLabel, text: capFirst(fixMedWords((ai && ai.questions[q.id]) || q.text).trim()), by: `Asked by ${q.who}, ${rDay(q.day)}` }));
   const latestRaw = ai ? ai.latest : plainLatest(report, to);
   const latest = latestRaw && latestRaw.day >= from && latestRaw.day <= to ? { when1: whenWords(latestRaw.day, today), when2: rDay(latestRaw.day) + (latestRaw.time ? ', ' + latestRaw.time : ''), title: fixMedWords(latestRaw.title), text: fixMedWords(latestRaw.text) } : null;
   const allWeeks = reportWeeks(from, to);
@@ -4717,6 +4731,7 @@ function buildFoodReport(n) {
     docTitle: `Food diary, ${patient}, ${period}`,
     patient, period, logged: first ? `${period} (${plural(D.length, 'day')})` : 'nothing in this period', prepared: rDay(today) + ' ' + parseDay(today).getFullYear(),
     banner, tiles, days: D, target, pMax, pTicks, callout, lMax, lTicks, grid, points: points.slice(0, 5), charts, weeks,
+    questions: (n.questions || []).map((q) => ({ text: capFirst(fixMedWords(q.text || '').trim()), by: `Asked by ${q.who}, ${rDay(q.day)}` })), more: 0,
     caveat: (detailedNutritionOn() ? 'Calorie and macro figures are estimates from typical portion sizes, scaled by how much was eaten, or entered from the packet.' : 'Calorie and macro estimates are off in Settings.') + (D.some((d) => d.source === 'Apple Health' || d.source === 'food app') ? ' Days with food-app totals use those instead.' : '') + ' Not medical advice.'
   };
 }
@@ -4777,7 +4792,7 @@ function reportAiText(n) {
   const weeks = n.report.weeks.slice(-2);
   const meds = state.medicines.filter((m) => m.active !== false).map((m) => m.name);
   const lines = [`Report period: ${n.from} to ${n.to}.`, 'Medicines on the list: ' + (meds.join(', ') || 'none') + '.', '', 'Open questions for the team:'];
-  n.report.questions.forEach((q) => lines.push(`Q${q.n}: ${q.text}`));
+  n.report.questions.forEach((q, i) => lines.push(`Q${i + 1}: ${q.text}`));
   if (!n.report.questions.length) lines.push('None.');
   weeks.forEach((w, i) => {
     lines.push('', `Week ${i + 1}, ${w.from} to ${w.to}`);
@@ -4802,7 +4817,7 @@ function parseReportReply(raw, n, weeks) {
     if (entries.length || clean(w.theme)) out.weeks[wk.key] = { theme: clean(w.theme), entries };
   });
   (Array.isArray(parsed.questions) ? parsed.questions : []).forEach((q) => {
-    const mine = n.report.questions.find((x) => String(x.n) === String(q.n));
+    const mine = n.report.questions[Number(q.n) - 1];
     if (mine && clean(q.text)) out.questions[mine.id] = clean(q.text);
   });
   const l = parsed.latest;
@@ -5251,13 +5266,14 @@ function weekLabel(w) { return w.from === w.to ? fmtDayLong(w.from) : `${w.from.
 
 function buildNotesReport(entries, questionsAll, from, to, rangeLabel) {
   const glance = summaryRows(entries, from, to);
-  const open = questionsAll.filter((q) => !q.answered).sort((a, b) => entryDate(a) - entryDate(b));
-  const nums = questionNumbers(questionsAll);
-  const questions = open.map((q) => ({ id: q.id, n: nums.get(q.id), text: q.note, who: q.addedBy || 'unknown', day: q.day }));
+  /* Open questions by team (v133): the oncologist's first, then gastro, general and not sure; dietitian ones go to the Food diary report and are only counted here */
+  const open = sortQuestions(questionsAll.filter((q) => !q.answered && !isDietitianQ(q)));
+  const questions = open.map((q) => ({ id: q.id, team: teamOf(q), teamLabel: teamLabel(teamOf(q)), text: q.note, who: q.addedBy || 'unknown', day: q.day }));
+  const dietitian = questionsAll.filter((q) => !q.answered && isDietitianQ(q)).length;
   const dayAnswered = (q) => answeredDayOf(q) || q.day;
   const answers = questionsAll.filter((q) => q.answered && dayAnswered(q) >= from && dayAnswered(q) <= to)
     .sort((a, b) => entryDate(a) - entryDate(b))
-    .map((q) => ({ id: q.id, n: nums.get(q.id), text: q.note, who: q.addedBy || 'unknown', day: q.day, answeredDay: dayAnswered(q), answerText: q.answerText || '', recordings: q.recordings || 0 }));
+    .map((q) => ({ id: q.id, team: teamOf(q), text: q.note, who: q.addedBy || 'unknown', day: q.day, answeredDay: dayAnswered(q), answerText: q.answerText || '', recordings: q.recordings || 0 }));
   const answered = answers.length;
   const byDay = {};
   entries.forEach((e) => { (byDay[e.day] = byDay[e.day] || []).push(e); });
@@ -5283,8 +5299,9 @@ function buildNotesReport(entries, questionsAll, from, to, rangeLabel) {
 
   /* The range is the first line, so whoever reads it (an AI app included) knows the period before anything else */
   const lines = [`Daybook notes from ${fmtDayNum(from)} to ${fmtDayNum(to)}.`, '', NOTES_PROMPT, '', 'Questions for the team:'];
-  if (questions.length) questions.forEach((q) => lines.push(`${q.n}. ${q.text} (${q.who}, ${fmtDayShort(q.day)})`));
+  if (questions.length) questions.forEach((q) => lines.push(`- ${q.teamLabel}: ${q.text} (${q.who}, ${fmtDayShort(q.day)})`));
   else lines.push('- No open questions.');
+  if (dietitian) lines.push(`- ${plural(dietitian, 'question')} for the dietitian ${dietitian === 1 ? 'is' : 'are'} on the Food diary report.`);
   lines.push('', 'Summary (simple checks by the app, not a diagnosis):');
   if (glance.length) glance.forEach((g) => lines.push(`- ${LEVEL_WORD[g.level]}: ${g.text}`));
   else lines.push('- No readings logged in this period.');
@@ -5294,7 +5311,7 @@ function buildNotesReport(entries, questionsAll, from, to, rangeLabel) {
     d.notes.forEach((n) => lines.push(`- ${n.who}, ${n.time}${n.context ? ' (' + n.context + ')' : ''}: ${n.text}`));
   });
   else lines.push('- No written notes in this period.');
-  return { questions, answers, answered, glance, days, weeks: notesByWeek(days, from, to), rangeLabel, text: lines.join('\n') };
+  return { questions, dietitian, answers, answered, glance, days, weeks: notesByWeek(days, from, to), rangeLabel, text: lines.join('\n') };
 }
 
 /* The name on the report: Settings' "Name on the report" if set, else the member whose relation is the patient */
@@ -5307,6 +5324,19 @@ async function loadPatientName() {
   } catch (e) { /* read-only members cannot list the household; the signed-in name stands in */ }
 }
 
+/* One question on a report screen (Notes for the team, or the Food diary for the dietitian's): the label, the words, who and when, then the answer and Mark as answered buttons */
+function questionCard(q, redraw) {
+  return h('div', { class: 'card question' },
+    h('div', { class: 'question-text', text: q.text }),
+    h('div', { class: 'docitem-sub' }, h('span', { class: 'pill q-team', text: q.teamLabel }), ` ${q.who} · ${fmtDayNum(q.day)}`),
+    state.readOnly ? null : h('div', { class: 'question-btns' },
+      h('button', { class: 'btn btn-secondary btn-small', type: 'button', onclick: () => { const full = allQuestions().find((x) => x.id === q.id); if (full) openAnswerSheet(full); } }, 'Record or write the answer'),
+      h('button', { class: 'btn btn-link btn-small', type: 'button', onclick: async () => {
+        await updateEntry(q.id, { answered: true, answeredAt: stampNow() });
+        toast('Marked as answered', { label: 'Undo', onClick: async () => { await updateEntry(q.id, { answered: false }); redraw(); } });
+        redraw();
+      } }, 'Mark as answered')));
+}
 async function renderNotesReport() {
   const today = todayStr();
   const range = reportRange('notes');
@@ -5325,18 +5355,9 @@ async function renderNotesReport() {
   state.notesPdf = { filename: 'Daybook notes for the team ' + to + '.pdf', title: 'Notes for the team', subtitle: `${fmtDayNum(from)} to ${fmtDayNum(to)}, printed ${fmtDayNum(today)}`, report, entries, from, to };
   loadPatientName();
 
-  $('notes-questions').replaceChildren(...report.questions.map((q) => h('div', { class: 'card question' },
-    h('div', { class: 'question-text', text: `${q.n}. ${q.text}` }),
-    h('div', { class: 'docitem-sub', text: `${q.who} · ${fmtDayNum(q.day)}` }),
-    state.readOnly ? null : h('div', { class: 'question-btns' },
-      h('button', { class: 'btn btn-secondary btn-small', type: 'button', onclick: () => { const full = allQuestions().find((x) => x.id === q.id); if (full) openAnswerSheet(full); } }, 'Record or write the answer'),
-      h('button', { class: 'btn btn-link btn-small', type: 'button', onclick: async () => {
-        await updateEntry(q.id, { answered: true, answeredAt: stampNow() });
-        toast('Marked as answered', { label: 'Undo', onClick: async () => { await updateEntry(q.id, { answered: false }); renderNotesReport(); } });
-        renderNotesReport();
-      } }, 'Mark as answered'))
-  )));
+  $('notes-questions').replaceChildren(...report.questions.map((q) => questionCard(q, renderNotesReport)));
   if (!report.questions.length) $('notes-questions').append(h('p', { class: 'muted', text: 'No open questions. Add one from Today with "Question for the team".' }));
+  if (report.dietitian) $('notes-questions').append(h('p', { class: 'muted', text: `${plural(report.dietitian, 'question')} for the dietitian ${report.dietitian === 1 ? 'is' : 'are'} on the Food diary, with its report.` }));
   /* Answered questions are filed, not listed (v114): one line and a way to the documents */
   syncAnswerDocs(questionsAll);
   if (report.answered) {
@@ -7065,19 +7086,19 @@ function b64ToBlob(b64, type) {
 const REC_MAX_SECONDS = 300;
 const REC_PART_CHARS = 700000;
 function allQuestions() { return state.demo ? state.recentEntries.filter((e) => e.type === 'question') : (state.questions || []); }
-/* A question's number is its place among the questions that exist, oldest first, answered ones
-   included: it stays put when one is answered and closes up when one is deleted. The list, the
-   answer sheet, the PDF, the copied text and the recording file names all use it (v80; until then
-   the list counted only the open ones and the sheet counted differently, so "2" opened "Q3"). */
-function questionNumbers(list) {
-  const map = new Map();
-  list.slice().sort((a, b) => entryDate(a) - entryDate(b)).forEach((q, i) => map.set(q.id, i + 1));
-  return map;
-}
-function questionNumber(id) {
-  const nums = questionNumbers(allQuestions());
-  return nums.get(id) || nums.size + 1;
-}
+/* Who a question is for (v133, Mark: no numbers, a label instead). Stored as entries/{id}.team; a
+   question saved before v133 has none and counts as General. Dietitian questions go to the Food
+   diary screen and report; the rest head Notes for the team. The order here is the order they are
+   listed in, so the oncologist's come first. */
+const QUESTION_TEAMS = [['oncology', 'Oncology'], ['gastro', 'Gastro'], ['general', 'General'], ['unsure', 'Not sure'], ['dietitian', 'Dietitian']];
+function teamOf(q) { return QUESTION_TEAMS.some(([k]) => k === (q && q.team)) ? q.team : 'general'; }
+function teamLabel(key) { const t = QUESTION_TEAMS.find(([k]) => k === key); return t ? t[1] : 'General'; }
+function teamRank(q) { return QUESTION_TEAMS.findIndex(([k]) => k === teamOf(q)); }
+function isDietitianQ(q) { return teamOf(q) === 'dietitian'; }
+/* Oldest first within each team, the teams in QUESTION_TEAMS order */
+function sortQuestions(list) { return list.slice().sort((a, b) => teamRank(a) - teamRank(b) || entryDate(a) - entryDate(b)); }
+/* A few words of a question, for a chip or a file name: "Scan results when", never the whole sentence */
+function questionWords(text, n) { const w = String(text || '').replace(/[^\p{L}\p{N} ]+/gu, ' ').trim().split(/\s+/).filter(Boolean); return w.slice(0, n || 3).join(' ') + (w.length > (n || 3) ? '…' : ''); }
 function recMime() {
   if (!window.MediaRecorder) return null;
   for (const m of ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus']) { try { if (MediaRecorder.isTypeSupported(m)) return m; } catch (e) { /* next */ } }
@@ -7086,7 +7107,7 @@ function recMime() {
 function recExt(mime) { return /mp4/.test(mime) ? 'm4a' : /ogg/.test(mime) ? 'ogg' : /webm/.test(mime) ? 'webm' : 'audio'; }
 function blobToB64(blob) { return new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(String(r.result).split(',')[1] || ''); r.onerror = reject; r.readAsDataURL(blob); }); }
 function fmtSeconds(s) { s = Math.max(0, Math.round(s)); return Math.floor(s / 60) + ':' + pad2(s % 60); }
-function recordingFilename(q, rec) { const d = entryDate(rec); return `Daybook Q${questionNumber(q.id)} answer ${dayStr(d)} ${fmtTime(d).replace(':', '-')}.${rec.ext || recExt(rec.mime || '')}`; }
+function recordingFilename(q, rec) { const d = entryDate(rec); const words = questionWords(q.note, 4).replace('…', ''); return `Daybook answer${words ? ' ' + words : ''} ${dayStr(d)} ${fmtTime(d).replace(':', '-')}.${rec.ext || recExt(rec.mime || '')}`; }
 function canRecord() { return recMime() !== null && !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia); }
 async function saveRecording(q, blob, mime, seconds) {
   const b64 = await blobToB64(blob);
@@ -7181,8 +7202,7 @@ async function deleteAppointmentRecording(rec) {
    closing the sheet, saves it and marks each tapped question answered. The screen is kept awake,
    since a locked iPhone stops recording. */
 function openAppointmentSheet() {
-  const nums = questionNumbers(allQuestions());
-  const open = allQuestions().filter((q) => !q.answered).sort((a, b) => nums.get(a.id) - nums.get(b.id));
+  const open = sortQuestions(allQuestions().filter((q) => !q.answered));
   const marks = new Map();
   const status = h('p', { class: 'hint rec-status', role: 'status' });
   const time = h('span', { class: 'rec-time mono', text: '' });
@@ -7195,12 +7215,11 @@ function openAppointmentSheet() {
   const rows = open.map((q) => {
     const mark = h('span', { class: 'apptq-mark', text: 'Tap when they start answering' });
     const row = h('button', { class: 'apptq-row', type: 'button', disabled: true, 'aria-pressed': 'false' },
-      h('span', { class: 'apptq-n', text: 'Q' + nums.get(q.id) }),
-      h('span', { class: 'apptq-main' }, h('span', { text: q.note || '' }), mark));
+      h('span', { class: 'apptq-main' }, h('span', { class: 'pill q-team', text: teamLabel(teamOf(q)) }), h('span', { class: 'apptq-text', text: q.note || '' }), mark));
     row.addEventListener('click', () => {
       if (!recorder) return;
       const s = Math.max(0, Math.floor(elapsed()) - 2); // a couple of seconds back, so the start of the answer is not clipped
-      marks.set(q.id, { questionId: q.id, n: nums.get(q.id), text: q.note || '', s });
+      marks.set(q.id, { questionId: q.id, n: open.indexOf(q) + 1, text: q.note || '', s });
       row.classList.add('is-marked'); row.setAttribute('aria-pressed', 'true');
       mark.textContent = 'Answer marked at ' + fmtSeconds(s) + '. Tap again to move it to now.';
     });
@@ -7275,14 +7294,13 @@ function openAppointmentSheet() {
 
 async function renderAppointmentList(from, to) {
   const box = $('notes-appts');
-  const nums = questionNumbers(allQuestions());
   let recs = [];
   try { recs = await loadAppointmentRecordings(from, to); } catch (e) { console.error(e); }
   box.replaceChildren(...recs.map((rec) => {
     const player = h('div', { class: 'rec-player' });
     const when = `${fmtDayShort(rec.day)} ${fmtTime(entryDate(rec))}`;
-    const chips = (rec.marks || []).map((m) => h('button', { class: 'markchip', type: 'button', 'aria-label': `Play the answer to question ${nums.get(m.questionId) || m.n} from ${fmtSeconds(m.s)}`,
-      onclick: () => playFrom(player, rec, m.s, 'Appointment ' + when).catch(() => toast('Could not load the recording')) }, `Q${nums.get(m.questionId) || m.n} ${fmtSeconds(m.s)}`));
+    const chips = (rec.marks || []).map((m) => { const q = allQuestions().find((x) => x.id === m.questionId); const words = questionWords((q && q.note) || m.text, 3) || 'Question ' + m.n; return h('button', { class: 'markchip', type: 'button', 'aria-label': `Play the answer to "${(q && q.note) || m.text || 'question ' + m.n}" from ${fmtSeconds(m.s)}`,
+      onclick: () => playFrom(player, rec, m.s, 'Appointment ' + when).catch(() => toast('Could not load the recording')) }, h('span', { class: 'markchip-q', text: words }), ' ' + fmtSeconds(m.s)); });
     const del = h('button', { class: 'btn btn-link btn-small', type: 'button' }, 'Delete');
     del.addEventListener('click', () => {
       const yes = h('button', { class: 'btn btn-danger btn-small', type: 'button', onclick: async () => {
@@ -7360,16 +7378,15 @@ function fmtDayRange(a, b) {
   return (a.slice(0, 4) === b.slice(0, 4) ? fmtDayShort(a) : fmtDayNum(a)) + ' to ' + fmtDayNum(b);
 }
 function answerDocsFrom(questionsAll) {
-  const nums = questionNumbers(questionsAll);
   const byDay = {};
   questionsAll.filter((q) => q.answered && answeredDayOf(q)).forEach((q) => { const d = answeredDayOf(q); (byDay[d] = byDay[d] || []).push(q); });
   return Object.keys(byDay).sort().map((day) => {
-    const qs = byDay[day].sort((a, b) => nums.get(a.id) - nums.get(b.id));
+    const qs = sortQuestions(byDay[day]);
     const first = qs.map((q) => q.day).filter(Boolean).sort()[0] || day;
     const lines = [`Questions answered on ${fmtDayLong(day)} ${day.slice(0, 4)}.`, `Asked between ${fmtDayRange(first, day).replace(' to ', ' and ')}.`];
     if (first >= day) lines[1] = `Asked on ${fmtDayNum(first)}.`;
     qs.forEach((q) => {
-      lines.push('', `Q${nums.get(q.id)}. ${q.note || ''}`, `Asked by ${q.addedBy || 'unknown'} on ${fmtDayNum(q.day)}.`);
+      lines.push('', `${teamLabel(teamOf(q))}: ${q.note || ''}`, `Asked by ${q.addedBy || 'unknown'} on ${fmtDayNum(q.day)}.`);
       if (q.answerText) lines.push('Answer: ' + q.answerText);
       if (q.recordings) lines.push(`${q.recordings === 1 ? 'A recording is' : plural(q.recordings, 'recording') + ' are'} saved in Daybook: open the question on Today, or Notes for the team, to play it.`);
       if (!q.answerText && !q.recordings) lines.push('Marked as answered. No answer written down.');
@@ -7532,7 +7549,7 @@ function openAnswerSheet(q) {
   } }, 'Save answer');
 
   const body = h('div', null,
-    h('p', { class: 'answer-q', text: 'Q' + questionNumber(q.id) + '. ' + (q.note || '') }),
+    h('p', { class: 'answer-q' }, h('span', { class: 'pill q-team', text: teamLabel(teamOf(q)) }), ' ', q.note || ''),
     h('p', { class: 'hint', text: 'Hold the phone up, or hand it over, and tap the button. You will be asked to confirm the person has agreed to be recorded before it starts.' }),
     canRecord() ? recBtn : h('p', { class: 'hint hint-warn', text: 'Recording is not available in this browser. Writing or speaking the answer below still works.' }),
     canRecord() ? consent : null,

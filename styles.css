@@ -1049,7 +1049,7 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 .speakbtn.is-listening { background: var(--warm-light); border-color: var(--warm); color: var(--warm-dark); animation: speak-pulse 1.2s ease-in-out infinite; }
 @keyframes speak-pulse { 0%, 100% { box-shadow: 0 0 0 0 var(--warm-light); } 50% { box-shadow: 0 0 0 10px transparent; } }
 @media (prefers-reduced-motion: reduce) { .speakbtn.is-listening { animation: none; } }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .speakbtn, :root:not([data-theme="light"]) .note-who, :root:not([data-theme="light"]) .diary-macros, :root:not([data-theme="light"]) .macro-total, :root:not([data-theme="light"]) .pill-hosp { color: var(--teal); } }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .speakbtn, :root:not([data-theme="light"]) .note-who, :root:not([data-theme="light"]) .diary-macros, :root:not([data-theme="light"]) .macro-total, :root:not([data-theme="light"]) .pill-hosp, :root:not([data-theme="light"]) .q-team { color: var(--teal); } }
 .strapline { margin: 2px 0 var(--s-3); color: var(--teal); font-weight: 600; font-size: var(--fs-md); }
 .food-toggle { margin: var(--s-2) 0 0; }
 .question .question-text { font-weight: 600; margin-bottom: 4px; }
@@ -1422,7 +1422,11 @@ body.is-readonly .workout .btn { display: none; }
 .apptq-row { display: flex; align-items: flex-start; gap: var(--s-3); width: 100%; min-height: 56px; padding: var(--s-2) 14px; text-align: left; border: 2px solid var(--border-subtle); border-radius: var(--r-md); background: var(--surface); color: var(--text-primary); font-size: 17px; cursor: pointer; }
 .apptq-row:disabled { cursor: default; opacity: .75; }
 .apptq-row.is-marked { border-color: var(--teal); background: var(--teal-light); }
-.apptq-n { flex: none; min-width: 2.4em; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 600; color: var(--teal); }
+/* The question's team as a small pill (v133; a number until then), on the report cards, the appointment rows and the answer sheet */
+.q-team { min-height: 24px; padding: 0 9px; font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase; background: var(--teal-light); color: var(--teal-dark); vertical-align: middle; margin-right: 4px; }
+.apptq-row .q-team { display: inline-flex; margin: 0 0 4px; }
+.apptq-text { display: block; }
+.markchip-q { font-family: var(--font-body); font-weight: 600; }
 .apptq-main { flex: 1; min-width: 0; }
 .apptq-mark { display: block; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 15px; color: var(--text-secondary); margin-top: 2px; }
 .apptq-row.is-marked .apptq-mark { color: var(--teal); }

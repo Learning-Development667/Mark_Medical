@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=132">
+  <link rel="stylesheet" href="styles.css?v=133">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -517,6 +517,11 @@
           <button id="food-pdf" class="btn btn-tint tint-warm" type="button"><svg class="icon" aria-hidden="true"><use href="#i-download"/></svg>Save as PDF</button>
         </div>
         <p class="hint">Send by email puts the diary in an email from your own Mail app, to a contact with an email address, such as the dietitian.</p>
+        <div id="food-questions-section" hidden>
+          <h3 class="section-title">Questions for the dietitian</h3>
+          <p class="hint">Asked from Today with "Question for the team" and labelled Dietitian. They go on the first page of the report, and stay until marked as answered.</p>
+          <div id="food-questions" class="cards"></div>
+        </div>
         <label id="food-nutrition-row" class="check food-toggle">
           <input id="food-nutrition" type="checkbox">
           <span>Show calorie and macro estimates</span>
@@ -561,7 +566,7 @@
         <p class="hint">Two A4 pages to hand over or email: what is new, eight readings at a glance, your medicines and your questions with room to write the answers, then the charts and the notes week by week. Every figure comes from what was logged. <b>Preview</b> shows the two pages and prints them; <b>Send to the team</b> puts them in an email from your own Mail app, for a contact with an email address. <b>Summarise with Daybook Assistant</b> sends these notes and your questions to Daybook Assistant (AI from Anthropic, in the US) to write each week up in a few lines and tidy the spelling; without it the report shows the most telling note of each day. <b>Suggest questions to ask</b> sends them too, and offers questions you can add with one tap. Send or copy does the same through your own AI app. Any of these sends the notes to an AI company's servers, so leave out anything you would not want sent.</p>
         <h3 class="section-title">Questions for the team</h3>
         <button id="notes-record" class="recbtn recbtn-appt" type="button"><svg class="icon" aria-hidden="true"><use href="#i-mic"/></svg><span>Record the appointment</span></button>
-        <p id="notes-record-hint" class="hint">One recording for the whole appointment. Tap a question's number as they start answering it, so each answer is easy to find later.</p>
+        <p id="notes-record-hint" class="hint">One recording for the whole appointment. Tap a question as they start answering it, so each answer is easy to find later.</p>
         <div id="notes-appts" class="reclist"></div>
         <div id="notes-questions" class="cards"></div>
         <h3 class="section-title">Summary</h3>
@@ -838,6 +843,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=132"></script>
+  <script type="module" src="scripts.js?v=133"></script>
 </body>
 </html>
