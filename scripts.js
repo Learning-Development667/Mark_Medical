@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '130';
+const APP_VERSION = '131';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
 const TEXT_LIMIT_BYTES = 800 * 1024;
@@ -1052,7 +1052,7 @@ function buildDemoFixture() {
     ci(-5, 'evening', { pain: 3, mood: 7, worstPain: 4, sickness: 2, appetite: 6, energy: 5, symptoms: '', settled: 'The sickness has eased', goodThing: 'Beat Shelley at cards' }),
     ci(-2, 'morning', { sleep: 4, sleepHours: 4.5, pain: 6, painNote: 'Lower back, worse lying flat', mood: 4, symptoms: 'Back pain woke me twice', lookingForward: '' }),
     ci(-2, 'evening', { pain: 7, mood: 4, worstPain: 8, sickness: 6, appetite: 2, energy: 3, symptoms: 'Felt sick most of the afternoon', settled: '', goodThing: 'Shelley made soup' }),
-    ci(-1, 'morning', { sleep: 6, sleepHours: 7.5, pain: 4, mood: 6, symptoms: '', lookingForward: 'Quiet day' }),
+    ci(-1, 'morning', { sleep: 6, sleepHours: 7.5, sleepNote: 'Slept for ages but still not rested', pain: 4, mood: 6, moodNote: 'Flat, no real reason', symptoms: '', lookingForward: 'Quiet day' }),
     ci(-1, 'evening', { pain: 3, mood: 6, worstPain: 5, sickness: 3, appetite: 5, energy: 5, symptoms: '', settled: 'Back is easier than yesterday', goodThing: 'Sun on the patio' }),
     ci(0, 'morning', { sleep: 7, sleepHours: 7, pain: 3, mood: 7, symptoms: '', lookingForward: 'Hayley visiting later' }),
     e(0, '09:00', 'Shelley', { type: 'drink', value: 250, note: 'Water' })
@@ -5360,15 +5360,15 @@ async function renderNotesReport() {
 
 const CHECKIN_QUESTIONS = {
   morning: [
-    { key: 'sleep', kind: 'sleep', q: 'How did you sleep?', low: '1 terribly', high: '10 brilliantly' },
+    { key: 'sleep', kind: 'sleep', q: 'How did you sleep?', low: '1 terribly', high: '10 brilliantly', note: 'sleepNote', noteQ: 'How rested do you feel? Optional.', notePh: 'e.g. slept for ages but still not rested, or a bad night but woke with some energy' },
     { key: 'pain', kind: 'pain', q: 'Pain right now', low: '1 none', high: '10 worst', note: 'painNote' },
-    { key: 'mood', kind: 'slider', q: 'How is your mood?', low: '1 rough', high: '10 great' },
+    { key: 'mood', kind: 'slider', q: 'How is your mood?', low: '1 rough', high: '10 great', note: 'moodNote', noteQ: 'What is behind it? Optional.', notePh: 'e.g. a good night, a visitor coming, worried about tomorrow' },
     { key: 'symptoms', kind: 'text', q: 'Any new or worse symptoms overnight?', ph: 'e.g. more sick than usual, a new ache' },
     { key: 'lookingForward', kind: 'text', q: 'What are you looking forward to today?', ph: 'e.g. a walk in the garden, a visitor' }
   ],
   evening: [
     { key: 'pain', kind: 'pain', q: 'Pain right now', low: '1 none', high: '10 worst', note: 'painNote' },
-    { key: 'mood', kind: 'slider', q: 'How is your mood?', low: '1 rough', high: '10 great' },
+    { key: 'mood', kind: 'slider', q: 'How is your mood?', low: '1 rough', high: '10 great', note: 'moodNote', noteQ: 'What is behind it? Optional.', notePh: 'e.g. a good day in the garden, or a rough afternoon' },
     { key: 'worstPain', kind: 'pain', q: 'Worst pain today', low: '1 none', high: '10 worst', note: 'worstPainNote' },
     { key: 'sickness', kind: 'pain', q: 'Sickness today', low: '1 none', high: '10 severe' },
     { key: 'appetite', kind: 'slider', q: 'Appetite today', low: '1 nothing', high: '10 normal' },
@@ -5579,9 +5579,9 @@ function openCheckin(slot, initialDay) {
           wrap.append(field('Roughly how many hours (optional)', hours));
         }
         if (q.note) {
-          noteBox = h('textarea', { rows: '2', placeholder: CHECKIN_NOTE_PH, 'aria-label': CHECKIN_NOTE_Q });
+          noteBox = h('textarea', { rows: '2', placeholder: q.notePh || CHECKIN_NOTE_PH, 'aria-label': q.noteQ || CHECKIN_NOTE_Q });
           noteBox.value = answers[q.note] || '';
-          wrap.append(h('div', { class: 'wiz-note' }, h('p', { class: 'wiz-hint', text: CHECKIN_NOTE_Q }), noteBox, speakButton(noteBox) || ''));
+          wrap.append(h('div', { class: 'wiz-note' }, h('p', { class: 'wiz-hint', text: q.noteQ || CHECKIN_NOTE_Q }), noteBox, speakButton(noteBox) || ''));
         }
         getVal = () => {
           if (hours) { const hv = parseFloat(hours.value); answers.sleepHours = isNaN(hv) ? null : hv; }
