@@ -859,6 +859,8 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 .call-label { font-weight: 700; font-size: 18px; }
 .call-role { color: var(--text-secondary); }
 .call-number { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text-secondary); font-size: 16px; }
+/* The option or extension after the number (v135): in ink and bold, as it is what to do once the call connects */
+.call-ext { color: var(--text-primary); font-weight: 600; font-size: 17px; }
 .call-email { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text-secondary); font-size: 15px; overflow-wrap: anywhere; }
 .contactrow { display: flex; flex-direction: column; gap: var(--s-1); padding: var(--s-3); border-radius: var(--r-md); background: var(--surface-sunken); box-shadow: var(--elev-sunken); }
 .contactrow .field { margin-bottom: var(--s-2); }

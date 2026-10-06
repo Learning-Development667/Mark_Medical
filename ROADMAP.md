@@ -80,6 +80,7 @@ One at a time, each a few days with its sources checked, on the profile mechanis
 - An "AI used this month: about 12p" line under Settings, from the bridge's own token tally. Offered 4 October; build if wanted.
 
 ## Done
+- v135 Contacts carry an extension or menu option under the number ("Then option 2"); Call still dials the number alone.
 - v133 Questions labelled (Oncology, Gastro, General, Not sure, Dietitian), never numbered; dietitian questions go to the Food diary screen and report.
 - v132 Beta until the stores: the label on the opener, the cover, the App card and About, and after the version. The Apple Health card says the feed is optional and needs the paid Health Auto Export; everything can be typed in instead.
 - v131 Words under Sleep ("How rested do you feel?") and Mood ("What is behind it?") in the check-ins, like the pain ones.
