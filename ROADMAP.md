@@ -12,6 +12,7 @@ Decisions already made, so they are not reopened:
 - The name is **My Medical Daybook** in full, Daybook inside the app (v89).
 - The data screens stay plain: no background pictures behind the cards and charts.
 - **One app, with condition profiles**, not an app per condition (Mark, 5 October 2026). Apple's guideline 4.3 refuses the same app under several names; one codebase means one fix and one submission; people have more than one condition (treatment brings on menopause, Crohn's and menopause overlap, a carer may look after two people); a condition in the app's name on a Home Screen is a disclosure; and "Assistant" already names the AI helper. Being found per condition comes from the store listing's keywords and a page per condition on the website. Most of the app is condition-neutral; a profile changes the tiles, the check-in questions, the Notes topics and thresholds and the Treatment tab (action 9).
+- **Beta until the stores** (Mark, 6 October 2026, v132): the app is labelled Beta on the opener, the sign-in screens, the App card and About, and after the version number, until it is listed on the App Store and Google Play. Clearing `APP_STAGE` in `scripts.js` takes every marker off at once (part of action 18).
 - The AI helper is called **Daybook Assistant** (v116, Mark: some people are wary of AI or have never heard of Claude). The privacy page, terms and About say once, plainly, that it is Claude, made by Anthropic in the US, reached through the bridge with Mark's own key and credit. The share-sheet route still names no assistant ("Send to my AI app").
 
 ## Stage 1: Build
@@ -42,7 +43,7 @@ Everything the app needs to do before the look changes, so nothing is restyled t
 ## Stage 5: App stores
 16. **Join the Apple Developer Programme.** Mark: enrol as Mark 1 Apps Ltd (see Paperwork), about £79 a year; accept the agreements; make an App Store Connect API key and save it as a repository secret. Done when GitHub can upload a build.
 17. **Build the iPhone and Android apps, with Siri.** Claude: a thin iPhone app around the same web code with Apple Health read directly and Siri actions ("Log a dose", "Read this medicine", "Summarise this letter"); an Android wrapper with Health Connect. Built on GitHub, no Mac needed. Done when "Hey Siri, log a dose" works on Mark's phone.
-18. **TestFlight, then both stores.** Mark and Shelley first, then a small group, then submission with a demo login for the reviewers. Google Play is a one-off $25 account. Done when both stores list Daybook.
+18. **TestFlight, then both stores.** Mark and Shelley first, then a small group, then submission with a demo login for the reviewers. Google Play is a one-off $25 account. Done when both stores list Daybook. Then set `APP_STAGE` to '' so the Beta label goes.
 19. **Trade mark for "My Medical Daybook".** Mark: an IPO search in classes 9, 42 and 44, then about £170 for one class. Done when the application is in.
 
 ## Paperwork, alongside (Mark, started 4 October 2026)
@@ -78,6 +79,7 @@ One at a time, each a few days with its sources checked, on the profile mechanis
 - An "AI used this month: about 12p" line under Settings, from the bridge's own token tally. Offered 4 October; build if wanted.
 
 ## Done
+- v132 Beta until the stores: the label on the opener, the cover, the App card and About, and after the version. The Apple Health card says the feed is optional and needs the paid Health Auto Export; everything can be typed in instead.
 - v131 Words under Sleep ("How rested do you feel?") and Mood ("What is behind it?") in the check-ins, like the pain ones.
 - v129 Where the pain is: an optional words box under the pain sliders in the morning and evening check-ins, carried into Notes for the team.
 - v127 Weight once a day: the Vitals sheet shows the day's weight as a line with Change it once one is logged, typed or from Apple Health.
