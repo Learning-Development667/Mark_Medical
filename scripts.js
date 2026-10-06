@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '129';
+const APP_VERSION = '130';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
 const TEXT_LIMIT_BYTES = 800 * 1024;
@@ -5443,7 +5443,8 @@ function checkinCard(c, inEntry) {
     if (q.kind === 'text') node = h('dd', { class: 'cc-v' + (v ? '' : ' is-empty'), text: v ? v : 'Nothing added' });
     else {
       const empty = v == null;
-      node = h('dd', { class: 'cc-v' + (empty ? ' is-empty' : ' is-num'), text: (empty ? 'Skipped' : v + '/10' + (q.kind === 'sleep' && c.sleepHours != null ? ' \u00b7 ' + c.sleepHours + ' h' : '')) + (q.note && c[q.note] ? ' \u00b7 ' + c[q.note] : '') });
+      node = h('dd', { class: 'cc-v' + (empty ? ' is-empty' : ' is-num') }, empty ? 'Skipped' : v + '/10' + (q.kind === 'sleep' && c.sleepHours != null ? ' \u00b7 ' + c.sleepHours + ' h' : ''),
+        q.note && c[q.note] ? h('span', { class: 'vnote', text: c[q.note] }) : null);
     }
     return h('div', { class: 'cc-row' }, h('dt', { class: 'cc-k', text: CHECKIN_LABELS[q.key] || q.key }), node);
   });
@@ -5604,10 +5605,10 @@ function openCheckin(slot, initialDay) {
         const v = answers[q.key];
         let skipped = q.kind === 'text' ? !v : v == null;
         let shown = skipped ? 'Skipped' : (q.kind === 'text' ? v : String(v) + (q.kind === 'sleep' && answers.sleepHours != null ? ' · ' + answers.sleepHours + ' h' : ''));
-        if (q.note && answers[q.note]) shown += ' · ' + answers[q.note];
+        const words = q.note && answers[q.note] ? h('span', { class: 'vnote', text: answers[q.note] }) : null;
         list.append(h('li', null, h('button', { type: 'button', onclick: () => { dir = -1; step = i; render(); } },
           h('span', { class: 'k', text: CHECKIN_LABELS[q.key] }),
-          h('span', { class: 'v' + (skipped ? ' is-skipped' : (q.kind === 'text' ? '' : ' is-num')), text: shown }))));
+          h('span', { class: 'v' + (skipped ? ' is-skipped' : (q.kind === 'text' ? '' : ' is-num')) }, shown, words))));
       });
       wrap.append(list);
       if (slot === 'morning' && !state.readOnly) wrap.append(h('p', { class: 'wiz-signpost', text: 'Gentle exercises and stretches are on the Exercise tab, for when you are up and ready. Optional.' }));

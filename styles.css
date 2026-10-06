@@ -667,6 +667,10 @@ body.is-readonly #calls-edit { display: none; }
 .wiz-summary .v { font-weight: 600; text-align: right; max-width: 55%; overflow-wrap: anywhere; }
 .wiz-summary .v.is-skipped { color: var(--text-secondary); font-weight: 400; font-style: italic; }
 .wiz-summary .v.is-num { font-family: var(--font-head); font-weight: 600; font-size: var(--fs-xl); letter-spacing: -0.01em; }
+/* the words under a pain score (v130): body type on their own line, never the number's typeface */
+.vnote { display: block; font-family: var(--font-body); font-weight: 400; font-size: 17px; line-height: 1.35; letter-spacing: 0; color: var(--text-primary); margin-top: 2px; }
+.wiz-summary .v .vnote { text-align: right; }
+.cc-v.is-empty .vnote { color: var(--text-primary); }
 
 /* Slider: a fat thumb for one-handed use */
 input[type="range"].slider { -webkit-appearance: none; appearance: none; width: 100%; height: 44px; background: transparent; margin: 0; }
