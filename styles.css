@@ -456,6 +456,10 @@ textarea { line-height: 1.5; resize: vertical; }
 .pill-red { background: var(--danger-light); color: var(--danger); }
 .pill-green { background: var(--success-light); color: var(--success); }
 .pill-teal { background: var(--teal-light); color: var(--teal); }
+/* The stage pill (v132): "Beta" on the opener and the four cover screens, muted; never in the topbar, where it squeezed the page title */
+.pill-stage { min-height: 26px; padding: 1px 9px; font-size: 14px; background: var(--surface-sunken); color: var(--text-secondary); }
+.signin-card .pill-stage { margin-bottom: var(--s-2); }
+.opener-stage { margin-top: 14px; background: color-mix(in srgb, var(--opener-fg) 14%, transparent); color: var(--opener-fg); }
 .main {
   flex: 1;
   width: 100%; max-width: 640px; margin: 0 auto;

@@ -13,7 +13,17 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '131';
+const APP_VERSION = '132';
+/* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
+   opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
+   after the version everywhere the version shows, and as one line on the App card and About
+   (the [data-stage] and [data-stage-note] elements, hidden when the stage is empty). */
+const APP_STAGE = 'Beta';
+function versionText() { return 'Version ' + APP_VERSION + (APP_STAGE ? ', ' + APP_STAGE : ''); }
+function syncStage() {
+  for (const el of document.querySelectorAll('[data-stage]')) { el.textContent = APP_STAGE; el.hidden = !APP_STAGE; }
+  for (const el of document.querySelectorAll('[data-stage-note]')) el.hidden = !APP_STAGE;
+}
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
 const TEXT_LIMIT_BYTES = 800 * 1024;
@@ -650,7 +660,8 @@ function openLegal(which) {
     if (email) el.replaceChildren('Contact: ', h('a', { href: 'mailto:' + email, text: email }), '.');
     else el.textContent = 'Contact: Mark Brown, Mark 1 Apps.';
   }
-  for (const el of wrap.querySelectorAll('[data-version]')) el.textContent = 'Version ' + APP_VERSION;
+  for (const el of wrap.querySelectorAll('[data-version]')) el.textContent = versionText();
+  for (const el of wrap.querySelectorAll('[data-stage-note]')) el.hidden = !APP_STAGE;
   openSheet(LEGAL_PAGES[which], wrap);
 }
 document.addEventListener('click', (ev) => {
@@ -8949,7 +8960,8 @@ $('calls-edit').addEventListener('click', () => {
 /* Housekeeping                                                         */
 /* ------------------------------------------------------------------ */
 
-$('app-version').textContent = 'Version ' + APP_VERSION;
+$('app-version').textContent = versionText();
+syncStage();
 
 /* ---- Opener: the loading page, shown on every cold start while the account check runs. The Mark 1 Apps
    film plays every time (since v88; until then only on a phone's first visit, after which a still frame),
@@ -8962,7 +8974,7 @@ const OPENER_START_S = 1, OPENER_CAP_MS = 4500;
 (function opener() {
   const el = $('opener'), video = $('opener-video'), skip = $('opener-skip');
   if (!el || !video) return;
-  $('opener-version').textContent = 'Version ' + APP_VERSION;
+  $('opener-version').textContent = versionText();
   let noFilm = false;
   try { noFilm = localStorage.getItem('daybook.opener.nofilm') === '1'; } catch (e) { /* ignore */ }
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;

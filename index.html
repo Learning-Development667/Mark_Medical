@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=131">
+  <link rel="stylesheet" href="styles.css?v=132">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -60,6 +60,7 @@
       <span class="opener-pre">My Medical</span>
       <span class="opener-brand">Daybook</span>
       <span class="opener-strap">Your companion between appointments.</span>
+      <span class="pill pill-stage opener-stage" data-stage>Beta</span>
     </div>
     <div class="opener-film">
       <video id="opener-video" class="opener-video" muted playsinline preload="auto" poster="icons/mark1apps-poster.jpg" aria-hidden="true" tabindex="-1">
@@ -79,6 +80,7 @@
     <div class="signin-card">
       <img class="signin-logo" src="icons/icon-192.png" alt="" width="72" height="72">
       <h1 class="brand"><span class="brand-pre">My Medical</span>Daybook</h1>
+      <span class="pill pill-stage" data-stage>Beta</span>
       <p class="strapline">Your companion between appointments.</p>
       <p class="muted">Each household's records are seen only by its own members.</p>
       <form id="signin-form" autocomplete="on">
@@ -106,6 +108,7 @@
   <section id="signup" class="signin" hidden>
     <div class="signin-card">
       <h1 class="brand"><span class="brand-pre">My Medical</span>Daybook</h1>
+      <span class="pill pill-stage" data-stage>Beta</span>
       <p class="strapline">Your companion between appointments.</p>
       <p id="signup-intro" class="muted">Your own Daybook, for you and the people you invite.</p>
       <form id="signup-form" autocomplete="on">
@@ -138,6 +141,7 @@
   <section id="nohousehold" class="signin" hidden>
     <div class="signin-card">
       <h1 class="brand"><span class="brand-pre">My Medical</span>Daybook</h1>
+      <span class="pill pill-stage" data-stage>Beta</span>
       <p class="muted" id="nohousehold-who">This sign-in is not in a Daybook household yet.</p>
       <form id="nohousehold-form">
         <label class="field">
@@ -160,6 +164,7 @@
   <section id="noconfig" class="signin" hidden>
     <div class="signin-card">
       <h1 class="brand"><span class="brand-pre">My Medical</span>Daybook</h1>
+      <span class="pill pill-stage" data-stage>Beta</span>
       <p><strong>config.js is missing.</strong></p>
       <p class="muted">Copy <code>config.example.js</code> to <code>config.js</code>, paste in the Firebase web config, then commit it. Accounts and households are made from the app itself.</p>
     </div>
@@ -657,7 +662,7 @@
         <div id="settings-health" hidden>
           <h2 class="section-title">Apple Health</h2>
           <div class="card settings-group">
-            <p class="hint">Steps, sleep, workouts, weight and BMI, and food totals arrive through the Health Auto Export app. Its automation posts to the address below with this household's inbox key in the X-Care-Log-Key header (Care Log was Daybook's first name). The key is this household's alone.</p>
+            <p class="hint">Optional. Steps, sleep, workouts, weight and BMI, and food totals can arrive automatically through the Health Auto Export app (iPhone only; the automatic sending needs its paid version, a one-off purchase). Everything can be typed in instead, so Daybook works in full without it. Its automation posts to the address below with this household's inbox key in the X-Care-Log-Key header (Care Log was Daybook's first name). The key is this household's alone.</p>
             <p class="mono keybox" id="settings-health-url"></p>
             <button id="settings-health-key" class="btn btn-secondary btn-block" type="button">Show the inbox key</button>
             <p class="mono keybox" id="settings-health-keytext" hidden></p>
@@ -668,6 +673,7 @@
         <div class="card">
           <p>Add Daybook to the Home Screen from the Share menu in Safari to use it like an app.</p>
           <p>Built to meet WCAG 2.2 level AA, the web accessibility standard. Last checked on 28 September 2026, with automated tests (axe-core) and by hand, in light and dark.</p>
+          <p data-stage-note>Daybook is in Beta while it is readied for the App Store and Google Play. It works in full; some things may still change, and anything that goes wrong is worth telling Mark about.</p>
           <p class="muted mono" id="app-version"></p>
           <div class="legal-links">
             <button class="btn btn-secondary btn-block" type="button" data-page="privacy">Privacy</button>
@@ -785,6 +791,7 @@
     <p class="strapline">Your companion between appointments.</p>
     <p>My Medical Daybook is a private, shared health record for a patient and the people looking after them. It keeps the days between appointments in one place: how you feel, readings, medicines and doses, food and drink, letters and what they mean, questions for the care team and their answers, treatment days and gentle exercise. Notes for the team turns it into a short summary for a ten-minute appointment.</p>
     <p>Made by Mark Brown, Mark 1 Apps, first for his own cancer treatment and the people around him.</p>
+    <p data-stage-note>Daybook is in Beta while it is readied for the App Store and Google Play. It works in full; some things may still change, and anything that goes wrong is worth telling Mark about.</p>
     <p class="muted mono" data-version></p>
     <h3>Not medical advice</h3>
     <p>Daybook helps you keep track and talk to your care team. It makes no diagnosis and is not medical advice. Any prompt to contact the team is general: follow what your own team and your alert card say. If you are worried, contact your care team or NHS 111. In an emergency call 999.</p>
@@ -831,6 +838,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=131"></script>
+  <script type="module" src="scripts.js?v=132"></script>
 </body>
 </html>
