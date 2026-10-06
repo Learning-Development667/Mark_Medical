@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '128';
+const APP_VERSION = '129';
 /* Printed PDFs are always on white paper, so they use the light teal regardless of the screen's colour scheme */
 const PAGE_LIMIT_BYTES = 850 * 1024;   // base64 characters per page document (hard cap is 900 KB)
 const TEXT_LIMIT_BYTES = 800 * 1024;
@@ -1050,7 +1050,7 @@ function buildDemoFixture() {
     ci(-6, 'evening', { pain: 4, mood: 6, worstPain: 5, sickness: 3, appetite: 5, energy: 4, symptoms: '', settled: '', goodThing: 'Fish and chips on the bench' }),
     ci(-5, 'morning', { sleep: 7, sleepHours: 7, pain: 2, mood: 7, symptoms: '', lookingForward: '' }),
     ci(-5, 'evening', { pain: 3, mood: 7, worstPain: 4, sickness: 2, appetite: 6, energy: 5, symptoms: '', settled: 'The sickness has eased', goodThing: 'Beat Shelley at cards' }),
-    ci(-2, 'morning', { sleep: 4, sleepHours: 4.5, pain: 6, mood: 4, symptoms: 'Back pain woke me twice', lookingForward: '' }),
+    ci(-2, 'morning', { sleep: 4, sleepHours: 4.5, pain: 6, painNote: 'Lower back, worse lying flat', mood: 4, symptoms: 'Back pain woke me twice', lookingForward: '' }),
     ci(-2, 'evening', { pain: 7, mood: 4, worstPain: 8, sickness: 6, appetite: 2, energy: 3, symptoms: 'Felt sick most of the afternoon', settled: '', goodThing: 'Shelley made soup' }),
     ci(-1, 'morning', { sleep: 6, sleepHours: 7.5, pain: 4, mood: 6, symptoms: '', lookingForward: 'Quiet day' }),
     ci(-1, 'evening', { pain: 3, mood: 6, worstPain: 5, sickness: 3, appetite: 5, energy: 5, symptoms: '', settled: 'Back is easier than yesterday', goodThing: 'Sun on the patio' }),
@@ -5260,6 +5260,10 @@ function buildNotesReport(entries, questionsAll, from, to, rangeLabel) {
       keys.forEach(([k, label]) => {
         if (e[k]) notes.push({ time: fmtTime(entryDate(e)), who: e.addedBy || 'unknown', text: label + ': ' + e[k], context: e.slot === 'carer' ? "carer's view" : e.slot + ' check-in' });
       });
+      /* the words under a pain slider (v128): "Pain 8/10: lower back, worse when I stand" */
+      (CHECKIN_QUESTIONS[e.slot] || []).filter((q) => q.note && e[q.note]).forEach((q) => {
+        notes.push({ time: fmtTime(entryDate(e)), who: e.addedBy || 'unknown', text: CHECKIN_LABELS[q.key] + (e[q.key] != null ? ' ' + e[q.key] + '/10' : '') + ': ' + e[q.note], context: e.slot + ' check-in' });
+      });
     });
     notes.sort((a, b) => a.time.localeCompare(b.time));
     if (notes.length) days.push({ day, notes });
@@ -5357,15 +5361,15 @@ async function renderNotesReport() {
 const CHECKIN_QUESTIONS = {
   morning: [
     { key: 'sleep', kind: 'sleep', q: 'How did you sleep?', low: '1 terribly', high: '10 brilliantly' },
-    { key: 'pain', kind: 'pain', q: 'Pain right now', low: '1 none', high: '10 worst' },
+    { key: 'pain', kind: 'pain', q: 'Pain right now', low: '1 none', high: '10 worst', note: 'painNote' },
     { key: 'mood', kind: 'slider', q: 'How is your mood?', low: '1 rough', high: '10 great' },
     { key: 'symptoms', kind: 'text', q: 'Any new or worse symptoms overnight?', ph: 'e.g. more sick than usual, a new ache' },
     { key: 'lookingForward', kind: 'text', q: 'What are you looking forward to today?', ph: 'e.g. a walk in the garden, a visitor' }
   ],
   evening: [
-    { key: 'pain', kind: 'pain', q: 'Pain right now', low: '1 none', high: '10 worst' },
+    { key: 'pain', kind: 'pain', q: 'Pain right now', low: '1 none', high: '10 worst', note: 'painNote' },
     { key: 'mood', kind: 'slider', q: 'How is your mood?', low: '1 rough', high: '10 great' },
-    { key: 'worstPain', kind: 'pain', q: 'Worst pain today', low: '1 none', high: '10 worst' },
+    { key: 'worstPain', kind: 'pain', q: 'Worst pain today', low: '1 none', high: '10 worst', note: 'worstPainNote' },
     { key: 'sickness', kind: 'pain', q: 'Sickness today', low: '1 none', high: '10 severe' },
     { key: 'appetite', kind: 'slider', q: 'Appetite today', low: '1 nothing', high: '10 normal' },
     { key: 'energy', kind: 'slider', q: 'Energy today', low: '1 wiped out', high: '10 plenty' },
@@ -5384,6 +5388,11 @@ const CHECKIN_QUESTIONS = {
     { key: 'noticed', kind: 'text', q: 'What did you notice today?', ph: 'e.g. slept most of the afternoon, colour better than yesterday' }
   ]
 };
+/* The optional words under a pain slider (v128): where it is, what it is like. Stored beside the score as
+   painNote / worstPainNote, shown after the score everywhere it shows, and in Notes for the team as a note. */
+const CHECKIN_NOTE_Q = 'Where is it, or anything else? Optional.';
+const CHECKIN_NOTE_PH = 'e.g. lower back, worse when I stand';
+function checkinNoteKeys(slot) { return (CHECKIN_QUESTIONS[slot] || []).filter((q) => q.note).map((q) => q.note); }
 const CHECKIN_LABELS = {
   sleep: 'Sleep', sleepHours: 'Hours slept', pain: 'Pain now', mood: 'Mood', symptoms: 'New or worse symptoms',
   lookingForward: 'Looking forward to', worstPain: 'Worst pain', sickness: 'Sickness', appetite: 'Appetite',
@@ -5434,7 +5443,7 @@ function checkinCard(c, inEntry) {
     if (q.kind === 'text') node = h('dd', { class: 'cc-v' + (v ? '' : ' is-empty'), text: v ? v : 'Nothing added' });
     else {
       const empty = v == null;
-      node = h('dd', { class: 'cc-v' + (empty ? ' is-empty' : ' is-num'), text: empty ? 'Skipped' : v + '/10' + (q.kind === 'sleep' && c.sleepHours != null ? ' \u00b7 ' + c.sleepHours + ' h' : '') });
+      node = h('dd', { class: 'cc-v' + (empty ? ' is-empty' : ' is-num'), text: (empty ? 'Skipped' : v + '/10' + (q.kind === 'sleep' && c.sleepHours != null ? ' \u00b7 ' + c.sleepHours + ' h' : '')) + (q.note && c[q.note] ? ' \u00b7 ' + c[q.note] : '') });
     }
     return h('div', { class: 'cc-row' }, h('dt', { class: 'cc-k', text: CHECKIN_LABELS[q.key] || q.key }), node);
   });
@@ -5530,6 +5539,7 @@ function openCheckin(slot, initialDay) {
     answers = {};
     qs.forEach((q) => { answers[q.key] = existing && existing[q.key] !== undefined ? existing[q.key] : (q.kind === 'text' ? '' : null); });
     answers.sleepHours = existing && existing.sleepHours != null ? existing.sleepHours : null;
+    checkinNoteKeys(slot).forEach((k) => { answers[k] = existing && existing[k] ? String(existing[k]) : ''; });
   };
   load();
   /* editing a saved check-in opens straight on the review screen: every answer is there, tap one to change it */
@@ -5562,19 +5572,25 @@ function openCheckin(slot, initialDay) {
       } else {
         const sl = sliderBlock(q, answers[q.key]);
         wrap.append(...sl.nodes);
-        let hours = null;
+        let hours = null, noteBox = null;
         if (q.kind === 'sleep') {
           hours = h('input', { type: 'number', inputmode: 'decimal', min: '0', max: '24', step: '0.5', placeholder: 'e.g. 7', value: answers.sleepHours != null ? String(answers.sleepHours) : '' });
           wrap.append(field('Roughly how many hours (optional)', hours));
         }
+        if (q.note) {
+          noteBox = h('textarea', { rows: '2', placeholder: CHECKIN_NOTE_PH, 'aria-label': CHECKIN_NOTE_Q });
+          noteBox.value = answers[q.note] || '';
+          wrap.append(h('div', { class: 'wiz-note' }, h('p', { class: 'wiz-hint', text: CHECKIN_NOTE_Q }), noteBox, speakButton(noteBox) || ''));
+        }
         getVal = () => {
           if (hours) { const hv = parseFloat(hours.value); answers.sleepHours = isNaN(hv) ? null : hv; }
+          if (noteBox) answers[q.note] = noteBox.value.trim();
           return sl.value();
         };
       }
       const go = (n, d) => { dir = d; step = n; render(); };
       const back = h('button', { class: 'btn btn-secondary btn-back', type: 'button', disabled: step === 0, onclick: () => { answers[q.key] = getVal(); go(step - 1, -1); } }, 'Back');
-      const skip = h('button', { class: 'btn-link wiz-skip', type: 'button', onclick: () => { if (q.kind === 'sleep') getVal(); answers[q.key] = q.kind === 'text' ? '' : null; go(step + 1, 1); } }, 'Skip');
+      const skip = h('button', { class: 'btn-link wiz-skip', type: 'button', onclick: () => { if (q.kind === 'sleep' || q.note) getVal(); answers[q.key] = q.kind === 'text' ? '' : null; go(step + 1, 1); } }, 'Skip');
       const next = h('button', { class: 'btn btn-primary btn-next', type: 'button', onclick: () => { answers[q.key] = getVal(); go(step + 1, 1); } }, step === qs.length - 1 ? 'Review' : 'Next');
       wrap.append(h('div', { class: 'wiz-buttons' }, back, skip, next), cancelLink() || '');
     } else {
@@ -5588,6 +5604,7 @@ function openCheckin(slot, initialDay) {
         const v = answers[q.key];
         let skipped = q.kind === 'text' ? !v : v == null;
         let shown = skipped ? 'Skipped' : (q.kind === 'text' ? v : String(v) + (q.kind === 'sleep' && answers.sleepHours != null ? ' · ' + answers.sleepHours + ' h' : ''));
+        if (q.note && answers[q.note]) shown += ' · ' + answers[q.note];
         list.append(h('li', null, h('button', { type: 'button', onclick: () => { dir = -1; step = i; render(); } },
           h('span', { class: 'k', text: CHECKIN_LABELS[q.key] }),
           h('span', { class: 'v' + (skipped ? ' is-skipped' : (q.kind === 'text' ? '' : ' is-num')), text: shown }))));
@@ -5616,9 +5633,10 @@ async function saveCheckin(slot, day, answers, existing) {
   const data = { type: 'checkin', slot, day, addedBy: existing && existing.addedBy ? existing.addedBy : state.name };
   CHECKIN_QUESTIONS[slot].forEach((q) => { data[q.key] = answers[q.key]; });
   if (slot === 'morning') data.sleepHours = answers.sleepHours;
+  checkinNoteKeys(slot).forEach((k) => { data[k] = answers[k] || ''; });
   if (existing) {
     /* nothing changed: no second write, and no "edited" stamp for a look and a tap on Save */
-    const keys = CHECKIN_QUESTIONS[slot].map((q) => q.key).concat(slot === 'morning' ? ['sleepHours'] : []);
+    const keys = CHECKIN_QUESTIONS[slot].map((q) => q.key).concat(slot === 'morning' ? ['sleepHours'] : [], checkinNoteKeys(slot));
     const same = keys.every((k) => { const a = data[k] == null ? null : data[k], b = existing[k] == null ? null : existing[k]; return typeof a === 'string' || typeof b === 'string' ? String(a == null ? '' : a) === String(b == null ? '' : b) : a === b; });
     if (same) { toast('No changes to save'); return; }
     data.editedBy = state.name;
