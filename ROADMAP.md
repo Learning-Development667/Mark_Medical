@@ -78,6 +78,7 @@ One at a time, each a few days with its sources checked, on the profile mechanis
 - An "AI used this month: about 12p" line under Settings, from the bridge's own token tally. Offered 4 October; build if wanted.
 
 ## Done
+- v129 Where the pain is: an optional words box under the pain sliders in the morning and evening check-ins, carried into Notes for the team.
 - v127 Weight once a day: the Vitals sheet shows the day's weight as a line with Change it once one is logged, typed or from Apple Health.
 - v126 Weight and BMI arrive from Apple Health through the bridge (action 3 is waiting only for the first real weigh-in to show).
 - v125 Notes: the stretch fix confirmed on Mark's iPhone.
