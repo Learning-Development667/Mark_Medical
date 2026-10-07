@@ -874,7 +874,7 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
 .sheet-panel {
   position: absolute; left: 0; right: 0; bottom: var(--kb, 0px);
-  max-height: min(92vh, calc(var(--vvh, 100vh) - 16px)); overflow: auto;
+  max-height: min(92vh, calc(100vh - 84px - var(--safe-t)), calc(var(--vvh, 100vh) - 16px)); overflow: auto; /* room above for the toast */
   transition: bottom var(--t-base) ease;
   background: var(--surface);
   border-radius: var(--r-lg) var(--r-lg) 0 0;
@@ -1076,14 +1076,17 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 
 /* ---------- Toast ---------- */
 .toast {
-  position: fixed; left: var(--s-4); right: var(--s-4); bottom: calc(88px + var(--safe-b)); z-index: 30;
+  /* at the top, over the title bar, like the phone's own notifications (v138): at the bottom it sat over
+     the quick-add tiles and the Save buttons of a sheet, just after a save, when the next tap is due */
+  position: fixed; left: var(--s-4); right: var(--s-4); top: calc(8px + var(--safe-t)); z-index: 30;
   display: flex; align-items: center; justify-content: space-between; gap: var(--s-3);
   background: var(--text-primary); color: var(--bg);
   border-radius: var(--r-md); padding: var(--s-3) var(--s-4); min-height: 56px;
   box-shadow: var(--elev-floating);
   font-weight: 600;
-  animation: block-in var(--t-base) var(--ease-out);
+  animation: toast-in var(--t-base) var(--ease-out);
 }
+@keyframes toast-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
 .toast-btn { min-height: 44px; padding: var(--s-1) 14px; border: 0; border-radius: var(--r-sm); background: rgba(255, 255, 255, 0.16); color: inherit; font-weight: 700; cursor: pointer; }
 @media (prefers-color-scheme: dark) { .toast { background: var(--surface-2); color: var(--text-primary); } }
 
