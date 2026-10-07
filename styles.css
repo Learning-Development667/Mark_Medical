@@ -1543,3 +1543,5 @@ h1, h2, h3 { font-weight: 600; }
 .medhist-count { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text-secondary); }
 .medhist-times { grid-column: 1 / -1; color: var(--text-secondary); overflow-wrap: anywhere; }
 .medhist-row .pill { flex-shrink: 0; }
+.medhist-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: var(--s-2) 0 var(--s-3); }
+.medhist-actions .btn { margin-top: 0; min-width: 0; }

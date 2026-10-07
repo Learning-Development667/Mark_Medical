@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '141';
+const APP_VERSION = '142';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -4109,16 +4109,27 @@ const SEND_KINDS = {
     words: (range, n) => `Here is my food diary from Daybook for ${range}: two pages, with protein against the target, drinks and food groups first, then the trends and what I ate week by week.${n && n.questions && n.questions.length ? ` My ${n.questions.length === 1 ? 'question' : 'questions'} for you ${n.questions.length === 1 ? 'is' : 'are'} on the first page.` : ''}`,
     attached: (range) => `Attached: Food diary, ${range}, two pages.`,
     check: ' Use Preview on the Food diary to look at it first.'
+  },
+  meds: {
+    data: () => state.medsPdf,
+    file: (n) => n.filename,
+    blob: () => medsReportBlob(),
+    subject: () => `My medicine history, up to ${fmtDayNum(todayStr())}`,
+    words: () => 'Here is my medicine history from Daybook: every medicine on my list, with its dose, how often I take it and the doses logged, including courses I have finished.',
+    attached: () => `Attached: Medicine history, up to ${fmtDayNum(todayStr())}.`,
+    check: ' Use Preview under Medicine history to look at it first.'
   }
 };
+/* Every covering email ends with where it came from (v142, Mark: say it was sent from Daybook) */
+const SENT_FROM = 'Sent from My Medical Daybook';
 function openSendSheet(kind) {
   const K = SEND_KINDS[kind] || SEND_KINDS.notes;
   const n = K.data();
   if (!n) return;
   loadScript(CDN.jspdf).catch(() => {}); // warmed now so the PDF is ready by the time Send is tapped
-  if (K === SEND_KINDS.notes) loadScript(CDN.html2canvas).catch(() => {});
+  loadScript(CDN.html2canvas).catch(() => {});
   const body = h('div');
-  const range = `${fmtDayNum(n.from)} to ${fmtDayNum(n.to)}`;
+  const range = n.from ? `${fmtDayNum(n.from)} to ${fmtDayNum(n.to)}` : fmtDayNum(n.to);
   const pick = () => {
     const contacts = sendableContacts();
     body.replaceChildren(
@@ -4137,7 +4148,7 @@ function openSendSheet(kind) {
     (async () => { try { blob = await K.blob(); } catch (e) { console.error(e); blobError = e; } })();
     const subject = h('input', { type: 'text', id: 'send-subject', value: K.subject(range) });
     const note = h('textarea', { id: 'send-note', rows: '6' });
-    note.value = `${greetingFor(c)}\n\n${K.words(range, n)} The PDF is attached.\n\nThank you,\n${state.name || ''}`.trim();
+    note.value = `${greetingFor(c)}\n\n${K.words(range, n)} The PDF is attached.\n\nThank you,\n${state.name || ''}`.trim() + '\n\n' + SENT_FROM;
     const send = h('button', { class: 'btn btn-primary btn-block', type: 'button', id: 'send-go' }, 'Open in my Mail app');
     send.addEventListener('click', () => {
       if (!blob) { toast(blobError ? pdfErrorText(blobError) : 'Still making the PDF. Try again in a moment.'); return; }
@@ -4573,12 +4584,13 @@ function buildTwoPage(n) {
 
 /* The report fitted into a hidden frame (two A4 pages or nothing), ready to print or turn into a PDF */
 let reportModule = null;
+const REPORT_NAMES = { notes: 'Notes for the team', food: 'Food diary', meds: 'Medicine history' };
 /* One hidden frame per report (v121), so the fitted Notes for the team survives a Food diary fit */
 function reportFrame(kind) {
   const id = 'report-frame-' + (kind || 'notes');
   let f = document.getElementById(id);
   if (!f) {
-    f = h('iframe', { id, class: 'report-frame', title: (kind === 'food' ? 'Food diary' : 'Notes for the team') + ', two pages', 'aria-hidden': 'true', tabindex: '-1' });
+    f = h('iframe', { id, class: 'report-frame', title: REPORT_NAMES[kind || 'notes'], 'aria-hidden': 'true', tabindex: '-1' });
     document.body.append(f);
   }
   return f;
@@ -4587,10 +4599,11 @@ function reportFrame(kind) {
    because every Preview, Print, Save and Send fitted the whole report again). The key is the report's
    own data object (replaced on every redraw), the Daybook Assistant summary and the settings the
    report reads; fits on one frame run one after another, never at once. */
-const fitMemo = { notes: null, food: null };
-const fitQueue = { notes: Promise.resolve(), food: Promise.resolve() };
+const fitMemo = { notes: null, food: null, meds: null };
+const fitQueue = { notes: Promise.resolve(), food: Promise.resolve(), meds: Promise.resolve() };
 function fitKey(kind) {
   const p = state.profile || {};
+  if (kind === 'meds') return [state.medsPdf, p.reportName, state.patientName, state.medicines];
   return kind === 'food' ? [state.foodPdf, p.reportName, state.patientName, p.proteinTarget, p.detailedNutrition, state.nutrition]
     : [state.notesPdf, state.notesAI, p.reportName, state.patientName, p.proteinTarget];
 }
@@ -4954,24 +4967,30 @@ $('notes-weekly-undo').addEventListener('click', () => { state.notesAI = null; i
 /* An iPhone or iPad (iPadOS reports itself as a Mac with touch). Their Home Screen apps cannot print a
    frame, so Print there makes the PDF and opens the share sheet, which has Print in it (v121). */
 const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const REPORT_KINDS = {
+  notes: { data: () => state.notesPdf, fit: () => fittedReport(), blob: () => notesReportBlob(), html: (R) => reportModule.reportHtml(R) },
+  food: { data: () => state.foodPdf, fit: () => fittedFoodReport(), blob: () => foodReportBlob(), html: (R) => reportModule.foodReportHtml(R) },
+  meds: { data: () => state.medsPdf, fit: () => fittedMedsReport(), blob: () => medsReportBlob(), html: (R) => reportModule.medsReportHtml(R) }
+};
 function printThroughShare(kind, makeBlob) {
-  const food = kind === 'food';
   toast('Making the PDF. Choose Print in the share sheet.');
-  return savePdf(food ? state.foodPdf.filename : state.notesPdf.filename, food ? 'Food diary' : 'Notes for the team', makeBlob);
+  return savePdf(REPORT_KINDS[kind].data().filename, REPORT_NAMES[kind], makeBlob);
 }
 async function openReportViewer(kind, printNow) {
-  if (printNow && IS_IOS) { printThroughShare(kind, kind === 'food' ? foodReportBlob : notesReportBlob); return; }
-  const food = kind === 'food';
-  const name = food ? 'Food diary' : 'Notes for the team';
-  const body = h('div', { class: 'viewer' }, h('p', { class: 'hint', text: 'Making the two pages, a few seconds.' }));
+  const K = REPORT_KINDS[kind];
+  if (printNow && IS_IOS) { printThroughShare(kind, K.blob); return; }
+  const name = REPORT_NAMES[kind];
+  const body = h('div', { class: 'viewer' }, h('p', { class: 'hint', text: kind === 'meds' ? 'Making the pages, a few seconds.' : 'Making the two pages, a few seconds.' }));
   openSheet(name, body);
   let res = null;
-  try { res = await (food ? fittedFoodReport() : fittedReport()); }
+  try { res = await K.fit(); }
   catch (e) { console.error(e); body.replaceChildren(h('p', { class: 'hint hint-warn', text: 'Could not make the report (' + errText(e) + ').' })); return; }
   if (!res) { closeSheet(); return; }
   if ($('sheet').hidden || !body.isConnected) return;
-  const html = (food ? reportModule.foodReportHtml : reportModule.reportHtml)(res.R);
-  const frame = h('iframe', { class: 'viewer-frame', title: name + ', two A4 pages' });
+  const html = K.html(res.R);
+  const nPages = res.doc ? res.doc.querySelectorAll('.page').length : 2;
+  const pagesWord = nPages === 1 ? 'one A4 page' : nPages === 2 ? 'two A4 pages' : nPages + ' A4 pages';
+  const frame = h('iframe', { class: 'viewer-frame', title: name + ', ' + pagesWord });
   const print = h('button', { class: 'btn btn-tint tint-green', type: 'button', id: 'viewer-print' }, icon('print'), 'Print');
   const save = h('button', { class: 'btn btn-tint tint-warm', type: 'button', id: 'viewer-save' }, icon('download'), 'Save as PDF');
   const doPrint = () => {
@@ -4979,13 +4998,13 @@ async function openReportViewer(kind, printNow) {
     try { frame.contentWindow.focus(); frame.contentWindow.print(); } catch (e) { console.error(e); toast('Could not open printing (' + errText(e) + ').'); }
   };
   print.addEventListener('click', doPrint);
-  const file = food ? state.foodPdf.filename : state.notesPdf.filename;
+  const file = K.data().filename;
   save.addEventListener('click', () => savePdf(file, name, () => reportPdfBlob(res)));
   body.replaceChildren(h('div', { class: 'btnrow viewer-btns' }, print, save), frame,
-    h('p', { class: 'hint', text: 'Exactly as it prints, two A4 pages. Pinch to zoom in.' }));
+    h('p', { class: 'hint', text: 'Exactly as it prints, ' + pagesWord + '. Pinch to zoom in.' }));
   /* scaled to the sheet's width; the scale is for the screen only, so printing is full size */
   const zoom = Math.min(1, Math.max(0.3, (body.clientWidth - 4) / 826));
-  frame.style.height = Math.ceil((1123 * 2 + 3 * 16) * zoom + 8) + 'px';
+  frame.style.height = Math.ceil((1123 * nPages + (nPages + 1) * 16) * zoom + 8) + 'px';
   frame.addEventListener('load', () => {
     /* Escape still closes the sheet when focus is inside the pages (after Print, say) */
     try { frame.contentDocument.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') { ev.preventDefault(); closeSheet(); } }); } catch (e) { /* same origin, so this does not happen */ }
@@ -5919,12 +5938,106 @@ function openMedHistoryList() {
         h('span', { class: 'pickrow-sub', text: [m.dose, medFrequency(m)].filter(Boolean).join(' \u00b7 ') + (st.text === 'Course complete' ? '. Ended ' + fmtDayShort(m.courseEnd) + '.' : '') })),
       h('span', { class: 'pill pill-' + st.level, text: st.text }));
   };
+  state.medsPdf = { from: null, to: todayStr(), filename: `Daybook medicine history ${todayStr()}.pdf` };
+  const canSend = !state.readOnly && !state.viewer;
+  const acts = groups.length ? h('div', { class: 'medhist-actions' },
+    canSend ? h('button', { class: 'btn btn-primary', type: 'button', id: 'medhist-send', onclick: () => openSendSheet('meds') }, icon('send'), 'Send by email') : null,
+    h('button', { class: 'btn btn-tint tint-plum', type: 'button', id: 'medhist-preview', onclick: () => openReportViewer('meds', false) }, icon('eye'), 'Preview'),
+    h('button', { class: 'btn btn-tint tint-green', type: 'button', id: 'medhist-print', onclick: () => openReportViewer('meds', true) }, icon('print'), 'Print'),
+    h('button', { class: 'btn btn-tint tint-warm', type: 'button', id: 'medhist-pdf', onclick: () => savePdf(state.medsPdf.filename, 'Medicine history', medsReportBlob) }, icon('download'), 'Save as PDF')) : null;
   const body = h('div', null,
     h('p', { class: 'wiz-hint', text: 'Every medicine on your list, including finished courses. Tap one to see every dose taken, with the dose and the time.' }),
+    acts,
     ...groups.flatMap(([title, ms]) => [h('p', { class: 'fieldlabel', text: title }), h('div', { class: 'doserows' }, ...ms.map(row))]),
     groups.length ? null : h('p', { class: 'empty', 'data-art': 'pill', text: 'No medicines set up yet.' }),
     h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Close'));
   openSheet('Medicine history', body);
+}
+/* The Medicine history report (v142, Mark: "a print or save PDF or email medicine history").
+   Every dose of every medicine comes in one query (type med, a single equality filter), then per
+   medicine: the first and last dose, how many and on how many days, the last 14 days against what
+   was due (scheduled) or how often it was used (when needed), and any dose logged as a different
+   amount. Doses given in hospital with no medicine on the list are grouped by name at the end. */
+async function loadAllMedDoses() {
+  if (state.demo) return state.recentEntries.filter((e) => e.type === 'med');
+  const snap = await getDocs(query(hcol('entries'), where('type', '==', 'med')));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+function buildMedsReport(doses) {
+  const today = todayStr();
+  const yr = (d) => rDay(d) + ' ' + parseDay(d).getFullYear();
+  const at = (e) => rDay(e.day) + ', ' + fmtTime(entryDate(e));
+  const statsFor = (list) => {
+    const ds = list.slice().sort((a, b) => entryDate(a) - entryDate(b));
+    const days = [...new Set(ds.map((e) => e.day))];
+    return { ds, days, first: ds.length ? ds[0].day : null, last: ds.length ? ds[ds.length - 1] : null };
+  };
+  const otherDoses = (m, ds) => {
+    const c = {};
+    ds.forEach((e) => { if (e.dose && m.dose && e.dose.trim() !== m.dose.trim()) c[e.dose.trim()] = (c[e.dose.trim()] || 0) + 1; });
+    return Object.keys(c).map((d) => `Also logged as ${d} (${c[d] === 1 ? 'once' : c[d] + ' times'})`);
+  };
+  const row = (m, kind) => {
+    const st = statsFor(doses.filter((e) => e.medId === m.id));
+    /* the frequency once: "Twice a day" is not repeated above "Twice a day, morning and evening" */
+    const norm = (t) => String(t || '').trim().toLowerCase().replace(/^once\b/, '1 times').replace(/^twice\b/, '2 times').replace(/^three times\b/, '3 times').replace(/^four times\b/, '4 times');
+    const freq = medFrequency(m), how = (m.how || '').trim();
+    const lines = how && norm(how).startsWith(norm(freq)) ? [how] : how ? [freq, how] : [freq];
+    lines.push(...otherDoses(m, st.ds));
+    const r = { name: m.name, purpose: m.purpose || '', dose: m.dose || '', lines, taken: '', takenSub: '', doses: '', dosesSub: [] };
+    if (!st.ds.length) { r.taken = 'No doses logged'; r.doses = 'None'; }
+    else {
+      r.taken = kind === 'now' ? 'Since ' + yr(st.first) : (st.first === st.last.day ? yr(st.first) : rPeriod(st.first, st.last.day));
+      r.takenSub = kind === 'done' ? 'Course ended ' + yr(m.courseEnd) : 'Last dose ' + at(st.last);
+      r.doses = plural(st.ds.length, 'dose');
+      r.dosesSub.push('on ' + plural(st.days.length, 'day'));
+    }
+    if (kind === 'now' && st.ds.length && !m.hospital) {
+      const from = [addDays(today, -14), st.first].sort()[1];
+      const win = st.ds.filter((e) => e.day >= from && e.day < today);
+      const nDays = Math.round((parseDay(today) - parseDay(from)) / 864e5);
+      if (m.kind === 'prn') { const wd = new Set(win.map((e) => e.day)).size; if (nDays > 0) r.dosesSub.push(`Last ${nDays === 14 ? '14 days' : plural(nDays, 'day')}: ${plural(win.length, 'dose')} on ${plural(wd, 'day')}`); }
+      else if (nDays > 0) r.dosesSub.push(`Last ${nDays === 14 ? '14 days' : plural(nDays, 'day')}: ${win.length} of ${(m.perDay || 1) * nDays} due`);
+    }
+    return r;
+  };
+  const now = state.medicines.filter((m) => medStatus(m).text === 'Taking now');
+  const done = state.medicines.filter((m) => medStatus(m).text === 'Course complete').sort((a, b) => b.courseEnd.localeCompare(a.courseEnd));
+  const stopped = state.medicines.filter((m) => m.active === false);
+  const hosp = {};
+  doses.filter((e) => !e.medId && e.hospital).forEach((e) => { const k = String(e.medName || 'Medicine').trim().toLowerCase(); (hosp[k] = hosp[k] || []).push(e); });
+  const hospRows = Object.values(hosp).map((list) => {
+    const st = statsFor(list), e0 = st.ds[st.ds.length - 1];
+    return { name: e0.medName || 'Medicine', purpose: '', dose: e0.dose || '', lines: [e0.route && ROUTE_WORDS[e0.route] ? ROUTE_WORDS[e0.route] : 'Given by the hospital'],
+      taken: st.first === st.last.day ? yr(st.first) : rPeriod(st.first, st.last.day), takenSub: 'Last given ' + at(st.last), doses: list.length === 1 ? 'Given once' : `Given ${list.length} times`, dosesSub: [] };
+  }).sort((a, b) => a.name.localeCompare(b.name));
+  const sections = [
+    { key: 'now', title: 'Taking now', note: 'On the list and still being taken', cls: '', rows: now.map((m) => row(m, 'now')) },
+    { key: 'done', title: 'Finished courses', note: 'Course complete, no longer taken', cls: 'done', rows: done.map((m) => row(m, 'done')) },
+    { key: 'stopped', title: 'Stopped', note: 'Taken off the list', cls: 'stopped', rows: stopped.map((m) => row(m, 'stopped')) },
+    { key: 'hosp', title: 'Given in hospital', note: 'Not on the list; logged as given by the hospital', cls: '', rows: hospRows }
+  ].filter((x) => x.rows.length);
+  const items = [];
+  sections.forEach((sec, si) => { items.push({ s: si, r: null }); sec.rows.forEach((_, ri) => items.push({ s: si, r: ri })); });
+  const patient = (state.profile && state.profile.reportName) || state.patientName || state.name || '';
+  const first = doses.length ? doses.map((e) => e.day).sort()[0] : today;
+  return { patient, upTo: yr(today), prepared: yr(today), sections, items, pages: [], first, docTitle: `Medicine history, ${patient}, up to ${yr(today)}` };
+}
+function fittedMedsReport() {
+  return memoFit('meds', async () => {
+    if (!state.medsPdf) return null;
+    const doses = await loadAllMedDoses();
+    if (!reportModule) reportModule = await import('./report.js?v=' + APP_VERSION);
+    const M = buildMedsReport(doses);
+    state.medsPdf.from = M.first;
+    const res = await reportModule.fitMedsReport(reportFrame('meds'), M);
+    if (!res.ok) { toast('A medicine has too much to fit on one page. Shorten its how and when text and try again.'); return null; }
+    return res;
+  });
+}
+async function medsReportBlob() {
+  const res = await fittedMedsReport();
+  return res ? reportPdfBlob(res) : null;
 }
 async function openMedHistory(m, fromList) {
   const st = medStatus(m);
