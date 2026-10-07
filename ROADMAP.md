@@ -80,6 +80,7 @@ One at a time, each a few days with its sources checked, on the profile mechanis
 - An "AI used this month: about 12p" line under Settings, from the bridge's own token tally. Offered 4 October; build if wanted.
 
 ## Done
+- v139 Both reports say "Created with My Medical Daybook" on every page.
 - v138 Messages (with Undo) appear at the top of the screen, never over the quick-add tiles or a sheet's buttons.
 - v137 The "..." on a medicine dose opens again (broken since v97), with Change the time or note to set when a dose was really taken.
 - v136 Words typed in a note, question or check-in are kept on the phone until saved or closed, and offered back if the phone closes the app; no blank band under a sheet after the lock screen.
