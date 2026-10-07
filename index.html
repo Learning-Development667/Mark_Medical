@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=140">
+  <link rel="stylesheet" href="styles.css?v=141">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -260,12 +260,20 @@
           <button id="meds-day-next" class="iconbtn" type="button" aria-label="Next day">&#8250;</button>
         </div>
 
-        <button id="meds-manage" class="btn btn-secondary btn-block" type="button">Manage medicines</button>
+        <div class="btnrow meds-top">
+          <button id="meds-manage" class="btn btn-secondary" type="button">Manage medicines</button>
+          <button id="meds-history" class="btn btn-secondary" type="button">Medicine history</button>
+        </div>
 
         <h2 class="section-title">Scheduled</h2>
         <div id="meds-scheduled" class="cards"></div>
         <h2 class="section-title">When needed</h2>
         <div id="meds-prn" class="cards"></div>
+        <div id="meds-done-section" hidden>
+          <h2 class="section-title">Finished courses</h2>
+          <p class="hint">No longer counted in the day's doses. Every dose taken is kept.</p>
+          <div id="meds-done" class="cards"></div>
+        </div>
         <div id="meds-hospital-section">
           <h2 class="section-title">Given in hospital</h2>
           <div id="meds-hospital" class="cards"></div>
@@ -843,6 +851,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=140"></script>
+  <script type="module" src="scripts.js?v=141"></script>
 </body>
 </html>

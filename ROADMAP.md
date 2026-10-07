@@ -80,6 +80,7 @@ One at a time, each a few days with its sources checked, on the profile mechanis
 - An "AI used this month: about 12p" line under Settings, from the bridge's own token tally. Offered 4 October; build if wanted.
 
 ## Done
+- v141 Finished courses stay on the Meds tab marked Course complete, and Medicine history shows every dose of every medicine, past and present.
 - v140 "Created with My Medical Daybook" right after each report's title, the first thing the reader sees.
 - v139 Both reports say "Created with My Medical Daybook" on every page.
 - v138 Messages (with Undo) appear at the top of the screen, never over the quick-add tiles or a sheet's buttons.

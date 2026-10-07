@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '140';
+const APP_VERSION = '141';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -5850,7 +5850,113 @@ function renderMeds() {
   if (!sched.length) $('meds-scheduled').append(h('p', { class: 'empty', 'data-art': 'pill', text: 'No scheduled medicines.' }));
   $('meds-prn').replaceChildren(...prn.map((m) => medCard(m, day)));
   if (!prn.length) $('meds-prn').append(h('p', { class: 'empty', 'data-art': 'pill', text: 'No when-needed medicines.' }));
+  const done = finishedCourses(day).filter((m) => m.courseEnd >= addDays(day, -FINISHED_SHOW_DAYS));
+  $('meds-done').replaceChildren(...done.map((m) => finishedCard(m)));
+  $('meds-done-section').hidden = !done.length;
   renderHospitalDoses();
+}
+
+/* Finished courses and the medicine history (v141). Mark's antibiotic course ended and it vanished
+   from the Meds tab, taking the day's count from 11 to 8; the count was right, but the medicine,
+   its dose and how often it was taken had nowhere to be seen. A course that has ended stays on the
+   Meds tab for two weeks under Finished courses, marked Course complete, and every medicine, taking
+   now, finished or stopped, keeps its full dose by dose record under Medicine history. Nothing is
+   deleted or changed: it reads the dose entries, which carry the dose as it was when logged. */
+const FINISHED_SHOW_DAYS = 14;
+function finishedCourses(day) {
+  return state.medicines.filter((m) => m.active !== false && m.kind === 'scheduled' && m.courseEnd && m.courseEnd < day)
+    .sort((a, b) => (b.courseEnd || '').localeCompare(a.courseEnd || ''));
+}
+function medFrequency(m) {
+  if (m.hospital) return 'Given by the hospital';
+  if (m.kind === 'prn') {
+    const bits = [];
+    if (m.minGapHours) bits.push('at least ' + m.minGapHours + (m.minGapHours === 1 ? ' hour' : ' hours') + ' apart');
+    if (m.maxPerDay) bits.push('at most ' + m.maxPerDay + ' a day');
+    return 'When needed' + (bits.length ? ', ' + bits.join(', ') : '');
+  }
+  const n = m.perDay || 1;
+  return n === 1 ? 'Once a day' : n === 2 ? 'Twice a day' : n + ' times a day';
+}
+function medStatus(m) {
+  if (m.active === false) return { level: 'muted', text: 'Stopped' };
+  if (m.kind === 'scheduled' && m.courseEnd && m.courseEnd < todayStr()) return { level: 'green', text: 'Course complete' };
+  return { level: 'teal', text: 'Taking now' };
+}
+function finishedCard(m) {
+  const last = lastMedEntry(m.id);
+  return h('div', { class: 'card med is-finished' },
+    h('div', { class: 'med-head' },
+      h('div', null,
+        h('div', { class: 'med-name', text: m.name }),
+        h('div', { class: 'med-dose', text: [m.dose, medFrequency(m)].filter(Boolean).join(' \u00b7 ') }),
+        m.how ? h('div', { class: 'med-how', text: m.how }) : null),
+      m.purpose ? h('span', { class: 'med-purpose', text: m.purpose }) : null),
+    h('div', { class: 'med-status' },
+      h('span', { class: 'pill pill-green', text: 'Course complete' }),
+      h('span', { class: 'med-last', text: 'Ended ' + fmtDayShort(m.courseEnd) + (last ? ', last dose ' + fmtDayShort(last.day) + ' ' + fmtTime(entryDate(last)) : '') })),
+    h('div', { class: 'med-actions' },
+      h('button', { class: 'btn btn-secondary', type: 'button', onclick: () => openMedHistory(m) }, 'See every dose')));
+}
+/* Every dose of one medicine, from the start: two equality filters, so no composite index, and the
+   viewer role's rules (med entries only) can see the query is theirs to read */
+async function loadMedDoses(m) {
+  if (state.demo) return state.recentEntries.filter((e) => e.type === 'med' && e.medId === m.id);
+  const snap = await getDocs(query(hcol('entries'), where('type', '==', 'med'), where('medId', '==', m.id)));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+function openMedHistoryList() {
+  const groups = [
+    ['Taking now', state.medicines.filter((m) => medStatus(m).text === 'Taking now')],
+    ['Finished courses', state.medicines.filter((m) => medStatus(m).text === 'Course complete').sort((a, b) => b.courseEnd.localeCompare(a.courseEnd))],
+    ['Stopped', state.medicines.filter((m) => m.active === false)]
+  ].filter(([, ms]) => ms.length);
+  const row = (m) => {
+    const st = medStatus(m);
+    return h('button', { class: 'pickrow medhist-row', type: 'button', onclick: () => openMedHistory(m, true) },
+      h('span', { class: 'pickrow-main' },
+        h('span', { class: 'pickrow-title', text: m.name }),
+        h('span', { class: 'pickrow-sub', text: [m.dose, medFrequency(m)].filter(Boolean).join(' \u00b7 ') + (st.text === 'Course complete' ? '. Ended ' + fmtDayShort(m.courseEnd) + '.' : '') })),
+      h('span', { class: 'pill pill-' + st.level, text: st.text }));
+  };
+  const body = h('div', null,
+    h('p', { class: 'wiz-hint', text: 'Every medicine on your list, including finished courses. Tap one to see every dose taken, with the dose and the time.' }),
+    ...groups.flatMap(([title, ms]) => [h('p', { class: 'fieldlabel', text: title }), h('div', { class: 'doserows' }, ...ms.map(row))]),
+    groups.length ? null : h('p', { class: 'empty', 'data-art': 'pill', text: 'No medicines set up yet.' }),
+    h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Close'));
+  openSheet('Medicine history', body);
+}
+async function openMedHistory(m, fromList) {
+  const st = medStatus(m);
+  const out = h('div', { class: 'medhist', role: 'status' }, h('p', { class: 'hint', text: 'Loading every dose...' }));
+  const body = h('div', null,
+    h('div', { class: 'medhist-head' },
+      h('span', { class: 'pill pill-' + st.level, text: st.text }),
+      h('p', { class: 'medhist-dose', text: [m.dose, medFrequency(m)].filter(Boolean).join(' \u00b7 ') }),
+      m.how ? h('p', { class: 'muted', text: m.how }) : null,
+      m.purpose ? h('p', { class: 'muted', text: 'For: ' + m.purpose }) : null,
+      m.courseEnd ? h('p', { class: 'muted', text: (m.courseEnd < todayStr() ? 'Course ended ' : 'Course ends ') + fmtDayLong(m.courseEnd) + '.' }) : null),
+    out,
+    fromList ? h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: openMedHistoryList }, 'All medicines') : null,
+    h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Close'));
+  openSheet(m.name, body);
+  let doses;
+  try { doses = await loadMedDoses(m); }
+  catch (e) { console.error(e); out.replaceChildren(h('p', { class: 'hint', text: 'Could not load the doses. Check the connection and try again.' })); return; }
+  doses.sort((a, b) => entryDate(b) - entryDate(a));
+  if (!doses.length) { out.replaceChildren(h('p', { class: 'empty', 'data-art': 'pill', text: 'No doses logged yet.' })); return; }
+  const days = [...new Set(doses.map((e) => e.day))];
+  const first = doses[doses.length - 1].day, last = doses[0].day;
+  const byDay = days.map((d) => {
+    const ds = doses.filter((e) => e.day === d).sort((a, b) => entryDate(a) - entryDate(b));
+    return h('li', { class: 'medhist-day' },
+      h('span', { class: 'medhist-date', text: fmtDayLong(d) }),
+      h('span', { class: 'medhist-count', text: ds.length === 1 ? '1 dose' : ds.length + ' doses' }),
+      h('span', { class: 'medhist-times', text: ds.map((e) => fmtTime(entryDate(e)) + (e.dose && e.dose !== m.dose ? ' (' + e.dose + ')' : '') + (e.addedBy ? ', ' + e.addedBy : '')).join(' \u00b7 ') }));
+  });
+  out.replaceChildren(
+    h('p', { class: 'medhist-sum', text: (doses.length === 1 ? '1 dose' : doses.length + ' doses') + ' logged ' + (first === last ? 'on ' + fmtDayNum(first) : 'from ' + fmtDayRange(first, last)) + ', on ' + (days.length === 1 ? '1 day' : days.length + ' days') + '.' }),
+    h('ul', { class: 'medhist-list' }, ...byDay));
 }
 
 function prnStatus(m) {
@@ -5992,6 +6098,7 @@ function logMedAtTime(m) {
 
 /* Manage medicines */
 $('meds-manage').addEventListener('click', openManageMeds);
+$('meds-history').addEventListener('click', openMedHistoryList);
 $('meds-hospital-add').addEventListener('click', () => openHospitalDose(null));
 
 /* A medicine taken with food: the box in the editor, or, for medicines saved before it existed,
@@ -6254,7 +6361,7 @@ function openManageMeds() {
   state.medicines.forEach((m) => {
     list.append(h('div', { class: 'medrow' + (m.active === false ? ' is-inactive' : '') },
       h('span', { class: 'medrow-name', text: m.name }),
-      h('span', { class: 'pill ' + (m.kind === 'prn' ? 'pill-amber' : 'pill-teal'), text: m.kind === 'prn' ? 'When needed' : 'Scheduled' }),
+      h('span', { class: 'pill ' + (medStatus(m).text === 'Course complete' ? 'pill-green' : m.kind === 'prn' ? 'pill-amber' : 'pill-teal'), text: medStatus(m).text === 'Course complete' ? 'Course complete' : m.kind === 'prn' ? 'When needed' : 'Scheduled' }),
       h('button', { class: 'btn btn-secondary btn-small', type: 'button', onclick: () => openEditMed(m) }, 'Edit')
     ));
   });
