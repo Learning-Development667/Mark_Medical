@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '142';
+const APP_VERSION = '143';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -5967,6 +5967,7 @@ function buildMedsReport(doses) {
   const today = todayStr();
   const yr = (d) => rDay(d) + ' ' + parseDay(d).getFullYear();
   const at = (e) => rDay(e.day) + ', ' + fmtTime(entryDate(e));
+  const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
   const statsFor = (list) => {
     const ds = list.slice().sort((a, b) => entryDate(a) - entryDate(b));
     const days = [...new Set(ds.map((e) => e.day))];
@@ -5977,14 +5978,17 @@ function buildMedsReport(doses) {
     ds.forEach((e) => { if (e.dose && m.dose && e.dose.trim() !== m.dose.trim()) c[e.dose.trim()] = (c[e.dose.trim()] || 0) + 1; });
     return Object.keys(c).map((d) => `Also logged as ${d} (${c[d] === 1 ? 'once' : c[d] + ' times'})`);
   };
+  /* days used of the last 14 complete days, for the When needed tile */
+  const used14 = (m) => new Set(doses.filter((e) => e.medId === m.id && e.day >= addDays(today, -14) && e.day < today).map((e) => e.day)).size;
   const row = (m, kind) => {
     const st = statsFor(doses.filter((e) => e.medId === m.id));
     /* the frequency once: "Twice a day" is not repeated above "Twice a day, morning and evening" */
     const norm = (t) => String(t || '').trim().toLowerCase().replace(/^once\b/, '1 times').replace(/^twice\b/, '2 times').replace(/^three times\b/, '3 times').replace(/^four times\b/, '4 times');
     const freq = medFrequency(m), how = (m.how || '').trim();
     const lines = how && norm(how).startsWith(norm(freq)) ? [how] : how ? [freq, how] : [freq];
-    lines.push(...otherDoses(m, st.ds));
-    const r = { name: m.name, purpose: m.purpose || '', dose: m.dose || '', lines, taken: '', takenSub: '', doses: '', dosesSub: [] };
+    const r = { name: m.name, purpose: m.purpose || '', dose: m.dose || '', lines, also: otherDoses(m, st.ds), taken: '', takenSub: '', doses: '', dosesSub: [], last14: '', bar: null, tag: null };
+    if (kind === 'done') r.tag = { text: 'Finished course', cls: 'green' };
+    if (kind === 'stopped') r.tag = { text: 'Stopped', cls: 'slate' };
     if (!st.ds.length) { r.taken = 'No doses logged'; r.doses = 'None'; }
     else {
       r.taken = kind === 'now' ? 'Since ' + yr(st.first) : (st.first === st.last.day ? yr(st.first) : rPeriod(st.first, st.last.day));
@@ -5996,32 +6000,74 @@ function buildMedsReport(doses) {
       const from = [addDays(today, -14), st.first].sort()[1];
       const win = st.ds.filter((e) => e.day >= from && e.day < today);
       const nDays = Math.round((parseDay(today) - parseDay(from)) / 864e5);
-      if (m.kind === 'prn') { const wd = new Set(win.map((e) => e.day)).size; if (nDays > 0) r.dosesSub.push(`Last ${nDays === 14 ? '14 days' : plural(nDays, 'day')}: ${plural(win.length, 'dose')} on ${plural(wd, 'day')}`); }
-      else if (nDays > 0) r.dosesSub.push(`Last ${nDays === 14 ? '14 days' : plural(nDays, 'day')}: ${win.length} of ${(m.perDay || 1) * nDays} due`);
+      const span = 'Last ' + (nDays === 14 ? '14 days' : plural(nDays, 'day'));
+      if (nDays > 0 && m.kind === 'prn') {
+        const wd = new Set(win.map((e) => e.day)).size;
+        r.last14 = `${span}: ${plural(win.length, 'dose')} on ${plural(wd, 'day')}`;
+        r.bar = wd / nDays;
+      } else if (nDays > 0) {
+        const due = (m.perDay || 1) * nDays;
+        r.last14 = `${span}: ${win.length} of ${due} due`;
+        r.bar = win.length / due;
+      }
     }
     return r;
   };
-  const now = state.medicines.filter((m) => medStatus(m).text === 'Taking now');
-  const done = state.medicines.filter((m) => medStatus(m).text === 'Course complete').sort((a, b) => b.courseEnd.localeCompare(a.courseEnd));
+  const byStatus = (t) => state.medicines.filter((m) => medStatus(m).text === t);
+  const now = byStatus('Taking now');
+  const regular = now.filter((m) => !m.hospital && m.kind !== 'prn');
+  const prn = now.filter((m) => !m.hospital && m.kind === 'prn');
+  const ward = now.filter((m) => m.hospital);
+  const done = byStatus('Course complete').sort((a, b) => b.courseEnd.localeCompare(a.courseEnd));
   const stopped = state.medicines.filter((m) => m.active === false);
   const hosp = {};
   doses.filter((e) => !e.medId && e.hospital).forEach((e) => { const k = String(e.medName || 'Medicine').trim().toLowerCase(); (hosp[k] = hosp[k] || []).push(e); });
   const hospRows = Object.values(hosp).map((list) => {
     const st = statsFor(list), e0 = st.ds[st.ds.length - 1];
-    return { name: e0.medName || 'Medicine', purpose: '', dose: e0.dose || '', lines: [e0.route && ROUTE_WORDS[e0.route] ? ROUTE_WORDS[e0.route] : 'Given by the hospital'],
-      taken: st.first === st.last.day ? yr(st.first) : rPeriod(st.first, st.last.day), takenSub: 'Last given ' + at(st.last), doses: list.length === 1 ? 'Given once' : `Given ${list.length} times`, dosesSub: [] };
+    return { name: e0.medName || 'Medicine', purpose: 'Given by the hospital', dose: e0.dose || '', lines: e0.route && ROUTE_WORDS[e0.route] ? [ROUTE_WORDS[e0.route]] : [], also: [],
+      taken: st.first === st.last.day ? yr(st.first) : rPeriod(st.first, st.last.day), takenSub: 'Last given ' + at(st.last), doses: list.length === 1 ? 'Given once' : `Given ${list.length} times`, dosesSub: [], last14: '', bar: null, tag: { text: 'Given in hospital', cls: 'red' } };
   }).sort((a, b) => a.name.localeCompare(b.name));
+  const zebra = (rows) => { rows.forEach((r, i) => { r.alt = i % 2 === 0; }); return rows; };
   const sections = [
-    { key: 'now', title: 'Taking now', note: 'On the list and still being taken', cls: '', rows: now.map((m) => row(m, 'now')) },
-    { key: 'done', title: 'Finished courses', note: 'Course complete, no longer taken', cls: 'done', rows: done.map((m) => row(m, 'done')) },
-    { key: 'stopped', title: 'Stopped', note: 'Taken off the list', cls: 'stopped', rows: stopped.map((m) => row(m, 'stopped')) },
-    { key: 'hosp', title: 'Given in hospital', note: 'Not on the list; logged as given by the hospital', cls: '', rows: hospRows }
-  ].filter((x) => x.rows.length);
+    { title: 'Taking now', note: 'On the list and still being taken', groups: [
+      { label: 'Regular', note: 'Taken on a schedule', cls: 'teal', rows: zebra(regular.map((m) => row(m, 'now'))) },
+      { label: 'When needed', note: 'Taken as required', cls: 'amber', rows: zebra(prn.map((m) => row(m, 'now'))) },
+      { label: 'Hospital', note: 'Given by the hospital', cls: 'red', rows: zebra(ward.map((m) => row(m, 'now'))) }
+    ].filter((g) => g.rows.length) },
+    { title: 'Finished, stopped and given in hospital', note: 'No longer on the list, or not taken at home', groups: [
+      { label: '', rows: zebra([...done.map((m) => row(m, 'done')), ...stopped.map((m) => row(m, 'stopped')), ...hospRows]) }
+    ].filter((g) => g.rows.length) }
+  ].filter((x) => x.groups.length);
   const items = [];
-  sections.forEach((sec, si) => { items.push({ s: si, r: null }); sec.rows.forEach((_, ri) => items.push({ s: si, r: ri })); });
+  sections.forEach((sec, s) => {
+    items.push({ t: 'sec', s });
+    sec.groups.forEach((g, gi) => {
+      if (g.label) items.push({ t: 'grp', s, g: gi });
+      g.rows.forEach((_, r) => items.push({ t: 'row', s, g: gi, r }));
+    });
+  });
+  if (state.medicines.length || hospRows.length) items.push({ t: 'notes' });
+  /* the four tiles: counts, the regular names, how much the when-needed ones were used, what is no longer taken */
+  const short = (m) => String(m.name).split(/\s+/).filter((w) => !/\d/.test(w) && !/^(injection|injections|tablets?|capsules?|sachets?|cream|liquid|solution|patch(es)?|spray|drops|gel|oral)$/i.test(w)).join(' ') || m.name;
+  const names = regular.map(short);
+  const nameList = names.length > 5 ? names.slice(0, 4).join(', ') + ' and ' + (names.length - 4) + ' more' : names.length > 1 ? names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1] : names[0];
+  const usedMost = prn.map((m) => ({ m, d: used14(m) })).filter((x) => x.d >= 7).sort((a, b) => b.d - a.d);
+  const prnNote = !prn.length ? 'None on the list.'
+    : usedMost.length === 1 ? `${short(usedMost[0].m)} was used on ${usedMost[0].d} of the last 14 days.`
+    : usedMost.length > 1 ? `${cap(numberWord(usedMost.length))} were used on ${usedMost[usedMost.length - 1].d} or more of the last 14 days.`
+    : prn.some((m) => used14(m) > 0) ? 'None used on more than half of the last 14 days.' : 'None used in the last 14 days.';
+  const gone = [[done.length, 'finished course', 'finished courses'], [stopped.length, 'stopped', 'stopped'], [hospRows.length, 'given in hospital', 'given in hospital']]
+    .filter(([n]) => n).map(([n, one, many]) => numberWord(n) + ' ' + (n === 1 ? one : many));
+  const goneN = done.length + stopped.length + hospRows.length;
+  const tiles = state.medicines.length || hospRows.length ? [
+    { k: 'Taking now', v: String(now.length), unit: now.length === 1 ? 'medicine' : 'medicines', note: now.length ? 'On the list and still being taken.' : 'Nothing on the list is being taken.', tone: 'teal' },
+    { k: 'Regular', v: String(regular.length), unit: 'scheduled', note: names.length ? nameList + '.' : 'None taken on a schedule.' },
+    { k: 'When needed', v: String(prn.length), unit: prn.length === 1 ? 'medicine' : 'medicines', note: prnNote, tone: prn.length ? 'amber' : '' },
+    { k: 'No longer taken', v: String(goneN), unit: goneN === 1 ? 'item' : 'items', note: gone.length ? cap(gone.length > 1 ? gone.slice(0, -1).join(', ') + ', ' + gone[gone.length - 1] : gone[0]) + '.' : 'Nothing finished or stopped.' }
+  ] : [];
   const patient = (state.profile && state.profile.reportName) || state.patientName || state.name || '';
   const first = doses.length ? doses.map((e) => e.day).sort()[0] : today;
-  return { patient, upTo: yr(today), prepared: yr(today), sections, items, pages: [], first, docTitle: `Medicine history, ${patient}, up to ${yr(today)}` };
+  return { patient, upTo: yr(today), prepared: yr(today), tiles, sections, items, pages: [], first, docTitle: `Medicine history, ${patient}, up to ${yr(today)}` };
 }
 function fittedMedsReport() {
   return memoFit('meds', async () => {
