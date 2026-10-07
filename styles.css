@@ -1528,3 +1528,18 @@ h1, h2, h3 { font-weight: 600; }
 /* Unsaved words put back (v136): one line above the box, with Clear them */
 .draftnote { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1) var(--s-3); margin: 0 0 var(--s-2); padding: var(--s-2) var(--s-3); border-radius: var(--r-sm); background: var(--teal-light); color: var(--text-primary); font-size: 16px; }
 .draftnote .btn-inline { min-height: 44px; }
+
+/* ---------- Finished courses and the medicine history (v141) ---------- */
+.pill-muted { background: var(--surface-sunken); color: var(--text-secondary); }
+.meds-top { margin-top: 0; }
+.meds-top .btn { min-width: 0; }
+.medhist-head { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-1); }
+.medhist-head p { margin: 0; }
+.medhist-dose { font-weight: 600; }
+.medhist-sum { font-weight: 600; margin: var(--s-4) 0 var(--s-2); }
+.medhist-list { list-style: none; padding: 0; margin: 0 0 var(--s-3); display: flex; flex-direction: column; gap: var(--s-2); }
+.medhist-day { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px var(--s-3); padding: var(--s-3); background: var(--surface-sunken); border-radius: var(--r-sm); }
+.medhist-date { font-weight: 600; min-width: 0; }
+.medhist-count { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+.medhist-times { grid-column: 1 / -1; color: var(--text-secondary); overflow-wrap: anywhere; }
+.medhist-row .pill { flex-shrink: 0; }
