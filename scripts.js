@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '138';
+const APP_VERSION = '139';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -4567,7 +4567,7 @@ function buildTwoPage(n) {
     questions: qs.slice(0, 7), more: Math.max(0, qs.length - 7), lines: 3,
     charts, days: labels, weeks,
     weeksNote: ai ? 'Summarised from the daily notes by Daybook Assistant, an AI helper. Every note is in Daybook.' : 'The most telling note of each day. Every note is in Daybook.',
-    foot: 'Daybook · Notes for the team'
+    foot: 'Notes for the team'
   };
 }
 

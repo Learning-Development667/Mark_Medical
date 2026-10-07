@@ -99,7 +99,9 @@ h2.sec small{font-family:Inter,sans-serif;font-weight:400;font-size:7.6pt;color:
 .week li.alert{background:var(--red-soft);margin:0 -1.6mm;padding:.8mm 1.6mm;border-radius:1mm}
 .week .ai{font-size:6.6pt;color:var(--slate);margin-top:auto;padding-top:1.4mm}
 .week .none{color:var(--slate)}
-.foot{display:flex;justify-content:space-between;font-size:6.6pt;color:var(--slate);border-top:1px solid var(--line);padding-top:1.6mm;margin-top:auto}
+.foot{display:flex;justify-content:space-between;font-size:6.6pt;color:var(--slate);border-top:1px solid var(--line);padding-top:1.6mm;margin-top:auto;align-items:baseline;gap:4mm}
+.foot .made{white-space:nowrap}
+.foot .made b{font-family:Fraunces,Georgia,serif;font-weight:600;font-size:7.6pt;color:var(--teal)}
 `;
 
 export function esc(s) {
@@ -207,7 +209,7 @@ ${bar}
 <section class="page" id="page1">
   <div class="masthead" data-sec="Masthead">
     <div><h1>${esc(R.title)}</h1><div class="sub">${esc(R.subtitle)}</div></div>
-    <div class="who"><strong>${esc(R.patient)}</strong>Period: ${esc(R.period)}<br>Prepared: ${esc(R.prepared)}, from Daybook</div>
+    <div class="who"><strong>${esc(R.patient)}</strong>Period: ${esc(R.period)}<br>Prepared: ${esc(R.prepared)}, with My Medical Daybook</div>
   </div>
   ${R.latest ? `<div class="latest" data-sec="Latest"><div class="when">${esc(R.latest.when1)}<br>${esc(R.latest.when2)}</div><div><b>${esc(R.latest.title)}</b>${esc(R.latest.text)}</div></div>` : ''}
   <div data-sec="At a glance">
@@ -220,7 +222,7 @@ ${bar}
     <div class="qgrid">${qs.join('')}${otherCard}</div>
     ${R.more ? `<p class="more">Plus ${esc(R.more)} more ${R.more === 1 ? 'question' : 'questions'} in the app.</p>` : ''}
   </div>
-  <div class="foot"><span>${esc(R.foot)}</span><span>Page 1 of 2</span></div>
+  <div class="foot"><span>${esc(R.foot)}</span>${madeBy(1)}</div>
 </section>
 <section class="page" id="page2">
   <div class="runner"><h2>Readings and weekly notes</h2><span>${esc(R.patient)} · ${esc(R.period)}</span></div>
@@ -229,11 +231,15 @@ ${bar}
     <h2 class="sec" style="margin-bottom:2.4mm">Week by week <small>${esc(R.weeksNote || 'Each week summarised from the daily notes.')}</small></h2>
     <div class="weeks">${weeks}</div>
   </div>
-  <div class="foot"><span>${esc(R.foot)}</span><span>Page 2 of 2</span></div>
+  <div class="foot"><span>${esc(R.foot)}</span>${madeBy(2)}</div>
 </section>
 </body>
 </html>`;
 }
+
+/* The credit on every page, beside the page number (v139, Mark: the reports go to clinicians and
+   dietitians, so they say where they came from). The full name, as on the cover. */
+const madeBy = (n) => `<span class="made">Created with <b>My Medical Daybook</b> · Page ${n} of 2</span>`;
 
 /* Which sections run past their space: anything whose bottom passes the top of its page's foot,
    a card whose own content is taller than the card, or a page whose content is taller than A4 */
@@ -491,7 +497,7 @@ ${bar}
 <section class="page" id="page1">
   <div class="masthead" data-sec="Masthead">
     <div><h1>Food diary</h1><div class="sub">What was eaten and drunk, summarised for the dietitian, nurse or doctor.</div></div>
-    <div class="who"><strong>${esc(F.patient)}</strong>Logged: ${esc(F.logged)}<br>Prepared: ${esc(F.prepared)}, from Daybook</div>
+    <div class="who"><strong>${esc(F.patient)}</strong>Logged: ${esc(F.logged)}<br>Prepared: ${esc(F.prepared)}, with My Medical Daybook</div>
   </div>
   <div class="banner" data-sec="Banner"><div class="when">${esc(F.banner.when1)}<br>${esc(F.banner.when2)}</div><div><b>${esc(F.banner.title)}</b>${esc(F.banner.text)}</div></div>
   <div class="tiles" data-sec="Tiles">${F.tiles.map(tileHtml).join('')}</div>
@@ -507,7 +513,7 @@ ${bar}
       <div class="nlines" data-sec="Dietitian notes"><h3>Notes from the dietitian</h3><div class="lines">${(() => { let l = ''; for (let i = 1; i <= 40; i++) l += `<i style="top:calc(${i} * 5.2mm)"></i>`; return l; })()}</div></div>
     </div>
   </div>
-  <div class="foot"><span>${esc(F.caveat)}</span><span>Page 1 of 2</span></div>
+  <div class="foot"><span>${esc(F.caveat)}</span>${madeBy(1)}</div>
 </section>
 <section class="page" id="page2">
   <div class="runner"><h2>Trends and weekly summary</h2><span>${esc(F.patient)} · ${esc(F.period)}</span></div>
@@ -516,7 +522,7 @@ ${bar}
     <h2 class="sec" style="margin-bottom:2.2mm">Week by week <small>Weeks match Notes for the team. Chips show protein in grams each day.</small></h2>
     <div class="weeks">${weeks}</div>
   </div>
-  <div class="foot"><span>Daybook · Food diary</span><span>Page 2 of 2</span></div>
+  <div class="foot"><span>Food diary</span>${madeBy(2)}</div>
 </section>
 </body>
 </html>`;
