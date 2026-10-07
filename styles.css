@@ -1545,3 +1545,12 @@ h1, h2, h3 { font-weight: 600; }
 .medhist-row .pill { flex-shrink: 0; }
 .medhist-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: var(--s-2) 0 var(--s-3); }
 .medhist-actions .btn { margin-top: 0; min-width: 0; }
+
+/* ---------- Condition packs and the IBD questions (v145) ---------- */
+.pack-row + .pack-row { margin-top: var(--s-3); padding-top: var(--s-3); border-top: 1px solid var(--border-subtle); }
+.pack-row .hint { margin-top: 0; }
+.ibd-setup { margin-top: var(--s-4); padding: var(--s-4); border-radius: var(--r-sm); background: var(--surface-sunken); box-shadow: var(--elev-sunken); display: flex; flex-direction: column; gap: var(--s-2); }
+.ibd-setup .fieldlabel { margin: var(--s-2) 0 0; }
+.ticklist { display: flex; flex-direction: column; gap: var(--s-2); margin-top: var(--s-2); }
+.ticklist .tickrow { font-weight: 500; margin: 0; padding: var(--s-2) var(--s-3); border-radius: var(--r-sm); background: var(--surface-sunken); line-height: 1.35; }
+.ticklist .tickrow input { flex: none; }
