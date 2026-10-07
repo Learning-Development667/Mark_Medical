@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '143';
+const APP_VERSION = '144';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -4155,8 +4155,11 @@ function openSendSheet(kind) {
       const file = new File([blob], fname, { type: 'application/pdf' });
       copyText(c.email); // copied inside the tap, before the share sheet, for pasting into To
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        navigator.share({ files: [file], title: subject.value.trim(), text: note.value.trim() })
-          .then(() => { closeSheet(); toast(c.email + ' is copied. Paste it into To if your Mail app has not.'); })
+        /* iPhone Mail drops the share's title, so the email would go with no subject: the subject
+           goes in as the message's first line too (v144, Mark: "add our own subject header") */
+        const subj = subject.value.trim();
+        navigator.share({ files: [file], title: subj, text: (subj ? subj + '\n\n' : '') + note.value.trim() })
+          .then(() => { closeSheet(); toast(c.email + ' is copied. Paste it into To, then add a subject if it is empty.'); })
           .catch((e) => { if (!e || e.name !== 'AbortError') toast('Could not open the share sheet'); });
         return;
       }
@@ -4177,7 +4180,7 @@ function openSendSheet(kind) {
       field('Subject', subject),
       field('Message', note),
       h('p', { class: 'sendpdf' }, h('b', { text: K.attached(range) }), K.check),
-      h('p', { class: 'hint', text: 'Your Mail app opens with the PDF and this message, sent from your own email address. The address is copied as well, to paste into To if it is not filled in.' }),
+      h('p', { class: 'hint', text: 'Your Mail app opens with the PDF and this message, sent from your own email address. The address is copied, to paste into To. iPhone Mail leaves the subject empty, so the subject is also the first line of the message, to copy into Subject.' }),
       send,
       h('button', { class: 'btn btn-link btn-block', type: 'button', onclick: pick }, 'Choose someone else'));
     subject.focus();
