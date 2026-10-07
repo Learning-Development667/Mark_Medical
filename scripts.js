@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '136';
+const APP_VERSION = '137';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -1891,13 +1891,13 @@ const EDITABLE_ENTRY_TYPES = ['food', 'drink', 'weight', 'note', 'question', 'bo
 function entryOptions(e) {
   const d = entryDate(e);
   const reading = e.type === 'temp' || e.type === 'vitals';
-  const canEdit = EDITABLE_ENTRY_TYPES.includes(e.type) || (e.type === 'med' && e.hospital) || reading;
+  const canEdit = EDITABLE_ENTRY_TYPES.includes(e.type) || e.type === 'med' || reading;
   const rows = readingRows(e);
   const body = h('div', null,
-    rows.length ? null : h('p', null, h('strong', null, ...entryTitle(e).map((n) => n.cloneNode(true)))),
+    rows.length ? null : h('p', null, h('strong', null, ...entryTitle(e).filter(Boolean).map((n) => n.cloneNode(true)))),
     rows.length ? h('dl', { class: 'readings' }, ...rows.flatMap(([k, v, lvl]) => [h('dt', { text: k }), h('dd', { class: lvl ? 'lvl-' + lvl : null, text: v })])) : null,
     h('p', { class: 'muted', text: `${fmtDayLong(e.day)} at ${fmtTime(d)}. ${entrySub(e)}` }),
-    canEdit && !state.readOnly ? h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => (e.type === 'med' ? openHospitalDose(e) : openAdd(reading ? 'vitals' : e.type, e)) }, 'Edit') : null,
+    canEdit && !state.readOnly ? h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => (e.type === 'med' ? (e.hospital ? openHospitalDose(e) : openDoseEdit(e)) : openAdd(reading ? 'vitals' : e.type, e)) }, e.type === 'med' && !e.hospital ? 'Change the time or note' : 'Edit') : null,
     e.type === 'checkin' ? h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => { closeSheet(); openCheckin(e.slot, e.day); } }, 'Edit this check-in') : null,
     e.type === 'question' && !state.readOnly ? h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => { closeSheet(); openAnswerSheet(e); } }, 'Record or write the answer') : null,
     e.type === 'question' ? h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: async () => {
@@ -5942,6 +5942,36 @@ async function logMed(m, at, note) {
   toast(m.name + (m.hospital ? ' logged as given in hospital' : ' logged'), { label: 'Undo', onClick: () => deleteEntry(id) });
 }
 
+/* Change a logged dose's date, time, amount or note (since v137): Mark logged diazepam with the
+   Medicine tile and needed the time he really took it. The same document is updated, so it keeps its
+   medId and still counts on its card; a time still to come is refused, since the when-needed gaps
+   are worked out from it. */
+function openDoseEdit(e) {
+  const dateIn = h('input', { type: 'date', value: e.day, max: todayStr() });
+  const time = h('input', { type: 'time', value: fmtTime(entryDate(e)), required: true });
+  const amount = h('input', { type: 'text', value: e.dose || '', autocomplete: 'off' });
+  const note = h('textarea', { rows: '2', placeholder: 'Optional' });
+  note.value = e.note || '';
+  const body = h('div', null,
+    h('p', { class: 'hint', text: 'Set the time the dose was really taken. It stays one dose and still counts on its card.' }),
+    h('div', { class: 'field-row' }, field('Date', dateIn), field('Time taken', time)),
+    field('Amount', amount),
+    field('Note', note), speakButton(note) || '',
+    h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
+      if (!dateIn.value || dateIn.value > todayStr()) { toast('Please choose a date up to today'); dateIn.focus(); return; }
+      if (!time.value) { toast('Please choose a time'); time.focus(); return; }
+      const at = atFromInputs(dateIn.value, time.value);
+      if (at > new Date()) { toast('That time is still to come. Choose the time it was taken.'); time.focus(); return; }
+      closeSheet();
+      try {
+        await updateEntry(e.id, { day: dateIn.value, dose: amount.value.trim(), note: note.value.trim(), at });
+        toast((e.medName || 'Dose') + ' now at ' + fmtTime(at) + (dateIn.value === todayStr() ? '' : ' on ' + fmtDayShort(dateIn.value)));
+      } catch (err) { console.error(err); toast('Could not save'); }
+    } }, 'Save changes'),
+    h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Cancel'));
+  openSheet('Change ' + (e.medName || 'the dose'), body);
+}
+
 function logMedAtTime(m) {
   const day = h('input', { type: 'date', value: state.selectedDay, max: todayStr() });
   const time = timeInput(todayStr());
@@ -6155,7 +6185,7 @@ function openHospitalDose(edit, prefill) {
       const at = atFromInputs(dateIn.value, time.value);
       closeSheet();
       if (edit) {
-        try { await updateEntry(edit.id, { ...data, at }); toast('Updated'); } catch (e) { console.error(e); toast('Could not save'); }
+        try { await updateEntry(edit.id, { ...data, day: dateIn.value, at }); toast('Updated'); } catch (e) { console.error(e); toast('Could not save'); }
         return;
       }
       const id = await addEntry({ ...data, at });
