@@ -32,6 +32,9 @@ html.capture .page{margin:0;box-shadow:none}
 @media print{html{background:#fff}.page{margin:0;box-shadow:none;page-break-after:always;break-after:page}.page:last-child{page-break-after:auto;break-after:auto}.bar{display:none}}
 .masthead{display:flex;justify-content:space-between;align-items:flex-end;gap:6mm;padding-bottom:2.6mm;border-bottom:1.6px solid var(--ink)}
 .masthead h1{font-size:21pt;line-height:1.05}
+.titlerow{display:flex;align-items:baseline;flex-wrap:wrap;column-gap:3mm;row-gap:.6mm}
+.madeby{font-size:8.6pt;color:var(--slate);white-space:nowrap}
+.madeby b{font-family:Fraunces,Georgia,serif;font-weight:600;font-size:10.5pt;color:var(--teal)}
 .masthead .sub{color:var(--slate);font-size:8.6pt;margin-top:1.5mm}
 .who{text-align:right;font-size:8pt;color:var(--slate);line-height:1.5;flex:none}
 .who strong{display:block;color:var(--ink);font-size:11pt;font-family:Fraunces,Georgia,serif;font-weight:600}
@@ -208,8 +211,8 @@ export function reportHtml(R) {
 ${bar}
 <section class="page" id="page1">
   <div class="masthead" data-sec="Masthead">
-    <div><h1>${esc(R.title)}</h1><div class="sub">${esc(R.subtitle)}</div></div>
-    <div class="who"><strong>${esc(R.patient)}</strong>Period: ${esc(R.period)}<br>Prepared: ${esc(R.prepared)}, with My Medical Daybook</div>
+    <div><div class="titlerow"><h1>${esc(R.title)}</h1><span class="madeby">Created with <b>My Medical Daybook</b></span></div><div class="sub">${esc(R.subtitle)}</div></div>
+    <div class="who"><strong>${esc(R.patient)}</strong>Period: ${esc(R.period)}<br>Prepared: ${esc(R.prepared)}</div>
   </div>
   ${R.latest ? `<div class="latest" data-sec="Latest"><div class="when">${esc(R.latest.when1)}<br>${esc(R.latest.when2)}</div><div><b>${esc(R.latest.title)}</b>${esc(R.latest.text)}</div></div>` : ''}
   <div data-sec="At a glance">
@@ -238,7 +241,8 @@ ${bar}
 }
 
 /* The credit on every page, beside the page number (v139, Mark: the reports go to clinicians and
-   dietitians, so they say where they came from). The full name, as on the cover. */
+   dietitians, so they say where they came from), and right after the title on page 1 (v140, Mark: the
+   first thing the reader sees, so they start asking what the app is). The full name, as on the cover. */
 const madeBy = (n) => `<span class="made">Created with <b>My Medical Daybook</b> · Page ${n} of 2</span>`;
 
 /* Which sections run past their space: anything whose bottom passes the top of its page's foot,
@@ -496,8 +500,8 @@ export function foodReportHtml(F) {
 ${bar}
 <section class="page" id="page1">
   <div class="masthead" data-sec="Masthead">
-    <div><h1>Food diary</h1><div class="sub">What was eaten and drunk, summarised for the dietitian, nurse or doctor.</div></div>
-    <div class="who"><strong>${esc(F.patient)}</strong>Logged: ${esc(F.logged)}<br>Prepared: ${esc(F.prepared)}, with My Medical Daybook</div>
+    <div><div class="titlerow"><h1>Food diary</h1><span class="madeby">Created with <b>My Medical Daybook</b></span></div><div class="sub">What was eaten and drunk, summarised for the dietitian, nurse or doctor.</div></div>
+    <div class="who"><strong>${esc(F.patient)}</strong>Logged: ${esc(F.logged)}<br>Prepared: ${esc(F.prepared)}</div>
   </div>
   <div class="banner" data-sec="Banner"><div class="when">${esc(F.banner.when1)}<br>${esc(F.banner.when2)}</div><div><b>${esc(F.banner.title)}</b>${esc(F.banner.text)}</div></div>
   <div class="tiles" data-sec="Tiles">${F.tiles.map(tileHtml).join('')}</div>
