@@ -243,7 +243,7 @@ ${bar}
 /* The credit on every page, beside the page number (v139, Mark: the reports go to clinicians and
    dietitians, so they say where they came from), and right after the title on page 1 (v140, Mark: the
    first thing the reader sees, so they start asking what the app is). The full name, as on the cover. */
-const madeBy = (n) => `<span class="made">Created with <b>My Medical Daybook</b> · Page ${n} of 2</span>`;
+const madeBy = (n, total = 2) => `<span class="made">Created with <b>My Medical Daybook</b> · Page ${n} of ${total}</span>`;
 
 /* Which sections run past their space: anything whose bottom passes the top of its page's foot,
    a card whose own content is taller than the card, or a page whose content is taller than A4 */
@@ -549,4 +549,101 @@ export function shrinkFood(F, over) {
   if (over.some((s) => /Points|Questions|Page 1|Food groups|Drinks|Dietitian/.test(s)) && F.questions && F.questions.length > 1) { F.questions.pop(); F.more = (F.more || 0) + 1; return true; }
   if (over.some((s) => /Points|Questions|Page 1|Food groups|Drinks|Dietitian/.test(s)) && F.points.length > 2) { F.points.pop(); return true; }
   return false;
+}
+
+
+/* ------------------------------------------------------------------ */
+/* Medicine history (v142): every medicine on the list, taking now,    */
+/* finished and stopped, plus anything given in hospital, with its     */
+/* dose, how often and the doses logged. Unlike the two reports it is   */
+/* as many A4 pages as it needs: fitMedsReport() measures the rows in   */
+/* the frame and moves whatever passes a page's foot onto the next      */
+/* page, repeating the table heading there. Every figure arrives in M   */
+/* already worked out (buildMedsReport() in scripts.js).                */
+/* ------------------------------------------------------------------ */
+const MEDS_CSS = `
+.msec h2{font-size:12pt;display:flex;align-items:baseline;gap:2.4mm;padding-left:2.4mm;border-left:1.4mm solid var(--teal);margin-bottom:1.6mm}
+.msec h2 small{font-family:Inter,sans-serif;font-size:7.2pt;font-weight:400;color:var(--slate);letter-spacing:0}
+.msec.done h2{border-left-color:var(--green)}
+.msec.stopped h2{border-left-color:var(--slate)}
+.mtable{width:100%;border-collapse:collapse;table-layout:fixed}
+.mtable th{font-size:6.6pt;text-transform:uppercase;letter-spacing:.06em;color:var(--slate);text-align:left;font-weight:600;padding:1mm 2mm;border-bottom:1px solid var(--ink)}
+.mtable td{padding:1.8mm 2mm;border-bottom:1px solid var(--line);vertical-align:top;font-size:8.2pt;line-height:1.35;overflow-wrap:anywhere}
+.mtable td b{font-weight:600}
+.mtable .sm{display:block;font-size:7pt;color:var(--slate);margin-top:.4mm}
+.mtable col.c1{width:29%}.mtable col.c2{width:27%}.mtable col.c3{width:24%}.mtable col.c4{width:20%}
+.mbody{flex:1;display:flex;flex-direction:column;gap:4mm;min-height:0}
+.mnone{color:var(--slate)}
+`;
+function medsRow(r, i) {
+  return `<tr data-i="${i}"><td><b>${esc(r.name)}</b>${r.purpose ? `<span class="sm">${esc(r.purpose)}</span>` : ''}</td><td>${esc(r.dose || '')}${r.lines.map((l) => `<span class="sm">${esc(l)}</span>`).join('')}</td><td>${esc(r.taken)}${r.takenSub ? `<span class="sm">${esc(r.takenSub)}</span>` : ''}</td><td>${esc(r.doses)}${r.dosesSub.map((l) => `<span class="sm">${esc(l)}</span>`).join('')}</td></tr>`;
+}
+/* M: { patient, upTo, prepared, sections[{ key, title, note, cls, rows[] }], items[] (flat: { s, r } with r null for a heading), pages[[item index]] } */
+export function medsReportHtml(M) {
+  const total = M.pages.length;
+  const pages = M.pages.map((idx, p) => {
+    let html = '', open = null;
+    const close = () => { if (open !== null) { html += '</tbody></table></div>'; open = null; } };
+    idx.forEach((i) => {
+      const it = M.items[i], sec = M.sections[it.s];
+      if (it.r === null || open !== it.s) {
+        close();
+        const cont = it.r !== null;
+        html += `<div class="msec ${sec.cls}"><h2 data-i="${it.r === null ? i : ''}">${esc(sec.title)}${cont ? ', continued' : ''}${!cont && sec.note ? ` <small>${esc(sec.note)}</small>` : ''}</h2>`;
+        html += '<table class="mtable"><colgroup><col class="c1"><col class="c2"><col class="c3"><col class="c4"></colgroup><thead><tr><th>Medicine</th><th>Dose and how often</th><th>Taken</th><th>Doses logged</th></tr></thead><tbody>';
+        open = it.s;
+      }
+      if (it.r !== null) html += medsRow(sec.rows[it.r], i);
+    });
+    close();
+    if (!idx.length) html = '<p class="mnone">No medicines on the list yet.</p>';
+    const top = p === 0
+      ? `<div class="masthead"><div><div class="titlerow"><h1>Medicine history</h1><span class="madeby">Created with <b>My Medical Daybook</b></span></div><div class="sub">Every medicine on the list, with its dose, how often and the doses logged, including finished courses.</div></div><div class="who"><strong>${esc(M.patient)}</strong>Up to: ${esc(M.upTo)}<br>Prepared: ${esc(M.prepared)}</div></div>`
+      : `<div class="runner"><h2>Medicine history</h2><span>${esc(M.patient)} · up to ${esc(M.upTo)}</span></div>`;
+    return `<section class="page" id="page${p + 1}">${top}<div class="mbody">${html}</div><div class="foot"><span>Doses as logged in Daybook. Not medical advice.</span>${madeBy(p + 1, total)}</div></section>`;
+  }).join('\n');
+  return `<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<title>Medicine history, ${esc(M.patient)}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>${CSS}${MEDS_CSS}</style>
+</head>
+<body class="meds">
+${pages}
+</body>
+</html>`;
+}
+/* Lays the rows out page by page: renders, finds the first heading or row whose bottom passes its
+   page's foot, moves it (and its heading, never left alone at a page's foot) and everything after it
+   to the next page, and renders again, until every page fits */
+export async function fitMedsReport(frame, M, opts = {}) {
+  const write = (html) => new Promise((resolve) => { frame.onload = () => resolve(); frame.srcdoc = html; });
+  M.pages = [M.items.map((_, i) => i)];
+  for (let pass = 0; pass < 200; pass++) {
+    await write(medsReportHtml(M));
+    const doc = frame.contentDocument;
+    doc.documentElement.classList.add('capture');
+    if (doc.fonts && doc.fonts.ready) await Promise.race([doc.fonts.ready, new Promise((r) => setTimeout(r, opts.fontWait || 3000))]);
+    let moved = false;
+    const pages = [...doc.querySelectorAll('.page')];
+    for (let p = 0; p < pages.length && !moved; p++) {
+      const limit = pages[p].querySelector('.foot').getBoundingClientRect().top - 1;
+      const els = [...pages[p].querySelectorAll('[data-i]')].filter((e) => e.dataset.i !== '');
+      const bad = els.find((e) => e.getBoundingClientRect().bottom > limit);
+      if (!bad) continue;
+      const idx = M.pages[p];
+      let at = idx.indexOf(Number(bad.dataset.i));
+      if (at > 0 && M.items[idx[at - 1]].r === null) at -= 1; // keep a heading with its first row
+      if (at <= 0) return { ok: false, over: ['Page ' + (p + 1)], R: M, doc }; // one row taller than a page
+      const rest = idx.splice(at);
+      if (M.pages[p + 1]) M.pages[p + 1].unshift(...rest); else M.pages.push(rest);
+      moved = true;
+    }
+    if (!moved) return { ok: true, R: M, doc };
+  }
+  return { ok: false, over: ['Report'], R: M };
 }
