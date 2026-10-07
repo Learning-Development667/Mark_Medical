@@ -80,6 +80,7 @@ One at a time, each a few days with its sources checked, on the profile mechanis
 - An "AI used this month: about 12p" line under Settings, from the bridge's own token tally. Offered 4 October; build if wanted.
 
 ## Done
+- v143 Medicine history in Mark's new design: four tiles, Taking now grouped Regular and When needed with a bar of the last 14 days, Finished, stopped and given in hospital labelled per row, and a panel for the team's medicine changes. The standard look for every report from now on.
 - v142 Medicine history prints, saves as a PDF and sends by email; every email from Daybook ends "Sent from My Medical Daybook".
 - v141 Finished courses stay on the Meds tab marked Course complete, and Medicine history shows every dose of every medicine, past and present.
 - v140 "Created with My Medical Daybook" right after each report's title, the first thing the reader sees.

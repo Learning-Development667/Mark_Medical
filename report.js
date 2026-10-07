@@ -553,54 +553,97 @@ export function shrinkFood(F, over) {
 
 
 /* ------------------------------------------------------------------ */
-/* Medicine history (v142): every medicine on the list, taking now,    */
-/* finished and stopped, plus anything given in hospital, with its     */
-/* dose, how often and the doses logged. Unlike the two reports it is   */
-/* as many A4 pages as it needs: fitMedsReport() measures the rows in   */
-/* the frame and moves whatever passes a page's foot onto the next      */
-/* page, repeating the table heading there. Every figure arrives in M   */
-/* already worked out (buildMedsReport() in scripts.js).                */
+/* Medicine history (v142, the look rebuilt in v143 from Mark's design, */
+/* report/meds-design.pdf in the scratchpad): four tiles, then Taking   */
+/* now as one table grouped Regular and When needed, each row with a    */
+/* bar of the last 14 days, then Finished, stopped and given in         */
+/* hospital as one table with a status label above each name, then a    */
+/* panel of ruled lines for the team's medicine changes. Unlike the two */
+/* reports it is as many A4 pages as it needs: fitMedsReport() measures */
+/* the rows in the frame and moves whatever passes a page's foot onto   */
+/* the next page, repeating the table heading there. Every figure       */
+/* arrives in M already worked out (buildMedsReport() in scripts.js).   */
 /* ------------------------------------------------------------------ */
 const MEDS_CSS = `
-.msec h2{font-size:12pt;display:flex;align-items:baseline;gap:2.4mm;padding-left:2.4mm;border-left:1.4mm solid var(--teal);margin-bottom:1.6mm}
-.msec h2 small{font-family:Inter,sans-serif;font-size:7.2pt;font-weight:400;color:var(--slate);letter-spacing:0}
-.msec.done h2{border-left-color:var(--green)}
-.msec.stopped h2{border-left-color:var(--slate)}
-.mtable{width:100%;border-collapse:collapse;table-layout:fixed}
-.mtable th{font-size:6.6pt;text-transform:uppercase;letter-spacing:.06em;color:var(--slate);text-align:left;font-weight:600;padding:1mm 2mm;border-bottom:1px solid var(--ink)}
-.mtable td{padding:1.8mm 2mm;border-bottom:1px solid var(--line);vertical-align:top;font-size:8.2pt;line-height:1.35;overflow-wrap:anywhere}
+.tile.teal{background:var(--teal-soft);border-top-color:var(--teal)}
+.mtable{width:100%;border-collapse:collapse;table-layout:fixed;border-top:1px solid var(--line)}
+.mtable th{font-size:6.4pt;text-transform:uppercase;letter-spacing:.08em;color:var(--slate);text-align:left;font-weight:600;padding:1.2mm 2mm;background:var(--mist);border-bottom:1.3px solid var(--ink)}
+.mtable td{padding:2.2mm 2mm 2mm;border-bottom:1px solid var(--line);vertical-align:top;font-size:8.2pt;line-height:1.35;overflow-wrap:anywhere}
+.mtable th+th,.mtable td+td{border-left:1px solid var(--line)}
+.mtable th:first-child,.mtable td:first-child{padding-left:0}
+.mtable tr.alt td{background:#F8F9FA}
 .mtable td b{font-weight:600}
 .mtable .sm{display:block;font-size:7pt;color:var(--slate);margin-top:.4mm}
-.mtable col.c1{width:29%}.mtable col.c2{width:27%}.mtable col.c3{width:24%}.mtable col.c4{width:20%}
-.mbody{flex:1;display:flex;flex-direction:column;gap:4mm;min-height:0}
+.mtable .also{display:inline-block;font-size:6.6pt;color:var(--slate);background:var(--mist);border-radius:2mm;padding:.2mm 2mm;margin-top:.8mm}
+.mtable col.c1{width:27%}.mtable col.c2{width:31%}.mtable col.c3{width:19%}.mtable col.c4{width:23%}
+.mtable tr.grp td{background:var(--mist);padding:1.2mm 0;font-size:7.2pt;color:var(--slate)}
+.mtable tr.grp td+td{border-left:0}
+.mpill{display:inline-block;font-size:6.8pt;font-weight:600;border-radius:2.4mm;padding:.3mm 2.2mm;margin-right:1.6mm;background:var(--mist);color:var(--slate)}
+tr.grp .mpill{margin-left:0}
+.mpill.teal{background:var(--teal-soft);color:#16656B}
+.mpill.amber{background:var(--amber-soft);color:#8A5E10}
+.mpill.green{background:var(--green-soft);color:#2D7354}
+.mpill.red{background:var(--red-soft);color:#B0372E}
+.mpill.slate{background:var(--mist);color:var(--slate);border:1px solid var(--line)}
+.mtable td .mpill.tag{display:block;width:fit-content;margin:0 0 1.2mm;padding:.4mm 2.4mm}
+.mbar{height:1.5mm;border-radius:.75mm;background:var(--line);margin:1.2mm 0 .6mm;overflow:hidden}
+.mbar i{display:block;height:100%;background:var(--teal);border-radius:.75mm}
+.mbody{flex:1;display:flex;flex-direction:column;gap:5mm;min-height:0}
+.msec h2{margin-bottom:2mm}
 .mnone{color:var(--slate)}
+.mnotes{background:var(--teal-soft);border-radius:2.4mm;padding:3mm 3.6mm;display:flex;flex-direction:column;flex:1;min-height:42mm}
+.mnotes h3{font-family:Inter,sans-serif;font-size:8.6pt;font-weight:600;letter-spacing:0}
+.mnotes .lines{flex:1;margin-top:1.4mm;position:relative;overflow:hidden}
+.mnotes .lines i{position:absolute;left:0;right:0;height:0;border-top:1px solid rgba(30,127,134,.35)}
 `;
 function medsRow(r, i) {
-  return `<tr data-i="${i}"><td><b>${esc(r.name)}</b>${r.purpose ? `<span class="sm">${esc(r.purpose)}</span>` : ''}</td><td>${esc(r.dose || '')}${r.lines.map((l) => `<span class="sm">${esc(l)}</span>`).join('')}</td><td>${esc(r.taken)}${r.takenSub ? `<span class="sm">${esc(r.takenSub)}</span>` : ''}</td><td>${esc(r.doses)}${r.dosesSub.map((l) => `<span class="sm">${esc(l)}</span>`).join('')}</td></tr>`;
+  const sm = (t) => (t ? `<span class="sm">${esc(t)}</span>` : '');
+  const bar = r.bar == null ? '' : `<div class="mbar"><i style="width:${Math.round(Math.max(0, Math.min(1, r.bar)) * 100)}%"></i></div>`;
+  return `<tr data-i="${i}"${r.alt ? ' class="alt"' : ''}>`
+    + `<td>${r.tag ? `<span class="mpill tag ${esc(r.tag.cls)}">${esc(r.tag.text)}</span>` : ''}<b>${esc(r.name)}</b>${sm(r.purpose)}</td>`
+    + `<td>${esc(r.dose || '')}${r.lines.map(sm).join('')}${(r.also || []).map((a) => `<span class="also">${esc(a)}</span>`).join('<br>')}</td>`
+    + `<td>${esc(r.taken)}${sm(r.takenSub)}</td>`
+    + `<td><b>${esc(r.doses)}</b>${r.dosesSub.map(sm).join('')}${bar}${sm(r.last14)}</td></tr>`;
 }
-/* M: { patient, upTo, prepared, sections[{ key, title, note, cls, rows[] }], items[] (flat: { s, r } with r null for a heading), pages[[item index]] } */
+const MEDS_HEAD = '<table class="mtable"><colgroup><col class="c1"><col class="c2"><col class="c3"><col class="c4"></colgroup><thead><tr><th>Medicine</th><th>Dose and how often</th><th>Taken</th><th>Doses logged</th></tr></thead><tbody>';
+const medsGroupRow = (g, i, cont) => `<tr class="grp"${i === null ? '' : ` data-i="${i}"`}><td colspan="4"><span class="mpill ${esc(g.cls)}">${esc(g.label)}</span>${esc(cont ? 'continued' : g.note + ' · ' + g.rows.length)}</td></tr>`;
+/* M: { patient, upTo, prepared, tiles[], sections[{ title, note, groups[{ label, note, cls, rows[] }] }],
+   items[] (flat: { t: 'sec'|'grp'|'row'|'notes', s, g, r }), pages[[item index]] } */
 export function medsReportHtml(M) {
   const total = M.pages.length;
   const pages = M.pages.map((idx, p) => {
     let html = '', open = null;
     const close = () => { if (open !== null) { html += '</tbody></table></div>'; open = null; } };
     idx.forEach((i) => {
-      const it = M.items[i], sec = M.sections[it.s];
-      if (it.r === null || open !== it.s) {
+      const it = M.items[i];
+      if (it.t === 'notes') {
         close();
-        const cont = it.r !== null;
-        html += `<div class="msec ${sec.cls}"><h2 data-i="${it.r === null ? i : ''}">${esc(sec.title)}${cont ? ', continued' : ''}${!cont && sec.note ? ` <small>${esc(sec.note)}</small>` : ''}</h2>`;
-        html += '<table class="mtable"><colgroup><col class="c1"><col class="c2"><col class="c3"><col class="c4"></colgroup><thead><tr><th>Medicine</th><th>Dose and how often</th><th>Taken</th><th>Doses logged</th></tr></thead><tbody>';
-        open = it.s;
+        /* only as many lines as the panel holds (fitMedsReport() counts them): ruled lines that run past
+           the paper, even clipped, make Chrome print a blank page after the report */
+        let l = ''; for (let k = 1; k <= (M.noteLines == null ? 6 : M.noteLines); k++) l += `<i style="top:calc(${k} * 7mm)"></i>`;
+        html += `<div class="mnotes" data-i="${i}"><h3>Medicine changes and notes from the team</h3><div class="lines">${l}</div></div>`;
+        return;
       }
-      if (it.r !== null) html += medsRow(sec.rows[it.r], i);
+      const sec = M.sections[it.s];
+      if (it.t === 'sec' || open !== it.s) {
+        close();
+        const cont = it.t !== 'sec';
+        html += `<div class="msec"><h2 class="sec"${cont ? '' : ` data-i="${i}"`}>${esc(sec.title)}${cont ? ', continued' : sec.note ? ` <small>${esc(sec.note)}</small>` : ''}</h2>${MEDS_HEAD}`;
+        open = it.s;
+        /* a page that starts part way through a group says so */
+        if (it.t === 'row' && sec.groups[it.g].label) html += medsGroupRow(sec.groups[it.g], null, true);
+      }
+      if (it.t === 'grp') html += medsGroupRow(sec.groups[it.g], i, false);
+      if (it.t === 'row') html += medsRow(sec.groups[it.g].rows[it.r], i);
     });
     close();
-    if (!idx.length) html = '<p class="mnone">No medicines on the list yet.</p>';
+    if (!M.sections.length) html = '<p class="mnone">No medicines on the list yet.</p>' + html;
+    const bars = idx.some((i) => { const it = M.items[i]; return it.t === 'row' && M.sections[it.s].groups[it.g].rows[it.r].bar != null; });
+    const tiles = p === 0 && M.tiles.length ? `<div class="tiles">${M.tiles.map(tileHtml).join('')}</div>` : '';
     const top = p === 0
-      ? `<div class="masthead"><div><div class="titlerow"><h1>Medicine history</h1><span class="madeby">Created with <b>My Medical Daybook</b></span></div><div class="sub">Every medicine on the list, with its dose, how often and the doses logged, including finished courses.</div></div><div class="who"><strong>${esc(M.patient)}</strong>Up to: ${esc(M.upTo)}<br>Prepared: ${esc(M.prepared)}</div></div>`
+      ? `<div class="masthead"><div><div class="titlerow"><h1>Medicine history</h1><span class="madeby">Created with <b>My Medical Daybook</b></span></div><div class="sub">Every medicine on the list, with its dose, how often and the doses logged, including finished courses.</div></div><div class="who"><strong>${esc(M.patient)}</strong>Up to: ${esc(M.upTo)}<br>Prepared: ${esc(M.prepared)}</div></div>${tiles}`
       : `<div class="runner"><h2>Medicine history</h2><span>${esc(M.patient)} · up to ${esc(M.upTo)}</span></div>`;
-    return `<section class="page" id="page${p + 1}">${top}<div class="mbody">${html}</div><div class="foot"><span>Doses as logged in Daybook. Not medical advice.</span>${madeBy(p + 1, total)}</div></section>`;
+    return `<section class="page" id="page${p + 1}">${top}<div class="mbody">${html}</div><div class="foot"><span>Doses as logged in Daybook. Not medical advice.${bars ? ' Bars: the last 14 days, doses taken against due or days used.' : ''}</span>${madeBy(p + 1, total)}</div></section>`;
   }).join('\n');
   return `<!doctype html>
 <html lang="en-GB">
@@ -618,11 +661,12 @@ ${pages}
 </html>`;
 }
 /* Lays the rows out page by page: renders, finds the first heading or row whose bottom passes its
-   page's foot, moves it (and its heading, never left alone at a page's foot) and everything after it
-   to the next page, and renders again, until every page fits */
+   page's foot, moves it (and the section and group headings above it, never left alone at a page's
+   foot) and everything after it to the next page, and renders again, until every page fits */
 export async function fitMedsReport(frame, M, opts = {}) {
   const write = (html) => new Promise((resolve) => { frame.onload = () => resolve(); frame.srcdoc = html; });
   M.pages = [M.items.map((_, i) => i)];
+  M.noteLines = null;
   for (let pass = 0; pass < 200; pass++) {
     await write(medsReportHtml(M));
     const doc = frame.contentDocument;
@@ -633,17 +677,24 @@ export async function fitMedsReport(frame, M, opts = {}) {
     for (let p = 0; p < pages.length && !moved; p++) {
       const limit = pages[p].querySelector('.foot').getBoundingClientRect().top - 1;
       const els = [...pages[p].querySelectorAll('[data-i]')].filter((e) => e.dataset.i !== '');
-      const bad = els.find((e) => e.getBoundingClientRect().bottom > limit);
+      /* the notes panel stretches to fill its page, so it is judged by its smallest height */
+      const bottom = (e) => (e.classList.contains('mnotes') ? e.getBoundingClientRect().top + parseFloat(doc.defaultView.getComputedStyle(e).minHeight) : e.getBoundingClientRect().bottom);
+      const bad = els.find((e) => bottom(e) > limit);
       if (!bad) continue;
       const idx = M.pages[p];
       let at = idx.indexOf(Number(bad.dataset.i));
-      if (at > 0 && M.items[idx[at - 1]].r === null) at -= 1; // keep a heading with its first row
+      while (at > 0 && /^(sec|grp)$/.test(M.items[idx[at - 1]].t)) at -= 1; // keep headings with their first row
       if (at <= 0) return { ok: false, over: ['Page ' + (p + 1)], R: M, doc }; // one row taller than a page
       const rest = idx.splice(at);
       if (M.pages[p + 1]) M.pages[p + 1].unshift(...rest); else M.pages.push(rest);
       moved = true;
     }
-    if (!moved) return { ok: true, R: M, doc };
+    if (!moved) {
+      const box = doc.querySelector('.mnotes .lines');
+      const n = box ? Math.max(0, Math.floor((box.getBoundingClientRect().height * 25.4 / 96 - 1) / 7)) : 0;
+      if (box && n !== M.noteLines) { M.noteLines = n; continue; }
+      return { ok: true, R: M, doc };
+    }
   }
   return { ok: false, over: ['Report'], R: M };
 }
