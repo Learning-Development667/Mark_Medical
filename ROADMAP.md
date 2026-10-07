@@ -80,6 +80,7 @@ One at a time, each a few days with its sources checked, on the profile mechanis
 - An "AI used this month: about 12p" line under Settings, from the bridge's own token tally. Offered 4 October; build if wanted.
 
 ## Done
+- v137 The "..." on a medicine dose opens again (broken since v97), with Change the time or note to set when a dose was really taken.
 - v136 Words typed in a note, question or check-in are kept on the phone until saved or closed, and offered back if the phone closes the app; no blank band under a sheet after the lock screen.
 - v135 Contacts carry an extension or menu option under the number ("Then option 2"); Call still dials the number alone.
 - v133 Questions labelled (Oncology, Gastro, General, Not sure, Dietitian), never numbered; dietitian questions go to the Food diary screen and report.
