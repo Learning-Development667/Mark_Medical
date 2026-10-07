@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '135';
+const APP_VERSION = '136';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -343,6 +343,7 @@ function openSheet(title, body, onClose) {
   else $('sheet-title').focus({ preventScroll: true });
 }
 function closeSheet() {
+  clearSheetDrafts();
   if (state.sheetOnClose) { const fn = state.sheetOnClose; state.sheetOnClose = null; fn(); }
   $('sheet').hidden = true;
   $('sheet-body').replaceChildren();
@@ -359,21 +360,122 @@ document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && !$('sh
 (function keepSheetAboveKeyboard() {
   const vv = window.visualViewport;
   if (!vv) return;
+  const TEXTISH = 'input:not([type=range]):not([type=checkbox]):not([type=radio]):not([type=button]), textarea';
+  /* A keyboard can only be up while a text box in the sheet has focus. When the phone was locked with the keyboard
+     up, iPhone did not always report its going on return, so the sheet stayed lifted by the keyboard's height over
+     a blank band (Mark, 7 October, writing a note). With nothing focused the lift is always 0 now, and the sheet
+     is measured again when the app comes back, the window changes and a box loses focus. */
+  const typing = () => { const a = document.activeElement; return Boolean(a && a !== document.body && $('sheet').contains(a) && a.matches(TEXTISH)); };
   const fit = () => {
-    const kb = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+    const on = typing();
+    const kb = on ? Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)) : 0;
     const st = $('sheet').style;
     st.setProperty('--kb', kb + 'px');
-    st.setProperty('--vvh', Math.round(vv.height) + 'px');
+    st.setProperty('--vvh', Math.round(on ? vv.height : window.innerHeight) + 'px');
   };
+  const later = (ms) => setTimeout(fit, ms);
   vv.addEventListener('resize', fit);
   vv.addEventListener('scroll', fit);
+  window.addEventListener('resize', fit);
+  window.addEventListener('orientationchange', () => later(400));
+  window.addEventListener('pageshow', () => { fit(); later(400); });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { fit(); later(400); later(1000); } });
   fit();
   $('sheet').addEventListener('focusin', (ev) => {
     const el = ev.target;
-    if (!el.matches('input:not([type=range]):not([type=checkbox]):not([type=radio]), textarea')) return;
+    if (!el.matches(TEXTISH)) return;
     setTimeout(() => { fit(); if (document.activeElement === el) el.scrollIntoView({ block: 'center', behavior: 'smooth' }); }, 320);
   });
+  $('sheet').addEventListener('focusout', () => later(350));
 })();
+
+/* Unsaved words are kept on this phone (v136, Mark, 7 October: the phone closed while a note was half written, and
+   it was gone). Whatever is typed into a text box in a sheet is copied to localStorage as it is typed, keyed by the
+   sheet's title, the step's question and the box's label, plus `data-draft` on the sheet's body where a sheet sets
+   it (an entry being edited, a check-in's slot). Closing the sheet in any way (Save, Cancel, the X, Escape) clears
+   that sheet's words, so they only survive when the app itself was closed or the phone ran out of memory with the
+   sheet open. The next time the same box appears the words go back in, with a line saying so and **Clear them**,
+   which puts the box back as it was. A sheet that sets `data-reopen` (a new note or question, a check-in) also gets
+   a toast on the next start, "Your unfinished note was kept on this phone." with **Open it**. Older than 7 days, or
+   empty, a draft is dropped. Never stored anywhere but this phone. */
+const DRAFTS_KEY = 'daybook.drafts';
+let draftRestoring = false;
+const DRAFT_DAYS = 7;
+function readDrafts() {
+  try {
+    const all = JSON.parse(localStorage.getItem(DRAFTS_KEY) || '{}') || {};
+    const cut = Date.now() - DRAFT_DAYS * 86400000;
+    for (const k of Object.keys(all)) if (!all[k] || !all[k].text || all[k].at < cut) delete all[k];
+    return all;
+  } catch (e) { return {}; }
+}
+function writeDrafts(all) { try { localStorage.setItem(DRAFTS_KEY, JSON.stringify(all)); } catch (e) { /* private window: nothing kept */ } }
+function draftKey(el) {
+  const body = $('sheet-body');
+  let q = '';
+  for (const w of body.querySelectorAll('.wiz-q')) if (w.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING) q = w.textContent.trim();
+  const fieldLabel = el.closest('.field') && el.closest('.field').firstElementChild && el.closest('.field').firstElementChild !== el ? el.closest('.field').firstElementChild.textContent.trim() : '';
+  const label = el.getAttribute('aria-label') || fieldLabel || el.placeholder || '';
+  const tag = (body.firstElementChild && body.firstElementChild.dataset.draft) || '';
+  return [$('sheet-title').textContent.trim(), tag, q, label].join('|');
+}
+function draftPrefix() {
+  const body = $('sheet-body');
+  return [$('sheet-title').textContent.trim(), (body.firstElementChild && body.firstElementChild.dataset.draft) || ''].join('|') + '|';
+}
+function restoreDraftsIn(root) {
+  const all = readDrafts();
+  for (const el of root.querySelectorAll ? root.querySelectorAll('textarea') : []) {
+    if (el.readOnly || el.disabled || el.dataset.draftChecked) continue;
+    el.dataset.draftChecked = '1';
+    const d = all[draftKey(el)];
+    if (!d || !d.text.trim() || d.text === el.value) continue;
+    const was = el.value;
+    el.value = d.text;
+    draftRestoring = true; el.dispatchEvent(new Event('input', { bubbles: true })); draftRestoring = false;
+    const note = h('div', { class: 'draftnote', role: 'status' },
+      h('span', { text: `Your unsaved words from ${fmtTime(new Date(d.at))}${dayStr(new Date(d.at)) === todayStr() ? '' : ' on ' + fmtDayShort(dayStr(new Date(d.at)))} are back.` }),
+      h('button', { class: 'btn-inline', type: 'button', onclick: () => { el.value = was; draftRestoring = true; el.dispatchEvent(new Event('input', { bubbles: true })); draftRestoring = false; const a = readDrafts(); delete a[draftKey(el)]; writeDrafts(a); note.remove(); el.focus(); } }, 'Clear them'));
+    el.before(note);
+  }
+}
+(function keepDrafts() {
+  const body = $('sheet-body');
+  body.addEventListener('input', (ev) => {
+    const el = ev.target;
+    if (!(el instanceof HTMLTextAreaElement) || el.readOnly || draftRestoring) return; // Tap to speak's words count; only our own put-back is skipped
+    const all = readDrafts();
+    const key = draftKey(el);
+    if (el.value.trim()) {
+      const root = body.firstElementChild;
+      all[key] = { text: el.value, at: Date.now(), reopen: (root && root.dataset.reopen) || '', title: $('sheet-title').textContent.trim() };
+    } else delete all[key];
+    writeDrafts(all);
+  });
+  new MutationObserver((list) => {
+    for (const m of list) for (const n of m.addedNodes) if (n.nodeType === 1) restoreDraftsIn(n.matches && n.matches('textarea') ? n.parentNode : n);
+  }).observe(body, { childList: true, subtree: true });
+})();
+function clearSheetDrafts() {
+  if ($('sheet').hidden) return;
+  const all = readDrafts();
+  const pre = draftPrefix();
+  let changed = false;
+  for (const k of Object.keys(all)) if (k.startsWith(pre)) { delete all[k]; changed = true; }
+  if (changed) writeDrafts(all);
+}
+/* On a fresh start: the newest kept draft that knows how to reopen its sheet, offered once in a toast */
+function offerDraft() {
+  if (state.readOnly || state.viewer) return;
+  const list = Object.values(readDrafts()).filter((d) => d.reopen).sort((a, b) => b.at - a.at);
+  const d = list[0];
+  if (!d) return;
+  const what = d.reopen === 'note' ? 'note' : d.reopen === 'question' ? 'question for the team' : /^checkin:/.test(d.reopen) ? (d.title || 'check-in').toLowerCase() : 'words';
+  toast(`Your unfinished ${what} was kept on this phone.`, { label: 'Open it', onClick: () => {
+    if (d.reopen === 'note' || d.reopen === 'question') openAdd(d.reopen);
+    else if (/^checkin:/.test(d.reopen)) { const [, slot, day] = d.reopen.split(':'); openCheckin(slot, day || todayStr()); }
+  } });
+}
 function confirmSheet(title, message, okLabel, danger) {
   return new Promise((resolve) => {
     let result = false; // closing any other way (the X, the backdrop, Escape) counts as Cancel
@@ -756,6 +858,7 @@ async function enterApp(user) {
     if (wanted && PAGE_TITLES[wanted] && !state.viewer) { showTab(wanted); history.replaceState(null, '', location.pathname + location.hash); }
     await startData();
     syncReminders();
+    setTimeout(offerDraft, 1500);
   } else if (!state.demo) {
     stopData();
     state.user = null;
@@ -1146,6 +1249,7 @@ function startDemoData() {
   renderChemo();
   renderExercise();
   toast('Preview mode: made-up example data, nothing you do here is saved.');
+  setTimeout(offerDraft, 4200); // after the welcome line has had its four seconds
   renderCalls();
   syncSettings();
 }
@@ -2651,6 +2755,8 @@ function openAdd(type, editEntry) {
   });
   body.append(save, h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Cancel'));
   if (editId) save.textContent = 'Save changes';
+  body.dataset.draft = editId || 'new';
+  if (!editId && (type === 'note' || type === 'question')) body.dataset.reopen = type;
   openSheet(editId && type === 'vitals' ? (editEntry.type === 'temp' ? 'Edit temperature' : 'Edit vitals') : titles[type], body);
 }
 
@@ -5656,6 +5762,8 @@ function openCheckin(slot, initialDay) {
     if (panel) panel.scrollTop = 0;
   }
   render();
+  body.dataset.draft = slot + ':' + day;
+  body.dataset.reopen = 'checkin:' + slot + ':' + day;
   openSheet(checkinTitle(slot), body);
 }
 
