@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=144">
+  <link rel="stylesheet" href="styles.css?v=145">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -622,6 +622,12 @@
         <div class="diary-head">
           <button id="settings-back" class="btn btn-link" type="button">&#8249; Back</button>
         </div>
+        <h2 class="section-title">What Daybook is for</h2>
+        <div id="settings-packs" class="card settings-group">
+          <p class="hint">Tick what applies; more than one is fine. Each brings its own questions and its own limits on the reports. Shared by everyone in the household.</p>
+          <div id="settings-packs-list"></div>
+          <div id="settings-ibd" class="ibd-setup" hidden></div>
+        </div>
         <h2 class="section-title">Food</h2>
         <div id="settings-food" class="card settings-group">
           <label class="check settings-toggle">
@@ -733,7 +739,7 @@
     </ul>
     <h3>What Daybook stores</h3>
     <p><b>Your sign-in:</b> your email address and password (held by Google's Firebase Authentication; Daybook never sees the password), your first name, your role in the household (family, read only, or medicines and treatment only), whether you are the patient or a carer, and which household you belong to.</p>
-    <p><b>What your household records:</b> check-ins (pain, mood, sleep, sickness, appetite, energy and what you write), readings (temperature, heart rate, blood pressure, oxygen, weight and BMI), food and drink, notes, questions for the care team and their answers, including any voice recordings you choose to make, medicines, doses and reminder times, letters and documents you photograph or paste in and the explanations saved with them, treatment sessions and the calendar, exercise ticks, steps, sleep, workouts and food totals if you connect Apple Health, saved meals, who to contact (names, roles, phone numbers, any extension or menu option, and email addresses), and your settings.</p>
+    <p><b>What your household records:</b> check-ins (pain, mood, sleep, sickness, appetite, energy, with Crohn's or colitis a weekly question about joints, eyes, skin and mouth, and what you write), readings (temperature, heart rate, blood pressure, oxygen, weight and BMI), food and drink, notes, questions for the care team and their answers, including any voice recordings you choose to make, medicines, doses and reminder times, letters and documents you photograph or paste in and the explanations saved with them, bowel movements (the type, any blood, urgency and accidents, and with Crohn's or colitis your usual number a day and whether you have a stoma), symptoms between check-ins, which conditions Daybook is set up for, treatment sessions and the calendar, exercise ticks, steps, sleep, workouts and food totals if you connect Apple Health, saved meals, who to contact (names, roles, phone numbers, any extension or menu option, and email addresses), and your settings.</p>
     <p><b>On your phone:</b> a copy of your account record and of the records you have opened, so the app works on a weak signal, and a few settings (which charts you view as tables, the exercise filter, the weight unit, the opener). Words typed into a note, a question or a check-in are kept on the phone until you save or close that screen, so they are not lost if the phone closes the app; they are cleared when you save, cancel or clear them, and after 7 days at most. Your browser holds these and they go when you clear its data.</p>
     <p><b>If you turn on reminders:</b> each phone's push address and browser type, so the reminder reaches it. <b>For Daybook Assistant:</b> a daily count per household of how many requests were made and how many words they used, for the cost.</p>
     <h3>Where it is kept</h3>
@@ -851,6 +857,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=144"></script>
+  <script type="module" src="scripts.js?v=145"></script>
 </body>
 </html>

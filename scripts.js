@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '144';
+const APP_VERSION = '145';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -192,7 +192,14 @@ function fmtDayNum(s) { return parseDay(s).toLocaleDateString('en-GB', { day: 'n
 function tempClass(v) { if (v >= 38) return 'is-red'; if (v >= 37.5) return 'is-amber'; return ''; }
 /* Words beside a typed temperature: no reassurance, and the alert card is the guide (v116; until then
    anything under 37.5 read "Normal range" in green and 37.5 read "Keep an eye on it") */
-function tempWord(v) { if (v >= 38) return 'High, 38.0 or above. Follow your alert card.'; if (v >= 37.5) return 'Raised, 37.5 to 37.9. Check your alert card for when to call.'; if (v < 36) return 'Low, under 36.0. Check your alert card.'; return 'Under 37.5.'; }
+/* The alert card is the chemo team's, so it is named only with the Cancer treatment pack on (v145) */
+function tempWord(v) {
+  const card = packOn('cancer');
+  if (v >= 38) return 'High, 38.0 or above.' + (card ? ' Follow your alert card.' : '');
+  if (v >= 37.5) return 'Raised, 37.5 to 37.9.' + (card ? ' Check your alert card for when to call.' : '');
+  if (v < 36) return 'Low, under 36.0.' + (card ? ' Check your alert card.' : '');
+  return 'Under 37.5.';
+}
 
 /* Weight is stored and reported in kg everywhere: the timeline, Notes for the team, its PDF, the copied
    text (what NHS teams record). One choice per phone, kg or stones and pounds, set from the small switch
@@ -1351,9 +1358,58 @@ function syncSettings() {
   if (!$('view-notes').hidden) renderNotesReport();
   syncHealthCard();
   syncHouseholdCard();
+  renderPacksCard();
   const nudge = $('settings-stretch-nudge');
   if (nudge) { const on = !!(state.profile && state.profile.stretchNudge); if (nudge.checked !== on) nudge.checked = on; nudge.disabled = state.readOnly || state.demo; }
 }
+/* What Daybook is for (v145): the condition packs, and with Crohn's or colitis which it is, whether
+   there is a stoma and the usual number a day the reports compare with. Saved as each change is made. */
+async function saveProfilePatch(patch, said) {
+  if (state.demo) { state.profile = { ...state.profile, ...patch }; syncSettings(); renderToday(); if (said) toast(said); return true; }
+  try { await setDoc(hdoc('profile', 'main'), patch, { merge: true }); if (said) toast(said); return true; }
+  catch (e) { console.error(e); toast('Could not save the setting'); return false; }
+}
+function renderPacksCard() {
+  const list = $('settings-packs-list'), ibdBox = $('settings-ibd');
+  if (!list) return;
+  const locked = Boolean(state.readOnly || state.viewer);
+  const on = packs();
+  if (!list.childElementCount) {
+    list.append(...PACKS.map((p) => h('div', { class: 'pack-row' },
+      h('label', { class: 'check settings-toggle' },
+        h('input', { type: 'checkbox', id: 'pack-' + p.key, disabled: p.later || locked, onchange: (ev) => {
+          const next = { ...packs(), [p.key]: ev.target.checked };
+          saveProfilePatch({ packs: next }, p.name + (ev.target.checked ? ' on' : ' off')).then((ok) => { if (!ok) ev.target.checked = !ev.target.checked; });
+        } }),
+        h('span', { text: p.name })),
+      h('p', { class: 'hint', text: p.hint }))));
+  }
+  PACKS.forEach((p) => { const box = $('pack-' + p.key); const v = Boolean(on[p.key]) && !p.later; if (box.checked !== v) box.checked = v; box.disabled = p.later || locked; });
+  ibdBox.hidden = !packOn('ibd');
+  if (ibdBox.hidden) return;
+  const info = ibdInfo();
+  const usualIn = $('settings-ibd-usual');
+  if (usualIn && document.activeElement === usualIn) return; // never redraw under the person typing
+  const chips = (name, options, current, pick) => h('div', { class: 'presets', role: 'group', 'aria-label': name },
+    ...options.map(([v, label]) => h('button', { class: 'preset' + (v === current ? ' is-active' : ''), type: 'button', text: label, disabled: locked, 'aria-pressed': v === current ? 'true' : 'false', onclick: () => pick(v) })));
+  const stoma = ibdStoma();
+  const usual = h('input', { id: 'settings-ibd-usual', type: 'text', inputmode: 'numeric', autocomplete: 'off', maxlength: '3', disabled: locked, value: info.usual ? String(info.usual) : '' });
+  usual.addEventListener('change', () => {
+    const t = usual.value.trim();
+    if (!t) { saveProfilePatch({ ibd: { ...ibdInfo(), usual: null } }, 'Usual number cleared'); return; }
+    const n = Number(t.replace(',', '.'));
+    if (!(n >= 0 && n <= 30)) { toast('Type a number from 0 to 30, like on a settled day'); usual.focus(); return; }
+    saveProfilePatch({ ibd: { ...ibdInfo(), usual: Math.round(n * 2) / 2 } }, 'Usual number saved');
+  });
+  ibdBox.replaceChildren(
+    h('p', { class: 'fieldlabel', text: "Which is it?" }),
+    chips("Which is it", IBD_KINDS, info.kind || '', (v) => saveProfilePatch({ ibd: { ...ibdInfo(), kind: v } })),
+    h('p', { class: 'fieldlabel', text: 'Do you have a stoma?' }),
+    chips('Do you have a stoma', STOMA_KINDS, stoma, (v) => saveProfilePatch({ ibd: { ...ibdInfo(), stoma: v || null } })),
+    field(stoma ? 'On a usual settled day, how many times do you empty your bag?' : 'On a usual settled day, how many times do you open your bowels?', usual),
+    h('p', { class: 'hint', text: 'Your usual is what the reports compare each day with, the way IBD teams do. Change it if your team gives you a different figure.' }));
+}
+
 /* Gentle nudge at 10:00 (v83): one notification if nothing has been logged on the Exercise tab by then. Household-wide, sent by the bridge to the phones with reminders on. */
 $('settings-stretch-nudge').addEventListener('change', async (ev) => {
   const on = ev.target.checked;
@@ -1775,6 +1831,28 @@ function renderDayLabel() {
 
 function detailedNutritionOn() { return Boolean(state.profile && state.profile.detailedNutrition); }
 
+/* ---- Condition packs (v145) ----
+   What Daybook is set up for, household-wide in profile/main.packs { cancer, ibd, menopause }. A household
+   saved before v145 has no field and is the Cancer treatment pack, as Daybook always was. Each pack brings
+   its own questions and its own limits on the reports: the chemo alert card wording and the UKONS triage
+   limits for bowels belong to Cancer treatment (they would flag almost every day of active colitis), and
+   Crohn's or colitis compares bowels with the person's own usual number a day, as IBD teams do. With
+   both on, the cancer limits win, being the treatment team's. Menopause is listed as coming later. */
+const PACKS = [
+  { key: 'cancer', name: 'Cancer treatment', hint: 'Chemotherapy, radiotherapy or immunotherapy: the treatment calendar, the chemo alert card wording and the triage limits for bowels on the reports.' },
+  { key: 'ibd', name: "Crohn's or colitis", hint: 'Bowels compared with your own usual number a day, blood, urgency and accidents, a stoma if you have one, and a weekly question about joints, eyes, skin and mouth.' },
+  { key: 'menopause', name: 'Menopause', hint: 'Coming later.', later: true }
+];
+function packs() { const p = state.profile && state.profile.packs; return p && typeof p === 'object' ? p : { cancer: true }; }
+function packOn(k) { return Boolean(packs()[k]); }
+function ibdInfo() { return (state.profile && state.profile.ibd) || {}; }
+function ibdStoma() { const s = ibdInfo().stoma; return s === 'ileostomy' || s === 'colostomy' ? s : ''; }
+function ibdUsual() { const n = Number(ibdInfo().usual); return n > 0 ? n : null; }
+const IBD_KINDS = [['crohns', "Crohn's disease"], ['uc', 'Ulcerative colitis'], ['ibdu', 'IBD unclassified'], ['unsure', 'Not sure yet']];
+const STOMA_KINDS = [['', 'No'], ['ileostomy', 'Ileostomy'], ['colostomy', 'Colostomy']];
+/* which bowel limits apply on the reports and in the tables */
+function bowelRules() { return packOn('cancer') ? 'cancer' : packOn('ibd') ? 'ibd' : 'plain'; }
+
 /* Today's timeline is drawn synchronously, so the food table is fetched in
    the background the first time it is needed and the list redrawn once. */
 function ensureFoodIndexForToday() {
@@ -1808,7 +1886,8 @@ function entryTitle(e) {
     case 'pain': return [h('span', { class: 'val', text: 'Pain ' + e.value + '/10' })];
     case 'symptom': return [h('span', { class: 'val', text: (e.what || 'Symptom') + ' ' + e.value + '/10' })];
     case 'bowel': {
-      if (e.none) return [h('span', { text: 'No bowel movement' })];
+      if (e.none) return [h('span', { text: e.stoma ? 'No stoma output' : 'No bowel movement' })];
+      if (e.stoma) return [h('span', { class: 'val', text: 'Stoma output' }), stomaWord(e) ? h('span', { text: ', ' + stomaWord(e) }) : null];
       const ts = bowelTypes(e);
       return ts.length > 1
         ? [h('span', { class: 'val', text: 'Bowels: mixed' }), h('span', { text: ', types ' + joinAnd(ts.map(String)) })]
@@ -2043,8 +2122,29 @@ const BRISTOL = [
   { t: 7, name: 'Watery', hint: 'Entirely liquid, no solid pieces' }
 ];
 const BOWEL_FLAGS = [['blood', 'Blood (red)'], ['black', 'Black or tarry'], ['mucus', 'Mucus'], ['urgent', 'Urgent, or an accident'], ['pain', 'Pain or straining'], ['night', 'At night']];
+/* With Crohn's or colitis (v145): blood graded as IBD teams ask it (the Mayo bleeding grades in plain
+   words), urgency as how long you could wait, an accident or leak said plainly, and for a stoma the
+   output in place of the Bristol types. Stored beside the older fields, which stay true to them:
+   bloodGrade 0 to 3 (blood = bloodGrade > 0), urgency 0 to 2 (urgent = straight away or an accident),
+   accident (bool), and for a stoma stoma: true, output "thick"|"thinner"|"watery", types []. */
+const BLOOD_GRADES = [[0, 'No blood'], [1, 'Streaks, on the paper or the outside'], [2, 'Mixed in'], [3, 'Mostly blood']];
+const BLOOD_WORDS = ['', 'Blood: streaks', 'Blood: mixed in', 'Mostly blood'];
+const URGENCY = [[0, 'Could wait'], [1, 'Had to hurry'], [2, 'Had to go straight away']];
+const STOMA_OUTPUT = [['thick', 'Thick, like toothpaste'], ['thinner', 'Thinner, like porridge'], ['watery', 'Watery']];
+const bloodGradeOf = (e) => Number(e.bloodGrade) > 0 ? Number(e.bloodGrade) : e.blood ? 1 : 0;
 function bristolName(t) { const b = BRISTOL.find((x) => x.t === Number(t)); return b ? b.name : ''; }
-function bowelFlagWords(e) { return BOWEL_FLAGS.filter(([k]) => e[k]).map(([, label]) => label).join(' · '); }
+function bowelFlagWords(e) {
+  const w = [];
+  if (Number(e.bloodGrade) > 0) w.push(BLOOD_WORDS[Number(e.bloodGrade)] || 'Blood'); else if (e.blood) w.push('Blood (red)');
+  if (e.black) w.push('Black or tarry');
+  if (e.mucus) w.push('Mucus');
+  if (Number(e.urgency) > 0) w.push(URGENCY[Number(e.urgency)][1]); else if (e.urgent && !e.accident) w.push('Urgent, or an accident');
+  if (e.accident) w.push(e.stoma ? 'Bag leak' : 'Accident or leak');
+  if (e.pain) w.push('Pain or straining');
+  if (e.night) w.push('At night');
+  return w.join(' · ');
+}
+function stomaWord(e) { const o = STOMA_OUTPUT.find(([k]) => k === e.output); return o ? o[0] === 'thinner' ? 'thinner' : o[0] : ''; }
 function bowelTypes(e) {
   if (!e || e.type !== 'bowel' || e.none) return [];
   const list = Array.isArray(e.types) && e.types.length ? e.types : [e.bristol];
@@ -2057,6 +2157,7 @@ const isHardAndLoose = (e) => isLoose(e) && isHard(e);
 const joinAnd = (xs) => xs.length > 1 ? xs.slice(0, -1).join(', ') + ' and ' + xs[xs.length - 1] : (xs[0] || '');
 /* "type 6, mushy" for one type; "mixed, types 2, 4 and 6" for several */
 function bowelTypeText(e) {
+  if (e && e.stoma && !e.none) return 'stoma output' + (stomaWord(e) ? ', ' + stomaWord(e) : '');
   const ts = bowelTypes(e);
   if (!ts.length) return '';
   return ts.length === 1 ? 'type ' + ts[0] + ', ' + bristolName(ts[0]).toLowerCase() : 'mixed, types ' + joinAnd(ts.map(String));
@@ -2397,29 +2498,57 @@ function openAdd(type, editEntry) {
        24-hour triage lines ask about as tick chips; and a way to record a day with none, since
        constipation is an absence and cannot be flagged without it. */
     /* Several can be ticked: one movement can be hard lumps then mushy, say (v109). */
+    /* With Crohn's or colitis (v145): blood graded, how long you could wait, accident or leak, and for a
+       stoma the output in place of the chart. The cancer chips stay as they were without that pack. */
+    /* the IBD questions show with the pack on, and always when editing an entry saved with them */
+    const ibd = packOn('ibd') || Boolean(editEntry && (editEntry.stoma || editEntry.bloodGrade != null || editEntry.urgency != null));
+    const stoma = editEntry ? Boolean(editEntry.stoma) : ibd && Boolean(ibdStoma());
     const chosen = new Set(bowelTypes(editEntry));
     const rows = BRISTOL.map((b) => h('button', { class: 'bristol-row' + (chosen.has(b.t) ? ' is-on' : ''), type: 'button', 'aria-pressed': chosen.has(b.t) ? 'true' : 'false', dataset: { t: String(b.t) } },
       bristolArt(b.t), h('span', null, h('span', { class: 'bristol-name', text: 'Type ' + b.t + ': ' + b.name }), h('span', { class: 'bristol-hint', text: b.hint }))));
     const mark = () => rows.forEach((r) => { const on = chosen.has(Number(r.dataset.t)); r.classList.toggle('is-on', on); r.setAttribute('aria-pressed', on ? 'true' : 'false'); });
     rows.forEach((r) => r.addEventListener('click', () => { const t = Number(r.dataset.t); if (chosen.has(t)) chosen.delete(t); else chosen.add(t); mark(); }));
-    const flags = new Set(BOWEL_FLAGS.filter(([k]) => editEntry && editEntry[k]).map(([k]) => k));
-    const flagBtns = BOWEL_FLAGS.map(([k, label]) => h('button', { class: 'preset' + (flags.has(k) ? ' is-active' : ''), type: 'button', text: label, 'aria-pressed': flags.has(k) ? 'true' : 'false',
+    /* one choice from a row of chips, tap again to clear (the IBD questions) */
+    const pickOne = (name, options, initial) => {
+      let value = initial;
+      const btns = options.map(([v, label]) => h('button', { class: 'preset' + (v === value ? ' is-active' : ''), type: 'button', text: label, 'aria-pressed': v === value ? 'true' : 'false', dataset: { v: String(v) } }));
+      const sync = () => btns.forEach((b, i) => { const on = options[i][0] === value; b.classList.toggle('is-active', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+      btns.forEach((b, i) => b.addEventListener('click', () => { value = value === options[i][0] ? null : options[i][0]; sync(); }));
+      return { node: h('div', { class: 'presets', role: 'group', 'aria-label': name }, ...btns), get: () => value };
+    };
+    const output = stoma ? pickOne('What was the output like', STOMA_OUTPUT, editEntry && editEntry.output ? editEntry.output : null) : null;
+    const bloodPick = ibd ? pickOne('Any blood', BLOOD_GRADES, editEntry ? bloodGradeOf(editEntry) : null) : null;
+    const urgePick = ibd ? pickOne('How long could you wait', URGENCY, editEntry && editEntry.urgency != null ? Number(editEntry.urgency) : null) : null;
+    const flagList = ibd
+      ? [['black', 'Black or tarry'], ['mucus', 'Mucus'], ['accident', stoma ? 'Bag leak' : 'Accident or leak'], ['pain', 'Pain or straining'], ['night', 'At night']]
+      : BOWEL_FLAGS;
+    const flags = new Set(flagList.filter(([k]) => editEntry && editEntry[k]).map(([k]) => k));
+    const flagBtns = flagList.map(([k, label]) => h('button', { class: 'preset' + (flags.has(k) ? ' is-active' : ''), type: 'button', text: label, 'aria-pressed': flags.has(k) ? 'true' : 'false',
       onclick: (ev) => { const b = ev.currentTarget; if (flags.has(k)) flags.delete(k); else flags.add(k); b.classList.toggle('is-active', flags.has(k)); b.setAttribute('aria-pressed', flags.has(k) ? 'true' : 'false'); } }));
     const bowelNote = h('textarea', { rows: '2', placeholder: 'Anything else (optional)' });
     if (editEntry && editEntry.note) bowelNote.value = editEntry.note;
     const hasNone = (d) => [...state.dayEntries, ...state.recentEntries].find((e) => e.type === 'bowel' && e.none && e.day === d);
     const hasReal = (d) => [...state.dayEntries, ...state.recentEntries].some((e) => e.type === 'bowel' && !e.none && e.day === d);
-    const noneBtn = h('button', { class: 'btn btn-secondary btn-block btn-plain', type: 'button', text: 'No bowel movement ' + (day === todayStr() ? 'today' : 'this day'), onclick: async () => {
+    const dayWord = day === todayStr() ? 'today' : 'this day';
+    const noneBtn = h('button', { class: 'btn btn-secondary btn-block btn-plain', type: 'button', text: (stoma ? 'No stoma output ' : 'No bowel movement ') + dayWord, onclick: async () => {
       if (hasReal(day)) { toast('One is already logged for ' + (day === todayStr() ? 'today' : fmtDayShort(day))); return; }
       if (hasNone(day)) { toast('Already recorded for ' + (day === todayStr() ? 'today' : fmtDayShort(day))); return; }
       closeSheet();
-      const id = await addEntry({ type: 'bowel', none: true, bristol: null, note: '', at: atFromInputs(day, time.value) });
-      toast('Recorded: no bowel movement', { label: 'Undo', onClick: () => deleteEntry(id) });
+      const id = await addEntry({ type: 'bowel', none: true, bristol: null, note: '', ...(stoma ? { stoma: true } : {}), at: atFromInputs(day, time.value) });
+      toast(stoma ? 'Recorded: no stoma output' : 'Recorded: no bowel movement', { label: 'Undo', onClick: () => deleteEntry(id) });
     } });
-    body.append(
+    if (stoma) body.append(
+      h('p', { class: 'wiz-q', text: 'What was the output like?' }),
+      h('p', { class: 'wiz-hint', text: 'Each time you empty the bag. Tap the nearest.' }),
+      output.node);
+    else body.append(
       h('p', { class: 'wiz-q', text: 'What was it like?' }),
       h('p', { class: 'wiz-hint', text: 'The Bristol Stool Chart, which the team uses. Tap the nearest. If it was a mix, tap every type in it.' }),
-      h('div', { class: 'bristol', role: 'group', 'aria-label': 'Bristol stool type, tap every type in it' }, ...rows),
+      h('div', { class: 'bristol', role: 'group', 'aria-label': 'Bristol stool type, tap every type in it' }, ...rows));
+    if (ibd) body.append(
+      h('p', { class: 'wiz-q', text: 'Any blood?' }), bloodPick.node,
+      stoma ? '' : h('p', { class: 'wiz-q', text: 'How long could you wait?' }), stoma ? '' : urgePick.node);
+    body.append(
       h('p', { class: 'fieldlabel', text: 'Anything else? Tick what applies' }),
       h('div', { class: 'presets', role: 'group', 'aria-label': 'Anything else' }, ...flagBtns),
       field('Time', time),
@@ -2427,10 +2556,23 @@ function openAdd(type, editEntry) {
       editEntry ? '' : noneBtn
     );
     getData = () => {
-      if (!chosen.size) { toast('Tap the type first'); return { hold: true }; }
-      const types = [...chosen].sort((a, b) => a - b);
-      const d = { type: 'bowel', none: false, types, bristol: types[types.length - 1], note: bowelNote.value.trim() };
-      for (const [k] of BOWEL_FLAGS) d[k] = flags.has(k);
+      let d;
+      if (stoma) {
+        if (!output.get()) { toast('Tap what the output was like first'); return { hold: true }; }
+        d = { type: 'bowel', none: false, stoma: true, output: output.get(), types: [], bristol: null, note: bowelNote.value.trim() };
+      } else {
+        if (!chosen.size) { toast('Tap the type first'); return { hold: true }; }
+        const types = [...chosen].sort((a, b) => a - b);
+        d = { type: 'bowel', none: false, types, bristol: types[types.length - 1], note: bowelNote.value.trim() };
+      }
+      for (const [k] of flagList) d[k] = flags.has(k);
+      if (ibd) {
+        const g = bloodPick.get(), u = stoma ? null : urgePick.get();
+        d.bloodGrade = g == null ? 0 : g;
+        d.blood = d.bloodGrade > 0;
+        d.urgency = u == null ? null : u;
+        d.urgent = u === 2 || Boolean(d.accident);
+      }
       /* a real movement replaces a "none" recorded earlier for the same day */
       const n = hasNone(day); if (n) deleteEntry(n.id);
       return d;
@@ -4494,7 +4636,8 @@ function plainWeek(w, report, entries) {
     if (e.type === 'symptom' && Number(e.value) >= 7) note(e.day, String(e.what || 'symptom').toLowerCase() + ' ' + e.value + '/10');
     const pain = e.type === 'pain' ? Number(e.value) : isPatientCheckin(e) ? Math.max(Number(e.pain ?? 0), Number(e.worstPain ?? 0)) : 0;
     if (pain >= 7) worstPain.set(e.day, Math.max(worstPain.get(e.day) || 0, pain));
-    if (e.type === 'bowel' && (e.blood || e.black)) note(e.day, e.blood ? 'blood in a stool' : 'a black stool');
+    /* with Crohn's or colitis, streaks of blood are everyday; blood mixed in or more is the alert (v145) */
+    if (e.type === 'bowel' && (bowelRules() === 'ibd' ? bloodGradeOf(e) >= 2 || e.black : e.blood || e.black)) note(e.day, bloodGradeOf(e) ? 'blood in a stool' : 'a black stool');
   });
   worstPain.forEach((v, day) => note(day, 'pain ' + v + '/10'));
   const reason = (day) => (why.has(day) ? capFirst(joinAnd(why.get(day).slice(0, 3))) + '.' : '');
@@ -5229,7 +5372,59 @@ function summaryRows(entries, from, to) {
      (Macmillan: ring the team), any blood, or loose at night; amber at 1 to 3 loose a day or two days
      with none in a row; red at three days with none. "None" days only count where nothing else was logged. */
   const bowels = entries.filter((e) => e.type === 'bowel');
-  if (bowels.length) {
+  /* Crohn's or colitis without the cancer pack (v145): no chemo limits. Facts against the person's own
+     usual number a day, as IBD teams score it (Mayo: 3 or more above usual is a step up), blood graded,
+     urgency and accidents, nights, and, the one hard line in the guidance, Truelove and Witts on the
+     patient's side: 6 or more stools with blood in a day, named with any temperature over 37.8 or pulse
+     over 90 that day. Report lines for the team to read, never a prompt to ring. */
+  if (bowels.length && bowelRules() === 'ibd') {
+    const real = bowels.filter((e) => !e.none);
+    const stoma = Boolean(ibdStoma()) || real.some((e) => e.stoma);
+    const usual = ibdUsual();
+    const perDay = {};
+    real.forEach((e) => { perDay[e.day] = (perDay[e.day] || 0) + 1; });
+    const logged = Object.keys(perDay).sort();
+    const bloodBy = {};
+    real.forEach((e) => { const g = bloodGradeOf(e); if (g) bloodBy[e.day] = Math.max(bloodBy[e.day] || 0, g); });
+    const bloodDays = Object.keys(bloodBy).sort();
+    const worstBlood = bloodDays.length ? Math.max(...bloodDays.map((d) => bloodBy[d])) : 0;
+    const dayList = (pred) => [...new Set(real.filter(pred).map((e) => e.day))].sort();
+    const blackDays = dayList((e) => e.black);
+    const rushDays = dayList((e) => Number(e.urgency) === 2 || (e.urgency == null && e.urgent && !e.accident));
+    const accidents = real.filter((e) => e.accident).length;
+    const nightDays = dayList((e) => e.night);
+    const wateryDays = dayList((e) => e.stoma && e.output === 'watery');
+    const noneDays = new Set(bowels.filter((e) => e.none).map((e) => e.day).filter((d) => !real.some((r) => r.day === d)));
+    let run = 0, longest = 0, runEnd = null;
+    for (let d = from; d <= to; d = addDays(d, 1)) { if (noneDays.has(d)) { run++; if (run > longest) { longest = run; runEnd = d; } } else run = 0; }
+    const twDays = stoma ? [] : logged.filter((d) => perDay[d] >= 6 && bloodBy[d]);
+    const signs = (d) => {
+      const t = Math.max(0, ...(byDay[d] || []).filter((e) => e.type === 'temp').map((e) => Number(e.value) || 0));
+      const p = Math.max(0, ...(byDay[d] || []).filter((e) => e.type === 'vitals').map((e) => Number(e.heartRate) || 0));
+      return [t > 37.8 ? 'temperature ' + t.toFixed(1) + ' °C' : '', p > 90 ? 'pulse ' + Math.round(p) : ''].filter(Boolean);
+    };
+    const what = stoma ? 'Bag emptied' : 'Stools';
+    const worst = logged.length ? maxBy(logged, (d) => perDay[d]) : null;
+    const above = usual && worst && perDay[worst] >= usual + 3;
+    const parts = [], shortParts = [];
+    if (logged.length) {
+      parts.push(`${what.toLowerCase()} about ${one(avg(logged.map((d) => perDay[d])))} a day on the ${plural(logged.length, 'day')} logged${usual ? ` against a usual ${usual}` : ' (no usual number set)'}, most ${perDay[worst]} on ${fmtDayShort(worst)}`);
+      shortParts.push(`about ${one(avg(logged.map((d) => perDay[d])))} a day${usual ? ' (usual ' + usual + ')' : ''}, most ${perDay[worst]}`);
+    }
+    twDays.forEach((d) => { const sg = signs(d); parts.push(`6 or more stools with blood on ${fmtDayShort(d)}${sg.length ? ', with ' + joinAnd(sg) + ' that day' : ''}`); });
+    if (twDays.length) shortParts.push(`6 or more with blood on ${plural(twDays.length, 'day')}`);
+    if (bloodDays.length) { parts.push(`blood on ${listDays(bloodDays)}, ${BLOOD_WORDS[worstBlood].replace(/^Blood: /, '').toLowerCase()} at worst`); shortParts.push(`blood on ${plural(bloodDays.length, 'day')}`); }
+    if (blackDays.length) { parts.push(`black or tarry on ${listDays(blackDays)}`); shortParts.push('black or tarry'); }
+    if (rushDays.length) { parts.push(`had to go straight away on ${plural(rushDays.length, 'day')}`); shortParts.push(`urgent on ${plural(rushDays.length, 'day')}`); }
+    if (accidents) { const w = stoma ? (accidents === 1 ? 'one bag leak' : accidents + ' bag leaks') : (accidents === 1 ? 'one accident or leak' : accidents + ' accidents or leaks'); parts.push(w); shortParts.push(w); }
+    if (nightDays.length) { parts.push(`at night on ${plural(nightDays.length, 'day')}`); shortParts.push('at night'); }
+    if (wateryDays.length) { parts.push(`watery output on ${listDays(wateryDays)}`); shortParts.push(`watery on ${plural(wateryDays.length, 'day')}`); }
+    if (longest >= 2) { parts.push(`${stoma ? 'no output' : 'no bowel movement'} for ${longest} days in a row to ${fmtDayShort(runEnd)}`); shortParts.push(`none for ${longest} days`); }
+    const level = twDays.length || blackDays.length || worstBlood >= 3 || longest >= 3 ? 'red'
+      : above || bloodDays.length || rushDays.length || accidents || nightDays.length || wateryDays.length >= 2 || longest >= 2 ? 'amber' : 'green';
+    if (level === 'green') fine.push(`bowels (${logged.length ? 'about ' + one(avg(logged.map((d) => perDay[d]))) + ' a day' : 'none logged'}${usual ? ', usual ' + usual : ''})`);
+    else push(level, 'Bowels', 'Bowels: ' + parts.join('; ') + '.', null, 'Bowels: ' + shortParts.join(', '));
+  } else if (bowels.length) {
     const real = bowels.filter((e) => !e.none);
     const looseByDay = {};
     real.filter(isLoose).forEach((e) => { looseByDay[e.day] = (looseByDay[e.day] || 0) + 1; });
@@ -5243,7 +5438,7 @@ function summaryRows(entries, from, to) {
     const hardDays = daysWith((e) => isHard(e));
     const mixedDays = [...new Set(real.filter(isHardAndLoose).map((e) => e.day))].sort();
     const parts = [];
-    if (looseDays.length) parts.push(`loose stools (type 6 or 7) on ${plural(looseDays.length, 'day')}, most ${looseByDay[worstLoose]} on ${fmtDayShort(worstLoose)}${looseByDay[worstLoose] >= 4 ? ' (4 or more in a day is the point to ring the team)' : ''}`);
+    if (looseDays.length) parts.push(`loose stools (type 6 or 7) on ${plural(looseDays.length, 'day')}, most ${looseByDay[worstLoose]} on ${fmtDayShort(worstLoose)}${looseByDay[worstLoose] >= 4 && packOn('cancer') ? ' (4 or more in a day is the point to ring the team)' : ''}`);
     if (bloodDays.length) parts.push(`blood or black stools on ${listDays(bloodDays)}`);
     if (nightDays.length) parts.push(`loose at night on ${listDays(nightDays)}`);
     if (longest >= 2) parts.push(`no bowel movement for ${longest} days in a row to ${fmtDayShort(runEnd)}`);
@@ -5264,6 +5459,14 @@ function summaryRows(entries, from, to) {
       const text = parts.join('; ');
       push(level, 'Bowels', 'Bowels: ' + text + '.', level === 'amber' && parts.length === 1 && looseDays.length === 1 ? `loose stools on ${fmtDayShort(looseDays[0])}` : null, 'Bowels: ' + shortParts.join(', '));
     }
+  }
+
+  /* Outside the gut (v145): the weekly question with Crohn's or colitis, anything ticked, by the week it covers */
+  const outside = entries.filter((e) => isPatientCheckin(e) && Array.isArray(e.outside) && e.outside.length).sort((a, b) => a.day.localeCompare(b.day));
+  if (outside.length) {
+    const SHORT = { joints: 'joints', eyes: 'eyes', skin: 'skin', mouth: 'mouth ulcers', bottom: 'around the bottom' };
+    const kinds = [...new Set(outside.flatMap((e) => e.outside))].filter((k) => SHORT[k]);
+    push('amber', 'Outside the gut', 'Outside the gut: ' + outside.map((e) => outsideText(e.outside).toLowerCase() + ' (week to ' + fmtDayShort(e.day) + ')').join('; ') + '.', null, 'Outside the gut: ' + joinAnd(kinds.map((k) => SHORT[k])));
   }
 
   const moodDays = Object.keys(state.days).filter((d) => d >= from && d <= to && state.days[d].mood).sort();
@@ -5533,6 +5736,8 @@ const CHECKIN_QUESTIONS = {
     { key: 'sickness', kind: 'pain', q: 'Sickness today', low: '1 none', high: '10 severe' },
     { key: 'appetite', kind: 'slider', q: 'Appetite today', low: '1 nothing', high: '10 normal' },
     { key: 'energy', kind: 'slider', q: 'Energy today', low: '1 wiped out', high: '10 plenty' },
+    /* with Crohn's or colitis, once a week (v145): the problems outside the gut that affect up to a third of people */
+    { key: 'outside', kind: 'ticks', pack: 'ibd', weekly: true, q: 'Over the last week, have you had any of these?' },
     { key: 'symptoms', kind: 'text', q: 'Any new or worse symptoms today?', ph: 'e.g. felt sick after lunch, back worse' },
     { key: 'settled', kind: 'text', q: 'Anything that has settled since yesterday?', ph: 'e.g. the sickness has eased' },
     { key: 'goodThing', kind: 'text', q: 'One good thing about today', ph: 'e.g. sat in the garden for an hour' }
@@ -5553,10 +5758,22 @@ const CHECKIN_QUESTIONS = {
 const CHECKIN_NOTE_Q = 'Where is it, or anything else? Optional.';
 const CHECKIN_NOTE_PH = 'e.g. lower back, worse when I stand';
 function checkinNoteKeys(slot) { return (CHECKIN_QUESTIONS[slot] || []).filter((q) => q.note).map((q) => q.note); }
+/* Outside the gut (v145): joints, eyes, skin, mouth and, for Crohn's, around the bottom. Stored on the evening
+   check-in as outside: [keys] ([] for none of these, null when skipped); asked when none was answered in the six days before. */
+const OUTSIDE_GUT = [
+  ['joints', 'Joints aching or swollen'], ['eyes', 'Eyes red, sore or bothered by light'], ['skin', 'A new rash, or sore red lumps on the skin'],
+  ['mouth', 'Mouth ulcers'], ['bottom', 'Pain, swelling or discharge around the bottom']
+];
+function outsideOptions() { return OUTSIDE_GUT.filter(([k]) => k !== 'bottom' || ibdInfo().kind !== 'uc'); }
+function outsideText(v) {
+  if (v == null) return '';
+  if (!v.length) return 'None of these';
+  return v.map((k) => (OUTSIDE_GUT.find(([x]) => x === k) || [k, k])[1]).join('; ');
+}
 const CHECKIN_LABELS = {
   sleep: 'Sleep', sleepHours: 'Hours slept', pain: 'Pain now', mood: 'Mood', symptoms: 'New or worse symptoms',
   lookingForward: 'Looking forward to', worstPain: 'Worst pain', sickness: 'Sickness', appetite: 'Appetite',
-  energy: 'Energy', settled: 'Settled since yesterday', goodThing: 'One good thing', noticed: 'What you noticed'
+  energy: 'Energy', settled: 'Settled since yesterday', goodThing: 'One good thing', noticed: 'What you noticed', outside: 'Outside the gut, last week'
 };
 /* A patient check-in, as opposed to the carer's view */
 function isPatientCheckin(e) { return e.type === 'checkin' && e.slot !== 'carer'; }
@@ -5597,10 +5814,11 @@ function checkinOpenSet() { if (!state.openCheckins) state.openCheckins = new Se
 function checkinCard(c, inEntry) {
   const open = checkinOpenSet().has(c.id);
   const bodyId = 'cc-' + String(c.id).replace(/[^\w-]/g, '') + (inEntry ? '-t' : '-s');
-  const rows = (CHECKIN_QUESTIONS[c.slot] || []).map((q) => {
+  const rows = (CHECKIN_QUESTIONS[c.slot] || []).filter((q) => q.kind !== 'ticks' || c[q.key] !== undefined).map((q) => {
     const v = c[q.key];
     let node;
-    if (q.kind === 'text') node = h('dd', { class: 'cc-v' + (v ? '' : ' is-empty'), text: v ? v : 'Nothing added' });
+    if (q.kind === 'ticks') node = h('dd', { class: 'cc-v' + (v == null ? ' is-empty' : ''), text: v == null ? 'Skipped' : outsideText(v) });
+    else if (q.kind === 'text') node = h('dd', { class: 'cc-v' + (v ? '' : ' is-empty'), text: v ? v : 'Nothing added' });
     else {
       const empty = v == null;
       node = h('dd', { class: 'cc-v' + (empty ? ' is-empty' : ' is-num') }, empty ? 'Skipped' : v + '/10' + (q.kind === 'sleep' && c.sleepHours != null ? ' \u00b7 ' + c.sleepHours + ' h' : ''),
@@ -5688,17 +5906,30 @@ function sliderBlock(q, current, onChange) {
 }
 
 /* The check-in is a wellness check, not an exercise check (v83): the morning one ends with a signpost to the Exercise tab, never a tick list */
-function checkinSteps(slot) { return CHECKIN_QUESTIONS[slot]; }
+/* A pack's questions show only with that pack on; a weekly one only when it was not answered in the six days before
+   (or when the check-in being edited already has it) */
+function checkinSteps(slot, day, existing) {
+  return CHECKIN_QUESTIONS[slot].filter((q) => {
+    if (existing && existing[q.key] !== undefined) return true;
+    if (q.pack && !packOn(q.pack)) return false;
+    if (q.weekly) {
+      const from = addDays(day, -6);
+      return !state.recentEntries.some((e) => isPatientCheckin(e) && e.slot === slot && e.day >= from && e.day < day && e[q.key] != null);
+    }
+    return true;
+  });
+}
 function openCheckin(slot, initialDay) {
   const today = todayStr();
   let day = initialDay > today ? today : initialDay;
-  const qs = checkinSteps(slot);
+  const qs = checkinSteps(slot, day, findCheckin(day, slot));
   let answers = {}, existing = null, step = 0, dir = 1;
 
   const load = () => {
     existing = findCheckin(day, slot);
     answers = {};
     qs.forEach((q) => { answers[q.key] = existing && existing[q.key] !== undefined ? existing[q.key] : (q.kind === 'text' ? '' : null); });
+    if (answers.outside != null) answers.outside = [...answers.outside];
     answers.sleepHours = existing && existing.sleepHours != null ? existing.sleepHours : null;
     checkinNoteKeys(slot).forEach((k) => { answers[k] = existing && existing[k] ? String(existing[k]) : ''; });
   };
@@ -5725,7 +5956,17 @@ function openCheckin(slot, initialDay) {
       wrap.append(h('p', { class: 'wiz-q', text: q.q }));
 
       let getVal;
-      if (q.kind === 'text') {
+      if (q.kind === 'ticks') {
+        const opts = outsideOptions();
+        const cur = new Set(answers[q.key] || []);
+        const boxes = opts.map(([k, label]) => h('label', { class: 'check tickrow' }, h('input', { type: 'checkbox', value: k, checked: cur.has(k) }), h('span', { text: label })));
+        const none = h('label', { class: 'check tickrow' }, h('input', { type: 'checkbox', value: '', checked: answers[q.key] != null && !answers[q.key].length }), h('span', { text: 'None of these' }));
+        const all = [...boxes, none].map((l) => l.querySelector('input'));
+        all.forEach((b) => b.addEventListener('change', () => { if (!b.checked) return; if (b.value) none.querySelector('input').checked = false; else all.forEach((x) => { if (x.value) x.checked = false; }); }));
+        wrap.append(h('p', { class: 'wiz-hint', text: "Asked once a week. These can come with Crohn's or colitis, and the team will want to know." }),
+          h('div', { class: 'ticklist', role: 'group', 'aria-label': q.q }, ...boxes, none));
+        getVal = () => { const ticked = all.filter((b) => b.checked); return ticked.length ? ticked.filter((b) => b.value).map((b) => b.value) : null; };
+      } else if (q.kind === 'text') {
         const ta = h('textarea', { rows: '3', placeholder: q.ph || '' });
         ta.value = answers[q.key] || '';
         wrap.append(h('p', { class: 'wiz-hint', text: 'Optional. Skip if there is nothing to say.' }), ta, speakButton(ta) || '');
@@ -5764,11 +6005,11 @@ function openCheckin(slot, initialDay) {
       qs.forEach((q, i) => {
         const v = answers[q.key];
         let skipped = q.kind === 'text' ? !v : v == null;
-        let shown = skipped ? 'Skipped' : (q.kind === 'text' ? v : String(v) + (q.kind === 'sleep' && answers.sleepHours != null ? ' · ' + answers.sleepHours + ' h' : ''));
+        let shown = skipped ? 'Skipped' : (q.kind === 'ticks' ? outsideText(v) : q.kind === 'text' ? v : String(v) + (q.kind === 'sleep' && answers.sleepHours != null ? ' · ' + answers.sleepHours + ' h' : ''));
         const words = q.note && answers[q.note] ? h('span', { class: 'vnote', text: answers[q.note] }) : null;
         list.append(h('li', null, h('button', { type: 'button', onclick: () => { dir = -1; step = i; render(); } },
           h('span', { class: 'k', text: CHECKIN_LABELS[q.key] }),
-          h('span', { class: 'v' + (skipped ? ' is-skipped' : (q.kind === 'text' ? '' : ' is-num')) }, shown, words))));
+          h('span', { class: 'v' + (skipped ? ' is-skipped' : (q.kind === 'text' || q.kind === 'ticks' ? '' : ' is-num')) }, shown, words))));
       });
       wrap.append(list);
       if (slot === 'morning' && !state.readOnly) wrap.append(h('p', { class: 'wiz-signpost', text: 'Gentle exercises and stretches are on the Exercise tab, for when you are up and ready. Optional.' }));
@@ -5794,13 +6035,13 @@ async function saveCheckin(slot, day, answers, existing) {
   const today = todayStr();
   const at = existing ? entryDate(existing) : atFromInputs(day, day === today ? fmtTime(new Date()) : (slot === 'morning' ? '09:00' : slot === 'carer' ? '20:00' : '21:00'));
   const data = { type: 'checkin', slot, day, addedBy: existing && existing.addedBy ? existing.addedBy : state.name };
-  CHECKIN_QUESTIONS[slot].forEach((q) => { data[q.key] = answers[q.key]; });
+  CHECKIN_QUESTIONS[slot].forEach((q) => { if (q.key in answers) data[q.key] = answers[q.key]; });
   if (slot === 'morning') data.sleepHours = answers.sleepHours;
   checkinNoteKeys(slot).forEach((k) => { data[k] = answers[k] || ''; });
   if (existing) {
     /* nothing changed: no second write, and no "edited" stamp for a look and a tap on Save */
-    const keys = CHECKIN_QUESTIONS[slot].map((q) => q.key).concat(slot === 'morning' ? ['sleepHours'] : [], checkinNoteKeys(slot));
-    const same = keys.every((k) => { const a = data[k] == null ? null : data[k], b = existing[k] == null ? null : existing[k]; return typeof a === 'string' || typeof b === 'string' ? String(a == null ? '' : a) === String(b == null ? '' : b) : a === b; });
+    const keys = CHECKIN_QUESTIONS[slot].map((q) => q.key).filter((k) => k in data).concat(slot === 'morning' ? ['sleepHours'] : [], checkinNoteKeys(slot));
+    const same = keys.every((k) => { const a = data[k] == null ? null : data[k], b = existing[k] == null ? null : existing[k]; if (Array.isArray(a) || Array.isArray(b)) return JSON.stringify(a) === JSON.stringify(b); return typeof a === 'string' || typeof b === 'string' ? String(a == null ? '' : a) === String(b == null ? '' : b) : a === b; });
     if (same) { toast('No changes to save'); return; }
     data.editedBy = state.name;
   }
@@ -6711,6 +6952,7 @@ function tableLevel(key, e) {
   if (key === 'oxygen') { const n = Number(e.oxygen); return n <= 90 ? 'red' : n <= 93 ? 'amber' : ''; }
   if (key === 'pain') { const n = e.type === 'pain' ? v : Number(e.pain); return n >= 7 ? 'red' : n >= 5 ? 'amber' : ''; }
   if (key === 'sleep') return v > 0 && v < 300 ? 'amber' : '';
+  if (key === 'bowel' && bowelRules() === 'ibd') { const g = bloodGradeOf(e); return g >= 2 || e.black ? 'red' : g || e.accident || Number(e.urgency) === 2 || e.night || e.output === 'watery' ? 'amber' : ''; }
   if (key === 'bowel') return e.blood || e.black || (isLoose(e) && e.night) ? 'red' : isLoose(e) ? 'amber' : '';
   return '';
 }
@@ -6735,7 +6977,7 @@ function renderChartTables(entries, from) {
       time: (e) => e.bedAt && e.wokeAt ? e.bedAt + ' to ' + e.wokeAt : '--',
       cell: (e) => { const st = ['deep', 'core', 'rem'].filter((k) => Number(e[k]) > 0).map((k) => (k === 'rem' ? 'REM' : k[0].toUpperCase() + k.slice(1)) + ' ' + fmtHm(Number(e[k]))); if (Number(e.awake) > 0) st.push('awake ' + fmtHm(Number(e.awake))); return [fmtHm(Number(e.value) || 0), sub(st.join(' · '))]; } },
     drink: { rows: inRange.filter((e) => e.type === 'drink'), head: 'Amount', cell: (e) => [(Number(e.value) || 0) + ' ml', sub(e.note)], dayNote: (day) => 'Total ' + (drinkTotals[day] || 0) + ' ml' },
-    bowel: { rows: inRange.filter((e) => e.type === 'bowel'), head: 'Bowels', cell: (e) => { if (e.none) return ['None']; const ts = bowelTypes(e); return [(ts.length > 1 ? 'Types ' : 'Type ') + ts.join(', '), sub([ts.map((t) => bristolName(t)).join(', '), bowelFlagWords(e), e.note].filter(Boolean).join(' · '))]; } }
+    bowel: { rows: inRange.filter((e) => e.type === 'bowel'), head: 'Bowels', cell: (e) => { if (e.none) return ['None']; if (e.stoma) return ['Stoma output', sub([stomaWord(e), bowelFlagWords(e), e.note].filter(Boolean).join(' · '))]; const ts = bowelTypes(e); return [(ts.length > 1 ? 'Types ' : 'Type ') + ts.join(', '), sub([ts.map((t) => bristolName(t)).join(', '), bowelFlagWords(e), e.note].filter(Boolean).join(' · '))]; } }
   };
   for (const key of CHART_TABLE_KEYS) {
     const box = $('table-' + key);
