@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=147">
+  <link rel="stylesheet" href="styles.css?v=148">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -69,8 +69,8 @@
     </div>
     <div class="opener-foot">
       <button id="opener-skip" class="btn-link opener-skip" type="button" hidden>Skip</button>
-      <span class="opener-made mono">Made by Mark 1 Apps</span>
-      <span class="opener-legal mono">Copyright 2026 Mark Brown, Mark 1 Apps. All rights reserved.</span>
+      <span class="opener-made mono">Made by Mark 1 Apps Ltd</span>
+      <span class="opener-legal mono">Copyright 2026 Mark Brown. All rights reserved.</span>
       <span class="opener-version mono" id="opener-version"></span>
     </div>
   </div>
@@ -699,7 +699,7 @@
             <button class="btn btn-secondary btn-block" type="button" data-page="terms">Terms of use</button>
             <button class="btn btn-secondary btn-block" type="button" data-page="about">About Daybook</button>
           </div>
-          <div class="madeby"><img src="icons/mark1apps.jpg" alt="" width="360" height="303"><span>Made by Mark 1 Apps<br><span class="muted">Copyright 2026 Mark Brown, Mark 1 Apps. All rights reserved.</span></span></div>
+          <div class="madeby"><img src="icons/mark1apps.jpg" alt="" width="360" height="303"><span>Made by Mark 1 Apps Ltd<br><span class="muted">Company number 17510025, registered in England and Wales. Copyright 2026 Mark Brown. All rights reserved.</span></span></div>
           <h3 class="about-sub">Exercises based on</h3>
           <ul class="about-list">
             <li>NHS Live Well sitting, flexibility and strength exercises</li>
@@ -727,8 +727,8 @@
   <!-- Privacy, terms and About (since v90): plain English, opened in the sheet from the Settings App card,
        the sign-in and sign-up screens, or ?page=privacy|terms|about in the address (openLegal()). -->
   <template id="tpl-privacy">
-    <p class="legal-date mono">Last updated 7 October 2026</p>
-    <p>My Medical Daybook (Daybook for short) is made and run by Mark Brown, trading as Mark 1 Apps, who is responsible for the information the app holds (the "data controller" in UK law). <span data-contact></span></p>
+    <p class="legal-date mono">Last updated 9 October 2026</p>
+    <p>My Medical Daybook (Daybook for short) is made and run by Mark 1 Apps Ltd, a company registered in England and Wales (company number 17510025), which is responsible for the information the app holds (the "data controller" in UK law). <span data-contact></span></p>
     <h3>The short version</h3>
     <ul>
       <li>What you record in Daybook is yours. It is kept in a separate folder for your household. Only the people you invite can see it, apart from the operator and the companies listed under "Who can see it", and anything you choose to send to an AI service.</li>
@@ -747,7 +747,7 @@
     <h3>Who can see it</h3>
     <ul>
       <li><b>The members of your household,</b> according to the access they were given. Family members can add, change and delete. A read-only member sees everything and changes nothing. A "medicines and treatment only" member sees medicines, the treatment calendar (with the mood marks) and the readings, sleep and drinks charts, and nothing else. The database itself enforces these rules, not just the app.</li>
-      <li><b>Mark 1 Apps,</b> as the operator, has administrative access to the database in order to run it. That access is used only to fix a problem you have reported or to keep the service running, not to read anyone's records.</li>
+      <li><b>Mark 1 Apps Ltd,</b> as the operator, has administrative access to the database in order to run it. That access is used only to fix a problem you have reported or to keep the service running, not to read anyone's records.</li>
       <li><b>Google,</b> as the company hosting the database, under its own data processing terms.</li>
       <li><b>Cloudflare,</b> which runs Daybook's bridge, and <b>Anthropic,</b> only for what you send with an AI button, as described below.</li>
       <li>Nobody else, unless the law requires it.</li>
@@ -778,14 +778,14 @@
   </template>
 
   <template id="tpl-terms">
-    <p class="legal-date mono">Last updated 5 October 2026</p>
+    <p class="legal-date mono">Last updated 9 October 2026</p>
     <h3>1. What Daybook is</h3>
-    <p>My Medical Daybook (Daybook for short) is a personal record-keeping tool for a patient and the people looking after them, made by Mark Brown, trading as Mark 1 Apps. <span data-contact></span></p>
+    <p>My Medical Daybook (Daybook for short) is a personal record-keeping tool for a patient and the people looking after them, made and run by Mark 1 Apps Ltd, a company registered in England and Wales (company number 17510025). <span data-contact></span></p>
     <p>It is not a medical device, it gives no medical advice, and it does not replace your doctors, nurses or pharmacist. Everything it shows, including the summary lines, the flags, the food estimates and the AI explanations, is there to help you talk to your care team, not to decide anything for you. If you are worried about a symptom, contact your care team or NHS 111. In an emergency call 999.</p>
     <h3>2. Your account</h3>
     <p>One sign-in per person. Keep your password private; you are responsible for what is done with your sign-in. The household owner decides who is invited and with what access, and can remove them. By inviting someone you confirm that the patient agrees to them seeing the records.</p>
     <h3>3. Your records</h3>
-    <p>They remain yours. You give Mark 1 Apps permission only to store them and show them to your household, as the privacy policy describes. You are responsible for what you enter and for checking it is right, especially medicine doses and times.</p>
+    <p>They remain yours. You give Mark 1 Apps Ltd permission only to store them and show them to your household, as the privacy policy describes. You are responsible for what you enter and for checking it is right, especially medicine doses and times.</p>
     <h3>4. Using it fairly</h3>
     <p>Daybook is for personal, non-commercial use. Do not try to get into another household's data, probe or overload the service, or use it for anything unlawful. Do not enter anyone's information without their agreement.</p>
     <h3>5. Recordings</h3>
@@ -793,13 +793,13 @@
     <h3>6. Daybook Assistant (the AI features)</h3>
     <p>They are optional. Daybook Assistant is an AI helper that runs on Claude, made by Anthropic. When you use it, the text or photo you chose goes to Anthropic in the United States, as the privacy policy describes. Anything it writes or reads, including explanations, summaries, suggested questions and details read from a label or plan, can be wrong. Check anything that matters with your care team.</p>
     <h3>7. Availability</h3>
-    <p>Daybook is provided free and as it is. It depends on Google, Cloudflare, GitHub, your phone's maker and, for Daybook Assistant, Anthropic, and may be unavailable or change without notice. Mark 1 Apps may change, pause or withdraw it. If it is to be withdrawn you will be given reasonable notice and a way to take your records with you.</p>
+    <p>Daybook is provided free and as it is. It depends on Google, Cloudflare, GitHub, your phone's maker and, for Daybook Assistant, Anthropic, and may be unavailable or change without notice. Mark 1 Apps Ltd may change, pause or withdraw it. If it is to be withdrawn you will be given reasonable notice and a way to take your records with you.</p>
     <h3>8. No warranty, limited liability</h3>
-    <p>As far as the law allows, Mark 1 Apps is not liable for loss arising from your use of the app, from an error in what it shows, or from anything decided on the basis of it. Nothing in these terms limits liability for death or personal injury caused by negligence, or for anything else the law does not allow to be limited.</p>
+    <p>As far as the law allows, Mark 1 Apps Ltd is not liable for loss arising from your use of the app, from an error in what it shows, or from anything decided on the basis of it. Nothing in these terms limits liability for death or personal injury caused by negligence, or for anything else the law does not allow to be limited.</p>
     <h3>9. The code and the name</h3>
-    <p>Copyright 2026 Mark Brown, Mark 1 Apps. All rights reserved. The code is published so that it can be read, not reused: see the licence in the repository. The names My Medical Daybook and Daybook, the strapline and the artwork belong to Mark 1 Apps. Third-party parts keep their own licences.</p>
+    <p>Copyright 2026 Mark Brown. All rights reserved. The code is published so that it can be read, not reused: see the licence in the repository. The names My Medical Daybook and Daybook, the strapline and the artwork belong to Mark Brown and are used by Mark 1 Apps Ltd. Third-party parts keep their own licences.</p>
     <h3>10. Ending</h3>
-    <p>You can stop at any time by signing out, and you can ask for your household to be erased. Mark 1 Apps may close a sign-in used in breach of these terms.</p>
+    <p>You can stop at any time by signing out, and you can ask for your household to be erased. Mark 1 Apps Ltd may close a sign-in used in breach of these terms.</p>
     <h3>11. Law</h3>
     <p>These terms are governed by the law of England and Wales.</p>
     <h3>12. Changes</h3>
@@ -809,7 +809,7 @@
   <template id="tpl-about">
     <p class="strapline">Your companion between appointments.</p>
     <p>My Medical Daybook is a private, shared health record for a patient and the people looking after them. It keeps the days between appointments in one place: how you feel, readings, medicines and doses, food and drink, letters and what they mean, questions for the care team and their answers, treatment days and gentle exercise. Notes for the team turns it into a short summary for a ten-minute appointment.</p>
-    <p>Made by Mark Brown, Mark 1 Apps, first for his own cancer treatment and the people around him.</p>
+    <p>Made by Mark Brown, first for his own cancer treatment and the people around him, and run by Mark 1 Apps Ltd, a company registered in England and Wales (company number 17510025).</p>
     <p data-stage-note>Daybook is in Beta while it is readied for the App Store and Google Play. It works in full; some things may still change, and anything that goes wrong is worth telling Mark about.</p>
     <p class="muted mono" data-version></p>
     <h3>Not medical advice</h3>
@@ -832,7 +832,7 @@
       <li>Gentle exercises: NHS Live Well sitting, flexibility and strength exercises; Memorial Sloan Kettering Cancer Center, Chair Exercises</li>
     </ul>
     <h3>Licence</h3>
-    <p>Copyright 2026 Mark Brown, Mark 1 Apps. All rights reserved. The code is published so that it can be read, not copied, hosted or built on. Third-party parts keep their own licences.</p>
+    <p>Copyright 2026 Mark Brown. All rights reserved. The code is published so that it can be read, not copied, hosted or built on. Third-party parts keep their own licences.</p>
     <div class="legal-links">
       <button class="btn btn-secondary btn-block" type="button" data-page="privacy">Privacy</button>
       <button class="btn btn-secondary btn-block" type="button" data-page="terms">Terms of use</button>
@@ -857,6 +857,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=147"></script>
+  <script type="module" src="scripts.js?v=148"></script>
 </body>
 </html>

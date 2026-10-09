@@ -1,5 +1,7 @@
 My Medical Daybook (Daybook)
-Copyright (c) 2026 Mark Brown, Mark 1 Apps. All rights reserved.
+Copyright (c) 2026 Mark Brown. All rights reserved.
+Run by Mark 1 Apps Ltd, a company registered in England and Wales
+(company number 17510025).
 
 This source code is published so that it can be read: anyone may look at it to
 see how Daybook works and what it does with their data. That is the only
@@ -12,8 +14,8 @@ the copyright holder.
 
 Third-party components keep their own licences: the McCance and Widdowson
 food table (data/cofid.json) is Crown copyright under the Open Government
-Licence v3.0; Chart.js, pdf.js, mammoth.js and jsPDF are loaded from their
-own CDNs under their own licences; the fonts Bebas Neue, DM Sans and DM Mono
+Licence v3.0; Chart.js, pdf.js, mammoth.js, jsPDF and html2canvas are loaded
+from their own CDNs under their own licences; the fonts Fraunces and Inter
 are under the SIL Open Font Licence.
 
 No warranty. Daybook is a personal record-keeping tool and is not medical

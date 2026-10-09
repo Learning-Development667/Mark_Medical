@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '147';
+const APP_VERSION = '148';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -767,7 +767,7 @@ function openLegal(which) {
   const email = (window.DAYBOOK_CONTACT && window.DAYBOOK_CONTACT.email) || '';
   for (const el of wrap.querySelectorAll('[data-contact]')) {
     if (email) el.replaceChildren('Contact: ', h('a', { href: 'mailto:' + email, text: email }), '.');
-    else el.textContent = 'Contact: Mark Brown, Mark 1 Apps.';
+    else el.textContent = 'Contact: Mark 1 Apps Ltd.';
   }
   for (const el of wrap.querySelectorAll('[data-version]')) el.textContent = versionText();
   for (const el of wrap.querySelectorAll('[data-stage-note]')) el.hidden = !APP_STAGE;
