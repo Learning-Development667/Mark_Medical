@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '146';
+const APP_VERSION = '147';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -5740,8 +5740,8 @@ const CHECKIN_QUESTIONS = {
     { key: 'lookingForward', kind: 'text', q: 'What are you looking forward to today?', ph: 'e.g. a walk in the garden, a visitor' }
   ],
   evening: [
+    /* the body first, then the words, then mood as the last score beside one good thing (v147, as the morning in v146) */
     { key: 'pain', kind: 'pain', q: 'Pain right now', low: '1 none', high: '10 worst', note: 'painNote' },
-    { key: 'mood', kind: 'slider', q: 'How is your mood?', low: '1 rough', high: '10 great', note: 'moodNote', noteQ: 'What is behind it? Optional.', notePh: 'e.g. a good day in the garden, or a rough afternoon' },
     { key: 'worstPain', kind: 'pain', q: 'Worst pain today', low: '1 none', high: '10 worst', note: 'worstPainNote' },
     { key: 'sickness', kind: 'pain', q: 'Sickness today', low: '1 none', high: '10 severe' },
     { key: 'appetite', kind: 'slider', q: 'Appetite today', low: '1 nothing', high: '10 normal' },
@@ -5750,6 +5750,7 @@ const CHECKIN_QUESTIONS = {
     { key: 'outside', kind: 'ticks', pack: 'ibd', weekly: true, q: 'Over the last week, have you had any of these?' },
     { key: 'symptoms', kind: 'text', q: 'Any new or worse symptoms today?', ph: 'e.g. felt sick after lunch, back worse' },
     { key: 'settled', kind: 'text', q: 'Anything that has settled since yesterday?', ph: 'e.g. the sickness has eased' },
+    { key: 'mood', kind: 'slider', q: 'How is your mood?', low: '1 rough', high: '10 great', note: 'moodNote', noteQ: 'What is behind it? Optional.', notePh: 'e.g. a good day in the garden, or a rough afternoon' },
     { key: 'goodThing', kind: 'text', q: 'One good thing about today', ph: 'e.g. sat in the garden for an hour' }
   ],
   /* The carer's view: the same scores from the outside, once a day, on the Chemo tab. Kept out of
