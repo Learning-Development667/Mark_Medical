@@ -80,6 +80,7 @@ One at a time, each a few days with its sources checked, on the profile mechanis
 - An "AI used this month: about 12p" line under Settings, from the bridge's own token tally. Offered 4 October; build if wanted.
 
 ## Done
+- v147 The evening check-in in the same spirit: pain, worst pain, sickness, appetite and energy first, then the words, then mood beside one good thing.
 - v146 The morning check-in in time order (sleep, anything overnight, pain, mood, the day ahead), with hours slept filled in from the night's sleep, from Apple Health or typed.
 - v145 Condition packs in Settings (Cancer treatment, Crohn's or colitis; Menopause later) and the Crohn's and colitis bowel log: graded blood, how long you could wait, accidents, a stoma, the usual number a day, a weekly question about joints, eyes, skin and mouth, and the reports reading bowels against the usual instead of the chemo limits.
 - v144 Emails from Daybook carry the subject as the message's first line, since iPhone Mail leaves Subject empty when a PDF is shared.
