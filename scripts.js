@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '145';
+const APP_VERSION = '146';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -2903,6 +2903,15 @@ function openAdd(type, editEntry) {
 }
 
 /* The weight already logged for a day (the latest, typed or from Apple Health), or null: the Vitals sheet asks once a day */
+/* The night's sleep entry for a morning (the day is the wake-up date), the latest if there are two */
+function sleepOnDay(d) {
+  const seen = new Set();
+  const list = [...(state.recentEntries || []), ...(state.dayEntries || [])].filter((e) => {
+    if (e.type !== 'sleep' || e.day !== d || !(Number(e.value) > 0) || seen.has(e.id)) return false;
+    seen.add(e.id); return true;
+  });
+  return list.sort((a, b) => (entryDate(b) || 0) - (entryDate(a) || 0))[0] || null;
+}
 function weightOnDay(d) {
   const seen = new Set();
   const list = [...(state.recentEntries || []), ...(state.dayEntries || [])].filter((e) => {
@@ -5723,10 +5732,11 @@ async function renderNotesReport() {
 
 const CHECKIN_QUESTIONS = {
   morning: [
+    /* the night, then right now, then the day ahead (v146): symptoms overnight sit beside sleep, mood is the last score */
     { key: 'sleep', kind: 'sleep', q: 'How did you sleep?', low: '1 terribly', high: '10 brilliantly', note: 'sleepNote', noteQ: 'How rested do you feel? Optional.', notePh: 'e.g. slept for ages but still not rested, or a bad night but woke with some energy' },
+    { key: 'symptoms', kind: 'text', q: 'Any new or worse symptoms overnight?', ph: 'e.g. more sick than usual, a new ache' },
     { key: 'pain', kind: 'pain', q: 'Pain right now', low: '1 none', high: '10 worst', note: 'painNote' },
     { key: 'mood', kind: 'slider', q: 'How is your mood?', low: '1 rough', high: '10 great', note: 'moodNote', noteQ: 'What is behind it? Optional.', notePh: 'e.g. a good night, a visitor coming, worried about tomorrow' },
-    { key: 'symptoms', kind: 'text', q: 'Any new or worse symptoms overnight?', ph: 'e.g. more sick than usual, a new ache' },
     { key: 'lookingForward', kind: 'text', q: 'What are you looking forward to today?', ph: 'e.g. a walk in the garden, a visitor' }
   ],
   evening: [
@@ -5923,7 +5933,7 @@ function openCheckin(slot, initialDay) {
   const today = todayStr();
   let day = initialDay > today ? today : initialDay;
   const qs = checkinSteps(slot, day, findCheckin(day, slot));
-  let answers = {}, existing = null, step = 0, dir = 1;
+  let answers = {}, existing = null, step = 0, dir = 1, sleepFrom = null;
 
   const load = () => {
     existing = findCheckin(day, slot);
@@ -5931,6 +5941,12 @@ function openCheckin(slot, initialDay) {
     qs.forEach((q) => { answers[q.key] = existing && existing[q.key] !== undefined ? existing[q.key] : (q.kind === 'text' ? '' : null); });
     if (answers.outside != null) answers.outside = [...answers.outside];
     answers.sleepHours = existing && existing.sleepHours != null ? existing.sleepHours : null;
+    /* a new morning check-in takes the hours from the night's sleep entry (Apple Health or typed), to the nearest half hour, still changeable (v146) */
+    sleepFrom = null;
+    if (slot === 'morning' && !existing) {
+      const night = sleepOnDay(day);
+      if (night) { answers.sleepHours = Math.round(Number(night.value) / 30) / 2; sleepFrom = night; }
+    }
     checkinNoteKeys(slot).forEach((k) => { answers[k] = existing && existing[k] ? String(existing[k]) : ''; });
   };
   load();
@@ -5978,6 +5994,7 @@ function openCheckin(slot, initialDay) {
         if (q.kind === 'sleep') {
           hours = h('input', { type: 'number', inputmode: 'decimal', min: '0', max: '24', step: '0.5', placeholder: 'e.g. 7', value: answers.sleepHours != null ? String(answers.sleepHours) : '' });
           wrap.append(field('Roughly how many hours (optional)', hours));
+          if (sleepFrom && answers.sleepHours != null) wrap.append(h('p', { class: 'wiz-hint wiz-sleepfrom', text: 'From the sleep logged for last night' + (sleepFrom.addedBy === 'Apple Health' ? ' by Apple Health' : '') + ': ' + fmtHm(Number(sleepFrom.value)) + ' asleep. Change it if it is wrong.' }));
         }
         if (q.note) {
           noteBox = h('textarea', { rows: '2', placeholder: q.notePh || CHECKIN_NOTE_PH, 'aria-label': q.noteQ || CHECKIN_NOTE_Q });
