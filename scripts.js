@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '148';
+const APP_VERSION = '149';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -1183,7 +1183,7 @@ function buildDemoFixture() {
     id: fakeId('doc'), category: 'general', kind: 'text',
     title: 'Oncology clinic letter (example)', docDate: day(-6),
     text: 'Dear Dr Example,\n\nThank you for reviewing this patient in clinic today. The recent CT scan shows stable disease with no new areas of concern. Bloods are within an acceptable range. We will continue the current treatment plan and review again after the next cycle.\n\nKind regards,\nDr Example',
-    explanation: 'This is a sample explanation, showing what a pasted reply from an AI app might look like.\n\nIn plain English, this letter says the recent scan looked the same as before, which is good news, it means things have not got worse since the last check. Bloods were fine too. Nothing needs to change with treatment right now, and the next check-in will be after the next round.\n\nWorth asking the team: what would a change on the next scan actually mean for the plan.',
+    explanation: 'This is a sample explanation, showing what a pasted reply from an AI app might look like.\n\nIn plain English, this letter says the recent scan looked the same as before, which is good news: it means things have not got worse since the last check. Bloods were fine too. Nothing needs to change with treatment right now, and the next check-in will be after the next round.\n\nWorth asking the team: what would a change on the next scan actually mean for the plan?',
     addedBy: 'Shelley', addedAt: demoTs(at(-6, '11:00')), updatedAt: demoTs(at(-6, '11:20'))
   }];
 
@@ -3048,7 +3048,7 @@ function openManageMeals() {
     h('span', { class: 'medrow-name' }, m.name, m.parts ? h('small', { class: 'medrow-sub', text: m.parts }) : null),
     h('button', { class: 'btn btn-secondary btn-small', type: 'button', onclick: () => openEditMeal(m) }, 'Edit')
   )));
-  if (!state.meals.length) list.append(h('p', { class: 'empty', 'data-art': 'meal', text: 'No saved meals yet. Log some food with "Remember this meal" ticked and it will appear here.' }));
+  if (!state.meals.length) list.append(h('p', { class: 'empty', 'data-art': 'meal', text: 'No saved meals yet. Meals you log are remembered and appear here.' }));
   const body = h('div', null,
     h('p', { class: 'hint', text: 'Saved meals show as quick buttons when logging food, with what goes with them filled in.' }),
     list,
@@ -3757,7 +3757,7 @@ function amountScale(amount) { return FOOD_AMOUNT_SCALE[amount] != null ? FOOD_A
 function portionGroupFor(food) {
   const g = (food && food.g) || '', n = ((food && food.n) || '').toLowerCase();
   if (/^(AF|AG)/.test(g)) return { label: 'Bread and rolls', sizes: [36, 72, 108] };
-  if (/^(AC|AD|AT)/.test(g) || /^DA/.test(g)) return { label: 'Rice, pasta, potatoes and other starchy, cooked weight', sizes: [120, 180, 250] };
+  if (/^(AC|AD|AT)/.test(g) || /^DA/.test(g)) return { label: 'Rice, pasta, potatoes and other starchy foods, cooked weight', sizes: [120, 180, 250] };
   if (/^(AM|AN|AO|AP|AS)/.test(g)) return { label: 'Cakes, biscuits, confectionery and snacks', sizes: [30, 50, 80] };
   if (/^S/.test(g)) {
     return /sugar|jam|honey|preserve|marmalade|treacle|syrup/.test(n)
@@ -4702,7 +4702,7 @@ function buildTwoPage(n) {
   const { meds, hospital } = twoPageMeds(entries, from, to);
   /* Steady: the areas outside the tiles that the app's checks did not flag */
   const fine = (report.glance.fine || []).filter((t) => !/^(temperature|heart rate|blood pressure|oxygen|pain|sleep|eating|mood)$/i.test(t));
-  const steady = fine.length ? capFirst(joinAnd(fine)) + (fine.length === 1 ? ' showed' : ' showed') + ' no flags in the app checks.' : null;
+  const steady = fine.length ? capFirst(joinAnd(fine)) + (fine.length === 1 ? ' showed' : ' showed') + ' no flags in the app\'s checks.' : null;
   const qs = report.questions.map((q) => ({ team: q.teamLabel, text: capFirst(fixMedWords((ai && ai.questions[q.id]) || q.text).trim()), by: `Asked by ${q.who}, ${rDay(q.day)}` }));
   const latestRaw = ai ? ai.latest : plainLatest(report, to);
   const latest = latestRaw && latestRaw.day >= from && latestRaw.day <= to ? { when1: whenWords(latestRaw.day, today), when2: rDay(latestRaw.day) + (latestRaw.time ? ', ' + latestRaw.time : ''), title: fixMedWords(latestRaw.title), text: fixMedWords(latestRaw.text) } : null;
@@ -8222,7 +8222,7 @@ function openAnswerSheet(q) {
     canRecord() ? consent : null,
     status,
     list,
-    h('p', { class: 'hint', text: 'Save or share puts the file in Files, Mail or your AI app, named with the question number, date and time.' }),
+    h('p', { class: 'hint', text: 'Save or share puts the file in Files, Mail or your AI app, named with the start of the question, the date and the time.' }),
     field('Answer in words', text), speakButton(text) || '',
     saveBtn,
     h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Close')
