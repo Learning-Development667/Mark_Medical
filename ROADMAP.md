@@ -80,6 +80,7 @@ One at a time, each a few days with its sources checked, on the profile mechanis
 - An "AI used this month: about 12p" line under Settings, from the bridge's own token tally. Offered 4 October; build if wanted.
 
 ## Done
+- v150 The Mark 1 Apps logo for white backgrounds (`icons/mark1apps-line.png`): clean blue lines traced from the neon, first used on the Deed of Assignment.
 - v149 A spelling and wording sweep of the app, the reports, the bridge, the pitch and the roadmap: no misspellings found; a missing word, a comma splice and a question mark put right, and five lines that described things since changed (the saved meals hint, the pain chart key, the privacy page's button name, the recording file name, the About list) brought up to date.
 - v148 Mark 1 Apps Ltd (company number 17510025) named as the operator and data controller throughout; copyright stays with Mark until the assignment is signed.
 - v147 The evening check-in in the same spirit: pain, worst pain, sickness, appetite and energy first, then the words, then mood beside one good thing.
