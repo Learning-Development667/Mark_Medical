@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=148">
+  <link rel="stylesheet" href="styles.css?v=149">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -328,7 +328,7 @@
         <div class="card chart-card">
           <h2 class="section-title">Pain</h2>
           <div class="chart-wrap"><canvas id="chart-pain"></canvas></div>
-          <p class="legend-note">Check-in scores make the line. Extra readings from Log pain now are the hollow points.</p>
+          <p class="legend-note">Check-in scores make the line. Extra readings from the Pain tile are the hollow points.</p>
         </div>
         <div class="card chart-card">
           <h2 class="section-title">Mood</h2>
@@ -754,7 +754,7 @@
     </ul>
     <h3>What leaves your household's folder, and when</h3>
     <ul>
-      <li><b>Daybook Assistant, only when you tap.</b> Daybook Assistant is Daybook's name for its AI helper, which is Claude, an AI model made by Anthropic, a US company. Five features send something through Daybook's bridge to Anthropic for it: <b>Explain with Daybook Assistant</b> (a letter's text or page photos), <b>Suggest questions to ask</b> and <b>Summarise each week</b> (the Notes for the team text), <b>Read it from a photo</b> (a photo of a medicine) and <b>Add from a photo or PDF of the plan</b> (an exercise or physio plan). So that information goes to the United States. Anthropic does not use what is sent through its API to train its models and handles it under its own terms. The bridge keeps nothing of what was sent or returned, only a count of words used, for the cost. An explanation of a letter is saved with the letter, and you can change or delete it; the other replies are shown for you to check, and only what you then save is kept. There is a daily limit per household.</li>
+      <li><b>Daybook Assistant, only when you tap.</b> Daybook Assistant is Daybook's name for its AI helper, which is Claude, an AI model made by Anthropic, a US company. Five features send something through Daybook's bridge to Anthropic for it: <b>Explain with Daybook Assistant</b> (a letter's text or page photos), <b>Suggest questions to ask</b> and <b>Summarise with Daybook Assistant</b> (the Notes for the team text), <b>Read it from a photo</b> (a photo of a medicine) and <b>Add from a photo or PDF of the plan</b> (an exercise or physio plan). So that information goes to the United States. Anthropic does not use what is sent through its API to train its models and handles it under its own terms. The bridge keeps nothing of what was sent or returned, only a count of words used, for the cost. An explanation of a letter is saved with the letter, and you can change or delete it; the other replies are shown for you to check, and only what you then save is kept. There is a daily limit per household.</li>
       <li><b>Your own AI app.</b> "Send to my AI app" and "Copy for my AI app" put the text on your phone's share sheet or clipboard. Where it goes from there is between you and the app you choose.</li>
       <li><b>Save as PDF, Print, Share and Copy</b> make a copy for you to give to the clinic or someone else. Once it has left the app, it is in your hands.</li>
       <li><b>Tap to speak</b> uses your phone's own speech recognition (Apple's on an iPhone, Google's in Chrome). Depending on the phone, the audio may be processed on the phone or on that company's servers under their terms. Daybook receives only the words.</li>
@@ -822,7 +822,7 @@
     <ul>
       <li>Google Firebase (sign-in and the database, London)</li>
       <li>GitHub Pages (the app) and a Cloudflare Worker (the bridge)</li>
-      <li>Chart.js, pdf.js, mammoth.js and jsPDF</li>
+      <li>Chart.js, pdf.js, mammoth.js, jsPDF and html2canvas</li>
       <li>Anthropic's Claude, behind Daybook Assistant (the optional AI features)</li>
       <li>The Fraunces and Inter typefaces</li>
     </ul>
@@ -857,6 +857,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=148"></script>
+  <script type="module" src="scripts.js?v=149"></script>
 </body>
 </html>
