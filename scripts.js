@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '152';
+const APP_VERSION = '153';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -1903,6 +1903,7 @@ function ensureFoodIndexForToday() {
 
 function renderToday() {
   ensureFoodIndexForToday();
+  renderFeedbackRow();
   renderTiles();
   renderCheckins();
   renderMeds();
@@ -2080,6 +2081,116 @@ function renderTiles() {
 
 /* Quick add */
 document.querySelectorAll('.qa').forEach((b) => b.addEventListener('click', () => (b.dataset.add === 'medicine' ? openDoseSheet() : openAdd(b.dataset.add))));
+
+/* ---------- Tell Mark what you think (v153, the Beta feedback) ----------
+   A warm row at the top of Today while the app is in Beta (APP_STAGE), for signed-in members with the bridge, never in the
+   preview or the shared demo. The sheet: the eight first-day questions until answered once on this phone, then a box with Tap to
+   speak, a picture from Photos, Send to Mark. Everything goes through the bridge (POST /feedback) to a collection only Mark
+   reads, with the screen, the version and the phone, and Mark's phone gets a push. What this phone has sent is kept in
+   localStorage only (daybook.feedback.sent.{uid}); nothing is written to the household. */
+const FEEDBACK_EMAIL = 'support@mymedicaldaybook.co.uk';
+const FIRST_DAY_QUESTIONS = [
+  { key: 'who', q: 'Are you the patient, a carer, or in the circle?', kind: 'one', options: ['The patient', 'A carer', 'Family or friend', 'A nurse or clinician'] },
+  { key: 'conditions', q: 'Which condition or conditions is Daybook for?', kind: 'many', options: ['Cancer treatment', 'Crohn\'s or colitis', 'Menopause', 'Something else'] },
+  { key: 'setup', q: 'How easy was setting up?', kind: 'one', options: ['1, hard', '2', '3', '4', '5, easy'] },
+  { key: 'home', q: 'Did you add Daybook to your Home Screen?', kind: 'one', options: ['Yes', 'No', 'Did not know how'] },
+  { key: 'first', q: 'What did you log first?', kind: 'text' },
+  { key: 'confusing', q: 'Was anything confusing?', kind: 'text' },
+  { key: 'most', q: 'Which part do you think you will use most?', kind: 'one', options: ['The check-ins', 'Medicines', 'Notes for the team', 'Food', 'Exercise', 'Not sure yet'] },
+  { key: 'else', q: 'Anything else?', kind: 'text' }
+];
+function feedbackShown() { return !!APP_STAGE && !!BRIDGE && !!(auth && auth.currentUser) && !state.demo; }
+const fbKey = (what) => 'daybook.feedback.' + what + '.' + ((auth && auth.currentUser && auth.currentUser.uid) || 'x');
+function fbRead(what, fallback) { try { const v = JSON.parse(localStorage.getItem(fbKey(what)) || 'null'); return v == null ? fallback : v; } catch (e) { return fallback; } }
+function fbWrite(what, v) { try { localStorage.setItem(fbKey(what), JSON.stringify(v)); } catch (e) { /* private browsing: the row simply asks again */ } }
+function renderFeedbackRow() {
+  const row = $('feedback-row'); if (!row) return;
+  const on = feedbackShown();
+  row.hidden = !on; if (!on) return;
+  const sent = fbRead('sent', []), survey = fbRead('survey', null);
+  row.querySelector('.checkin-sub').textContent = !survey ? 'Day one: eight quick questions, two minutes. Then tap here any time.'
+    : 'Anything confusing, wrong or not what you expected. ' + (sent.length ? sent.length + ' sent so far.' : 'Nothing sent yet.');
+}
+$('feedback-row').addEventListener('click', () => openFeedbackSheet());
+function openFeedbackSheet() {
+  const screen = document.title;
+  const body = h('div', { class: 'fb' });
+  const chip = (label, on, onclick) => h('button', { class: 'preset' + (on ? ' is-active' : ''), type: 'button', 'aria-pressed': on ? 'true' : 'false', onclick }, label);
+  const textBox = (ph, label) => { const t = h('textarea', { rows: '2', placeholder: ph || '', 'aria-label': label || null }); const sp = speakButton(t); return { t, el: h('div', null, t, sp) }; };
+  const send = async (btn, payload, after) => {
+    try {
+      await withBusy(btn, 'Sending', () => bridgeCall('/feedback', { ...payload, screen, version: APP_VERSION, device: navigator.userAgent.slice(0, 160) }));
+      after();
+    } catch (e) { toast(e.message || 'Could not send. Try again in a moment.'); }
+  };
+  body.append(h('p', { class: 'hint', text: 'Anything confusing, wrong or simply not what you expected. Mark reads every one himself. This is for the app, not for your care: nothing here reaches your team.' }));
+  /* the first-day questions, once per phone */
+  if (!fbRead('survey', null)) {
+    const answers = {}, others = {};
+    const block = h('div', { class: 'fb-survey', role: 'group', 'aria-label': 'The first-day questions' }, h('h3', { text: 'Day one: eight quick questions' }), h('p', { class: 'hint', text: 'About how setting up went. All optional, two minutes.' }));
+    for (const q of FIRST_DAY_QUESTIONS) {
+      const wrap = h('div', { class: 'fb-q' }, h('span', { text: q.q }));
+      if (q.kind === 'text') { const tb = textBox('', q.q); wrap.append(tb.el); answers[q.key] = () => tb.t.value.trim(); }
+      else {
+        const chips = h('div', { class: 'chips', role: 'group', 'aria-label': q.q });
+        let chosen = q.kind === 'many' ? [] : '';
+        const other = h('input', { type: 'text', maxlength: '60', placeholder: 'Which?', hidden: true, 'aria-label': 'Which condition' });
+        const draw = () => { chips.replaceChildren(...q.options.map((o) => chip(o, q.kind === 'many' ? chosen.includes(o) : chosen === o, () => {
+          if (q.kind === 'many') chosen = chosen.includes(o) ? chosen.filter((x) => x !== o) : chosen.concat(o); else chosen = chosen === o ? '' : o;
+          other.hidden = !(q.kind === 'many' && chosen.includes('Something else')); draw();
+        }))); };
+        draw(); wrap.append(chips, other);
+        answers[q.key] = () => (q.kind === 'many' ? chosen.concat(other.hidden || !other.value.trim() ? [] : ['Something else: ' + other.value.trim()]) : chosen);
+      }
+      block.append(wrap);
+    }
+    const sendBtn = h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => {
+      const a = {}; for (const [k, fn] of Object.entries(answers)) { const v = fn(); if (v && v.length) a[k] = v; }
+      if (!Object.keys(a).length) { toast('Answer at least one, or tap Not now.'); return; }
+      send(sendBtn, { kind: 'survey', answers: a }, () => { fbWrite('survey', { at: Date.now() }); block.remove(); renderFeedbackRow(); toast('Thank you. That tells Mark a lot.'); });
+    } }, 'Send my answers');
+    block.append(sendBtn, h('button', { class: 'btn btn-link btn-block', type: 'button', onclick: () => block.remove() }, 'Not now'));
+    body.append(block);
+  }
+  /* a note, with a picture if it helps */
+  const note = textBox('e.g. the Save button did nothing on the Food sheet');
+  let picture = null;
+  const shot = h('div', { class: 'fb-shot', hidden: true });
+  const pickBtn = h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => {
+    const input = h('input', { type: 'file', accept: 'image/*', style: 'display:none' });
+    document.body.append(input);
+    input.addEventListener('change', async () => {
+      const files = Array.from(input.files || []); input.remove();
+      if (!files.length) return;
+      try {
+        const read = await processFiles(files.slice(0, 1), () => {});
+        const pg = read.pages && read.pages[0]; if (!pg) throw new Error('That file is not a picture');
+        picture = pg.data;
+        shot.replaceChildren(h('img', { src: 'data:image/jpeg;base64,' + picture, alt: 'The picture you added' }), h('button', { class: 'btn btn-link', type: 'button', onclick: () => { picture = null; shot.hidden = true; shot.replaceChildren(); pickBtn.hidden = false; } }, 'Remove the picture'));
+        shot.hidden = false; pickBtn.hidden = true;
+      } catch (e) { toast(e.message || 'Could not read that picture'); }
+    });
+    input.click();
+  } }, 'Add a picture or screenshot');
+  const sentList = h('ul', { class: 'fb-sent', 'aria-label': 'Sent so far' });
+  const drawSent = () => { const sent = fbRead('sent', []); sentList.replaceChildren(...sent.slice(0, 20).map((x) => h('li', null, h('b', { text: new Date(x.at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ' ' + new Date(x.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) + (x.screen ? ', ' + x.screen.replace(/^Daybook: /, '') : '') }), ' ' + (x.text || 'A picture') + (x.picture ? ' (with a picture)' : '')))); sentList.hidden = !sent.length; };
+  drawSent();
+  const sendBtn = h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => {
+    const text = note.t.value.trim();
+    if (!text && !picture) { toast('Say what happened, or add a picture.'); note.t.focus(); return; }
+    send(sendBtn, { kind: 'note', text, image: picture || undefined }, () => {
+      const sent = fbRead('sent', []); sent.unshift({ at: Date.now(), text: text.slice(0, 120), screen, picture: !!picture }); fbWrite('sent', sent.slice(0, 50));
+      note.t.value = ''; picture = null; shot.hidden = true; shot.replaceChildren(); pickBtn.hidden = false;
+      drawSent(); renderFeedbackRow(); toast('Sent to Mark. Thank you.');
+    });
+  } }, 'Send to Mark');
+  const contact = h('p', { class: 'hint fb-contact' }, 'Prefer email? ', h('a', { href: 'mailto:' + FEEDBACK_EMAIL, text: FEEDBACK_EMAIL }), '.');
+  body.append(h('label', { class: 'field' }, h('span', { text: 'What happened, or what you think' }), note.el), shot, pickBtn, sendBtn, h('p', { class: 'hint', text: 'Sent so far from this phone' }), sentList, contact);
+  bridgeCall('/feedback-info', {}).then((info) => {
+    if (info && info.phone) contact.append(' ', h('span', null, 'Or ring Mark during the Beta: ', h('a', { href: 'tel:' + String(info.phone).replace(/\s+/g, ''), text: info.phone }), '.'));
+  }).catch(() => {});
+  openSheet('Tell Mark what you think', body);
+}
 
 /* Log a dose from Today (since v92): the when-needed medicines first with their status, then today's
    scheduled ones with the count so far; a tap logs it now through the same logMed() as the Meds tab
