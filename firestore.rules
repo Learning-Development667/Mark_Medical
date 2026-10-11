@@ -56,6 +56,10 @@ service cloud.firestore {
     match /inviteCodes/{code} {
       allow read, write: if false;
     }
+    // Beta codes (since v152): checked by the bridge alone; nobody reads or guesses them from the app.
+    match /betaCodes/{code} {
+      allow read, write: if false;
+    }
     match /bridge/{docId} {
       allow read, write: if false;
     }

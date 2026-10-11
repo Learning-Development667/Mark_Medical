@@ -1,5 +1,6 @@
 # Household admin from the Actions tab (replaces "Seed a user record" since v75): create a
-# household, add or remove a member, make a fresh Apple Health inbox key, or list them all.
+# household, add or remove a member, make a fresh Apple Health inbox key, make or switch off a Beta
+# code (one per route in: a ward, a clinic, a WhatsApp group), or list them all.
 # Uses the bridge's FIREBASE_SERVICE_ACCOUNT secret; nothing secret is typed in or printed.
 name: Household admin
 
@@ -17,6 +18,21 @@ on:
           - add-member
           - remove-member
           - new-key
+          - beta-code
+          - beta-codes
+      code:
+        description: "Beta code to make or switch off (beta-code): letters and digits, e.g. BINCEY"
+        required: false
+        type: string
+      label:
+        description: "Where the Beta code goes (beta-code), e.g. Bincey's patients"
+        required: false
+        type: string
+      off:
+        description: "beta-code: switch this code off"
+        required: false
+        type: boolean
+        default: false
       household_id:
         description: "Household id (add-member, remove-member, new-key)"
         required: false
@@ -79,4 +95,7 @@ jobs:
           ROLE: ${{ inputs.role }}
           RELATION: ${{ inputs.relation }}
           MOVE: ${{ inputs.move && 'yes' || 'no' }}
+          CODE: ${{ inputs.code }}
+          LABEL: ${{ inputs.label }}
+          OFF: ${{ inputs.off && 'yes' || 'no' }}
         run: node tools/household_admin.mjs

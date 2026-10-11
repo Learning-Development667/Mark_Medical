@@ -15,8 +15,11 @@ workers_dev = true
 
 # Public settings. DEMO_PROJECT_ID is the shared demo's Firebase project (already public in
 # config.js); its guest sign-in may use Explain in Daybook with its own smaller daily limit.
+# BETA_CODES_REQUIRED: while set, a new household needs a Beta code (betaCodes/{CODE}, made with the
+# Household admin workflow). Delete the line when the app is on the stores and sign-up opens.
 [vars]
 DEMO_PROJECT_ID = "daybook-demo-34eae"
+BETA_CODES_REQUIRED = "yes"
 
 # Medicine reminders: the check runs every five minutes (free plan allows cron triggers)
 [triggers]

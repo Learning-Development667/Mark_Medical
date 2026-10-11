@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=151">
+  <link rel="stylesheet" href="styles.css?v=152">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -125,8 +125,16 @@
           <span>Password (at least 8 characters)</span>
           <input id="signup-password" type="password" autocomplete="new-password" minlength="8" required>
         </label>
+        <label class="field" id="signup-beta-field">
+          <span>Beta code (from whoever told you about Daybook)</span>
+          <input id="signup-beta" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="24">
+        </label>
+        <label class="field" id="signup-heard-field">
+          <span>Who told you about Daybook? (optional)</span>
+          <input id="signup-heard" type="text" autocomplete="off" maxlength="80">
+        </label>
         <label class="field" id="signup-code-field">
-          <span>Invite code (only if someone sent you one)</span>
+          <span>Invite code (only if someone in a circle sent you one; no Beta code needed then)</span>
           <input id="signup-code" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="40">
         </label>
         <p class="hint">Your entries are stored in Google's data centre in London and seen only by the people you invite, apart from anything you choose to send to an AI service. Not medical advice. By creating an account you agree to the <button class="btn-inline" type="button" data-page="terms">terms of use</button> and have read the <button class="btn-inline" type="button" data-page="privacy">privacy policy</button>.</p>
@@ -149,8 +157,16 @@
           <input id="nohousehold-name" type="text" autocomplete="given-name" maxlength="40" required>
         </label>
         <div class="chips" id="nohousehold-relation" role="group" aria-label="I am"></div>
+        <label class="field" id="nohousehold-beta-field">
+          <span>Beta code (from whoever told you about Daybook)</span>
+          <input id="nohousehold-beta" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="24">
+        </label>
+        <label class="field" id="nohousehold-heard-field">
+          <span>Who told you about Daybook? (optional)</span>
+          <input id="nohousehold-heard" type="text" autocomplete="off" maxlength="80">
+        </label>
         <label class="field">
-          <span>Invite code (only if someone sent you one)</span>
+          <span>Invite code (only if someone in a circle sent you one)</span>
           <input id="nohousehold-code" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="40">
         </label>
         <p id="nohousehold-error" class="error" role="alert" hidden></p>
@@ -857,6 +873,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=151"></script>
+  <script type="module" src="scripts.js?v=152"></script>
 </body>
 </html>
