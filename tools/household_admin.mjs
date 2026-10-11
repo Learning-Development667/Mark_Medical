@@ -10,7 +10,10 @@
    ACTION=new-key     HOUSEHOLD_ID: makes a fresh Apple Health inbox key for the household, links
                       its hash and stores the key under private/health, where the app shows it
                       (More > Settings > Apple Health). The key itself is never printed here.
-   ACTION=list        every household with its members. */
+   ACTION=list        every household with its members, and the Beta code and "who told you" it came in on.
+   ACTION=beta-code   CODE (letters and digits, say BINCEY or SCRI), LABEL (where it goes: "Bincey's patients"),
+                      OFF=yes to switch an existing code off (a leaked one), otherwise made or switched on.
+   ACTION=beta-codes  every Beta code with its label, state and uses. */
 import { loadServiceAccount, connect, str, ts, fieldString, newId, newKey, sha256Hex } from './lib/firestore_rest.mjs';
 
 const action = (process.env.ACTION || '').trim();
@@ -63,14 +66,27 @@ if (action === 'create') {
   await fs.set('healthKeys/' + sha256Hex(key), { household: str(hid), label: str('Made by the workflow'), createdAt: ts() });
   await fs.set(`households/${hid}/private/health`, { key: str(key), createdAt: ts() });
   console.log(`New inbox key for household ${hid} (hash ${sha256Hex(key).slice(0, 8)}...). Read it in the app under More > Settings > Apple Health.`);
+} else if (action === 'beta-code') {
+  const code = env('CODE').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 24), label = env('LABEL'), off = env('OFF') === 'yes';
+  if (code.length < 4) { console.error('CODE must be at least four letters or digits'); process.exit(1); }
+  const old = await fs.get('betaCodes/' + code);
+  if (!old && off) { console.error('No Beta code ' + code); process.exit(1); }
+  if (old) await fs.merge('betaCodes/' + code, { active: { booleanValue: !off }, ...(label ? { label: str(label) } : {}) });
+  else await fs.set('betaCodes/' + code, { label: str(label || code), active: { booleanValue: true }, uses: { integerValue: '0' }, createdAt: ts() });
+  console.log(`Beta code ${code}: ${off ? 'switched off' : old ? 'on' : 'made'}${label ? ', ' + label : ''}. People type it when they create an account; a link that fills it in is ${process.env.APP_URL || 'https://learning-development667.github.io/Mark_Medical/'}?beta=${code}`);
+} else if (action === 'beta-codes') {
+  const codes = await fs.list('betaCodes');
+  for (const c of codes) console.log(`${c.id}  ${fieldString(c.fields, 'label')}  ${c.fields.active && c.fields.active.booleanValue === false ? 'off' : 'on'}  used ${(c.fields.uses && c.fields.uses.integerValue) || 0} times`);
+  if (!codes.length) console.log('No Beta codes yet. Make one with beta-code.');
 } else if (action === 'list') {
   const hs = await fs.list('households');
   for (const h of hs) {
-    console.log(`${h.id}  ${fieldString(h.fields, 'name')}`);
+    const via = [fieldString(h.fields, 'betaCode'), fieldString(h.fields, 'heardFrom')].filter(Boolean);
+    console.log(`${h.id}  ${fieldString(h.fields, 'name')}${via.length ? '  (Beta: ' + via.join(', ') + ')' : ''}`);
     for (const m of await fs.list(`households/${h.id}/members`)) console.log(`   ${m.id}  ${fieldString(m.fields, 'name')}, ${fieldString(m.fields, 'role')}${fieldString(m.fields, 'relation') ? ', ' + fieldString(m.fields, 'relation') : ''}`);
   }
   if (!hs.length) console.log('No households yet.');
 } else {
-  console.error('ACTION must be create, add-member, remove-member, new-key or list');
+  console.error('ACTION must be create, add-member, remove-member, new-key, beta-code, beta-codes or list');
   process.exit(1);
 }

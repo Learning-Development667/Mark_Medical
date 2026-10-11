@@ -25,6 +25,7 @@ export default {
       /* Households (since v78): sign-up, invites, joining, removing a member. The app never writes
          the records that decide access; these do, with the service account, after checking who asks. */
       if (url.pathname === '/household' && request.method === 'POST') return withCors(request, await handleCreateHousehold(request, env));
+      if (url.pathname === '/beta-info' && request.method === 'GET') return withCors(request, await handleBetaInfo(url, env));
       if (url.pathname === '/invite' && request.method === 'POST') return withCors(request, await handleInvite(request, env));
       if (url.pathname === '/invite-info' && request.method === 'GET') return withCors(request, await handleInviteInfo(url, env));
       if (url.pathname === '/join' && request.method === 'POST') return withCors(request, await handleJoin(request, env));
@@ -605,7 +606,28 @@ async function memberOf(fs, uid) {
   return { hid, role: mem ? f(mem.fields, 'role') : null, name: mem ? f(mem.fields, 'name') : null };
 }
 
-/* POST /household { name, relation, householdName? }: a sign-in with no household makes its own and becomes its family owner */
+/* Beta codes (since v152): while BETA_CODES_REQUIRED is set in wrangler.toml, a new household needs a code from
+   betaCodes/{CODE} { label, active, uses, createdAt, lastUsedAt } (made with the Household admin workflow,
+   one per route in: a ward, a clinic, a WhatsApp group), so Mark knows where each Beta circle came from
+   without knowing anyone's name in advance. Joining an existing household with an invite needs no code.
+   The code is stored on the household with "who told you" (heardFrom), both free text for Mark's own eyes. */
+const BETA_CODE_MESSAGE = 'The Beta is by invitation. Type the Beta code from whoever told you about Daybook, or email support@mymedicaldaybook.co.uk and say who that was.';
+const normaliseBetaCode = (c) => String(c || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 24);
+async function betaCodeRecord(fs, code) {
+  if (!code) return null;
+  const rec = await fs.get('betaCodes/' + code);
+  if (!rec || f(rec.fields, 'active') === false) return null;
+  return { code, label: f(rec.fields, 'label') || '', uses: Number(f(rec.fields, 'uses') || 0) };
+}
+/* GET /beta-info?code=: whether a Beta code in a link is good, and whose it is, shown on the sign-up screen before anyone types */
+async function handleBetaInfo(url, env) {
+  if (!env.BETA_CODES_REQUIRED) return json({ required: false, valid: true });
+  const fs = await firestore(env);
+  const rec = await betaCodeRecord(fs, normaliseBetaCode(url.searchParams.get('code')));
+  return json(rec ? { required: true, valid: true, label: rec.label } : { required: true, valid: false, message: BETA_CODE_MESSAGE });
+}
+
+/* POST /household { name, relation, householdName?, betaCode?, heardFrom? }: a sign-in with no household makes its own and becomes its family owner */
 async function handleCreateHousehold(request, env) {
   const a = await whoIs(request, env); if (a.error) return a.error;
   if (a.demo) return json({ error: 'demo', message: 'The demo has one shared household.' }, 403);
@@ -615,15 +637,26 @@ async function handleCreateHousehold(request, env) {
   if (!name) return json({ error: 'bad-request', message: 'A first name is needed.' }, 400);
   const current = await memberOf(fs, who.uid);
   if (current.hid) return json({ error: 'already', message: 'This sign-in is already in a household.', household: current.hid }, 409);
+  const betaCode = normaliseBetaCode(body.betaCode);
+  let beta = null;
+  if (env.BETA_CODES_REQUIRED) {
+    beta = await betaCodeRecord(fs, betaCode);
+    if (!beta) return json({ error: 'beta', message: BETA_CODE_MESSAGE }, 400);
+  }
+  const heardFrom = clean(body.heardFrom, 80);
   const day = londonNow().day;
   const g = await fs.get('bridge/global');
   const made = g && f(g.fields, 'day') === day ? Number(f(g.fields, 'households') || 0) : 0;
   if (made >= HOUSEHOLDS_A_DAY) return json({ error: 'limit', message: 'Daybook cannot take more new households today. Try again tomorrow.' }, 429);
   await fs.set('bridge/global', { day: strVal(day), households: intVal(made + 1), updatedAt: nowTs() });
   const hid = randomCode().slice(0, 20);
-  await fs.set('households/' + hid, { name: strVal(clean(body.householdName, 60) || name), owner: strVal(who.uid), createdAt: nowTs() });
+  const house = { name: strVal(clean(body.householdName, 60) || name), owner: strVal(who.uid), createdAt: nowTs() };
+  if (beta) house.betaCode = strVal(beta.code);
+  if (heardFrom) house.heardFrom = strVal(heardFrom);
+  await fs.set('households/' + hid, house);
   await fs.set(hp(hid, 'members/' + who.uid), { name: strVal(name), role: strVal('family'), relation: strVal(relationOf(body.relation)), addedBy: strVal('sign-up'), addedAt: nowTs() });
   await fs.merge('users/' + who.uid, { household: strVal(hid), name: strVal(name) });
+  if (beta) await fs.merge('betaCodes/' + beta.code, { uses: intVal(beta.uses + 1), lastUsedAt: nowTs() });
   return json({ ok: true, household: hid });
 }
 

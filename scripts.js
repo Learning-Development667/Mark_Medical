@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '151';
+const APP_VERSION = '152';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -694,8 +694,13 @@ function showSignup() {
   $('signup-error').hidden = true;
   $('signup-code').value = state.pendingInvite || '';
   $('signup-intro').textContent = state.pendingInvite ? 'Create a sign-in to join the household you were invited to.' : 'Your own Daybook, for you and the people you invite.';
+  /* The Beta code and "who told you" (v152): only while the app is in Beta, and not when joining a circle with an invite */
+  if (state.pendingBeta && !$('signup-beta').value) $('signup-beta').value = state.pendingBeta;
+  $('signup-beta-field').hidden = !APP_STAGE || !!state.pendingInvite;
+  $('signup-heard-field').hidden = !APP_STAGE || !!state.pendingInvite;
   $('signup-name').focus();
 }
+const betaPayload = (beta, heard) => (APP_STAGE ? { betaCode: $(beta).value.trim(), heardFrom: $(heard).value.trim() } : {});
 $('signup-button').addEventListener('click', showSignup);
 $('signup-cancel').addEventListener('click', () => { $('signup').hidden = true; $('signin').hidden = false; });
 $('signup-form').addEventListener('submit', async (ev) => {
@@ -708,8 +713,8 @@ $('signup-form').addEventListener('submit', async (ev) => {
     const cred = await createUserWithEmailAndPassword(auth, $('signup-email').value.trim(), $('signup-password').value);
     /* the sign-in exists now; the household is made by the bridge, and a failure there lands on the no-household screen, not in limbo */
     if (code) await bridgeCall('/join', { code, name });
-    else await bridgeCall('/household', { name, relation: signupRelation() });
-    state.pendingInvite = null;
+    else await bridgeCall('/household', { name, relation: signupRelation(), ...betaPayload('signup-beta', 'signup-heard') });
+    state.pendingInvite = null; state.pendingBeta = null;
     $('signup').hidden = true;
     $('signup-password').value = '';
     await enterApp(cred.user);
@@ -733,6 +738,9 @@ function showNoHousehold(user, message) {
   $('nohousehold-who').textContent = (user && user.email ? user.email + ' is signed in, but' : 'This sign-in is') + ' not in a Daybook household yet. Create your own, or paste the invite code someone sent you.';
   if (!$('nohousehold-name').value) $('nohousehold-name').value = (user && user.displayName) || $('signup-name').value || '';
   $('nohousehold-code').value = state.pendingInvite || $('signup-code').value || '';
+  if (!$('nohousehold-beta').value) $('nohousehold-beta').value = $('signup-beta').value || state.pendingBeta || '';
+  if (!$('nohousehold-heard').value) $('nohousehold-heard').value = $('signup-heard').value || '';
+  $('nohousehold-beta-field').hidden = !APP_STAGE; $('nohousehold-heard-field').hidden = !APP_STAGE;
   const err = $('nohousehold-error');
   if (message) { err.textContent = message; err.hidden = false; } else err.hidden = true;
   if (!BRIDGE) { err.textContent = 'Daybook cannot set up households at the moment. Ask the person who runs it.'; err.hidden = false; }
@@ -745,8 +753,8 @@ $('nohousehold-form').addEventListener('submit', async (ev) => {
   const name = $('nohousehold-name').value.trim(), code = $('nohousehold-code').value.trim();
   try {
     if (code) await bridgeCall('/join', { code, name });
-    else await bridgeCall('/household', { name, relation: nohouseholdRelation() });
-    state.pendingInvite = null;
+    else await bridgeCall('/household', { name, relation: nohouseholdRelation(), ...betaPayload('nohousehold-beta', 'nohousehold-heard') });
+    state.pendingInvite = null; state.pendingBeta = null;
     $('nohousehold').hidden = true;
     await enterApp(auth.currentUser);
   } catch (e) { err.textContent = e.message; err.hidden = false; }
@@ -787,6 +795,22 @@ document.addEventListener('click', (ev) => {
   openLegal(page);
 })();
 
+/* ?beta=CODE in the address (v152): the code from an email or a WhatsApp message fills itself in on Create an account */
+(async function readBetaLink() {
+  const code = String(new URLSearchParams(location.search).get('beta') || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 24);
+  if (!code || !BRIDGE || !APP_STAGE) return;
+  state.pendingBeta = code;
+  history.replaceState(null, '', location.pathname + location.hash);
+  const banner = $('invite-banner');
+  banner.textContent = 'Your Beta code is filled in. Tap Create an account to start.';
+  banner.hidden = false;
+  try {
+    const r = await fetch(BRIDGE.url.replace(/\/$/, '') + '/beta-info?code=' + encodeURIComponent(code));
+    const info = await r.json();
+    if (info.valid) banner.textContent = 'Your Beta code' + (info.label ? ' from ' + info.label : '') + ' is filled in. Tap Create an account to start.';
+    else { banner.textContent = info.message || 'That Beta code is not right.'; state.pendingBeta = null; }
+  } catch (e) { /* the banner already says enough */ }
+})();
 (async function readInviteLink() {
   const code = new URLSearchParams(location.search).get('invite');
   $('signup-button').hidden = !BRIDGE;
@@ -1178,6 +1202,23 @@ function buildDemoFixture() {
     ci(0, 'morning', { sleep: 7, sleepHours: 7, pain: 3, mood: 7, symptoms: '', lookingForward: 'Hayley visiting later' }),
     e(0, '09:00', 'Shelley', { type: 'drink', value: 250, note: 'Water' })
   ];
+  /* Daily readings (v152): a temperature, the vitals and a weight on every day of the demo fortnight, as Mark
+     logs his, so the report's charts draw lines rather than stubs. A day with a reading written above keeps it. */
+  const daily = { // index 0 is 17 days ago, the last is today
+    temp: [36.7, 36.8, 36.6, 36.9, 36.8, 36.7, 36.9, 36.8, 37.0, 36.8, 36.7, 36.9, 36.8, 36.7, 36.9, 36.8, 36.7, 36.8],
+    hr: [74, 76, 78, 75, 72, 77, 74, 73, 76, 78, 80, 74, 72, 77, 79, 74, 81, 75],
+    sys: [118, 120, 116, 122, 118, 120, 124, 119, 121, 117, 118, 122, 120, 116, 118, 120, 122, 118],
+    dia: [76, 78, 74, 80, 76, 78, 80, 77, 79, 75, 76, 78, 77, 74, 76, 78, 80, 76],
+    ox: [97, 97, 98, 96, 97, 97, 96, 97, 96, 97, 98, 97, 96, 97, 96, 96, 97, 97],
+    kg: [79.6, 79.5, 79.5, 79.4, 79.3, 79.3, 79.2, 79.0, 78.8, 78.8, 78.7, 78.5, 78.6, 78.5, 78.6, 78.4, 78.3, 78.2]
+  };
+  const has = (offset, type, field) => entries.some((x) => x.day === day(offset) && x.type === type && (!field || x[field] != null));
+  for (let i = 0; i < 18; i++) {
+    const offset = i - 17, who = i % 2 ? 'Shelley' : 'Mark';
+    if (!has(offset, 'temp')) entries.push(e(offset, '08:00', who, { type: 'temp', value: daily.temp[i] }));
+    if (!has(offset, 'vitals', 'systolic')) entries.push(e(offset, '08:05', who, { type: 'vitals', ...(has(offset, 'vitals', 'heartRate') ? {} : { heartRate: daily.hr[i] }), systolic: daily.sys[i], diastolic: daily.dia[i], oxygen: daily.ox[i] }));
+    if (!has(offset, 'weight')) entries.push(e(offset, '07:30', who, { type: 'weight', value: daily.kg[i] }));
+  }
 
   const documents = [{
     id: fakeId('doc'), category: 'general', kind: 'text',

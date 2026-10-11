@@ -150,7 +150,9 @@ export function renderChart(cfg, days) {
     const r = n > 60 ? 0.9 : n > 31 ? 1.2 : 1.6;
     cfg.series.forEach((se) => {
       let d = '', pen = false;
-      se.d.forEach((v, i) => { if (v == null) { pen = false; return; } d += (pen ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1) + ' '; pen = true; });
+      /* The line runs from reading to reading across days with none (v152): the dots mark the readings, the line
+         only joins them, as the app's own charts do; a gap read as a broken chart, not as a day with nothing logged */
+      se.d.forEach((v, i) => { if (v == null) return; d += (pen ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1) + ' '; pen = true; });
       s += `<path d="${d}" fill="none" stroke="${se.c}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>`;
       se.d.forEach((v, i) => { if (v != null) s += `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="${r}" fill="${se.c}"/>`; });
     });
