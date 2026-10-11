@@ -72,6 +72,22 @@ jobs:
           secrets: |
             VAPID_PRIVATE_KEY
 
+      # The Beta feedback sheet shows Mark's phone number when this optional secret exists (v153).
+      - name: Set the Beta phone number
+        if: steps.check.outputs.ready == 'true' && env.PHONE != ''
+        uses: cloudflare/wrangler-action@v3
+        env:
+          PHONE: ${{ secrets.BETA_PHONE }}
+          BETA_PHONE: ${{ secrets.BETA_PHONE }}
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: worker
+          wranglerVersion: '4'
+          command: deploy
+          secrets: |
+            BETA_PHONE
+
       # Explain in Daybook needs the Claude API key; the bridge answers "not switched on yet" until it exists.
       - name: Set the AI key
         if: steps.check.outputs.ready == 'true' && env.AIKEY != ''

@@ -60,6 +60,10 @@ service cloud.firestore {
     match /betaCodes/{code} {
       allow read, write: if false;
     }
+    // Beta feedback (since v153): written by the bridge, read by Mark in the console; nothing from the app.
+    match /feedback/{id} {
+      allow read, write: if false;
+    }
     match /bridge/{docId} {
       allow read, write: if false;
     }

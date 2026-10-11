@@ -26,6 +26,8 @@ export default {
          the records that decide access; these do, with the service account, after checking who asks. */
       if (url.pathname === '/household' && request.method === 'POST') return withCors(request, await handleCreateHousehold(request, env));
       if (url.pathname === '/beta-info' && request.method === 'GET') return withCors(request, await handleBetaInfo(url, env));
+      if (url.pathname === '/feedback' && request.method === 'POST') return withCors(request, await handleFeedback(request, env));
+      if (url.pathname === '/feedback-info' && request.method === 'POST') return withCors(request, await handleFeedbackInfo(request, env));
       if (url.pathname === '/invite' && request.method === 'POST') return withCors(request, await handleInvite(request, env));
       if (url.pathname === '/invite-info' && request.method === 'GET') return withCors(request, await handleInviteInfo(url, env));
       if (url.pathname === '/join' && request.method === 'POST') return withCors(request, await handleJoin(request, env));
@@ -625,6 +627,53 @@ async function handleBetaInfo(url, env) {
   const fs = await firestore(env);
   const rec = await betaCodeRecord(fs, normaliseBetaCode(url.searchParams.get('code')));
   return json(rec ? { required: true, valid: true, label: rec.label } : { required: true, valid: false, message: BETA_CODE_MESSAGE });
+}
+
+/* Tell Mark what you think (v153, the Beta feedback). POST /feedback { kind "note"|"survey", text, image? (base64 JPEG),
+   answers? (the first-day questions), screen, version, device }: any member of a household, written by the service
+   account to the top-level feedback/{id} collection, which the rules deny to everyone, so only Mark reads it (the Firebase
+   console for now). Then one push to every phone in the operator's household (the one BRIDGE_KEY is the inbox key of),
+   naming nothing from the feedback itself. FEEDBACK_A_DAY per household keeps a stuck finger from filling the free tier. */
+const FEEDBACK_A_DAY = 40;
+const FEEDBACK_IMAGE_CHARS = 900000;
+async function handleFeedback(request, env) {
+  const a = await whoIs(request, env); if (a.error) return a.error;
+  if (a.demo) return json({ error: 'demo', message: 'Feedback is not taken from the demo. Email support@mymedicaldaybook.co.uk instead.' }, 403);
+  const { who, fs } = a;
+  const me = await memberOf(fs, who.uid);
+  if (!me.hid || !me.role) return json({ error: 'unauthorised', message: 'This sign-in is not in a Daybook household.' }, 403);
+  const body = await readJson(request); if (!body) return json({ error: 'bad-request', message: 'Could not read what was sent.' }, 400);
+  const kind = body.kind === 'survey' ? 'survey' : 'note';
+  const text = String(body.text || '').trim().slice(0, 4000);
+  const image = typeof body.image === 'string' && /^[A-Za-z0-9+/=]+$/.test(body.image) ? body.image.slice(0, FEEDBACK_IMAGE_CHARS) : '';
+  const answers = body.answers && typeof body.answers === 'object' ? JSON.stringify(body.answers).slice(0, 4000) : '';
+  if (!text && !image && !answers) return json({ error: 'bad-request', message: 'Say something first, or add a picture.' }, 400);
+  const day = londonNow().day;
+  const logDoc = await fs.get(hp(me.hid, 'bridge/feedbackLog'));
+  const logFields = logDoc ? logDoc.fields : {};
+  const count = f(logFields, 'day') === day ? Number(f(logFields, 'count') || 0) : 0;
+  if (count >= FEEDBACK_A_DAY) return json({ error: 'limit', message: 'That is plenty for one day, thank you. Email support@mymedicaldaybook.co.uk if it cannot wait.' }, 429);
+  await fs.set(hp(me.hid, 'bridge/feedbackLog'), { day: strVal(day), count: intVal(count + 1), updatedAt: nowTs() });
+  const id = randomCode().slice(0, 20);
+  const rec = { household: strVal(me.hid), uid: strVal(who.uid), name: strVal(me.name || ''), role: strVal(me.role), kind: strVal(kind), text: strVal(text), screen: strVal(clean(body.screen, 80)), version: strVal(clean(body.version, 12)), device: strVal(clean(body.device, 160)), at: nowTs() };
+  if (image) rec.image = strVal(image);
+  if (answers) rec.answers = strVal(answers);
+  await fs.set('feedback/' + id, rec);
+  /* a push to Mark's phones (never the sender's own household, so his and Shelley's tests do not ping him) */
+  let pushed = 0;
+  if (env.VAPID_PRIVATE_KEY && env.BRIDGE_KEY) {
+    const opHid = await householdForKey(fs, env.BRIDGE_KEY);
+    if (opHid && opHid !== me.hid) {
+      const subs = await fs.list(hp(opHid, 'pushSubs'));
+      for (const sub of subs) { const r = await sendPush(env, fs, sub, { title: 'Daybook feedback', body: kind === 'survey' ? 'A Beta circle has answered the first-day questions.' : 'New feedback from a Beta circle.', tag: 'feedback', url: appUrl() }); if (r === 'sent') pushed++; }
+    }
+  }
+  return json({ ok: true, id, pushed });
+}
+/* POST /feedback-info: how else to reach Mark during the Beta; the phone number is a Worker secret, shown to signed-in members only */
+async function handleFeedbackInfo(request, env) {
+  const a = await whoIs(request, env); if (a.error) return a.error;
+  return json({ email: 'support@mymedicaldaybook.co.uk', phone: a.demo ? null : (env.BETA_PHONE || null) });
 }
 
 /* POST /household { name, relation, householdName?, betaCode?, heardFrom? }: a sign-in with no household makes its own and becomes its family owner */

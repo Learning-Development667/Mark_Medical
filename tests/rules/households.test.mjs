@@ -55,6 +55,7 @@ beforeEach(async () => {
     await put(`healthKeys/abc123`, { household: A });
     await put(`inviteCodes/code1`, { household: A });
     await put(`betaCodes/BETA1`, { label: 'A ward', active: true, uses: 0 });
+    await put(`feedback/f1`, { household: A, text: 'The button did nothing' });
     await put(`bridge/global`, { day: '2026-09-29', households: 1 });
     /* the pre-v75 shared layout, still guarded during the transition */
     await put(`entries/old1`, { type: 'note', day: '2026-09-01', note: 'Old' });
@@ -195,6 +196,9 @@ test('nobody can write a household, a members record, a users record, an inbox k
   await assertFails(read(MARK, `betaCodes/BETA1`));
   await assertFails(read(SAM, `betaCodes/BETA1`));
   await assertFails(write(MARK, `betaCodes/MINE`, { label: 'x', active: true }));
+  await assertFails(read(MARK, `feedback/f1`));
+  await assertFails(list(MARK, `feedback`));
+  await assertFails(write(SAM, `feedback/mine`, { text: 'hello' }));
   await assertFails(read(MARK, `bridge/global`));
   await assertFails(write(MARK, `bridge/global`, { households: 0 }));
 });

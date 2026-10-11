@@ -12,6 +12,8 @@ workers_dev = true
 #                            half is window.DAYBOOK_PUSH.publicKey in config.js
 #   ANTHROPIC_API_KEY        the key for "Explain in Daybook" (console.anthropic.com, a one-off credit);
 #                            without it the /explain route answers "not switched on yet"
+#   BETA_PHONE               optional: Mark's phone number for Beta testers, shown inside the Feedback sheet
+#                            to signed-in members only, never on the website
 
 # Public settings. DEMO_PROJECT_ID is the shared demo's Firebase project (already public in
 # config.js); its guest sign-in may use Explain in Daybook with its own smaller daily limit.
