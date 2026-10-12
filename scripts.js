@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '157';
+const APP_VERSION = '158';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -4427,6 +4427,7 @@ const SEND_KINDS = {
     file: (n) => `Daybook notes for the team ${n.to}.pdf`,
     blob: () => notesReportBlob(),
     subject: (range) => `Notes before our appointment, ${range}`,
+    named: (who, range) => `Notes before our appointment: ${who}, ${range}`,
     words: (range) => `Ahead of our next appointment, here are my notes from Daybook for ${range}: two pages, with a summary and my questions first, then charts of the readings and the notes week by week.`,
     attached: (range) => `Attached: Notes for the team, ${range}, two pages.`,
     check: ' Use Preview on the Notes screen to look at it first.'
@@ -4436,6 +4437,7 @@ const SEND_KINDS = {
     file: (n) => n.filename,
     blob: () => foodReportBlob(),
     subject: (range) => `My food diary, ${range}`,
+    named: (who, range) => `Food diary: ${who}, ${range}`,
     words: (range, n) => `Here is my food diary from Daybook for ${range}: two pages, with protein against the target, drinks and food groups first, then the trends and what I ate week by week.${n && n.questions && n.questions.length ? ` My ${n.questions.length === 1 ? 'question' : 'questions'} for you ${n.questions.length === 1 ? 'is' : 'are'} on the first page.` : ''}`,
     attached: (range) => `Attached: Food diary, ${range}, two pages.`,
     check: ' Use Preview on the Food diary to look at it first.'
@@ -4445,6 +4447,7 @@ const SEND_KINDS = {
     file: (n) => n.filename,
     blob: () => moodReportBlob(),
     subject: (range) => `My mood and wellbeing, ${range}`,
+    named: (who, range) => `Mood and wellbeing: ${who}, ${range}`,
     words: (range, n) => `Ahead of our session, here is my mood and wellbeing report from Daybook for ${range}: my mood scores morning and evening with the words I gave behind them, one good thing from each day, sleep and energy${n && n.questions && n.questions.length ? `, and ${n.questions.length === 1 ? 'a question' : n.questions.length + ' questions'} I would like to ask` : ''}.`,
     attached: (range) => `Attached: Mood and wellbeing, ${range}.`,
     check: ' Use Preview on the Mood and wellbeing screen to look at it first.'
@@ -4454,6 +4457,7 @@ const SEND_KINDS = {
     file: (n) => n.filename,
     blob: () => medsReportBlob(),
     subject: () => `My medicine history, up to ${fmtDayNum(todayStr())}`,
+    named: (who) => `Medicine history: ${who}, up to ${fmtDayNum(todayStr())}`,
     words: () => 'Here is my medicine history from Daybook: every medicine on my list, with its dose, how often I take it and the doses logged, including courses I have finished.',
     attached: () => `Attached: Medicine history, up to ${fmtDayNum(todayStr())}.`,
     check: ' Use Preview under Medicine history to look at it first.'
@@ -4461,6 +4465,17 @@ const SEND_KINDS = {
 };
 /* Every covering email ends with where it came from (v142, Mark: say it was sent from Daybook) */
 const SENT_FROM = 'Sent from My Medical Daybook';
+/* The patient's full name for the email (v158, Mark: a professional files correspondence by surname; an
+   email signed "Mark" could be lost). The name on the report (Settings), else the household's patient as
+   recorded; "" in the preview and until one is set, when the email reads as before. */
+function patientFullName() { return (state.profile && state.profile.reportName) || state.patientName || ''; }
+function emailSubject(K, range) { const who = patientFullName(); return who ? K.named(who, range) : K.subject(range); }
+function emailSignOff() {
+  const who = patientFullName(), me = state.name || '';
+  if (!who) return me;
+  const isPatient = (state.account && state.account.relation === 'patient') || who.split(/\s+/)[0].toLowerCase() === me.toLowerCase();
+  return isPatient ? who : `${me}, for ${who}`;
+}
 function openSendSheet(kind) {
   const K = SEND_KINDS[kind] || SEND_KINDS.notes;
   const n = K.data();
@@ -4485,9 +4500,9 @@ function openSendSheet(kind) {
     const fname = K.file(n);
     let blob = null, blobError = null;
     (async () => { try { blob = await K.blob(); } catch (e) { console.error(e); blobError = e; } })();
-    const subject = h('input', { type: 'text', id: 'send-subject', value: K.subject(range) });
+    const subject = h('input', { type: 'text', id: 'send-subject', value: emailSubject(K, range) });
     const note = h('textarea', { id: 'send-note', rows: '6' });
-    note.value = `${greetingFor(c)}\n\n${K.words(range, n)} The PDF is attached.\n\nThank you,\n${state.name || ''}`.trim() + '\n\n' + SENT_FROM;
+    note.value = `${greetingFor(c)}\n\n${K.words(range, n)} The PDF is attached.\n\nThank you,\n${emailSignOff()}`.trim() + '\n\n' + SENT_FROM;
     const send = h('button', { class: 'btn btn-primary btn-block', type: 'button', id: 'send-go' }, 'Open in my Mail app');
     send.addEventListener('click', () => {
       if (!blob) { toast(blobError ? pdfErrorText(blobError) : 'Still making the PDF. Try again in a moment.'); return; }
@@ -10182,27 +10197,32 @@ function renderCalls() {
 
 $('calls-edit').addEventListener('click', () => {
   const rows = h('div', { class: 'editlist' });
-  const addRow = (c) => {
+  /* A saved contact is appended in its own order; a new one (v158) goes to the top, outlined and headed
+     "New contact", with the box scrolled into view and focus in Name, so nobody types over the first contact
+     because the empty block appeared out of sight at the bottom (Mark, 12 October 2026). */
+  const addRow = (c, atTop) => {
     const label = h('input', { type: 'text', value: (c && c.label) || '', placeholder: 'e.g. Sarah, or the ward', autocomplete: 'off' });
     const role = h('input', { type: 'text', value: (c && c.role) || '', placeholder: 'e.g. Oncology nurse specialist', autocomplete: 'off' });
     const number = h('input', { type: 'tel', value: (c && c.number) || '', placeholder: '01234 567890', autocomplete: 'off' });
     const ext = h('input', { type: 'text', value: (c && c.ext) || '', placeholder: 'e.g. option 2, or ext 4521', autocomplete: 'off' });
     const email = h('input', { type: 'email', value: (c && c.email) || '', placeholder: 'name@nhs.net', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false' });
-    const row = h('div', { class: 'contactrow' },
+    const row = h('div', { class: 'contactrow' + (atTop ? ' is-new' : ''), 'data-new': atTop ? '1' : null },
       h('div', { class: 'contactrow-head' }, h('span', { class: 'contactrow-n' }),
         h('button', { class: 'btn-inline btn-remove', type: 'button', onclick: () => { row.remove(); number_(); } }, 'Remove')),
       field('Name', label), field('Role (optional)', role), field('Phone', number), field('Extension or option (optional)', ext), field('Email', email));
-    rows.append(row);
+    if (atTop) rows.prepend(row); else rows.append(row);
     number_();
+    if (atTop) { if (row.scrollIntoView) row.scrollIntoView({ block: 'start', behavior: 'smooth' }); label.focus(); }
   };
-  /* "Contact 1", "Contact 2": a heading per block, so a long list stays readable */
-  const number_ = () => rows.querySelectorAll('.contactrow').forEach((r, i) => { r.querySelector('.contactrow-n').textContent = 'Contact ' + (i + 1); });
-  ((state.profile && state.profile.calls) || []).forEach(addRow);
+  /* "Contact 1", "Contact 2": a heading per saved block, so a long list stays readable; a block added this
+     time is headed "New contact" until it is saved */
+  const number_ = () => { let n = 0; rows.querySelectorAll('.contactrow').forEach((r) => { r.querySelector('.contactrow-n').textContent = r.dataset.new ? 'New contact' : 'Contact ' + (++n); }); };
+  ((state.profile && state.profile.calls) || []).forEach((c) => addRow(c));
   if (!rows.children.length) addRow(null);
   const body = h('div', null,
     h('p', { class: 'hint', text: 'A phone number, an email address, or both. Email opens your own Mail app. If the line asks you to press an option or an extension, put it in its own box; it shows under the number.' }),
+    h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => addRow(null, true) }, 'Add a new contact'),
     rows,
-    h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => { addRow(null); const all = rows.querySelectorAll('.contactrow'); all[all.length - 1].querySelector('input').focus(); } }, 'Add another'),
     h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
       const calls = [];
       for (const r of rows.querySelectorAll('.contactrow')) {
