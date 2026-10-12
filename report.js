@@ -715,67 +715,125 @@ async function paginate(frame, M, render, opts = {}) {
 /* (buildMoodReport() in scripts.js). Paginated by paginate().        */
 /* ------------------------------------------------------------------ */
 const MOOD_CSS = `
-.tile.teal{background:var(--teal-soft);border-top-color:var(--teal)}
-.wbody{flex:1;display:flex;flex-direction:column;gap:4mm;min-height:0}
-.wsec h2{margin-bottom:1.6mm}
+.tiles.mood .tile .v{font-size:14.5pt}
 .c.wide{margin-top:1mm}
-.c .legend{display:flex;gap:4mm;font-size:6.8pt;color:var(--slate);margin-top:.6mm}
-.c .legend i{display:inline-block;width:3mm;height:1.2mm;border-radius:.6mm;margin-right:1.2mm;vertical-align:middle}
+.c .legend{display:flex;flex-wrap:wrap;gap:3.6mm;font-size:6.8pt;color:var(--slate);margin-top:1mm}
+.c .legend i{display:inline-block;width:4mm;height:1.3mm;border-radius:.6mm;margin-right:1.2mm;vertical-align:middle}
+.c .legend i.swb{height:2.6mm;border-radius:.4mm}
+.c .legend i.ring{width:2.2mm;height:2.2mm;border-radius:50%;background:#fff;border:.5mm solid #8A5E10}
 .c .legend .tri{display:inline-block;width:0;height:0;border-left:1.4mm solid transparent;border-right:1.4mm solid transparent;border-bottom:2.2mm solid var(--ink);margin-right:1.2mm;vertical-align:middle}
-.wrow{display:grid;grid-template-columns:24mm 11mm 1fr;gap:2.4mm;padding:1.6mm 0;border-bottom:1px solid var(--line);font-size:8.2pt;line-height:1.35;align-items:start}
-.wrow.good{grid-template-columns:24mm 1fr}
-.wrow .wd{color:var(--slate);font-size:7.4pt;padding-top:.3mm}
-.wrow .ws{font-weight:600;white-space:nowrap}
-.wrow .ws.low{color:var(--amber-ink,#8A5E10)}
-.wrow .wt{overflow-wrap:anywhere}
-.wrow .wt small{display:block;color:var(--slate);font-size:7pt;margin-top:.3mm}
-.wnone{color:var(--slate);font-size:8.2pt}
+.wbody{flex:1;display:flex;flex-direction:column;gap:3.6mm;min-height:0}
+.wsec{display:flex;flex-direction:column;gap:1.8mm}
+.brief{display:grid;grid-template-columns:1fr 1fr;gap:2.2mm 5mm;font-size:8.3pt;line-height:1.42}
+.brief p b{font-weight:600}
+.quotes{display:grid;grid-template-columns:repeat(3,1fr);gap:2.6mm}
+.quotes.two{grid-template-columns:1fr 1fr}
+.quotes.one{grid-template-columns:1fr}
+.quote{background:var(--mist);border-radius:2mm;padding:2.4mm 3mm;font-size:8pt;line-height:1.4}
+.quote time{display:block;font-size:6.9pt;color:var(--slate);font-weight:600;margin-bottom:.8mm}
+.quote.low{background:var(--amber-soft)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:4mm}
+.two ul{padding-left:4mm;font-size:8.2pt;line-height:1.45;margin:0}
+.two li+li{margin-top:.8mm}
+.two li b{font-weight:600}
+.wkhead,.wkrow{display:grid;grid-template-columns:22mm 22mm 24mm 24mm 20mm 1fr;gap:2mm;align-items:start}
+.wkhead{font-size:6.6pt;letter-spacing:.06em;text-transform:uppercase;color:var(--slate);background:var(--mist);padding:1.6mm 2mm;border-bottom:1.3px solid var(--ink);font-weight:600}
+.wkrow{padding:1.8mm 2mm;border-bottom:1px solid var(--line);font-size:7.9pt;line-height:1.35}
+.wkrow .n{font-variant-numeric:tabular-nums;white-space:nowrap}
+.wkrow .sm{display:block;color:var(--slate);font-size:7.1pt}
+.wkrow .dots i{display:inline-block;width:2.2mm;height:2.2mm;border-radius:50%;background:var(--line);margin-right:.6mm;vertical-align:middle}
+.wkrow .dots i.on{background:var(--teal)}
+.wkrow .dots i.warm{background:#C2703D}
 .wq{display:grid;grid-template-columns:1fr 1fr;gap:2.6mm}
 .mnotes{background:var(--teal-soft);border-radius:2.4mm;padding:3mm 3.6mm;display:flex;flex-direction:column;flex:1;min-height:42mm}
 .mnotes h3{font-family:Inter,sans-serif;font-size:8.6pt;font-weight:600;letter-spacing:0}
 .mnotes .lines{flex:1;margin-top:1.4mm;position:relative;overflow:hidden}
 .mnotes .lines i{position:absolute;left:0;right:0;height:0;border-top:1px solid rgba(30,127,134,.35)}
 `;
-const chartCard = (c, days, extra) => `<div class="c${extra || ''}"><div class="h"><h3>${esc(c.title)}</h3><span class="stat ${esc(c.tone || '')}">${esc(c.stat)}</span></div>${renderChart(c, days)}${c.legend ? `<div class="legend">${c.legend}</div>` : ''}</div>`;
-/* W: { patient, period, prepared, tiles[], chart (the mood chart config), days[], sections[{ title, note, rows[{ when, score?, low?, text, sub? }], good? }],
-   charts[] (the small sleep and energy charts), questions[{ team, text, by, lines }], items[] ({ t: 'sec'|'row'|'charts'|'q'|'notes', s, r, q }), pages[[item index]] } */
+/* The mood chart (v156): one axis 0 to 10 for mood (teal line, the low days ringed), the day's worst pain (terracotta,
+   dashed) and hours asleep (mist bars); the treatment sessions as ink triangles under the plot, hospital days shaded.
+   Teal and terracotta pass the colour-vision separation check; ink and teal, the v155 pair, did not read apart. */
+function moodChart(c, days) {
+  const n = days.length, W = 180, H = 62, L = 9, R = 2, T = 3, B = 9, pw = W - L - R, ph = H - T - B;
+  const x = (i) => L + (n > 1 ? i * pw / (n - 1) : pw / 2), y = (v) => T + ph - Math.max(0, Math.min(10, v)) / 10 * ph;
+  const step = n > 1 ? pw / (n - 1) : pw;
+  let s = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" font-family="Inter,sans-serif" role="img" aria-label="Mood, with pain and sleep behind it">`;
+  /* hospital days as a shaded band, runs merged */
+  const hosp = (c.hospital || []).slice().sort((a, b) => a - b);
+  for (let k = 0; k < hosp.length; k++) {
+    let a = hosp[k], b = a; while (k + 1 < hosp.length && hosp[k + 1] === b + 1) { k++; b = hosp[k]; }
+    s += `<rect x="${(x(a) - step / 2).toFixed(1)}" y="${T}" width="${((b - a + 1) * step).toFixed(1)}" height="${ph}" fill="#F8E1DE"/>`;
+    s += `<text x="${x((a + b) / 2).toFixed(1)}" y="${T + 3.2}" font-size="2.8" fill="#B0372E" text-anchor="middle" font-weight="600">In hospital</text>`;
+  }
+  [0, 5, 10].forEach((t) => { s += `<line x1="${L}" x2="${W - R}" y1="${y(t).toFixed(1)}" y2="${y(t).toFixed(1)}" stroke="#E3E9EE" stroke-width=".3"/><text x="${L - 1.5}" y="${(y(t) + 1.1).toFixed(1)}" font-size="3" fill="#5B6B7C" text-anchor="end">${t}</text>`; });
+  const bw = Math.min(step * 0.55, 4);
+  (c.sleep || []).forEach((v, i) => { if (v != null) s += `<rect x="${(x(i) - bw / 2).toFixed(1)}" y="${y(v).toFixed(1)}" width="${bw.toFixed(1)}" height="${(ph - (y(v) - T)).toFixed(1)}" rx=".5" fill="#CFE4E6"/>`; });
+  const path = (arr) => { let d = '', pen = false; arr.forEach((v, i) => { if (v == null) return; d += (pen ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1); pen = true; }); return d; };
+  if ((c.pain || []).some((v) => v != null)) s += `<path d="${path(c.pain)}" fill="none" stroke="#C2703D" stroke-width=".9" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="1.6 1.1"/>`;
+  if ((c.mood || []).some((v) => v != null)) {
+    s += `<path d="${path(c.mood)}" fill="none" stroke="#1E7F86" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/>`;
+    const low = new Set(c.low || []);
+    c.mood.forEach((v, i) => { if (v == null) return; s += low.has(i) ? `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="1.9" fill="#fff" stroke="#8A5E10" stroke-width=".9"/>` : `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="1" fill="#1E7F86"/>`; });
+  }
+  (c.sessions || []).forEach((i) => { s += `<path d="M${(x(i) - 1.6).toFixed(1)} ${(T + ph + 2.4).toFixed(1)} L${(x(i) + 1.6).toFixed(1)} ${(T + ph + 2.4).toFixed(1)} L${x(i).toFixed(1)} ${(T + ph - .2).toFixed(1)} Z" fill="#17263A"/>`; });
+  const want = Math.min(n, 6), shown = [];
+  for (let k = 0; k < want; k++) shown.push(Math.round(k * (n - 1) / Math.max(1, want - 1)));
+  [...new Set(shown)].forEach((i) => { s += `<text x="${x(i).toFixed(1)}" y="${H - 1.8}" font-size="3" fill="#5B6B7C" text-anchor="${i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle'}">${esc(days[i])}</text>`; });
+  if (!(c.mood || []).some((v) => v != null) && !(c.pain || []).some((v) => v != null)) s += `<text x="${(L + pw / 2).toFixed(1)}" y="${(T + ph / 2).toFixed(1)}" font-size="3.4" fill="#5B6B7C" text-anchor="middle">No mood scores in this period</text>`;
+  return s + '</svg>';
+}
+const SW = (bg) => `<i style="background:${bg}"></i>`;
+/* W: { patient, period, prepared, tiles[{ k, v, unit, n, tone }], chart { mood[], pain[], sleep[], sessions[], hospital[], low[], stat, tone }, days[],
+   brief[{ head, text }], briefNote, quotes[{ when, text, low }], quotesNote, helped[{ head, text }], hardest[], weeks[{ label, low{ n, sub, warm }, worried, enjoyed, sleep, sleepSub, sentence, sub }],
+   questions[{ team, text, by }], items[{ t: 'brief'|'quotes'|'two'|'sec'|'wk'|'q'|'notes', s, r, q }], pages[[item index]], noteLines } */
 export function moodReportHtml(W) {
   const total = W.pages.length;
+  const dots = (d) => `<span class="dots">${[1, 2, 3, 4].map((k) => `<i class="${k <= d.n ? (d.warm ? 'on warm' : 'on') : ''}"></i>`).join('')}</span>`;
+  const list = (l) => `<ul>${l.map((x) => `<li>${x.head ? `<b>${esc(x.head)}.</b> ` : ''}${esc(x.text)}</li>`).join('')}</ul>`;
   const pages = W.pages.map((idx, p) => {
-    let html = '', open = null, qopen = false;
-    const close = () => { if (open !== null) { html += '</div>'; open = null; } if (qopen) { html += '</div>'; qopen = false; } };
+    let html = '', open = null;
+    const close = () => { if (open) { html += '</div>'; open = null; } };
     idx.forEach((i) => {
       const it = W.items[i];
+      if (it.t === 'brief') { close(); html += `<div class="wsec" data-i="${i}"><h2 class="sec">The period in brief <small>${esc(W.briefNote)}</small></h2><div class="brief">${W.brief.map((b) => `<p>${b.head ? `<b>${esc(b.head)}.</b> ` : ''}${esc(b.text)}</p>`).join('')}</div></div>`; return; }
+      if (it.t === 'quotes') { close(); html += `<div class="wsec" data-i="${i}"><h2 class="sec">In ${esc(W.patient)}'s own words <small>${esc(W.quotesNote)}</small></h2><div class="quotes${W.quotes.length === 2 ? ' two' : W.quotes.length === 1 ? ' one' : ''}">${W.quotes.map((q) => `<div class="quote${q.low ? ' low' : ''}">${q.when ? `<time>${esc(q.when)}</time>` : ''}“${esc(q.text)}”</div>`).join('')}</div></div>`; return; }
+      if (it.t === 'two') { close(); html += `<div class="two" data-i="${i}"><div class="wsec"><h2 class="sec">What helped</h2>${W.helped.length ? list(W.helped) : '<p class="sm">Nothing written yet.</p>'}</div><div class="wsec"><h2 class="sec">What was hardest</h2>${W.hardest.length ? list(W.hardest) : '<p class="sm">Nothing written yet.</p>'}</div></div>`; return; }
       if (it.t === 'notes') {
         close();
         let l = ''; for (let k = 1; k <= (W.noteLines == null ? 6 : W.noteLines); k++) l += `<i style="top:calc(${k} * 7mm)"></i>`;
         html += `<div class="mnotes" data-i="${i}"><h3>Notes from the session</h3><div class="lines">${l}</div></div>`;
         return;
       }
-      if (it.t === 'charts') { close(); html += `<div class="cgrid" data-i="${i}">${W.charts.map((c) => chartCard(c, W.days)).join('')}</div>`; return; }
-      const sec = W.sections[it.s];
-      if (it.t === 'sec' || open !== it.s) {
+      if (it.t === 'sec' || (it.t === 'wk' && open !== 'weeks') || (it.t === 'q' && open !== 'q')) {
         close();
+        const which = it.t === 'sec' ? it.s : it.t === 'wk' ? 'weeks' : 'q';
         const cont = it.t !== 'sec';
-        html += `<div class="wsec"><h2 class="sec"${cont ? '' : ` data-i="${i}"`}>${esc(sec.title)}${cont ? ', continued' : sec.note ? ` <small>${esc(sec.note)}</small>` : ''}</h2>`;
-        open = it.s;
-        if (sec.questions) { html += '<div class="wq">'; qopen = true; }
+        const title = which === 'weeks' ? 'Week by week' : 'Questions';
+        const note = which === 'weeks' ? 'The evening taps (how much, out of four: not at all to a lot) and the weekly check, in ' + esc(W.patient) + "'s words." : 'Labelled Wellbeing in the app. Space under each to write the reply.';
+        html += `<div class="wsec"><h2 class="sec"${cont ? '' : ` data-i="${i}"`}>${title}${cont ? ', continued' : ` <small>${note}</small>`}</h2>`;
+        if (which === 'weeks') html += '<div class="wkhead"><span>Week</span><span>Felt low</span><span>Worried or on edge</span><span>Enjoyed something</span><span>Sleep</span><span>The week in a sentence</span></div>';
+        if (which === 'q') html += '<div class="wq">';
+        open = which;
+        if (it.t === 'sec') return;
       }
-      if (it.t === 'row') {
-        const r = sec.rows[it.r];
-        if (sec.good) html += `<div class="wrow good" data-i="${i}"><span class="wd">${esc(r.when)}</span><span class="wt">${esc(r.text)}</span></div>`;
-        else html += `<div class="wrow" data-i="${i}"><span class="wd">${esc(r.when)}</span><span class="ws${r.low ? ' low' : ''}">${esc(r.score || '')}</span><span class="wt">${esc(r.text)}${r.sub ? `<small>${esc(r.sub)}</small>` : ''}</span></div>`;
+      if (it.t === 'wk') {
+        const w = W.weeks[it.r];
+        const cell = (d) => (d.n ? `${dots(d)}<span class="sm">${esc(d.sub)}</span>` : '<span class="sm">No taps</span>');
+        html += `<div class="wkrow" data-i="${i}"><span class="n">${esc(w.label)}</span><span>${cell(w.low)}</span><span>${cell(w.worried)}</span><span>${cell(w.enjoyed)}</span><span class="n">${esc(w.sleep)}${w.sleepSub ? `<span class="sm">${esc(w.sleepSub)}</span>` : ''}</span><span>${w.sentence ? '“' + esc(w.sentence) + '”' : '<span class="sm">No weekly check</span>'}${w.sub ? `<span class="sm">${esc(w.sub)}</span>` : ''}</span></div>`;
       }
-      if (it.t === 'none') html += `<p class="wnone" data-i="${i}">${esc(sec.none)}</p>`;
       /* the card's own three ruled lines, never the 40 clipped ones: rules running past the paper, even clipped, make Chrome print a blank page after the last */
       if (it.t === 'q') { const q = W.questions[it.q]; html += `<article class="q" data-i="${i}"><header><div>${q.team ? `<div class="team">${esc(q.team)}</div>` : ''}<h3>${esc(q.text)}</h3><div class="by">${esc(q.by)}</div></div></header><div class="lines" style="min-height:16.2mm">${lines(3)}</div></article>`; }
     });
+    if (open === 'q') html += '</div>';
     close();
+    const c = W.chart;
+    const legend = `<div class="legend"><span>${SW('#1E7F86')}Mood (1 to 10), the day's average</span><span>${SW('#C2703D')}Worst pain (1 to 10)</span><span><i class="swb" style="background:#CFE4E6"></i>Hours asleep</span>${c.sessions.length ? '<span><i class="tri"></i>Treatment session</span>' : ''}${c.hospital.length ? '<span><i class="swb" style="background:#F8E1DE"></i>In hospital</span>' : ''}${c.low.length ? '<span><i class="ring"></i>Mood 4 or under</span>' : ''}</div>`;
     const first = p === 0
-      ? `<div class="masthead"><div><div class="titlerow"><h1>Mood and wellbeing</h1><span class="madeby">Created with <b>My Medical Daybook</b></span></div><div class="sub">How things have felt, in scores and in my own words, for a therapist, counsellor or GP.</div></div><div class="who"><strong>${esc(W.patient)}</strong>Period: ${esc(W.period)}<br>Prepared: ${esc(W.prepared)}</div></div>`
-        + `<div class="tiles">${W.tiles.map(tileHtml).join('')}</div>${chartCard(W.chart, W.days, ' wide')}`
+      ? `<div class="masthead"><div><div class="titlerow"><h1>Mood and wellbeing</h1><span class="madeby">Created with <b>My Medical Daybook</b></span></div><div class="sub">How the period has felt, in scores and in ${esc(W.patient)}'s own words, for a therapist, counsellor or GP.</div></div><div class="who"><strong>${esc(W.patient)}</strong>Period: ${esc(W.period)}<br>Prepared: ${esc(W.prepared)}</div></div>`
+        + `<div class="tiles mood">${W.tiles.map((t) => `<div class="tile ${esc(t.tone || '')}"><div class="k">${esc(t.k)}</div><div class="v">${esc(t.v)}${t.unit ? `<em>${esc(t.unit)}</em>` : ''}</div><div class="n">${esc(t.n)}</div></div>`).join('')}</div>`
+        + `<div class="c wide"><div class="h"><h3>Mood, with pain and sleep behind it</h3><span class="stat ${esc(c.tone || '')}">${esc(c.stat)}</span></div>${moodChart(c, W.days)}${legend}</div>`
       : `<div class="runner"><h2>Mood and wellbeing</h2><span>${esc(W.patient)} · ${esc(W.period)}</span></div>`;
-    return `<section class="page" id="page${p + 1}">${first}<div class="wbody">${html}</div><div class="foot"><span>Scores and words as logged in Daybook. Not medical advice.</span>${madeBy(p + 1, total)}</div></section>`;
+    return `<section class="page" id="page${p + 1}">${first}<div class="wbody">${html}</div><div class="foot"><span>Scores and words as logged in Daybook${W.briefNote.startsWith('Written by') ? '; the brief is written by an AI helper and checked by ' + esc(W.patient) : ''}. Not medical advice.</span>${madeBy(p + 1, total)}</div></section>`;
   }).join('\n');
   return `<!doctype html>
 <html lang="en-GB">

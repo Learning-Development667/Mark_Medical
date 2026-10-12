@@ -565,6 +565,11 @@ const EXPLAIN_SYSTEM = {
     'The notes come grouped by week, each group headed "Week from YYYY-MM-DD". For each week give two to four short points of what stood out: symptoms and how bad they were, anything new or changing, anything the patient or carer was worried about. Keep their own words where they are clear. Leave out routine answers such as "nothing new". ' +
     'Reply with JSON only, no prose and no code fence, in exactly this shape: {"weeks": [{"from": "YYYY-MM-DD", "points": [string]}]}, one entry per week given, in the same order, "from" copied from its heading. Each point under 20 words. ' +
     'Do not add advice, interpretation, diagnosis or reassurance, and do not add anything the notes do not say. No em dashes.',
+  mood: 'You write the Mood and wellbeing report a patient hands to a therapist, counsellor or GP, from the scores and notes they logged day by day in a health app, in plain UK English, in the first person about the patient by name as given. ' +
+    'You are given the period, the conditions the app is set up for, then one line per day (mood morning and evening out of 10; worst pain out of 10; hours slept; three evening taps, felt low, worried or on edge and enjoyed something, each 0 not at all to 3 a lot; treatment sessions; days in hospital) with that day\'s notes under it (what is behind the mood, how rested, how was today, one good thing), then the weekly checks. ' +
+    'Reply with JSON only, no prose and no code fence, in exactly this shape: {"brief": [{"head": "Overall", "text": string}, {"head": "What lifted mood", "text": string}, {"head": "What pulled it down", "text": string}, {"head": "Sleep and pain", "text": string}], "quotes": [{"when": "D Mon, morning" or "D Mon, evening", "text": string, "low": true or false}], "helped": [{"head": string, "text": string}], "hardest": [{"head": string, "text": string}]}. ' +
+    'The four brief paragraphs are each under 70 words and only say what the scores and notes show: patterns over the period, the swings and what went with them, with dates. Quotes: the three notes that best carry how the person felt (one of them from a low day if there was one), each under 45 words, tidied for dictation and typing slips with the meaning and the person\'s own phrasing kept, never rewritten into other words and never invented; "low" is true when that day\'s mood was 4 or under. helped and hardest: up to four themes each, head of two to four words, text under 25 words, drawn from the notes and the weekly checks, naming days or counts where they help. ' +
+    'Never diagnose, advise, reassure or interpret beyond what was written; no medical terms the person did not use; no em dashes; UK English.',
   report: 'You prepare the notes part of a two-page summary a patient hands to their oncologist or specialist nurse, from the patient\'s and carer\'s own care notes written day by day in a health app, in plain UK English. ' +
     'You are given the report period, the medicines on the list, the open questions for the team and the notes, grouped into weeks headed "Week N, YYYY-MM-DD to YYYY-MM-DD", each note with who wrote it, the date and time. ' +
     'For each week write one theme sentence under 20 words summarising the week, then at most six short dated entries in date order, each one to three short lines (under 40 words). Summarise, do not copy every note: merge days with similar content into one entry with a "to" date, leave out routine answers such as "nothing new", keep the patient\'s meaning and their own words where they are clear, and where the patient raised a question inside a note keep it as a question. Mark an entry alert when it records a new or worsening symptom, a hospital visit or admission, or a high reading the note itself mentions. ' +
@@ -811,7 +816,7 @@ async function handleExplain(request, env) {
 
   let body;
   try { body = await request.json(); } catch (e) { return json({ error: 'bad-request', message: 'Could not read what was sent. Try again.' }, 400); }
-  const kind = ['notes', 'programme', 'medicine', 'weekly', 'report'].includes(body.kind) ? body.kind : 'document';
+  const kind = ['notes', 'programme', 'medicine', 'weekly', 'report', 'mood'].includes(body.kind) ? body.kind : 'document';
   const text = String(body.text || '').slice(0, EXPLAIN_MAX_TEXT_CHARS);
   const pages = Array.isArray(body.pages) ? body.pages.slice(0, EXPLAIN_MAX_PAGES).filter((p) => typeof p === 'string' && p.length > 100 && p.length <= EXPLAIN_MAX_PAGE_CHARS) : [];
   if (!text.trim() && !pages.length) return json({ error: 'bad-request', message: 'Nothing to explain.' }, 400);
@@ -832,7 +837,8 @@ async function handleExplain(request, env) {
     : kind === 'programme' ? 'The exercise or physiotherapy plan follows, as page photos or as text.'
     : kind === 'medicine' ? 'A photo of a medicine follows.'
     : kind === 'weekly' ? 'Care notes from Daybook, grouped by week.'
-    : kind === 'report' ? 'Care notes and open questions from Daybook, for the two-page report.' : 'Care notes from Daybook.';
+    : kind === 'report' ? 'Care notes and open questions from Daybook, for the two-page report.'
+    : kind === 'mood' ? 'Scores and notes from Daybook, day by day, for the Mood and wellbeing report.' : 'Care notes from Daybook.';
   content.push({ type: 'text', text: head + (text.trim() ? '\n\n' + text : '\n\n(The document is in the attached page photos.)') });
   let reply;
   try { reply = await askClaude(env, EXPLAIN_SYSTEM[kind], content); }
