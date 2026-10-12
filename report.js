@@ -135,6 +135,8 @@ export function renderChart(cfg, days) {
     const anchor = n > 1 && i === 0 ? 'start' : n > 1 && i === n - 1 ? 'end' : 'middle';
     s += `<text x="${x(i).toFixed(1)}" y="${H - 3}" font-size="6.2" fill="${C.slate}" text-anchor="${anchor}">${esc(days[i])}</text>`;
   });
+  /* small marks under the plot for the days passed in cfg.marks (treatment sessions on the mood chart, v155) */
+  (cfg.marks || []).forEach((i) => { if (i >= 0 && i < n) s += `<path d="M${(x(i) - 1.6).toFixed(1)} ${(T + ph + 2.2).toFixed(1)} L${(x(i) + 1.6).toFixed(1)} ${(T + ph + 2.2).toFixed(1)} L${x(i).toFixed(1)} ${(T + ph - 0.4).toFixed(1)} Z" fill="${C.ink}"/>`; });
   const any = cfg.series.some((se) => se.d.some((v) => v != null));
   if (!any) {
     s += `<text x="${L + pw / 2}" y="${T + ph / 2 + 2}" font-size="7" fill="${C.slate}" text-anchor="middle">No readings in this period</text>`;
@@ -665,12 +667,13 @@ ${pages}
 /* Lays the rows out page by page: renders, finds the first heading or row whose bottom passes its
    page's foot, moves it (and the section and group headings above it, never left alone at a page's
    foot) and everything after it to the next page, and renders again, until every page fits */
-export async function fitMedsReport(frame, M, opts = {}) {
+export function fitMedsReport(frame, M, opts = {}) { return paginate(frame, M, medsReportHtml, opts); }
+async function paginate(frame, M, render, opts = {}) {
   const write = (html) => new Promise((resolve) => { frame.onload = () => resolve(); frame.srcdoc = html; });
   M.pages = [M.items.map((_, i) => i)];
   M.noteLines = null;
   for (let pass = 0; pass < 200; pass++) {
-    await write(medsReportHtml(M));
+    await write(render(M));
     const doc = frame.contentDocument;
     doc.documentElement.classList.add('capture');
     if (doc.fonts && doc.fonts.ready) await Promise.race([doc.fonts.ready, new Promise((r) => setTimeout(r, opts.fontWait || 3000))]);
@@ -700,3 +703,93 @@ export async function fitMedsReport(frame, M, opts = {}) {
   }
   return { ok: false, over: ['Report'], R: M };
 }
+
+/* ------------------------------------------------------------------ */
+/* The Mood and wellbeing report (since v155, 12 October 2026).        */
+/* Mark, before a therapy session: "it might have been useful if I    */
+/* could have had a report like the others." The house style, as many */
+/* A4 pages as it needs: tiles, the mood chart with the sessions      */
+/* marked, then the words behind the scores in time order, one good   */
+/* thing each day, sleep and energy, questions labelled Wellbeing and */
+/* a panel to write on. Every figure arrives in W already worked out  */
+/* (buildMoodReport() in scripts.js). Paginated by paginate().        */
+/* ------------------------------------------------------------------ */
+const MOOD_CSS = `
+.tile.teal{background:var(--teal-soft);border-top-color:var(--teal)}
+.wbody{flex:1;display:flex;flex-direction:column;gap:4mm;min-height:0}
+.wsec h2{margin-bottom:1.6mm}
+.c.wide{margin-top:1mm}
+.c .legend{display:flex;gap:4mm;font-size:6.8pt;color:var(--slate);margin-top:.6mm}
+.c .legend i{display:inline-block;width:3mm;height:1.2mm;border-radius:.6mm;margin-right:1.2mm;vertical-align:middle}
+.c .legend .tri{display:inline-block;width:0;height:0;border-left:1.4mm solid transparent;border-right:1.4mm solid transparent;border-bottom:2.2mm solid var(--ink);margin-right:1.2mm;vertical-align:middle}
+.wrow{display:grid;grid-template-columns:24mm 11mm 1fr;gap:2.4mm;padding:1.6mm 0;border-bottom:1px solid var(--line);font-size:8.2pt;line-height:1.35;align-items:start}
+.wrow.good{grid-template-columns:24mm 1fr}
+.wrow .wd{color:var(--slate);font-size:7.4pt;padding-top:.3mm}
+.wrow .ws{font-weight:600;white-space:nowrap}
+.wrow .ws.low{color:var(--amber-ink,#8A5E10)}
+.wrow .wt{overflow-wrap:anywhere}
+.wrow .wt small{display:block;color:var(--slate);font-size:7pt;margin-top:.3mm}
+.wnone{color:var(--slate);font-size:8.2pt}
+.wq{display:grid;grid-template-columns:1fr 1fr;gap:2.6mm}
+.mnotes{background:var(--teal-soft);border-radius:2.4mm;padding:3mm 3.6mm;display:flex;flex-direction:column;flex:1;min-height:42mm}
+.mnotes h3{font-family:Inter,sans-serif;font-size:8.6pt;font-weight:600;letter-spacing:0}
+.mnotes .lines{flex:1;margin-top:1.4mm;position:relative;overflow:hidden}
+.mnotes .lines i{position:absolute;left:0;right:0;height:0;border-top:1px solid rgba(30,127,134,.35)}
+`;
+const chartCard = (c, days, extra) => `<div class="c${extra || ''}"><div class="h"><h3>${esc(c.title)}</h3><span class="stat ${esc(c.tone || '')}">${esc(c.stat)}</span></div>${renderChart(c, days)}${c.legend ? `<div class="legend">${c.legend}</div>` : ''}</div>`;
+/* W: { patient, period, prepared, tiles[], chart (the mood chart config), days[], sections[{ title, note, rows[{ when, score?, low?, text, sub? }], good? }],
+   charts[] (the small sleep and energy charts), questions[{ team, text, by, lines }], items[] ({ t: 'sec'|'row'|'charts'|'q'|'notes', s, r, q }), pages[[item index]] } */
+export function moodReportHtml(W) {
+  const total = W.pages.length;
+  const pages = W.pages.map((idx, p) => {
+    let html = '', open = null, qopen = false;
+    const close = () => { if (open !== null) { html += '</div>'; open = null; } if (qopen) { html += '</div>'; qopen = false; } };
+    idx.forEach((i) => {
+      const it = W.items[i];
+      if (it.t === 'notes') {
+        close();
+        let l = ''; for (let k = 1; k <= (W.noteLines == null ? 6 : W.noteLines); k++) l += `<i style="top:calc(${k} * 7mm)"></i>`;
+        html += `<div class="mnotes" data-i="${i}"><h3>Notes from the session</h3><div class="lines">${l}</div></div>`;
+        return;
+      }
+      if (it.t === 'charts') { close(); html += `<div class="cgrid" data-i="${i}">${W.charts.map((c) => chartCard(c, W.days)).join('')}</div>`; return; }
+      const sec = W.sections[it.s];
+      if (it.t === 'sec' || open !== it.s) {
+        close();
+        const cont = it.t !== 'sec';
+        html += `<div class="wsec"><h2 class="sec"${cont ? '' : ` data-i="${i}"`}>${esc(sec.title)}${cont ? ', continued' : sec.note ? ` <small>${esc(sec.note)}</small>` : ''}</h2>`;
+        open = it.s;
+        if (sec.questions) { html += '<div class="wq">'; qopen = true; }
+      }
+      if (it.t === 'row') {
+        const r = sec.rows[it.r];
+        if (sec.good) html += `<div class="wrow good" data-i="${i}"><span class="wd">${esc(r.when)}</span><span class="wt">${esc(r.text)}</span></div>`;
+        else html += `<div class="wrow" data-i="${i}"><span class="wd">${esc(r.when)}</span><span class="ws${r.low ? ' low' : ''}">${esc(r.score || '')}</span><span class="wt">${esc(r.text)}${r.sub ? `<small>${esc(r.sub)}</small>` : ''}</span></div>`;
+      }
+      if (it.t === 'none') html += `<p class="wnone" data-i="${i}">${esc(sec.none)}</p>`;
+      /* the card's own three ruled lines, never the 40 clipped ones: rules running past the paper, even clipped, make Chrome print a blank page after the last */
+      if (it.t === 'q') { const q = W.questions[it.q]; html += `<article class="q" data-i="${i}"><header><div>${q.team ? `<div class="team">${esc(q.team)}</div>` : ''}<h3>${esc(q.text)}</h3><div class="by">${esc(q.by)}</div></div></header><div class="lines" style="min-height:16.2mm">${lines(3)}</div></article>`; }
+    });
+    close();
+    const first = p === 0
+      ? `<div class="masthead"><div><div class="titlerow"><h1>Mood and wellbeing</h1><span class="madeby">Created with <b>My Medical Daybook</b></span></div><div class="sub">How things have felt, in scores and in my own words, for a therapist, counsellor or GP.</div></div><div class="who"><strong>${esc(W.patient)}</strong>Period: ${esc(W.period)}<br>Prepared: ${esc(W.prepared)}</div></div>`
+        + `<div class="tiles">${W.tiles.map(tileHtml).join('')}</div>${chartCard(W.chart, W.days, ' wide')}`
+      : `<div class="runner"><h2>Mood and wellbeing</h2><span>${esc(W.patient)} · ${esc(W.period)}</span></div>`;
+    return `<section class="page" id="page${p + 1}">${first}<div class="wbody">${html}</div><div class="foot"><span>Scores and words as logged in Daybook. Not medical advice.</span>${madeBy(p + 1, total)}</div></section>`;
+  }).join('\n');
+  return `<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<title>Mood and wellbeing, ${esc(W.patient)}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>${CSS}${MOOD_CSS}</style>
+</head>
+<body class="mood">
+${pages}
+</body>
+</html>`;
+}
+export function fitMoodReport(frame, W, opts = {}) { return paginate(frame, W, moodReportHtml, opts); }

@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '154';
+const APP_VERSION = '155';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -622,6 +622,7 @@ const state = {
   trendRange: 7,
   foodRange: 14,
   notesRange: 14,
+  moodRange: 28,
   foodRangeMode: 'preset',
   notesRangeMode: 'preset',
   foodCustomFrom: null,
@@ -1695,7 +1696,7 @@ document.querySelectorAll('.tab').forEach((btn) => {
 
 /* The topbar carries the page name ("Care Log: Food diary"), so the report
    pages and the Chemo tab no longer need a heading of their own */
-const PAGE_TITLES = { today: 'Today', meds: 'Medicines', vitals: 'Reports', chemo: 'Treatment plan', exercise: 'Exercise', more: 'More', food: 'Food diary', notes: 'Notes for the team', docs: 'Documents', settings: 'Settings' };
+const PAGE_TITLES = { today: 'Today', meds: 'Medicines', vitals: 'Reports', chemo: 'Treatment plan', exercise: 'Exercise', more: 'More', food: 'Food diary', notes: 'Notes for the team', mood: 'Mood and wellbeing', docs: 'Documents', settings: 'Settings' };
 function setBrand(page) {
   $('brand').replaceChildren('Daybook', page ? h('span', { class: 'brand-page', text: ': ' + page }) : null);
   document.title = page ? 'Daybook: ' + page : 'My Medical Daybook';
@@ -1706,7 +1707,7 @@ function showTab(name) {
   let highlight = name;
   if (name === 'docs') highlight = state.docsReturn || 'more';
   if (name === 'settings') highlight = 'more';
-  if (highlight === 'food' || highlight === 'notes') highlight = state.reportReturn || 'vitals';
+  if (highlight === 'food' || highlight === 'notes' || highlight === 'mood') highlight = state.reportReturn || 'vitals';
   document.querySelectorAll('.tab').forEach((b) => { const on = b.dataset.tab === highlight; b.classList.toggle('is-active', on); if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
   document.querySelectorAll('.view').forEach((v) => { v.hidden = v.dataset.view !== name; });
   setBrand(PAGE_TITLES[name] || '');
@@ -1717,6 +1718,7 @@ function showTab(name) {
   if (name === 'vitals') renderVitals();
   if (name === 'food') renderFoodDiary();
   if (name === 'notes') renderNotesReport();
+  if (name === 'mood') renderMoodReport();
   if (name === 'chemo') renderChemo();
   if (name === 'exercise') renderExercise();
   if (name === 'docs') showDocsList();
@@ -1970,7 +1972,7 @@ function entrySub(e) {
   if (e.type === 'pain' && e.note) bits.push(e.note);
   if (e.type === 'symptom') { bits.push('Symptom'); if (e.note) bits.push(e.note); }
   if (e.type === 'bowel') { const ts = bowelTypes(e); if (ts.length > 1) bits.push(ts.map((t) => bristolName(t)).join(', ')); const f = bowelFlagWords(e); if (f) bits.push(f); if (e.note) bits.push(e.note); }
-  if (e.type === 'question') bits.push((isDietitianQ(e) ? 'Question for the dietitian' : 'Question for the team') + (e.answered ? ', answered' : '') + (isDietitianQ(e) ? '' : ' · ' + teamLabel(teamOf(e))));
+  if (e.type === 'question') bits.push((isDietitianQ(e) ? 'Question for the dietitian' : isWellbeingQ(e) ? 'Question for the therapist' : 'Question for the team') + (e.answered ? ', answered' : '') + (isDietitianQ(e) || isWellbeingQ(e) ? '' : ' · ' + teamLabel(teamOf(e))));
   if (e.type === 'question' && e.answerText) bits.push('Answer: ' + excerpt(e.answerText, 90));
   if (e.type === 'question' && e.recordings) bits.push(plural(e.recordings, 'recording'));
   if (e.type === 'weight' && Number(e.bmi) > 0) bits.push('BMI ' + Number(e.bmi).toFixed(1));
@@ -2871,7 +2873,7 @@ function openAdd(type, editEntry) {
     const teamHint = h('p', { class: 'hint' });
     const drawTeams = () => {
       teamRow.replaceChildren(...QUESTION_TEAMS.map(([k, label]) => h('button', { class: 'preset' + (team === k ? ' is-active' : ''), type: 'button', 'aria-pressed': team === k ? 'true' : 'false', onclick: () => { team = k; drawTeams(); } }, label)));
-      teamHint.textContent = team === 'dietitian' ? 'Goes on the Food diary screen and report, for the dietitian, and stays there until it is marked as answered.' : 'Goes to the top of Notes for the team, and stays there until it is marked as answered.';
+      teamHint.textContent = team === 'dietitian' ? 'Goes on the Food diary screen and report, for the dietitian, and stays there until it is marked as answered.' : team === 'wellbeing' ? 'Goes on the Mood and wellbeing screen and report, for a therapist, counsellor or GP, and stays there until it is marked as answered.' : 'Goes to the top of Notes for the team, and stays there until it is marked as answered.';
     };
     drawTeams();
     body.append(
@@ -3263,6 +3265,9 @@ function openReport(name, from) {
 $('rep-food').addEventListener('click', () => openReport('food', 'vitals'));
 $('rep-notes').addEventListener('click', () => openReport('notes', 'vitals'));
 $('rep-docs').addEventListener('click', () => openDocs('vitals'));
+$('rep-mood').addEventListener('click', () => openReport('mood', 'vitals'));
+$('mood-back').addEventListener('click', () => showTab(state.reportReturn || 'vitals'));
+$('mood-print').addEventListener('click', () => openReportViewer('mood', true));
 $('food-back').addEventListener('click', () => showTab(state.reportReturn || 'vitals'));
 $('food-print').addEventListener('click', () => openReportViewer('food', true));
 /* ---- Report ranges: the 7/14/30/90 day presets, or a custom From and To ----
@@ -3326,6 +3331,7 @@ function wireReportRange(kind, render) {
 }
 wireReportRange('food', () => renderFoodDiary());
 wireReportRange('notes', () => renderNotesReport());
+wireReportRange('mood', () => renderMoodReport());
 
 function fmtMl(ml) {
   return ml >= 1000 ? (ml / 1000).toFixed(2).replace(/0+$/, '').replace(/\.$/, '') + ' L' : ml + ' ml';
@@ -4430,6 +4436,15 @@ const SEND_KINDS = {
     attached: (range) => `Attached: Food diary, ${range}, two pages.`,
     check: ' Use Preview on the Food diary to look at it first.'
   },
+  mood: {
+    data: () => state.moodPdf,
+    file: (n) => n.filename,
+    blob: () => moodReportBlob(),
+    subject: (range) => `My mood and wellbeing, ${range}`,
+    words: (range, n) => `Ahead of our session, here is my mood and wellbeing report from Daybook for ${range}: my mood scores morning and evening with the words I gave behind them, one good thing from each day, sleep and energy${n && n.questions && n.questions.length ? `, and ${n.questions.length === 1 ? 'a question' : n.questions.length + ' questions'} I would like to ask` : ''}.`,
+    attached: (range) => `Attached: Mood and wellbeing, ${range}.`,
+    check: ' Use Preview on the Mood and wellbeing screen to look at it first.'
+  },
   meds: {
     data: () => state.medsPdf,
     file: (n) => n.filename,
@@ -4510,6 +4525,9 @@ function openSendSheet(kind) {
 }
 $('notes-send').addEventListener('click', () => openSendSheet('notes'));
 $('food-send').addEventListener('click', () => openSendSheet('food'));
+$('mood-send').addEventListener('click', () => openSendSheet('mood'));
+$('mood-preview').addEventListener('click', () => { if (state.moodPdf) openReportViewer('mood', false); });
+$('mood-pdf').addEventListener('click', () => { if (state.moodPdf) savePdf(state.moodPdf.filename, state.moodPdf.title, moodReportBlob); });
 $('notes-record').addEventListener('click', openAppointmentSheet);
 
 
@@ -4908,7 +4926,7 @@ function buildTwoPage(n) {
 
 /* The report fitted into a hidden frame (two A4 pages or nothing), ready to print or turn into a PDF */
 let reportModule = null;
-const REPORT_NAMES = { notes: 'Notes for the team', food: 'Food diary', meds: 'Medicine history' };
+const REPORT_NAMES = { notes: 'Notes for the team', food: 'Food diary', meds: 'Medicine history', mood: 'Mood and wellbeing' };
 /* One hidden frame per report (v121), so the fitted Notes for the team survives a Food diary fit */
 function reportFrame(kind) {
   const id = 'report-frame-' + (kind || 'notes');
@@ -4923,11 +4941,12 @@ function reportFrame(kind) {
    because every Preview, Print, Save and Send fitted the whole report again). The key is the report's
    own data object (replaced on every redraw), the Daybook Assistant summary and the settings the
    report reads; fits on one frame run one after another, never at once. */
-const fitMemo = { notes: null, food: null, meds: null };
-const fitQueue = { notes: Promise.resolve(), food: Promise.resolve(), meds: Promise.resolve() };
+const fitMemo = { notes: null, food: null, meds: null, mood: null };
+const fitQueue = { notes: Promise.resolve(), food: Promise.resolve(), meds: Promise.resolve(), mood: Promise.resolve() };
 function fitKey(kind) {
   const p = state.profile || {};
   if (kind === 'meds') return [state.medsPdf, p.reportName, state.patientName, state.medicines];
+  if (kind === 'mood') return [state.moodPdf, p.reportName, state.patientName, state.days];
   return kind === 'food' ? [state.foodPdf, p.reportName, state.patientName, p.proteinTarget, p.detailedNutrition, state.nutrition]
     : [state.notesPdf, state.notesAI, p.reportName, state.patientName, p.proteinTarget];
 }
@@ -4943,8 +4962,8 @@ function memoFit(kind, run) {
 /* Started quietly when a report screen is drawn, so the first tap finds the pages ready */
 function warmReport(kind) {
   setTimeout(() => {
-    if ($(kind === 'food' ? 'view-food' : 'view-notes').hidden) return;
-    (kind === 'food' ? fittedFoodReport() : fittedReport()).catch(() => {});
+    if ($('view-' + (kind === 'notes' ? 'notes' : kind)).hidden) return;
+    (kind === 'food' ? fittedFoodReport() : kind === 'mood' ? fittedMoodReport() : fittedReport()).catch(() => {});
     loadScript(CDN.jspdf).catch(() => {});
     loadScript(CDN.html2canvas).catch(() => {});
   }, 900);
@@ -5294,7 +5313,8 @@ const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platfo
 const REPORT_KINDS = {
   notes: { data: () => state.notesPdf, fit: () => fittedReport(), blob: () => notesReportBlob(), html: (R) => reportModule.reportHtml(R) },
   food: { data: () => state.foodPdf, fit: () => fittedFoodReport(), blob: () => foodReportBlob(), html: (R) => reportModule.foodReportHtml(R) },
-  meds: { data: () => state.medsPdf, fit: () => fittedMedsReport(), blob: () => medsReportBlob(), html: (R) => reportModule.medsReportHtml(R) }
+  meds: { data: () => state.medsPdf, fit: () => fittedMedsReport(), blob: () => medsReportBlob(), html: (R) => reportModule.medsReportHtml(R) },
+  mood: { data: () => state.moodPdf, fit: () => fittedMoodReport(), blob: () => moodReportBlob(), html: (R) => reportModule.moodReportHtml(R) }
 };
 function printThroughShare(kind, makeBlob) {
   toast('Making the PDF. Choose Print in the share sheet.');
@@ -5304,7 +5324,7 @@ async function openReportViewer(kind, printNow) {
   const K = REPORT_KINDS[kind];
   if (printNow && IS_IOS) { printThroughShare(kind, K.blob); return; }
   const name = REPORT_NAMES[kind];
-  const body = h('div', { class: 'viewer' }, h('p', { class: 'hint', text: kind === 'meds' ? 'Making the pages, a few seconds.' : 'Making the two pages, a few seconds.' }));
+  const body = h('div', { class: 'viewer' }, h('p', { class: 'hint', text: kind === 'meds' || kind === 'mood' ? 'Making the pages, a few seconds.' : 'Making the two pages, a few seconds.' }));
   openSheet(name, body);
   let res = null;
   try { res = await K.fit(); }
@@ -5776,9 +5796,10 @@ function weekLabel(w) { return w.from === w.to ? fmtDayLong(w.from) : `${w.from.
 function buildNotesReport(entries, questionsAll, from, to, rangeLabel) {
   const glance = summaryRows(entries, from, to);
   /* Open questions by team (v133): the oncologist's first, then gastro, general and not sure; dietitian ones go to the Food diary report and are only counted here */
-  const open = sortQuestions(questionsAll.filter((q) => !q.answered && !isDietitianQ(q)));
+  const open = sortQuestions(questionsAll.filter((q) => !q.answered && !isDietitianQ(q) && !isWellbeingQ(q)));
   const questions = open.map((q) => ({ id: q.id, team: teamOf(q), teamLabel: teamLabel(teamOf(q)), text: q.note, who: q.addedBy || 'unknown', day: q.day }));
   const dietitian = questionsAll.filter((q) => !q.answered && isDietitianQ(q)).length;
+  const wellbeing = questionsAll.filter((q) => !q.answered && isWellbeingQ(q)).length;
   const dayAnswered = (q) => answeredDayOf(q) || q.day;
   const answers = questionsAll.filter((q) => q.answered && dayAnswered(q) >= from && dayAnswered(q) <= to)
     .sort((a, b) => entryDate(a) - entryDate(b))
@@ -5811,6 +5832,7 @@ function buildNotesReport(entries, questionsAll, from, to, rangeLabel) {
   if (questions.length) questions.forEach((q) => lines.push(`- ${q.teamLabel}: ${q.text} (${q.who}, ${fmtDayShort(q.day)})`));
   else lines.push('- No open questions.');
   if (dietitian) lines.push(`- ${plural(dietitian, 'question')} for the dietitian ${dietitian === 1 ? 'is' : 'are'} on the Food diary report.`);
+  if (wellbeing) lines.push(`- ${plural(wellbeing, 'question')} for the therapist ${wellbeing === 1 ? 'is' : 'are'} on the Mood and wellbeing report.`);
   lines.push('', 'Summary (simple checks by the app, not a diagnosis):');
   if (glance.length) glance.forEach((g) => lines.push(`- ${LEVEL_WORD[g.level]}: ${g.text}`));
   else lines.push('- No readings logged in this period.');
@@ -5820,7 +5842,7 @@ function buildNotesReport(entries, questionsAll, from, to, rangeLabel) {
     d.notes.forEach((n) => lines.push(`- ${n.who}, ${n.time}${n.context ? ' (' + n.context + ')' : ''}: ${n.text}`));
   });
   else lines.push('- No written notes in this period.');
-  return { questions, dietitian, answers, answered, glance, days, weeks: notesByWeek(days, from, to), rangeLabel, text: lines.join('\n') };
+  return { questions, dietitian, wellbeing, answers, answered, glance, days, weeks: notesByWeek(days, from, to), rangeLabel, text: lines.join('\n') };
 }
 
 /* The name on the report: Settings' "Name on the report" if set, else the member whose relation is the patient */
@@ -5867,6 +5889,7 @@ async function renderNotesReport() {
   $('notes-questions').replaceChildren(...report.questions.map((q) => questionCard(q, renderNotesReport)));
   if (!report.questions.length) $('notes-questions').append(h('p', { class: 'muted', text: 'No open questions. Add one from Today with "Question for the team".' }));
   if (report.dietitian) $('notes-questions').append(h('p', { class: 'muted', text: `${plural(report.dietitian, 'question')} for the dietitian ${report.dietitian === 1 ? 'is' : 'are'} on the Food diary, with its report.` }));
+  if (report.wellbeing) $('notes-questions').append(h('p', { class: 'muted', text: `${plural(report.wellbeing, 'question')} for the therapist ${report.wellbeing === 1 ? 'is' : 'are'} on the Mood and wellbeing report.` }));
   /* Answered questions are filed, not listed (v114): one line and a way to the documents */
   syncAnswerDocs(questionsAll);
   if (report.answered) {
@@ -6355,6 +6378,112 @@ async function loadMedDoses(m) {
   const snap = await getDocs(query(hcol('entries'), where('type', '==', 'med'), where('medId', '==', m.id)));
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
+/* ---------- Mood and wellbeing (v155) ----------
+   Mark, before a therapy session (12 October 2026): a report like the others, for a therapist, counsellor or GP.
+   Nothing new is logged: the morning and evening mood scores and the words behind them (moodNote), how the night
+   was (sleep, sleepNote), energy, one good thing, the treatment sessions, and questions labelled Wellbeing. The
+   screen shows the tiles, the words in time order and the good things; Preview, Print, Save as PDF and Send by
+   email use moodReportHtml() in report.js, as many A4 pages as it needs. */
+async function renderMoodReport() {
+  const range = reportRange('mood');
+  const { from, to } = range;
+  $('mood-sub').textContent = reportRangeLabel('mood', range);
+  const [loaded, questionsAll] = await Promise.all([loadEntriesFrom(from), loadQuestions()]);
+  if (!loaded) return;
+  const entries = loaded.filter((e) => e.day <= to);
+  const qs = sortQuestions(questionsAll.filter((q) => !q.answered && isWellbeingQ(q)));
+  state.moodPdf = { from, to, entries, questions: qs.map((q) => ({ id: q.id, team: 'wellbeing', teamLabel: 'Wellbeing', text: q.note, who: q.addedBy || 'unknown', day: q.day })), filename: `Daybook mood and wellbeing ${to}.pdf`, title: 'Mood and wellbeing' };
+  loadPatientName();
+  $('mood-questions-section').hidden = !qs.length;
+  $('mood-questions').replaceChildren(...state.moodPdf.questions.map((q) => questionCard(q, renderMoodReport)));
+  const W = buildMoodReport(state.moodPdf);
+  $('mood-tiles').replaceChildren(...W.tiles.map((t) => h('div', { class: 'tile' + (t.tone ? ' is-' + t.tone : '') },
+    h('span', { class: 'tile-label', text: t.k }), h('span', { class: 'tile-value' }, t.v, t.unit ? h('small', { text: t.unit }) : null), h('span', { class: 'tile-sub', text: t.note }))));
+  const words = W.sections[0], good = W.sections[1];
+  $('mood-words').replaceChildren(...(words.rows.length ? words.rows.map((r) => h('div', { class: 'wordrow' }, h('span', { class: 'wd', text: r.when }), h('span', { class: 'wt' }, h('span', { class: 'ws' + (r.low ? ' is-low' : ''), text: r.score }), r.text, r.sub ? h('small', { text: r.sub }) : null))) : [h('p', { class: 'muted', text: words.none })]));
+  $('mood-good').replaceChildren(...(good.rows.length ? good.rows.map((r) => h('div', { class: 'wordrow' }, h('span', { class: 'wd', text: r.when }), h('span', { class: 'wt', text: r.text }))) : [h('p', { class: 'muted', text: good.none })]));
+  $('mood-send').hidden = state.readOnly || state.viewer;
+  warmReport('mood');
+}
+function buildMoodReport(n) {
+  const { from, to, entries } = n;
+  const days = []; for (let d = from; d <= to; d = addDays(d, 1)) days.push(d);
+  const ci = entries.filter(isPatientCheckin);
+  const score = (e, k) => (e[k] == null || e[k] === '' ? null : Number(e[k]));
+  const perSlot = (slot) => days.map((d) => { const e = ci.find((x) => x.day === d && x.slot === slot); const v = e ? score(e, 'mood') : null; return v == null || isNaN(v) ? null : v; });
+  const morning = perSlot('morning'), evening = perSlot('evening');
+  const all = ci.map((e) => score(e, 'mood')).filter((v) => v != null && !isNaN(v));
+  const avg = (l) => (l.length ? Math.round(l.reduce((t, v) => t + v, 0) / l.length * 10) / 10 : null);
+  const moodAvg = avg(all);
+  const lowDays = days.filter((d) => ci.some((e) => e.day === d && score(e, 'mood') != null && score(e, 'mood') <= 4));
+  const lowest = ci.filter((e) => score(e, 'mood') != null).sort((a, b) => score(a, 'mood') - score(b, 'mood') || a.day.localeCompare(b.day))[0];
+  const sleeps = entries.filter((e) => e.type === 'sleep' && e.day >= from && e.day <= to && Number(e.value) > 0);
+  const nights = days.map((d) => { const l = sleeps.filter((e) => e.day === d); return l.length ? Math.round(Math.max(...l.map((e) => Number(e.value))) / 60 * 10) / 10 : null; });
+  const nightVals = nights.filter((v) => v != null), shortN = nightVals.filter((v) => v < 5).length;
+  const energy = days.map((d) => { const e = ci.find((x) => x.day === d && x.slot === 'evening'); const v = e ? score(e, 'energy') : null; return v == null || isNaN(v) ? null : v; });
+  const energyAvg = avg(energy.filter((v) => v != null));
+  const sessions = days.map((d, i) => (state.days[d] && state.days[d].chemo ? i : -1)).filter((i) => i >= 0);
+  const lowList = lowDays.slice(0, 3).map(rDay).join(', ') + (lowDays.length > 3 ? ' and ' + (lowDays.length - 3) + ' more' : '');
+  const tiles = [
+    { k: 'Mood', v: moodAvg == null ? 'None' : String(moodAvg), unit: moodAvg == null ? '' : 'of 10', tone: moodAvg == null ? '' : lowDays.length ? 'amber' : 'green',
+      note: moodAvg == null ? 'No mood scores in this period.' : `Average of ${plural(all.length, 'score')}. Lowest ${score(lowest, 'mood')} on ${rDay(lowest.day)}.` },
+    { k: 'Low days', v: moodAvg == null ? 'None' : String(lowDays.length), unit: moodAvg == null ? '' : lowDays.length === 1 ? 'day' : 'days', tone: moodAvg == null ? '' : lowDays.length ? 'amber' : 'green',
+      note: moodAvg == null ? 'No mood scores in this period.' : lowDays.length ? `Mood 4 or under: ${lowList}.` : 'No day with mood 4 or under.' },
+    { k: 'Sleep', v: nightVals.length ? String(avg(nightVals)) : 'None', unit: nightVals.length ? 'hours' : '', tone: nightVals.length ? (shortN ? 'amber' : 'green') : '',
+      note: nightVals.length ? `A night on average, from ${plural(nightVals.length, 'night')}. ${shortN ? plural(shortN, 'night') + ' under 5 hours.' : 'None under 5 hours.'}` : 'No sleep logged in this period.' },
+    { k: 'Energy', v: energyAvg == null ? 'None' : String(energyAvg), unit: energyAvg == null ? '' : 'of 10', tone: energyAvg == null ? '' : energyAvg <= 3 ? 'amber' : 'green',
+      note: energyAvg == null ? 'No evening check-ins in this period.' : `Evening average over ${plural(energy.filter((v) => v != null).length, 'evening')}.` }
+  ];
+  const chart = { title: 'Mood (1 to 10), morning and evening', stat: moodAvg == null ? 'No scores' : lowDays.length ? 'Low on ' + plural(lowDays.length, 'day') : 'Steady', tone: moodAvg == null ? '' : lowDays.length ? 'amber' : 'green',
+    min: 0, max: 10, ticks: [0, 5, 10], marks: sessions, series: [{ d: morning, c: REPORT_INK }, { d: evening, c: REPORT_TEAL }],
+    legend: `<span><i style="background:${REPORT_INK}"></i>Morning</span><span><i style="background:${REPORT_TEAL}"></i>Evening</span>${sessions.length ? '<span><i class="tri"></i>Treatment session</span>' : ''}` };
+  const dayLabels = days.map((d, i) => (i === 0 || i === days.length - 1 || parseDay(d).getDate() === 1 ? rDay(d) : String(parseDay(d).getDate())));
+  /* the words behind the scores, in time order: mood words first on a day, then how rested they felt */
+  const wordRows = [];
+  ci.slice().sort((a, b) => a.day.localeCompare(b.day) || (a.slot === 'morning' ? -1 : 1)).forEach((e) => {
+    const when = rDay(e.day) + ', ' + (e.slot === 'morning' ? 'morning' : 'evening');
+    const m = score(e, 'mood');
+    if (e.moodNote && String(e.moodNote).trim()) wordRows.push({ when, score: m == null ? '' : 'Mood ' + m, low: m != null && m <= 4, text: String(e.moodNote).trim() });
+    if (e.slot === 'morning' && e.sleepNote && String(e.sleepNote).trim()) wordRows.push({ when, score: score(e, 'sleep') == null ? 'Sleep' : 'Sleep ' + score(e, 'sleep'), low: false, text: String(e.sleepNote).trim(), sub: e.sleepHours ? 'About ' + e.sleepHours + ' hours' : '' });
+    if (e.slot === 'evening' && e.settled && String(e.settled).trim() && !isRoutineNote({ text: String(e.settled) })) wordRows.push({ when, score: 'Settled', low: false, text: String(e.settled).trim() });
+  });
+  const goodRows = ci.filter((e) => e.slot === 'evening' && e.goodThing && String(e.goodThing).trim()).sort((a, b) => a.day.localeCompare(b.day)).map((e) => ({ when: rDay(e.day), text: String(e.goodThing).trim() }));
+  const sections = [
+    { title: 'In your own words', note: 'The words given under the mood and sleep scores, in time order.', rows: wordRows, none: 'No words were added under the scores in this period. The check-ins ask "What is behind it?" under mood.' },
+    { title: 'One good thing each day', note: 'From the evening check-in.', rows: goodRows, good: true, none: 'No good things logged in this period.' },
+    { title: 'Sleep and energy', note: 'Hours asleep a night, and the evening energy score.' },
+    { title: 'Questions', note: 'Labelled Wellbeing in the app. Space under each to write the reply.', questions: true }
+  ];
+  const charts = [
+    { title: 'Sleep (hours a night)', type: 'bars', flagBelow: 5, stat: nightVals.length ? (shortN ? plural(shortN, 'night') + ' under 5 h' : 'Steady') : 'No sleep logged', tone: nightVals.length ? (shortN ? 'amber' : 'green') : '', min: 0, max: Math.max(10, ...nightVals.map(Math.ceil)), ticks: [0, 5, 10], series: [{ d: nights, c: REPORT_TEAL }] },
+    { title: 'Energy (1 to 10)', stat: energyAvg == null ? 'No scores' : 'Average ' + energyAvg, tone: energyAvg == null ? '' : energyAvg <= 3 ? 'amber' : 'green', min: 0, max: 10, ticks: [0, 5, 10], series: [{ d: energy, c: REPORT_TEAL }] }
+  ];
+  const items = [];
+  items.push({ t: 'sec', s: 0 }); if (wordRows.length) wordRows.forEach((_, r) => items.push({ t: 'row', s: 0, r })); else items.push({ t: 'none', s: 0 });
+  items.push({ t: 'sec', s: 1 }); if (goodRows.length) goodRows.forEach((_, r) => items.push({ t: 'row', s: 1, r })); else items.push({ t: 'none', s: 1 });
+  items.push({ t: 'sec', s: 2 }); items.push({ t: 'charts' });
+  const questions = (n.questions || []).map((q) => ({ team: q.teamLabel, text: fixMedWords(q.text), by: `Asked by ${q.who}, ${rDay(q.day)}` }));
+  if (questions.length) { items.push({ t: 'sec', s: 3 }); questions.forEach((_, q) => items.push({ t: 'q', s: 3, q })); }
+  items.push({ t: 'notes' });
+  const patient = (state.profile && state.profile.reportName) || state.patientName || state.name || '';
+  const period = rPeriod(from, to);
+  return { patient, period, prepared: rDay(todayStr()) + ' ' + parseDay(todayStr()).getFullYear(), tiles, chart, days: dayLabels, sections, charts, questions, items, pages: [], docTitle: `Mood and wellbeing, ${patient}, ${period}` };
+}
+function fittedMoodReport() {
+  return memoFit('mood', async () => {
+    if (!state.moodPdf) return null;
+    if (!reportModule) reportModule = await import('./report.js?v=' + APP_VERSION);
+    const W = buildMoodReport(state.moodPdf);
+    const res = await reportModule.fitMoodReport(reportFrame('mood'), W);
+    if (!res.ok) { toast('One entry is too long to fit on a page. Shorten it and try again.'); return null; }
+    return res;
+  });
+}
+async function moodReportBlob() {
+  const res = await fittedMoodReport();
+  return res ? reportPdfBlob(res) : null;
+}
+
 function openMedHistoryList() {
   const groups = [
     ['Taking now', state.medicines.filter((m) => medStatus(m).text === 'Taking now')],
@@ -7926,11 +8055,13 @@ function allQuestions() { return state.demo ? state.recentEntries.filter((e) => 
    question saved before v133 has none and counts as General. Dietitian questions go to the Food
    diary screen and report; the rest head Notes for the team. The order here is the order they are
    listed in, so the oncologist's come first. */
-const QUESTION_TEAMS = [['oncology', 'Oncology'], ['gastro', 'Gastro'], ['general', 'General'], ['unsure', 'Not sure'], ['dietitian', 'Dietitian']];
+const QUESTION_TEAMS = [['oncology', 'Oncology'], ['gastro', 'Gastro'], ['general', 'General'], ['unsure', 'Not sure'], ['dietitian', 'Dietitian'], ['wellbeing', 'Wellbeing']];
 function teamOf(q) { return QUESTION_TEAMS.some(([k]) => k === (q && q.team)) ? q.team : 'general'; }
 function teamLabel(key) { const t = QUESTION_TEAMS.find(([k]) => k === key); return t ? t[1] : 'General'; }
 function teamRank(q) { return QUESTION_TEAMS.findIndex(([k]) => k === teamOf(q)); }
 function isDietitianQ(q) { return teamOf(q) === 'dietitian'; }
+/* Wellbeing questions (v155) go to the Mood and wellbeing report, for a therapist, counsellor or GP */
+function isWellbeingQ(q) { return teamOf(q) === 'wellbeing'; }
 /* Oldest first within each team, the teams in QUESTION_TEAMS order */
 function sortQuestions(list) { return list.slice().sort((a, b) => teamRank(a) - teamRank(b) || entryDate(a) - entryDate(b)); }
 /* A few words of a question, for a chip or a file name: "Scan results when", never the whole sentence */

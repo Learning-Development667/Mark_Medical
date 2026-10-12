@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=154">
+  <link rel="stylesheet" href="styles.css?v=155">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -319,6 +319,7 @@
           <div class="reports reports-2">
             <button id="rep-food" class="report tint-green" type="button"><svg class="icon report-icon" aria-hidden="true"><use href="#i-food"/></svg><span class="report-name">Food diary</span><span class="report-sub">For the dietitian</span></button>
             <button id="rep-docs" class="report tint-plum" type="button"><svg class="icon report-icon" aria-hidden="true"><use href="#i-doc"/></svg><span class="report-name">Documents</span><span class="report-sub">Letters and results</span></button>
+            <button id="rep-mood" class="report tint-warm" type="button"><svg class="icon report-icon" aria-hidden="true"><use href="#i-sun"/></svg><span class="report-name">Mood and wellbeing</span><span class="report-sub">For a therapist, counsellor or GP</span></button>
           </div>
         </div>
         <h2 class="section-title">Trends</h2>
@@ -564,6 +565,46 @@
       </section>
 
       <!-- NOTES FOR THE TEAM -->
+      <!-- Mood and wellbeing (since v155): the scores and the words behind them, for a therapist, counsellor or GP -->
+      <section id="view-mood" class="view" data-view="mood" hidden>
+        <div class="diary-head">
+          <button id="mood-back" class="btn btn-link" type="button">&#8249; Back</button>
+          <button id="mood-print" class="btn btn-tint tint-green btn-small" type="button"><svg class="icon" aria-hidden="true"><use href="#i-print"/></svg>Print</button>
+        </div>
+        <p id="mood-sub" class="muted"></p>
+        <div class="segmented" role="group" aria-label="Range">
+          <button class="seg" type="button" data-range="14">14 days</button>
+          <button class="seg is-active" type="button" data-range="28">4 weeks</button>
+          <button class="seg" type="button" data-range="56">8 weeks</button>
+          <button class="seg" type="button" data-range="90">90 days</button>
+          <button class="seg" type="button" data-range="custom">Custom</button>
+        </div>
+        <div id="mood-custom" class="field-row custom-range" hidden>
+          <label class="field"><span>From</span><input id="mood-custom-from" type="date"></label>
+          <label class="field"><span>To</span><input id="mood-custom-to" type="date"></label>
+        </div>
+        <p id="mood-custom-msg" class="hint hint-warn" hidden></p>
+        <button id="mood-send" class="btn btn-primary btn-block" type="button"><svg class="icon" aria-hidden="true"><use href="#i-send"/></svg>Send by email</button>
+        <div class="btnrow">
+          <button id="mood-preview" class="btn btn-tint tint-plum" type="button"><svg class="icon" aria-hidden="true"><use href="#i-eye"/></svg>Preview</button>
+          <button id="mood-pdf" class="btn btn-tint tint-warm" type="button"><svg class="icon" aria-hidden="true"><use href="#i-download"/></svg>Save as PDF</button>
+        </div>
+        <p class="hint">Your mood scores and the words behind them, one good thing each day, sleep and energy, and your questions labelled Wellbeing, as pages a therapist, counsellor or GP can read in a minute. Send by email puts it in an email from your own Mail app.</p>
+        <div id="mood-questions-section" hidden>
+          <h3 class="section-title">Questions for the therapist</h3>
+          <p class="hint">Asked from Today with "Question for the team" and labelled Wellbeing. They go on the report, and stay until marked as answered.</p>
+          <div id="mood-questions" class="cards"></div>
+        </div>
+        <div class="status" role="group" aria-label="At a glance">
+          <div class="tiles tiles-2" id="mood-tiles"></div>
+        </div>
+        <h3 class="section-title">In your own words</h3>
+        <p class="hint">The words you gave under the mood and sleep scores, in time order. The report carries them as they are.</p>
+        <div id="mood-words" class="wordlist"></div>
+        <h3 class="section-title">One good thing each day</h3>
+        <div id="mood-good" class="wordlist"></div>
+      </section>
+
       <section id="view-notes" class="view" data-view="notes" hidden>
         <div class="diary-head">
           <button id="notes-back" class="btn btn-link" type="button">&#8249; Back</button>
@@ -880,6 +921,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=154"></script>
+  <script type="module" src="scripts.js?v=155"></script>
 </body>
 </html>
