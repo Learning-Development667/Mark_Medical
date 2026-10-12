@@ -1027,7 +1027,7 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 /* Reports: five range buttons (7/14/30/90 and Custom) have to sit on one line on a phone */
 #view-food .seg, #view-notes .seg { white-space: nowrap; font-size: 15px; padding-left: 4px; padding-right: 4px; }
 @media (max-width: 359px) {
-  #view-food .segmented, #view-notes .segmented { flex-wrap: wrap; }
+  #view-food .segmented, #view-notes .segmented, #view-mood .segmented { flex-wrap: wrap; }
   #view-food .seg, #view-notes .seg { flex: 1 1 30%; }
 }
 /* Reports: custom From and To range */
@@ -1299,7 +1299,7 @@ body.is-readonly .workout .btn { display: none; }
 #chemo-cycle-section .section-title, #chemo-docs-section .section-title { margin-top: var(--s-6); } /* first children of their own wrappers, like the Meds documents section */
 #chemo-cycle-section .status { margin-top: var(--s-2); }
 #cycle-tile .tile-sub { white-space: normal; overflow: visible; text-overflow: clip; } /* "after the session on 25 Sep, next in 12 days" may take two lines */
-#vt-weight-sub { white-space: normal; overflow: visible; text-overflow: clip; } /* "today 07:30, BMI 24.8" (v126) may take two lines on a small phone */
+#vt-weight-sub, #mood-tiles .tile-sub { white-space: normal; overflow: visible; text-overflow: clip; } /* "today 07:30, BMI 24.8" (v126) may take two lines on a small phone */
 #carer-card { margin-top: var(--s-3); }
 /* Six measure chips in two rows of three: a grid, not a wrapped pill, so the track is a rounded
    box the chips actually fit in (v79) */
@@ -1572,3 +1572,14 @@ h1, h2, h3 { font-weight: 600; }
 .fb-sent li b { color: var(--text-primary); font-weight: 600; }
 .fb-contact a { color: var(--teal-dark); font-weight: 600; min-height: 44px; display: inline-flex; align-items: center; }
 @media (prefers-color-scheme: dark) { .fb-contact a { color: var(--teal); } }
+
+/* ---------- Mood and wellbeing (v155) ---------- */
+.reports-2 > :nth-child(3) { grid-column: 1 / -1; }
+.report.tint-warm { box-shadow: var(--elev-raised); }
+.wordlist { display: grid; gap: var(--s-2); }
+.wordrow { display: grid; grid-template-columns: 92px 1fr; gap: var(--s-3); padding: var(--s-2) 0; border-bottom: 1px solid var(--border-subtle); font-size: 17px; }
+.wordrow .wd { color: var(--text-secondary); font-size: 15px; padding-top: 2px; }
+.wordrow .ws { font-weight: 600; margin-right: var(--s-2); }
+.wordrow .ws.is-low { color: var(--warning-ink, var(--warning)); }
+.wordrow .wt { white-space: pre-wrap; }
+.wordrow .wt small { display: block; color: var(--text-secondary); font-size: 15px; }
