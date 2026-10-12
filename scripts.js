@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '155';
+const APP_VERSION = '156';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -631,6 +631,7 @@ const state = {
   notesCustomTo: null,
   notesText: '',
   notesPdf: null,
+  moodAI: null, // { range "from|to", brief[{ head, text }], quotes[{ when, text, low }], helped[], hardest[] } from Daybook Assistant for the Mood report, this session only (v156)
   notesAI: null, // { range "from|to", weeks { weekKey: { theme, entries } }, questions { id: text }, latest } from Daybook Assistant, this session only
   patientName: '', // the patient's name from the household's members, for the report's masthead
   foodPdf: null,
@@ -1103,7 +1104,7 @@ function buildDemoFixture() {
     id: fakeId('entry'), day: day(offset), at: demoTs(at(offset, hhmm)), addedBy: who, createdAt: demoTs(at(offset, hhmm)), note: '', ...fields
   });
   const ci = (offset, slot, fields) => {
-    const when = at(offset, slot === 'morning' ? '08:30' : slot === 'carer' ? '20:30' : '21:00');
+    const when = at(offset, slot === 'morning' ? '08:30' : slot === 'carer' ? '20:30' : slot === 'week' ? '18:00' : '21:00');
     return { id: day(offset) + '_' + slot, type: 'checkin', slot, day: day(offset), at: demoTs(when), addedBy: 'Mark', createdAt: demoTs(when), updatedAt: demoTs(when), ...fields };
   };
 
@@ -1163,32 +1164,35 @@ function buildDemoFixture() {
     e(-1, '10:30', 'Mark', { type: 'med', medId: null, medName: 'Sodium chloride 0.9%', dose: '1000 ml', route: 'drip', hospital: true, note: 'Over 4 hours' }),
     e(-1, '20:10', 'Mark', { type: 'symptom', what: 'Mouth', value: 3, note: 'Sore on the left' }),
     e(0, '11:40', 'Mark', { type: 'pain', value: 4 }),
+    /* Your week (v156): two weekly checks, so the Mood and wellbeing report has a week in Mark's words */
+    ci(-11, 'week', { wkResults: 1, wkCutOff: 1, wkTired: 2, helped: 'Getting back in the garden. Shelley.', hardest: 'The two sick days after the session, and not being able to taste anything.', sentence: 'A rough start and a good end.' }),
+    ci(-4, 'week', { wkResults: 2, wkCutOff: 0, wkTired: 1, helped: 'The pub lunch. Knowing the pattern now, so the bad days did not frighten me.', hardest: 'The temperature on Wednesday and watching the thermometer all evening.', sentence: 'Steadier, and I know what to expect now.' }),
     /* Three weekly cycles (sessions on -17, -10 and -3): energy and appetite dip on days 1 and 2, sickness peaks, all back by day 4 or 5 */
-    ci(-17, 'evening', { pain: 3, mood: 6, worstPain: 4, sickness: 4, appetite: 4, energy: 5, symptoms: '', settled: '', goodThing: 'Session went smoothly' }),
+    ci(-17, 'evening', { pain: 3, mood: 6, worstPain: 4, sickness: 4, appetite: 4, energy: 5, symptoms: '', settled: '', goodThing: 'Session went smoothly', wb: { low: 1, worried: 2, enjoyed: 2 }, journal: 'Long day at the unit but the session went smoothly. Tired more than anything.' }),
     ci(-16, 'morning', { sleep: 5, sleepHours: 5.5, pain: 3, mood: 5, symptoms: '', lookingForward: '' }),
-    ci(-16, 'evening', { pain: 4, mood: 4, worstPain: 5, sickness: 6, appetite: 3, energy: 3, symptoms: 'Queasy from mid morning', settled: '', goodThing: 'A nap that actually helped' }),
+    ci(-16, 'evening', { pain: 4, mood: 4, worstPain: 5, sickness: 6, appetite: 3, energy: 3, symptoms: 'Queasy from mid morning', settled: '', goodThing: 'A nap that actually helped', wb: { low: 2, worried: 1, enjoyed: 1 }, journal: 'Queasy from mid morning and could not settle to anything. The nap helped more than the tablets did.' }),
     ci(-16, 'carer', { addedBy: 'Shelley', energy: 3, sickness: 6, appetite: 2, pain: 4, mood: 4, noticed: 'Very pale, slept most of the afternoon' }),
     ci(-15, 'morning', { sleep: 4, sleepHours: 5, pain: 4, mood: 4, symptoms: 'Sick twice in the night', lookingForward: '' }),
-    ci(-15, 'evening', { pain: 4, mood: 4, worstPain: 5, sickness: 7, appetite: 2, energy: 2, symptoms: 'Sick again after lunch', settled: '', goodThing: 'Hayley rang' }),
+    ci(-15, 'evening', { pain: 4, mood: 4, worstPain: 5, sickness: 7, appetite: 2, energy: 2, symptoms: 'Sick again after lunch', settled: '', goodThing: 'Hayley rang', wb: { low: 3, worried: 2, enjoyed: 0 }, journal: 'Rough. Sick again after lunch and I spent the afternoon on the sofa. Hayley ringing was the one bright spot.' }),
     ci(-15, 'carer', { addedBy: 'Shelley', energy: 2, sickness: 7, appetite: 2, pain: 4, mood: 3, noticed: 'Hardly ate, kept water down in the evening' }),
-    ci(-14, 'evening', { pain: 3, mood: 5, worstPain: 4, sickness: 5, appetite: 3, energy: 3, symptoms: '', settled: 'Sickness easing', goodThing: 'Sat outside for ten minutes' }),
+    ci(-14, 'evening', { pain: 3, mood: 5, worstPain: 4, sickness: 5, appetite: 3, energy: 3, symptoms: '', settled: 'Sickness easing', goodThing: 'Sat outside for ten minutes', wb: { low: 2, worried: 1, enjoyed: 1 }, journal: '' }),
     ci(-13, 'morning', { sleep: 6, sleepHours: 7, pain: 3, mood: 6, symptoms: '', lookingForward: 'Feeling more like myself' }),
-    ci(-13, 'evening', { pain: 3, mood: 6, worstPain: 4, sickness: 3, appetite: 5, energy: 5, symptoms: '', settled: 'Appetite coming back', goodThing: 'Ate a proper dinner' }),
+    ci(-13, 'evening', { pain: 3, mood: 6, worstPain: 4, sickness: 3, appetite: 5, energy: 5, symptoms: '', settled: 'Appetite coming back', goodThing: 'Ate a proper dinner', wb: { low: 1, worried: 1, enjoyed: 2 }, journal: 'Turned a corner. Ate a proper dinner for the first time since the session and tasted it.' }),
     ci(-13, 'carer', { addedBy: 'Shelley', energy: 5, sickness: 3, appetite: 5, pain: 3, mood: 6, noticed: 'Colour back, cleared his plate' }),
-    ci(-12, 'evening', { pain: 2, mood: 7, worstPain: 3, sickness: 2, appetite: 6, energy: 6, symptoms: '', settled: '', goodThing: 'Walk to the end of the road' }),
+    ci(-12, 'evening', { pain: 2, mood: 7, worstPain: 3, sickness: 2, appetite: 6, energy: 6, symptoms: '', settled: '', goodThing: 'Walk to the end of the road', wb: { low: 0, worried: 1, enjoyed: 3 }, journal: 'Walked to the end of the road and back without stopping. Felt like me again.' }),
     ci(-12, 'carer', { addedBy: 'Shelley', energy: 6, sickness: 2, appetite: 6, pain: 2, mood: 7, noticed: '' }),
-    ci(-11, 'evening', { pain: 2, mood: 7, worstPain: 3, sickness: 2, appetite: 7, energy: 7, symptoms: '', settled: '', goodThing: 'Best day of the week' }),
-    ci(-10, 'evening', { pain: 3, mood: 6, worstPain: 4, sickness: 4, appetite: 4, energy: 5, symptoms: '', settled: '', goodThing: 'Watched a film with Shelley' }),
+    ci(-11, 'evening', { pain: 2, mood: 7, worstPain: 3, sickness: 2, appetite: 7, energy: 7, symptoms: '', settled: '', goodThing: 'Best day of the week', wb: { low: 0, worried: 0, enjoyed: 3 }, journal: 'Best day of the week by a mile. Pottered in the garden and did not think about any of it for hours.' }),
+    ci(-10, 'evening', { pain: 3, mood: 6, worstPain: 4, sickness: 4, appetite: 4, energy: 5, symptoms: '', settled: '', goodThing: 'Watched a film with Shelley', wb: { low: 1, worried: 2, enjoyed: 2 }, journal: 'Session day. Went fine but the dread beforehand is always worse than the thing itself.' }),
     ci(-9, 'morning', { sleep: 5, sleepHours: 6, pain: 3, mood: 5, symptoms: '', lookingForward: '' }),
-    ci(-9, 'evening', { pain: 4, mood: 4, worstPain: 5, sickness: 6, appetite: 3, energy: 3, symptoms: 'Queasy again, like last time', settled: '', goodThing: 'Ginger tea helped' }),
+    ci(-9, 'evening', { pain: 4, mood: 4, worstPain: 5, sickness: 6, appetite: 3, energy: 3, symptoms: 'Queasy again, like last time', settled: '', goodThing: 'Ginger tea helped', wb: { low: 2, worried: 2, enjoyed: 1 }, journal: 'Queasy again, same as last time, and that makes me low because I know what the next two days look like.' }),
     ci(-9, 'carer', { addedBy: 'Shelley', energy: 3, sickness: 6, appetite: 3, pain: 4, mood: 4, noticed: 'Same pattern as the last cycle, day one is the hard one' }),
     ci(-8, 'morning', { sleep: 4, sleepHours: 5, pain: 4, mood: 4, symptoms: '', lookingForward: '' }),
-    ci(-8, 'evening', { pain: 4, mood: 4, worstPain: 5, sickness: 6, appetite: 2, energy: 3, symptoms: '', settled: '', goodThing: 'Shelley made soup' }),
+    ci(-8, 'evening', { pain: 4, mood: 4, worstPain: 5, sickness: 6, appetite: 2, energy: 3, symptoms: '', settled: '', goodThing: 'Shelley made soup', wb: { low: 2, worried: 1, enjoyed: 1 }, journal: '' }),
     ci(-8, 'carer', { addedBy: 'Shelley', energy: 3, sickness: 6, appetite: 2, pain: 4, mood: 4, noticed: 'Managed half the soup' }),
-    ci(-7, 'evening', { pain: 4, mood: 5, worstPain: 5, sickness: 5, appetite: 3, energy: 3, symptoms: 'Shivery after lunch, temperature 37.7', settled: '', goodThing: '' }),
+    ci(-7, 'evening', { pain: 4, mood: 5, worstPain: 5, sickness: 5, appetite: 3, energy: 3, symptoms: 'Shivery after lunch, temperature 37.7', settled: '', goodThing: '', wb: { low: 2, worried: 3, enjoyed: 0 }, journal: 'Shivery after lunch and the thermometer said 37.7, so the whole evening was spent watching it and worrying about the alert card.' }),
     ci(-6, 'carer', { addedBy: 'Shelley', energy: 4, sickness: 3, appetite: 5, pain: 4, mood: 6, noticed: 'Brighter today, wanted to go out' }),
     ci(-5, 'carer', { addedBy: 'Shelley', energy: 5, sickness: 2, appetite: 6, pain: 3, mood: 7, noticed: '' }),
-    ci(-4, 'evening', { pain: 3, mood: 7, worstPain: 4, sickness: 2, appetite: 6, energy: 6, symptoms: '', settled: '', goodThing: 'Pub lunch, most of it' }),
+    ci(-4, 'evening', { pain: 3, mood: 7, worstPain: 4, sickness: 2, appetite: 6, energy: 6, symptoms: '', settled: '', goodThing: 'Pub lunch, most of it', wb: { low: 0, worried: 1, enjoyed: 3 }, journal: 'Pub lunch, most of it eaten, and a laugh with Shelley. A normal day.' }),
     ci(-3, 'evening', { pain: 3, mood: 6, worstPain: 4, sickness: 4, appetite: 4, energy: 5, symptoms: '', settled: '', goodThing: 'Short walk in the garden' }),
     ci(-2, 'carer', { addedBy: 'Shelley', energy: 3, sickness: 6, appetite: 2, pain: 6, mood: 4, noticed: 'Back pain worse than the last two cycles, sick most of the afternoon' }),
     ci(-1, 'carer', { addedBy: 'Shelley', energy: 4, sickness: 3, appetite: 5, pain: 4, mood: 6, noticed: 'Better than yesterday, sat out in the sun' }),
@@ -4946,7 +4950,7 @@ const fitQueue = { notes: Promise.resolve(), food: Promise.resolve(), meds: Prom
 function fitKey(kind) {
   const p = state.profile || {};
   if (kind === 'meds') return [state.medsPdf, p.reportName, state.patientName, state.medicines];
-  if (kind === 'mood') return [state.moodPdf, p.reportName, state.patientName, state.days];
+  if (kind === 'mood') return [state.moodPdf, state.moodAI, p.reportName, state.patientName, state.days];
   return kind === 'food' ? [state.foodPdf, p.reportName, state.patientName, p.proteinTarget, p.detailedNutrition, state.nutrition]
     : [state.notesPdf, state.notesAI, p.reportName, state.patientName, p.proteinTarget];
 }
@@ -4997,7 +5001,10 @@ async function reportPdfBlob(res) {
     const data = canvas.toDataURL('image/jpeg', 0.9);
     if (!data || data.length < 2000) throw new Error('the phone ran out of memory drawing page ' + (i + 1));
     if (i) pdf.addPage();
-    pdf.addImage(data, 'JPEG', 0, 0, 210, 297);
+    /* for the iPhone's print dialog the page is drawn a little inside the paper (v156): printed at 100% an edge-to-edge
+       page spills past the printable area and comes out as the page plus a blank one, which is what Mark's six-page PDF was */
+    const m = PDF_INSET_MM;
+    pdf.addImage(data, 'JPEG', m, m * 297 / 210, 210 - 2 * m, 297 - 2 * m * 297 / 210);
     canvas.width = canvas.height = 0; // let the phone have the memory back before the next page
   }
   return pdf.output('blob');
@@ -5316,9 +5323,12 @@ const REPORT_KINDS = {
   meds: { data: () => state.medsPdf, fit: () => fittedMedsReport(), blob: () => medsReportBlob(), html: (R) => reportModule.medsReportHtml(R) },
   mood: { data: () => state.moodPdf, fit: () => fittedMoodReport(), blob: () => moodReportBlob(), html: (R) => reportModule.moodReportHtml(R) }
 };
-function printThroughShare(kind, makeBlob) {
+let PDF_INSET_MM = 0;
+async function printThroughShare(kind, makeBlob) {
   toast('Making the PDF. Choose Print in the share sheet.');
-  return savePdf(REPORT_KINDS[kind].data().filename, REPORT_NAMES[kind], makeBlob);
+  PDF_INSET_MM = 5;
+  try { return await savePdf(REPORT_KINDS[kind].data().filename, REPORT_NAMES[kind], async () => { PDF_INSET_MM = 5; try { return await makeBlob(); } finally { PDF_INSET_MM = 0; } }); }
+  finally { PDF_INSET_MM = 0; }
 }
 async function openReportViewer(kind, printNow) {
   const K = REPORT_KINDS[kind];
@@ -5812,7 +5822,7 @@ function buildNotesReport(entries, questionsAll, from, to, rangeLabel) {
     const list = (byDay[day] || []).slice().sort((a, b) => entryDate(a) - entryDate(b));
     const notes = list.filter((e) => e.type === 'note' || (e.note && ['temp', 'weight', 'vitals', 'med', 'pain', 'bowel', 'symptom'].includes(e.type)))
       .map((e) => ({ time: fmtTime(entryDate(e)), who: e.addedBy || 'unknown', text: e.note, context: e.type === 'note' ? '' : noteContext(e) }));
-    list.filter((e) => e.type === 'checkin').forEach((e) => {
+    list.filter((e) => e.type === 'checkin' && e.slot !== 'week').forEach((e) => {
       const keys = e.slot === 'carer' ? REPORT_CARER_KEYS : REPORT_CHECKIN_KEYS;
       keys.forEach(([k, label]) => {
         if (e[k]) notes.push({ time: fmtTime(entryDate(e)), who: e.addedBy || 'unknown', text: label + ': ' + e[k], context: e.slot === 'carer' ? "carer's view" : e.slot + ' check-in' });
@@ -5942,8 +5952,27 @@ const CHECKIN_QUESTIONS = {
     { key: 'outside', kind: 'ticks', pack: 'ibd', weekly: true, q: 'Over the last week, have you had any of these?' },
     { key: 'symptoms', kind: 'text', q: 'Any new or worse symptoms today?', ph: 'e.g. felt sick after lunch, back worse' },
     { key: 'settled', kind: 'text', q: 'Anything that has settled since yesterday?', ph: 'e.g. the sickness has eased' },
-    { key: 'mood', kind: 'slider', q: 'How is your mood?', low: '1 rough', high: '10 great', note: 'moodNote', noteQ: 'What is behind it? Optional.', notePh: 'e.g. a good day in the garden, or a rough afternoon' },
+    /* Wellbeing (v156): three taps that take ten seconds, the data on a bad night; then the mood score; then the words, optional */
+    { key: 'wb', kind: 'taps', q: 'Over today, how much did you...', hint: 'Three taps, ten seconds. The words are optional, two screens on.' },
+    { key: 'mood', kind: 'slider', q: 'How is your mood?', low: '1 rough', high: '10 great', legacyNote: 'moodNote' },
+    { key: 'journal', kind: 'text', q: 'How was today, really?', ph: 'e.g. rough morning with the pain, but the afternoon in the garden pulled me round', hint: 'Whatever comes to mind: what happened, how it felt, what you did about it. Said out loud is fine. Skip is fine too; the three taps are enough.' },
     { key: 'goodThing', kind: 'text', q: 'One good thing about today', ph: 'e.g. sat in the garden for an hour' }
+  ],
+  /* Your week (v156): once a week, about five minutes, on one screen (openWeekCheck). The scored questions come from the
+     condition packs that are on (a question with several packs is asked once); the three written ones are for everyone. */
+  week: [
+    { key: 'wkResults', kind: 'scale', pack: 'cancer', q: 'Worried about results or scans?' },
+    { key: 'wkCutOff', kind: 'scale', pack: 'cancer', q: 'Felt cut off from people?' },
+    { key: 'wkTired', kind: 'scale', pack: ['cancer', 'ibd'], q: 'Tiredness got in the way?' },
+    { key: 'wkGutOut', kind: 'scale', pack: 'ibd', q: 'Did your gut stop you going out or doing something?' },
+    { key: 'wkToilet', kind: 'scale', pack: 'ibd', q: 'Worried about getting to a toilet?' },
+    { key: 'wkSwings', kind: 'scale', pack: 'menopause', q: 'Mood swings or irritability?' },
+    { key: 'wkAnxious', kind: 'scale', pack: 'menopause', q: 'Anxious or panicky?' },
+    { key: 'wkFog', kind: 'scale', pack: 'menopause', q: 'Brain fog, or memory letting you down?' },
+    { key: 'wkSweats', kind: 'scale', pack: 'menopause', q: 'Sleep broken by sweats?' },
+    { key: 'helped', kind: 'text', q: 'What helped this week?', ph: 'e.g. the new pain plan, a walk with a friend' },
+    { key: 'hardest', kind: 'text', q: 'What was hardest?', ph: 'e.g. the nights, waiting for results' },
+    { key: 'sentence', kind: 'text', q: 'This week in a sentence', ph: 'e.g. steady, and the garden kept me going' }
   ],
   /* The carer's view: the same scores from the outside, once a day, on the Chemo tab. Kept out of
      every patient statistic, chart and tile; shown only on the cycle chart (dashed) and, the text, in Notes for the team. */
@@ -5956,6 +5985,14 @@ const CHECKIN_QUESTIONS = {
     { key: 'noticed', kind: 'text', q: 'What did you notice today?', ph: 'e.g. slept most of the afternoon, colour better than yesterday' }
   ]
 };
+/* The four answers to a wellbeing question (v156), stored as 0 to 3; "quite a bit or a lot" is 2 or more */
+const WB_WORDS = ['Not at all', 'A little', 'Quite a bit', 'A lot'];
+const WB_ROWS = [['low', 'Feel low?', 'Felt low'], ['worried', 'Feel worried or on edge?', 'Worried or on edge'], ['enjoyed', 'Enjoy something?', 'Enjoyed something']];
+function wbText(v) {
+  if (!v || typeof v !== 'object') return 'Skipped';
+  const bits = WB_ROWS.filter(([k]) => v[k] != null).map(([k, , label]) => label + ': ' + WB_WORDS[v[k]].toLowerCase());
+  return bits.length ? bits.join(' \u00b7 ') : 'Skipped';
+}
 /* The optional words under a pain slider (v128): where it is, what it is like. Stored beside the score as
    painNote / worstPainNote, shown after the score everywhere it shows, and in Notes for the team as a note. */
 const CHECKIN_NOTE_Q = 'Where is it, or anything else? Optional.';
@@ -5976,21 +6013,25 @@ function outsideText(v) {
 const CHECKIN_LABELS = {
   sleep: 'Sleep', sleepHours: 'Hours slept', pain: 'Pain now', mood: 'Mood', symptoms: 'New or worse symptoms',
   lookingForward: 'Looking forward to', worstPain: 'Worst pain', sickness: 'Sickness', appetite: 'Appetite',
-  energy: 'Energy', settled: 'Settled since yesterday', goodThing: 'One good thing', noticed: 'What you noticed', outside: 'Outside the gut, last week'
+  energy: 'Energy', settled: 'Settled since yesterday', goodThing: 'One good thing', noticed: 'What you noticed', outside: 'Outside the gut, last week',
+  wb: 'How much', journal: 'How was today', wkResults: 'Worried about results or scans', wkCutOff: 'Felt cut off from people', wkTired: 'Tiredness got in the way',
+  wkGutOut: 'Gut stopped me going out', wkToilet: 'Worried about getting to a toilet', wkSwings: 'Mood swings or irritability', wkAnxious: 'Anxious or panicky',
+  wkFog: 'Brain fog or memory', wkSweats: 'Sleep broken by sweats', helped: 'What helped', hardest: 'What was hardest', sentence: 'The week in a sentence'
 };
 /* A patient check-in, as opposed to the carer's view */
 function isPatientCheckin(e) { return e.type === 'checkin' && e.slot !== 'carer'; }
-function checkinTitle(slot) { return slot === 'carer' ? "Carer's view" : slotWord(slot) + ' check-in'; }
+function checkinTitle(slot) { return slot === 'carer' ? "Carer's view" : slot === 'week' ? 'Your week' : slotWord(slot) + ' check-in'; }
 function checkinId(day, slot) { return day + '_' + slot; }
 function findCheckin(day, slot) {
   const id = checkinId(day, slot);
   return state.dayEntries.find((e) => e.id === id) || state.recentEntries.find((e) => e.id === id) || null;
 }
 function dueSlot() { return new Date().getHours() < 15 ? 'morning' : 'evening'; }
-function slotWord(slot) { return slot === 'morning' ? 'Morning' : slot === 'evening' ? 'Evening' : "Carer's view"; }
+function slotWord(slot) { return slot === 'morning' ? 'Morning' : slot === 'evening' ? 'Evening' : slot === 'week' ? 'Your week' : "Carer's view"; }
 
 function checkinSummary(e) {
   const bits = [];
+  if (e.slot === 'week') return e.sentence ? String(e.sentence) : 'Your week';
   if (e.sleep != null) bits.push('Sleep ' + e.sleep + (e.sleepHours != null ? ' (' + e.sleepHours + ' h)' : ''));
   if (e.pain != null) bits.push('Pain ' + e.pain);
   if (e.mood != null) bits.push('Mood ' + e.mood);
@@ -6017,15 +6058,18 @@ function checkinOpenSet() { if (!state.openCheckins) state.openCheckins = new Se
 function checkinCard(c, inEntry) {
   const open = checkinOpenSet().has(c.id);
   const bodyId = 'cc-' + String(c.id).replace(/[^\w-]/g, '') + (inEntry ? '-t' : '-s');
-  const rows = (CHECKIN_QUESTIONS[c.slot] || []).filter((q) => q.kind !== 'ticks' || c[q.key] !== undefined).map((q) => {
+  const rows = (CHECKIN_QUESTIONS[c.slot] || []).filter((q) => (q.kind !== 'ticks' && !q.pack) || c[q.key] !== undefined).filter((q) => (q.key === 'wb' || q.key === 'journal') ? c[q.key] !== undefined : true).map((q) => {
     const v = c[q.key];
     let node;
     if (q.kind === 'ticks') node = h('dd', { class: 'cc-v' + (v == null ? ' is-empty' : ''), text: v == null ? 'Skipped' : outsideText(v) });
+    else if (q.kind === 'taps') node = h('dd', { class: 'cc-v' + (v == null ? ' is-empty' : ''), text: wbText(v) });
+    else if (q.kind === 'scale') node = h('dd', { class: 'cc-v' + (v == null ? ' is-empty' : ''), text: v == null ? 'Skipped' : WB_WORDS[v] });
     else if (q.kind === 'text') node = h('dd', { class: 'cc-v' + (v ? '' : ' is-empty'), text: v ? v : 'Nothing added' });
     else {
       const empty = v == null;
+      const words = (q.note && c[q.note]) || (q.legacyNote && c[q.legacyNote]) || '';
       node = h('dd', { class: 'cc-v' + (empty ? ' is-empty' : ' is-num') }, empty ? 'Skipped' : v + '/10' + (q.kind === 'sleep' && c.sleepHours != null ? ' \u00b7 ' + c.sleepHours + ' h' : ''),
-        q.note && c[q.note] ? h('span', { class: 'vnote', text: c[q.note] }) : null);
+        words ? h('span', { class: 'vnote', text: words }) : null);
     }
     return h('div', { class: 'cc-row' }, h('dt', { class: 'cc-k', text: CHECKIN_LABELS[q.key] || q.key }), node);
   });
@@ -6075,6 +6119,7 @@ function renderCheckins() {
     else sub.textContent = state.readOnly ? 'Not filled in' : 'Not filled in, tap to add';
   });
   renderQuestionRow();
+  renderWeekRow();
 }
 /* Open questions for the team: a live list, so the Today row can say how many are waiting */
 function watchQuestions() {
@@ -6114,7 +6159,7 @@ function sliderBlock(q, current, onChange) {
 function checkinSteps(slot, day, existing) {
   return CHECKIN_QUESTIONS[slot].filter((q) => {
     if (existing && existing[q.key] !== undefined) return true;
-    if (q.pack && !packOn(q.pack)) return false;
+    if (q.pack && !(Array.isArray(q.pack) ? q.pack.some(packOn) : packOn(q.pack))) return false;
     if (q.weekly) {
       const from = addDays(day, -6);
       return !state.recentEntries.some((e) => isPatientCheckin(e) && e.slot === slot && e.day >= from && e.day < day && e[q.key] != null);
@@ -6123,6 +6168,7 @@ function checkinSteps(slot, day, existing) {
   });
 }
 function openCheckin(slot, initialDay) {
+  if (slot === 'week') { openWeekCheck(initialDay); return; }
   const today = todayStr();
   let day = initialDay > today ? today : initialDay;
   const qs = checkinSteps(slot, day, findCheckin(day, slot));
@@ -6133,6 +6179,7 @@ function openCheckin(slot, initialDay) {
     answers = {};
     qs.forEach((q) => { answers[q.key] = existing && existing[q.key] !== undefined ? existing[q.key] : (q.kind === 'text' ? '' : null); });
     if (answers.outside != null) answers.outside = [...answers.outside];
+    if (answers.wb != null) answers.wb = { ...answers.wb };
     answers.sleepHours = existing && existing.sleepHours != null ? existing.sleepHours : null;
     /* a new morning check-in takes the hours from the night's sleep entry (Apple Health or typed), to the nearest half hour, still changeable (v146) */
     sleepFrom = null;
@@ -6175,10 +6222,23 @@ function openCheckin(slot, initialDay) {
         wrap.append(h('p', { class: 'wiz-hint', text: "Asked once a week. These can come with Crohn's or colitis, and the team will want to know." }),
           h('div', { class: 'ticklist', role: 'group', 'aria-label': q.q }, ...boxes, none));
         getVal = () => { const ticked = all.filter((b) => b.checked); return ticked.length ? ticked.filter((b) => b.value).map((b) => b.value) : null; };
+      } else if (q.kind === 'taps') {
+        /* three wellbeing rows, four answers each (v156): the data on a night with no words */
+        const cur = { ...(answers[q.key] || {}) };
+        const rows = WB_ROWS.map(([k, label]) => {
+          const chips = h('div', { class: 'chips taps-chips', role: 'group', 'aria-label': label });
+          WB_WORDS.forEach((w, i) => chips.append(h('button', { class: 'preset' + (cur[k] === i ? ' is-active' : ''), type: 'button', 'aria-pressed': cur[k] === i ? 'true' : 'false', onclick: (ev) => {
+            cur[k] = cur[k] === i ? null : i;
+            [...chips.children].forEach((b, j) => { b.classList.toggle('is-active', cur[k] === j); b.setAttribute('aria-pressed', cur[k] === j ? 'true' : 'false'); });
+          } }, w)));
+          return h('div', { class: 'taps-row' }, h('p', { class: 'taps-label', text: label }), chips);
+        });
+        wrap.append(h('p', { class: 'wiz-hint', text: q.hint }), ...rows);
+        getVal = () => (WB_ROWS.some(([k]) => cur[k] != null) ? { low: cur.low ?? null, worried: cur.worried ?? null, enjoyed: cur.enjoyed ?? null } : null);
       } else if (q.kind === 'text') {
         const ta = h('textarea', { rows: '3', placeholder: q.ph || '' });
         ta.value = answers[q.key] || '';
-        wrap.append(h('p', { class: 'wiz-hint', text: 'Optional. Skip if there is nothing to say.' }), ta, speakButton(ta) || '');
+        wrap.append(h('p', { class: 'wiz-hint', text: q.hint || 'Optional. Skip if there is nothing to say.' }), ta, speakButton(ta) || '');
         getVal = () => ta.value.trim();
       } else {
         const sl = sliderBlock(q, answers[q.key]);
@@ -6215,11 +6275,11 @@ function openCheckin(slot, initialDay) {
       qs.forEach((q, i) => {
         const v = answers[q.key];
         let skipped = q.kind === 'text' ? !v : v == null;
-        let shown = skipped ? 'Skipped' : (q.kind === 'ticks' ? outsideText(v) : q.kind === 'text' ? v : String(v) + (q.kind === 'sleep' && answers.sleepHours != null ? ' · ' + answers.sleepHours + ' h' : ''));
+        let shown = skipped ? 'Skipped' : (q.kind === 'ticks' ? outsideText(v) : q.kind === 'taps' ? wbText(v) : q.kind === 'text' ? v : String(v) + (q.kind === 'sleep' && answers.sleepHours != null ? ' · ' + answers.sleepHours + ' h' : ''));
         const words = q.note && answers[q.note] ? h('span', { class: 'vnote', text: answers[q.note] }) : null;
         list.append(h('li', null, h('button', { type: 'button', onclick: () => { dir = -1; step = i; render(); } },
           h('span', { class: 'k', text: CHECKIN_LABELS[q.key] }),
-          h('span', { class: 'v' + (skipped ? ' is-skipped' : (q.kind === 'text' || q.kind === 'ticks' ? '' : ' is-num')) }, shown, words))));
+          h('span', { class: 'v' + (skipped ? ' is-skipped' : (q.kind === 'text' || q.kind === 'ticks' || q.kind === 'taps' ? '' : ' is-num')) }, shown, words))));
       });
       wrap.append(list);
       if (slot === 'morning' && !state.readOnly) wrap.append(h('p', { class: 'wiz-signpost', text: 'Gentle exercises and stretches are on the Exercise tab, for when you are up and ready. Optional.' }));
@@ -6251,7 +6311,7 @@ async function saveCheckin(slot, day, answers, existing) {
   if (existing) {
     /* nothing changed: no second write, and no "edited" stamp for a look and a tap on Save */
     const keys = CHECKIN_QUESTIONS[slot].map((q) => q.key).filter((k) => k in data).concat(slot === 'morning' ? ['sleepHours'] : [], checkinNoteKeys(slot));
-    const same = keys.every((k) => { const a = data[k] == null ? null : data[k], b = existing[k] == null ? null : existing[k]; if (Array.isArray(a) || Array.isArray(b)) return JSON.stringify(a) === JSON.stringify(b); return typeof a === 'string' || typeof b === 'string' ? String(a == null ? '' : a) === String(b == null ? '' : b) : a === b; });
+    const same = keys.every((k) => { const a = data[k] == null ? null : data[k], b = existing[k] == null ? null : existing[k]; if (Array.isArray(a) || Array.isArray(b) || (a && typeof a === 'object') || (b && typeof b === 'object')) return JSON.stringify(a) === JSON.stringify(b); return typeof a === 'string' || typeof b === 'string' ? String(a == null ? '' : a) === String(b == null ? '' : b) : a === b; });
     if (same) { toast('No changes to save'); return; }
     data.editedBy = state.name;
   }
@@ -6287,6 +6347,80 @@ async function saveCheckin(slot, day, answers, existing) {
     toast(label);
   } catch (e) { console.error(e); toast('Could not save the check-in'); }
 }
+
+/* ---------- Your week (v156) ----------
+   Once a week, about five minutes, on one screen: the wellbeing questions that come with the condition packs that are
+   on (0 to 3, the same four words as the evening taps) and three written ones for everyone (what helped, what was hardest,
+   the week in a sentence). Stored like any check-in, entries/{day}_week { type "checkin", slot "week" }, one per Monday-to-
+   Sunday week (opening it again that week edits it). Never on Notes for the team: it feeds the Mood and wellbeing report. */
+function weekBounds(day) {
+  const d = parseDay(day), dow = (d.getDay() + 6) % 7; // Monday 0
+  const from = addDays(day, -dow);
+  return { from, to: addDays(from, 6) };
+}
+function weekCheckFor(day) {
+  const { from, to } = weekBounds(day);
+  const all = state.recentEntries.concat(state.dayEntries).filter((e) => e.type === 'checkin' && e.slot === 'week' && e.day >= from && e.day <= to);
+  return all.sort((a, b) => b.day.localeCompare(a.day))[0] || null;
+}
+function weekQuestions(existing) {
+  return CHECKIN_QUESTIONS.week.filter((q) => (existing && existing[q.key] !== undefined) || !q.pack || (Array.isArray(q.pack) ? q.pack.some(packOn) : packOn(q.pack)));
+}
+function openWeekCheck(initialDay) {
+  const today = todayStr();
+  const day = !initialDay || initialDay > today ? today : initialDay;
+  const existing = weekCheckFor(day);
+  const qs = weekQuestions(existing);
+  const answers = {};
+  qs.forEach((q) => { answers[q.key] = existing && existing[q.key] !== undefined ? existing[q.key] : (q.kind === 'text' ? '' : null); });
+  const body = h('div', { class: 'weekcheck' });
+  const { from, to } = weekBounds(existing ? existing.day : day);
+  body.append(h('p', { class: 'wiz-hint', text: `Once a week, about five minutes. ${fmtDayShort(from)} to ${fmtDayShort(to)}. These go on the Mood and wellbeing report, never on Notes for the team.` }));
+  const on = PACKS.filter((pk) => packOn(pk.key) && qs.some((q) => q.pack && (Array.isArray(q.pack) ? q.pack.includes(pk.key) : q.pack === pk.key)));
+  if (on.length) body.append(h('div', { class: 'pack-badges' }, ...on.map((pk) => h('span', { class: 'pill q-team', text: pk.name }))));
+  const getters = {};
+  qs.forEach((q) => {
+    if (q.kind === 'scale') {
+      const chips = h('div', { class: 'chips taps-chips', role: 'group', 'aria-label': q.q });
+      WB_WORDS.forEach((w, i) => chips.append(h('button', { class: 'preset' + (answers[q.key] === i ? ' is-active' : ''), type: 'button', 'aria-pressed': answers[q.key] === i ? 'true' : 'false', onclick: () => {
+        answers[q.key] = answers[q.key] === i ? null : i;
+        [...chips.children].forEach((b, j) => { b.classList.toggle('is-active', answers[q.key] === j); b.setAttribute('aria-pressed', answers[q.key] === j ? 'true' : 'false'); });
+      } }, w)));
+      body.append(h('div', { class: 'taps-row' }, h('p', { class: 'taps-label', text: q.q }), chips));
+      getters[q.key] = () => answers[q.key];
+    } else {
+      const ta = h('textarea', { rows: '2', placeholder: q.ph || '', 'aria-label': q.q });
+      ta.value = answers[q.key] || '';
+      body.append(h('div', { class: 'field weekfield' }, h('p', { class: 'taps-label', text: q.q }), ta, speakButton(ta) || ''));
+      getters[q.key] = () => ta.value.trim();
+    }
+  });
+  const save = h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
+    qs.forEach((q) => { answers[q.key] = getters[q.key](); });
+    if (!qs.some((q) => (q.kind === 'text' ? answers[q.key] : answers[q.key] != null))) { toast('Nothing answered yet'); return; }
+    save.disabled = true;
+    await saveCheckin('week', existing ? existing.day : day, answers, existing);
+    closeSheet();
+    renderToday();
+  } }, existing ? 'Save changes' : 'Save');
+  body.append(save, existing ? h('button', { class: 'btn-link wiz-cancel', type: 'button', onclick: closeSheet }, 'Cancel') : '');
+  body.dataset.draft = 'week:' + from;
+  body.dataset.reopen = 'checkin:week:' + day;
+  openSheet('Your week', body);
+}
+function renderWeekRow() {
+  const row = $('week-check'), sub = $('week-check-sub');
+  if (!row) return;
+  const c = weekCheckFor(state.selectedDay);
+  row.disabled = state.readOnly;
+  row.classList.toggle('is-done', !!c);
+  if (c) sub.textContent = 'Done ' + fmtDayShort(c.day) + ' ' + fmtTime(checkinSubmittedAt(c)) + (state.readOnly ? '' : ', tap to change');
+  else {
+    const last = state.recentEntries.filter((e) => e.type === 'checkin' && e.slot === 'week').sort((a, b) => b.day.localeCompare(a.day))[0];
+    sub.textContent = 'Five minutes, once a week.' + (last ? ' Last done ' + fmtDayShort(last.day) + '.' : ' Not done yet.');
+  }
+}
+$('week-check').addEventListener('click', () => openWeekCheck(state.selectedDay));
 
 /* Extra pain readings during the day: ordinary timestamped entries, separate from the check-in scores */
 $('question-now').addEventListener('click', () => openAdd('question'));
@@ -6378,12 +6512,15 @@ async function loadMedDoses(m) {
   const snap = await getDocs(query(hcol('entries'), where('type', '==', 'med'), where('medId', '==', m.id)));
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
-/* ---------- Mood and wellbeing (v155) ----------
+/* ---------- Mood and wellbeing (v155, rebuilt v156) ----------
    Mark, before a therapy session (12 October 2026): a report like the others, for a therapist, counsellor or GP.
-   Nothing new is logged: the morning and evening mood scores and the words behind them (moodNote), how the night
-   was (sleep, sleepNote), energy, one good thing, the treatment sessions, and questions labelled Wellbeing. The
-   screen shows the tiles, the words in time order and the good things; Preview, Print, Save as PDF and Send by
-   email use moodReportHtml() in report.js, as many A4 pages as it needs. */
+   The v155 report printed every text answer raw, in time order, under one-word labels, which read as nonsense
+   out of context ("the comments I have written don't make sense"). Since v156 the report leads with the story
+   (best day, hardest day, how often they felt low, sleep), one chart of mood with pain and sleep behind it, then
+   a written brief, three chosen quotes, what helped and what was hardest, the weeks, the Wellbeing questions and
+   a panel for notes. With Daybook Assistant the brief, the quotes (tidied for dictation, meaning kept) and the
+   two lists are written from the notes; without it the app works them out from the scores and the weekly check.
+   The raw notes are never printed: they stay in Daybook exactly as typed. */
 async function renderMoodReport() {
   const range = reportRange('mood');
   const { from, to } = range;
@@ -6398,76 +6535,201 @@ async function renderMoodReport() {
   $('mood-questions').replaceChildren(...state.moodPdf.questions.map((q) => questionCard(q, renderMoodReport)));
   const W = buildMoodReport(state.moodPdf);
   $('mood-tiles').replaceChildren(...W.tiles.map((t) => h('div', { class: 'tile' + (t.tone ? ' is-' + t.tone : '') },
-    h('span', { class: 'tile-label', text: t.k }), h('span', { class: 'tile-value' }, t.v, t.unit ? h('small', { text: t.unit }) : null), h('span', { class: 'tile-sub', text: t.note }))));
-  const words = W.sections[0], good = W.sections[1];
-  $('mood-words').replaceChildren(...(words.rows.length ? words.rows.map((r) => h('div', { class: 'wordrow' }, h('span', { class: 'wd', text: r.when }), h('span', { class: 'wt' }, h('span', { class: 'ws' + (r.low ? ' is-low' : ''), text: r.score }), r.text, r.sub ? h('small', { text: r.sub }) : null))) : [h('p', { class: 'muted', text: words.none })]));
-  $('mood-good').replaceChildren(...(good.rows.length ? good.rows.map((r) => h('div', { class: 'wordrow' }, h('span', { class: 'wd', text: r.when }), h('span', { class: 'wt', text: r.text }))) : [h('p', { class: 'muted', text: good.none })]));
+    h('span', { class: 'tile-label', text: t.k }), h('span', { class: 'tile-value' }, t.v, t.unit ? h('small', { text: t.unit }) : null), h('span', { class: 'tile-sub', text: t.n }))));
+  /* the brief: Daybook Assistant's words for this range, editable, or the app's plain sentences */
+  const ai = moodAi();
+  $('mood-brief').hidden = !explainAvailable() || state.readOnly || state.viewer;
+  $('mood-brief-undo').hidden = !ai;
+  const box = $('mood-brief-text');
+  box.value = W.brief.map((b) => (b.head ? b.head + '. ' : '') + b.text).join('\n\n');
+  box.readOnly = !ai || state.readOnly;
+  $('mood-brief-note').textContent = ai ? 'Written by Daybook Assistant from your scores and notes. Change any word; the report uses what is in the box.' : W.briefNote + (explainAvailable() && !state.readOnly ? ' Tap the button for a written brief from your notes.' : '');
+  /* the weeks */
+  $('mood-weeks').replaceChildren(...W.weeks.map((w) => h('div', { class: 'card wkcard' },
+    h('div', { class: 'wk-head' }, h('span', { text: w.label }), h('span', { class: 'muted', text: w.sleep })),
+    h('div', { class: 'wk-dots' }, ...[['Felt low', w.low], ['Worried or on edge', w.worried], ['Enjoyed something', w.enjoyed]].map(([label, d]) =>
+      h('span', null, ...[1, 2, 3, 4].map((k) => h('i', { class: k <= d.n ? (d.warm ? 'on warm' : 'on') : '' })), ' ' + label + (d.sub ? ', ' + d.sub : '')))),
+    w.sentence ? h('p', { class: 'wk-sentence', text: '“' + w.sentence + '”' }) : h('p', { class: 'wk-sub', text: 'No weekly check this week.' }),
+    w.sub ? h('p', { class: 'wk-sub', text: w.sub }) : null)));
   $('mood-send').hidden = state.readOnly || state.viewer;
   warmReport('mood');
+}
+function moodAi() { const a = state.moodAI; return a && state.moodPdf && a.range === state.moodPdf.from + '|' + state.moodPdf.to ? a : null; }
+/* The brief box is the report's text: the paragraphs, "Head. text", kept in state.moodAI as edited */
+$('mood-brief-text').addEventListener('input', () => {
+  const ai = moodAi();
+  if (!ai) return;
+  ai.brief = $('mood-brief-text').value.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean).map((p) => {
+    const m = p.match(/^([A-Z][^.]{2,40})\.\s+(.+)$/s);
+    return m ? { head: m[1], text: m[2] } : { head: '', text: p };
+  });
+  fitMemo.mood = null;
+});
+$('mood-brief').addEventListener('click', () => {
+  const n = state.moodPdf;
+  if (!n) return;
+  const W = buildMoodReport(n);
+  withBusy($('mood-brief'), 'Writing, about half a minute', async () => {
+    try {
+      const data = await bridgeExplain({ kind: 'mood', text: moodAiText(W, n) });
+      const out = parseMoodReply(data.text, n);
+      if (!out) { toast('Could not read the reply. The brief is left as it was.'); return; }
+      state.moodAI = out;
+      renderMoodReport();
+      toast('Written. Read it through; the report, Preview and Send use what is in the box.');
+    } catch (e) { toast(e.message || 'Could not write the brief'); }
+  });
+});
+$('mood-brief-undo').addEventListener('click', () => { state.moodAI = null; renderMoodReport(); });
+function moodAiText(W, n) {
+  const lines = [`Patient: ${W.patient}. Period: ${n.from} to ${n.to}. Conditions set up: ${PACKS.filter((p) => packOn(p.key)).map((p) => p.name).join(', ') || 'none'}.`, '', 'Day by day (scores out of 10 unless said; taps are 0 not at all, 1 a little, 2 quite a bit, 3 a lot):'];
+  W.daysFull.forEach((d) => {
+    if (!d.any) return;
+    const f = [];
+    if (d.moodM != null || d.moodE != null) f.push('mood ' + [d.moodM != null ? 'morning ' + d.moodM : '', d.moodE != null ? 'evening ' + d.moodE : ''].filter(Boolean).join(', '));
+    if (d.pain != null) f.push('worst pain ' + d.pain);
+    if (d.sleep != null) f.push('slept ' + d.sleep + ' h');
+    if (d.wb) f.push('taps: low ' + (d.wb.low ?? '-') + ', worried ' + (d.wb.worried ?? '-') + ', enjoyed ' + (d.wb.enjoyed ?? '-'));
+    if (d.session) f.push('treatment session');
+    if (d.hospital) f.push('in hospital');
+    if (d.temp != null && d.temp >= 38) f.push('temperature ' + d.temp);
+    lines.push(`${d.day} (${d.dow}): ${f.join('; ')}.`);
+    d.notes.forEach(([label, text]) => lines.push(`  ${label}: ${text}`));
+  });
+  lines.push('', 'Weekly checks (Your week):');
+  const wks = n.entries.filter((e) => e.type === 'checkin' && e.slot === 'week');
+  if (!wks.length) lines.push('None.');
+  wks.forEach((e) => {
+    const f = CHECKIN_QUESTIONS.week.filter((q) => e[q.key] != null && e[q.key] !== '').map((q) => q.q.replace(/\?$/, '') + ': ' + (q.kind === 'scale' ? WB_WORDS[e[q.key]].toLowerCase() : e[q.key]));
+    lines.push(`${e.day}: ${f.join('; ')}`);
+  });
+  return lines.join('\n');
+}
+function parseMoodReply(raw, n) {
+  let t = String(raw || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  const a = t.indexOf('{'), b = t.lastIndexOf('}');
+  if (a >= 0 && b > a) t = t.slice(a, b + 1);
+  let parsed = {};
+  try { parsed = JSON.parse(t); } catch (e) { return null; }
+  const clean = (x) => String(x || '').replace(/\s*—\s*/g, ', ').replace(/\s+/g, ' ').trim();
+  const pair = (x) => ({ head: clean(x && x.head).replace(/[.:]$/, ''), text: clean(x && x.text) });
+  const brief = (Array.isArray(parsed.brief) ? parsed.brief : []).map(pair).filter((x) => x.text).slice(0, 5);
+  if (brief.length < 2) return null;
+  const quotes = (Array.isArray(parsed.quotes) ? parsed.quotes : []).map((q) => ({ when: clean(q && q.when), text: clean(q && q.text).replace(/^["“]|["”]$/g, ''), low: Boolean(q && q.low) })).filter((q) => q.text).slice(0, 3);
+  const list = (k) => (Array.isArray(parsed[k]) ? parsed[k] : []).map(pair).filter((x) => x.text).slice(0, 5);
+  return { range: n.from + '|' + n.to, brief, quotes, helped: list('helped'), hardest: list('hardest') };
 }
 function buildMoodReport(n) {
   const { from, to, entries } = n;
   const days = []; for (let d = from; d <= to; d = addDays(d, 1)) days.push(d);
-  const ci = entries.filter(isPatientCheckin);
-  const score = (e, k) => (e[k] == null || e[k] === '' ? null : Number(e[k]));
-  const perSlot = (slot) => days.map((d) => { const e = ci.find((x) => x.day === d && x.slot === slot); const v = e ? score(e, 'mood') : null; return v == null || isNaN(v) ? null : v; });
-  const morning = perSlot('morning'), evening = perSlot('evening');
-  const all = ci.map((e) => score(e, 'mood')).filter((v) => v != null && !isNaN(v));
+  const ci = entries.filter((e) => isPatientCheckin(e) && e.slot !== 'week');
+  const score = (e, k) => (e == null || e[k] == null || e[k] === '' || isNaN(Number(e[k])) ? null : Number(e[k]));
   const avg = (l) => (l.length ? Math.round(l.reduce((t, v) => t + v, 0) / l.length * 10) / 10 : null);
-  const moodAvg = avg(all);
-  const lowDays = days.filter((d) => ci.some((e) => e.day === d && score(e, 'mood') != null && score(e, 'mood') <= 4));
-  const lowest = ci.filter((e) => score(e, 'mood') != null).sort((a, b) => score(a, 'mood') - score(b, 'mood') || a.day.localeCompare(b.day))[0];
-  const sleeps = entries.filter((e) => e.type === 'sleep' && e.day >= from && e.day <= to && Number(e.value) > 0);
-  const nights = days.map((d) => { const l = sleeps.filter((e) => e.day === d); return l.length ? Math.round(Math.max(...l.map((e) => Number(e.value))) / 60 * 10) / 10 : null; });
-  const nightVals = nights.filter((v) => v != null), shortN = nightVals.filter((v) => v < 5).length;
-  const energy = days.map((d) => { const e = ci.find((x) => x.day === d && x.slot === 'evening'); const v = e ? score(e, 'energy') : null; return v == null || isNaN(v) ? null : v; });
-  const energyAvg = avg(energy.filter((v) => v != null));
-  const sessions = days.map((d, i) => (state.days[d] && state.days[d].chemo ? i : -1)).filter((i) => i >= 0);
-  const lowList = lowDays.slice(0, 3).map(rDay).join(', ') + (lowDays.length > 3 ? ' and ' + (lowDays.length - 3) + ' more' : '');
-  const tiles = [
-    { k: 'Mood', v: moodAvg == null ? 'None' : String(moodAvg), unit: moodAvg == null ? '' : 'of 10', tone: moodAvg == null ? '' : lowDays.length ? 'amber' : 'green',
-      note: moodAvg == null ? 'No mood scores in this period.' : `Average of ${plural(all.length, 'score')}. Lowest ${score(lowest, 'mood')} on ${rDay(lowest.day)}.` },
-    { k: 'Low days', v: moodAvg == null ? 'None' : String(lowDays.length), unit: moodAvg == null ? '' : lowDays.length === 1 ? 'day' : 'days', tone: moodAvg == null ? '' : lowDays.length ? 'amber' : 'green',
-      note: moodAvg == null ? 'No mood scores in this period.' : lowDays.length ? `Mood 4 or under: ${lowList}.` : 'No day with mood 4 or under.' },
-    { k: 'Sleep', v: nightVals.length ? String(avg(nightVals)) : 'None', unit: nightVals.length ? 'hours' : '', tone: nightVals.length ? (shortN ? 'amber' : 'green') : '',
-      note: nightVals.length ? `A night on average, from ${plural(nightVals.length, 'night')}. ${shortN ? plural(shortN, 'night') + ' under 5 hours.' : 'None under 5 hours.'}` : 'No sleep logged in this period.' },
-    { k: 'Energy', v: energyAvg == null ? 'None' : String(energyAvg), unit: energyAvg == null ? '' : 'of 10', tone: energyAvg == null ? '' : energyAvg <= 3 ? 'amber' : 'green',
-      note: energyAvg == null ? 'No evening check-ins in this period.' : `Evening average over ${plural(energy.filter((v) => v != null).length, 'evening')}.` }
-  ];
-  const chart = { title: 'Mood (1 to 10), morning and evening', stat: moodAvg == null ? 'No scores' : lowDays.length ? 'Low on ' + plural(lowDays.length, 'day') : 'Steady', tone: moodAvg == null ? '' : lowDays.length ? 'amber' : 'green',
-    min: 0, max: 10, ticks: [0, 5, 10], marks: sessions, series: [{ d: morning, c: REPORT_INK }, { d: evening, c: REPORT_TEAL }],
-    legend: `<span><i style="background:${REPORT_INK}"></i>Morning</span><span><i style="background:${REPORT_TEAL}"></i>Evening</span>${sessions.length ? '<span><i class="tri"></i>Treatment session</span>' : ''}` };
-  const dayLabels = days.map((d, i) => (i === 0 || i === days.length - 1 || parseDay(d).getDate() === 1 ? rDay(d) : String(parseDay(d).getDate())));
-  /* the words behind the scores, in time order: mood words first on a day, then how rested they felt */
-  const wordRows = [];
-  ci.slice().sort((a, b) => a.day.localeCompare(b.day) || (a.slot === 'morning' ? -1 : 1)).forEach((e) => {
-    const when = rDay(e.day) + ', ' + (e.slot === 'morning' ? 'morning' : 'evening');
-    const m = score(e, 'mood');
-    if (e.moodNote && String(e.moodNote).trim()) wordRows.push({ when, score: m == null ? '' : 'Mood ' + m, low: m != null && m <= 4, text: String(e.moodNote).trim() });
-    if (e.slot === 'morning' && e.sleepNote && String(e.sleepNote).trim()) wordRows.push({ when, score: score(e, 'sleep') == null ? 'Sleep' : 'Sleep ' + score(e, 'sleep'), low: false, text: String(e.sleepNote).trim(), sub: e.sleepHours ? 'About ' + e.sleepHours + ' hours' : '' });
-    if (e.slot === 'evening' && e.settled && String(e.settled).trim() && !isRoutineNote({ text: String(e.settled) })) wordRows.push({ when, score: 'Settled', low: false, text: String(e.settled).trim() });
+  const text = (x) => (x == null ? '' : String(x).trim());
+  const hospitalDays = new Set(entries.filter((e) => e.type === 'med' && e.hospital).map((e) => e.day));
+  const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  /* one row per day with everything the tiles, the chart and the brief read */
+  const daysFull = days.map((d) => {
+    const m = ci.find((e) => e.day === d && e.slot === 'morning'), ev = ci.find((e) => e.day === d && e.slot === 'evening');
+    const moodM = score(m, 'mood'), moodE = score(ev, 'mood');
+    const moods = [moodM, moodE].filter((v) => v != null);
+    const pains = [score(m, 'pain'), score(ev, 'pain'), score(ev, 'worstPain'), ...entries.filter((e) => e.type === 'pain' && e.day === d).map((e) => Number(e.value))].filter((v) => v != null && !isNaN(v));
+    const sleeps = entries.filter((e) => e.type === 'sleep' && e.day === d && Number(e.value) > 0).map((e) => Number(e.value));
+    const temps = entries.filter((e) => e.type === 'temp' && e.day === d).map((e) => Number(e.value)).filter((v) => !isNaN(v));
+    const wb = ev && ev.wb && typeof ev.wb === 'object' && WB_ROWS.some(([k]) => ev.wb[k] != null) ? ev.wb : null;
+    const notes = [];
+    if (m && text(m.moodNote)) notes.push(['morning, what is behind the mood', text(m.moodNote)]);
+    if (m && text(m.sleepNote)) notes.push(['morning, how rested', text(m.sleepNote)]);
+    if (ev && text(ev.journal)) notes.push(['evening, how was today', text(ev.journal)]);
+    if (ev && text(ev.moodNote)) notes.push(['evening, what is behind the mood', text(ev.moodNote)]);
+    if (ev && text(ev.goodThing)) notes.push(['one good thing', text(ev.goodThing)]);
+    return { day: d, dow: DOW[parseDay(d).getDay()], moodM, moodE, mood: moods.length ? avg(moods) : null, pain: pains.length ? Math.max(...pains) : null,
+      sleep: sleeps.length ? Math.round(Math.max(...sleeps) / 60 * 10) / 10 : null, temp: temps.length ? Math.max(...temps) : null, wb, session: !!(state.days[d] && state.days[d].chemo),
+      hospital: hospitalDays.has(d), notes, any: moods.length || pains.length || sleeps.length || wb || notes.length };
   });
-  const goodRows = ci.filter((e) => e.slot === 'evening' && e.goodThing && String(e.goodThing).trim()).sort((a, b) => a.day.localeCompare(b.day)).map((e) => ({ when: rDay(e.day), text: String(e.goodThing).trim() }));
-  const sections = [
-    { title: 'In your own words', note: 'The words given under the mood and sleep scores, in time order.', rows: wordRows, none: 'No words were added under the scores in this period. The check-ins ask "What is behind it?" under mood.' },
-    { title: 'One good thing each day', note: 'From the evening check-in.', rows: goodRows, good: true, none: 'No good things logged in this period.' },
-    { title: 'Sleep and energy', note: 'Hours asleep a night, and the evening energy score.' },
-    { title: 'Questions', note: 'Labelled Wellbeing in the app. Space under each to write the reply.', questions: true }
+  const scored = daysFull.filter((d) => d.mood != null);
+  const allScores = ci.map((e) => score(e, 'mood')).filter((v) => v != null);
+  const lowDays = scored.filter((d) => Math.min(d.moodM ?? 99, d.moodE ?? 99) <= 4);
+  const dayWord = (d) => DOW[parseDay(d).getDay()] + ' ' + rDay(d);
+  /* whole sentences up to max characters, at least min where the text allows; never a lone "Rough." when more follows */
+  const firstSentence = (s, max, min) => { const t = text(s).replace(/\s+/g, ' '); if (t.length <= max) return t; let end = 0; const re = /[.!?](\s|$)/g; let m; while ((m = re.exec(t))) { if (m.index + 1 > max) break; end = m.index + 1; if (end >= (min || 0)) break; } return end ? t.slice(0, end) : t.slice(0, max - 1).replace(/\s\S*$/, '') + '\u2026'; };
+  const both = (d) => (d.moodM != null && d.moodE != null ? 1 : 0);
+  const best = scored.slice().sort((a, b) => b.mood - a.mood || both(b) - both(a) || b.day.localeCompare(a.day))[0];
+  const worst = scored.slice().sort((a, b) => a.mood - b.mood || both(b) - both(a) || b.day.localeCompare(a.day))[0];
+  const moodWords = (d) => { const both = d.moodM != null && d.moodE != null; return 'Mood ' + (both && d.moodM === d.moodE ? d.moodM + ', morning and evening' : both ? d.moodM + ' in the morning, ' + d.moodE + ' in the evening' : (d.moodM ?? d.moodE) + (d.moodM != null ? ' in the morning' : ' in the evening')); };
+  const bestQuote = best ? (best.notes.find(([l]) => /how was today|good thing/.test(l)) || best.notes[0]) : null;
+  const worstWhy = worst ? [worst.hospital ? 'in hospital' : '', worst.pain != null && worst.pain >= 7 ? 'pain at ' + worst.pain : '', worst.temp != null && worst.temp >= 38 ? 'a temperature of ' + worst.temp.toFixed(1) : '', worst.sleep != null && worst.sleep < 5 ? 'after ' + worst.sleep + ' hours of sleep' : ''].filter(Boolean) : [];
+  const taps = daysFull.filter((d) => d.wb);
+  const tapCount = (k) => taps.filter((d) => d.wb[k] != null && d.wb[k] >= 2).length;
+  const tapAnswered = (k) => taps.filter((d) => d.wb[k] != null).length;
+  const nights = daysFull.filter((d) => d.sleep != null).map((d) => d.sleep), shortN = nights.filter((v) => v < 5).length;
+  const tiles = [
+    best ? { k: 'Best day', v: dayWord(best.day), unit: '', tone: 'green', n: moodWords(best) + '.' + (bestQuote ? ' “' + firstSentence(bestQuote[1], 90, 30) + '”' : '') }
+      : { k: 'Best day', v: 'None', unit: '', tone: '', n: 'No mood scores in this period.' },
+    worst ? { k: 'Hardest day', v: dayWord(worst.day), unit: '', tone: worst.mood <= 3 ? 'red' : worst.mood <= 5 ? 'amber' : 'green', n: moodWords(worst) + (worstWhy.length ? ', ' + worstWhy.join(', ') : '') + '.' }
+      : { k: 'Hardest day', v: 'None', unit: '', tone: '', n: 'No mood scores in this period.' },
+    taps.length ? { k: 'Felt low', v: String(tapCount('low')), unit: 'of ' + plural(tapAnswered('low'), 'evening'), tone: tapCount('low') ? 'amber' : 'green',
+      n: `Quite a bit or a lot. Worried or on edge on ${plural(tapCount('worried'), 'evening')}. Enjoyed something on ${tapCount('enjoyed')}.` }
+      : { k: 'Felt low', v: 'None', unit: '', tone: '', n: 'The three evening taps were not answered in this period.' },
+    nights.length ? { k: 'Sleep', v: String(avg(nights)), unit: 'h a night', tone: shortN ? 'amber' : 'green', n: `${shortN ? plural(shortN, 'night') + ' under 5 hours' : 'No night under 5 hours'}, from ${plural(nights.length, 'night')} logged.` }
+      : { k: 'Sleep', v: 'None', unit: '', tone: '', n: 'No sleep logged in this period.' }
   ];
-  const charts = [
-    { title: 'Sleep (hours a night)', type: 'bars', flagBelow: 5, stat: nightVals.length ? (shortN ? plural(shortN, 'night') + ' under 5 h' : 'Steady') : 'No sleep logged', tone: nightVals.length ? (shortN ? 'amber' : 'green') : '', min: 0, max: Math.max(10, ...nightVals.map(Math.ceil)), ticks: [0, 5, 10], series: [{ d: nights, c: REPORT_TEAL }] },
-    { title: 'Energy (1 to 10)', stat: energyAvg == null ? 'No scores' : 'Average ' + energyAvg, tone: energyAvg == null ? '' : energyAvg <= 3 ? 'amber' : 'green', min: 0, max: 10, ticks: [0, 5, 10], series: [{ d: energy, c: REPORT_TEAL }] }
-  ];
-  const items = [];
-  items.push({ t: 'sec', s: 0 }); if (wordRows.length) wordRows.forEach((_, r) => items.push({ t: 'row', s: 0, r })); else items.push({ t: 'none', s: 0 });
-  items.push({ t: 'sec', s: 1 }); if (goodRows.length) goodRows.forEach((_, r) => items.push({ t: 'row', s: 1, r })); else items.push({ t: 'none', s: 1 });
-  items.push({ t: 'sec', s: 2 }); items.push({ t: 'charts' });
-  const questions = (n.questions || []).map((q) => ({ team: q.teamLabel, text: fixMedWords(q.text), by: `Asked by ${q.who}, ${rDay(q.day)}` }));
-  if (questions.length) { items.push({ t: 'sec', s: 3 }); questions.forEach((_, q) => items.push({ t: 'q', s: 3, q })); }
+  const chart = { mood: daysFull.map((d) => d.mood), pain: daysFull.map((d) => d.pain), sleep: daysFull.map((d) => d.sleep), sessions: daysFull.map((d, i) => (d.session ? i : -1)).filter((i) => i >= 0),
+    hospital: daysFull.map((d, i) => (d.hospital ? i : -1)).filter((i) => i >= 0), low: daysFull.map((d, i) => (lowDays.includes(d) ? i : -1)).filter((i) => i >= 0),
+    stat: !scored.length ? 'No scores' : lowDays.length ? 'Low on ' + plural(lowDays.length, 'day') : 'Steady', tone: !scored.length ? '' : lowDays.length ? 'amber' : 'green' };
+  const dayLabels = days.map((d, i) => (i === 0 || i === days.length - 1 || parseDay(d).getDate() === 1 ? rDay(d) : String(parseDay(d).getDate())));
+  /* the weeks: seven-day blocks counted back from the last day, as the other reports */
+  const wkChecks = entries.filter((e) => e.type === 'checkin' && e.slot === 'week');
+  const weeks = reportWeeks(from, to).map((w) => {
+    const inW = daysFull.filter((d) => d.day >= w.from && d.day <= w.to);
+    const t = inW.filter((d) => d.wb);
+    const dots = (k, warmAt) => {
+      const vals = t.map((d) => d.wb[k]).filter((v) => v != null);
+      if (!vals.length) return { n: 0, sub: '', warm: false };
+      const mean = vals.reduce((a, b) => a + b, 0) / vals.length, hi = vals.filter((v) => v >= 2).length;
+      return { n: Math.round(mean) + 1, sub: hi ? `${hi} of ${vals.length}` : `none of ${vals.length}`, warm: warmAt && mean >= 1.5 };
+    };
+    const ns = inW.filter((d) => d.sleep != null).map((d) => d.sleep), sh = ns.filter((v) => v < 5).length;
+    const chk = wkChecks.find((e) => e.day >= w.from && e.day <= w.to) || null;
+    const extra = chk ? [['Helped', text(chk.helped)], ['Hardest', text(chk.hardest)]].filter(([, v]) => v).map(([k, v]) => k + ': ' + v).join(' ') : '';
+    return { key: w.key, from: w.from, to: w.to, label: rDay(w.from) + ' to ' + rDay(w.to), low: dots('low', true), worried: dots('worried', true), enjoyed: dots('enjoyed', false),
+      sleep: ns.length ? avg(ns) + ' h' : 'None', sleepSub: ns.length ? (sh ? plural(sh, 'short night') : 'no short nights') : 'no sleep logged', sentence: chk ? text(chk.sentence) : '', sub: extra, check: chk || null };
+  });
+  /* the brief, the quotes and the two lists: Daybook Assistant's, or the app's plain version */
+  const ai = state.moodAI && state.moodAI.range === from + '|' + to ? state.moodAI : null;
+  const patient = (state.profile && state.profile.reportName) || state.patientName || state.name || 'The patient';
+  let brief, briefNote, quotes, quotesNote, helped, hardest;
+  if (ai) {
+    brief = ai.brief; quotes = ai.quotes; helped = ai.helped; hardest = ai.hardest;
+    briefNote = `Written by Daybook Assistant, an AI helper, from the daily scores and notes. ${patient} read it before sending. Every note is in Daybook.`;
+    quotesNote = 'Notes from the period, chosen by Daybook Assistant. Words tidied for dictation, meaning kept.';
+  } else {
+    const half = Math.floor(scored.length / 2), a1 = avg(scored.slice(0, half).map((d) => d.mood)), a2 = avg(scored.slice(half).map((d) => d.mood));
+    brief = [];
+    if (scored.length) brief.push({ head: 'Overall', text: `Mood averaged ${avg(allScores)} out of 10 over ${plural(allScores.length, 'score')}, from ${worst.mood} on ${rDay(worst.day)} to ${best.mood} on ${rDay(best.day)}. Mood 4 or under on ${plural(lowDays.length, 'day')}.` + (scored.length >= 6 && a1 != null && a2 != null ? ` The second half of the period averaged ${a2} against ${a1} in the first.` : '') });
+    else brief.push({ head: 'Overall', text: 'No mood scores were logged in this period. The morning and evening check-ins each ask for one.' });
+    brief.push({ head: 'Feeling', text: taps.length ? `From the three evening taps: felt low quite a bit or a lot on ${tapCount('low')} of ${plural(tapAnswered('low'), 'evening')}, worried or on edge on ${tapCount('worried')}, enjoyed something on ${tapCount('enjoyed')} of ${tapAnswered('enjoyed')}.` : 'The three evening taps (felt low, worried or on edge, enjoyed something) were not answered in this period.' });
+    const lowPain = lowDays.filter((d) => d.pain != null && d.pain >= 7).length;
+    brief.push({ head: 'Sleep and pain', text: (nights.length ? `Sleep averaged ${avg(nights)} hours a night over ${plural(nights.length, 'night')}, ${shortN} under 5 hours.` : 'No sleep was logged.') + (daysFull.some((d) => d.pain != null) ? ` Worst pain averaged ${avg(daysFull.filter((d) => d.pain != null).map((d) => d.pain))} out of 10.` : '') + (lowDays.length ? ` Of the ${plural(lowDays.length, 'low day')}, ${lowPain} had pain at 7 or more.` : '') });
+    brief.push({ head: 'The weeks', text: wkChecks.length ? `${plural(wkChecks.length, 'weekly check')} in the period; what helped and what was hardest are listed below, in ${patient}'s own words.` : 'No weekly check (Your week, on Today) was done in this period.' });
+    briefNote = 'Worked out by the app from the scores and the weekly check.';
+    const cands = daysFull.flatMap((d) => d.notes.filter(([l]) => !/good thing/.test(l)).map(([l, t]) => ({ when: rDay(d.day) + (/morning/.test(l) ? ', morning' : ', evening'), text: t, low: d.mood != null && d.mood <= 4 })))
+      .filter((q) => q.text.length > 25 && !isRoutineNote({ text: q.text })).sort((a, b) => b.text.length - a.text.length).slice(0, 3)
+      .map((q) => ({ ...q, text: firstSentence(q.text, 220, 60) }));
+    quotes = cands.sort((a, b) => a.when.localeCompare(b.when));
+    quotesNote = quotes.length ? 'Three of the notes from the period, as written.' : '';
+    helped = wkChecks.filter((e) => text(e.helped)).map((e) => ({ head: weekBounds(e.day).from === from ? rDay(e.day) : rDay(weekBounds(e.day).from) + ' to ' + rDay(weekBounds(e.day).to), text: text(e.helped) }));
+    hardest = wkChecks.filter((e) => text(e.hardest)).map((e) => ({ head: rDay(weekBounds(e.day).from) + ' to ' + rDay(weekBounds(e.day).to), text: text(e.hardest) }));
+  }
+  const questions = (n.questions || []).map((q) => ({ team: q.teamLabel || 'Wellbeing', text: fixMedWords(q.text), by: `Asked by ${q.who}, ${rDay(q.day)}` }));
+  const items = [{ t: 'brief' }];
+  if (quotes.length) items.push({ t: 'quotes' });
+  if (helped.length || hardest.length) items.push({ t: 'two' });
+  items.push({ t: 'sec', s: 'weeks' }); weeks.forEach((_, r) => items.push({ t: 'wk', r }));
+  if (questions.length) { items.push({ t: 'sec', s: 'q' }); questions.forEach((_, q) => items.push({ t: 'q', q })); }
   items.push({ t: 'notes' });
-  const patient = (state.profile && state.profile.reportName) || state.patientName || state.name || '';
   const period = rPeriod(from, to);
-  return { patient, period, prepared: rDay(todayStr()) + ' ' + parseDay(todayStr()).getFullYear(), tiles, chart, days: dayLabels, sections, charts, questions, items, pages: [], docTitle: `Mood and wellbeing, ${patient}, ${period}` };
+  return { patient, period, prepared: rDay(todayStr()) + ' ' + parseDay(todayStr()).getFullYear(), tiles, chart, days: dayLabels, daysFull, brief, briefNote, quotes, quotesNote, helped, hardest, weeks, questions, items, pages: [], docTitle: `Mood and wellbeing, ${patient}, ${period}` };
 }
 function fittedMoodReport() {
   return memoFit('mood', async () => {

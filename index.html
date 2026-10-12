@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=155">
+  <link rel="stylesheet" href="styles.css?v=156">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -252,6 +252,11 @@
             <button class="checkin-row" id="question-now" type="button">
               <svg class="icon checkin-icon" aria-hidden="true"><use href="#i-question"/></svg>
               <span class="checkin-main"><span class="checkin-title">Question for the team</span><span class="checkin-sub" id="question-sub"></span></span>
+              <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
+            </button>
+            <button class="checkin-row" id="week-check" type="button">
+              <svg class="icon checkin-icon" aria-hidden="true"><use href="#i-list"/></svg>
+              <span class="checkin-main"><span class="checkin-title">Your week</span><span class="checkin-sub" id="week-check-sub"></span></span>
               <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
             </button>
           </div>
@@ -589,7 +594,7 @@
           <button id="mood-preview" class="btn btn-tint tint-plum" type="button"><svg class="icon" aria-hidden="true"><use href="#i-eye"/></svg>Preview</button>
           <button id="mood-pdf" class="btn btn-tint tint-warm" type="button"><svg class="icon" aria-hidden="true"><use href="#i-download"/></svg>Save as PDF</button>
         </div>
-        <p class="hint">Your mood scores and the words behind them, one good thing each day, sleep and energy, and your questions labelled Wellbeing, as pages a therapist, counsellor or GP can read in a minute. Send by email puts it in an email from your own Mail app.</p>
+        <p class="hint">How the period has felt, for a therapist, counsellor or GP: your best and hardest days, how often you felt low, one chart of mood with pain and sleep behind it, a written brief, your weeks, and your questions labelled Wellbeing. Your notes themselves stay in Daybook; only the brief and a few chosen quotes go on the report.</p>
         <div id="mood-questions-section" hidden>
           <h3 class="section-title">Questions for the therapist</h3>
           <p class="hint">Asked from Today with "Question for the team" and labelled Wellbeing. They go on the report, and stay until marked as answered.</p>
@@ -598,11 +603,14 @@
         <div class="status" role="group" aria-label="At a glance">
           <div class="tiles tiles-2" id="mood-tiles"></div>
         </div>
-        <h3 class="section-title">In your own words</h3>
-        <p class="hint">The words you gave under the mood and sleep scores, in time order. The report carries them as they are.</p>
-        <div id="mood-words" class="wordlist"></div>
-        <h3 class="section-title">One good thing each day</h3>
-        <div id="mood-good" class="wordlist"></div>
+        <h3 class="section-title">The period in brief</h3>
+        <button id="mood-brief" class="btn btn-tint tint-blue btn-block" type="button" hidden>Write the brief with Daybook Assistant</button>
+        <p id="mood-brief-note" class="mood-brief-note"></p>
+        <textarea id="mood-brief-text" class="brief-box" aria-label="The period in brief" readonly></textarea>
+        <button id="mood-brief-undo" class="btn btn-link" type="button" hidden>Use the app's plain version instead</button>
+        <h3 class="section-title">Week by week</h3>
+        <p class="hint">The three evening taps, sleep, and your Sunday check in your own words. Your week is on Today, five minutes once a week.</p>
+        <div id="mood-weeks"></div>
       </section>
 
       <section id="view-notes" class="view" data-view="notes" hidden>
@@ -790,7 +798,7 @@
   <!-- Privacy, terms and About (since v90): plain English, opened in the sheet from the Settings App card,
        the sign-in and sign-up screens, or ?page=privacy|terms|about in the address (openLegal()). -->
   <template id="tpl-privacy">
-    <p class="legal-date mono">Last updated 11 October 2026</p>
+    <p class="legal-date mono">Last updated 12 October 2026</p>
     <p>My Medical Daybook (Daybook for short) is made and run by Mark 1 Apps Ltd, a company registered in England and Wales (company number 17510025), which is responsible for the information the app holds (the "data controller" in UK law). <span data-contact></span></p>
     <h3>The short version</h3>
     <ul>
@@ -802,7 +810,7 @@
     </ul>
     <h3>What Daybook stores</h3>
     <p><b>Your sign-in:</b> your email address and password (held by Google's Firebase Authentication; Daybook never sees the password), your first name, your role in the household (family, read only, or medicines and treatment only), whether you are the patient or a carer, and which household you belong to.</p>
-    <p><b>What your household records:</b> check-ins (pain, mood, sleep, sickness, appetite, energy, with Crohn's or colitis a weekly question about joints, eyes, skin and mouth, and what you write), readings (temperature, heart rate, blood pressure, oxygen, weight and BMI), food and drink, notes, questions for the care team and their answers, including any voice recordings you choose to make, medicines, doses and reminder times, letters and documents you photograph or paste in and the explanations saved with them, bowel movements (the type, any blood, urgency and accidents, and with Crohn's or colitis your usual number a day and whether you have a stoma), symptoms between check-ins, which conditions Daybook is set up for, treatment sessions and the calendar, exercise ticks, steps, sleep, workouts and food totals if you connect Apple Health, saved meals, who to contact (names, roles, phone numbers, any extension or menu option, and email addresses), and your settings.</p>
+    <p><b>What your household records:</b> check-ins (pain, mood, sleep, sickness, appetite, energy, how much you felt low, worried or enjoyed something each evening, a weekly check whose questions follow the conditions Daybook is set up for, with Crohn's or colitis a weekly question about joints, eyes, skin and mouth, and what you write), readings (temperature, heart rate, blood pressure, oxygen, weight and BMI), food and drink, notes, questions for the care team and their answers, including any voice recordings you choose to make, medicines, doses and reminder times, letters and documents you photograph or paste in and the explanations saved with them, bowel movements (the type, any blood, urgency and accidents, and with Crohn's or colitis your usual number a day and whether you have a stoma), symptoms between check-ins, which conditions Daybook is set up for, treatment sessions and the calendar, exercise ticks, steps, sleep, workouts and food totals if you connect Apple Health, saved meals, who to contact (names, roles, phone numbers, any extension or menu option, and email addresses), and your settings.</p>
     <p><b>On your phone:</b> a copy of your account record and of the records you have opened, so the app works on a weak signal, and a few settings (which charts you view as tables, the exercise filter, the weight unit, the opener). Words typed into a note, a question or a check-in are kept on the phone until you save or close that screen, so they are not lost if the phone closes the app; they are cleared when you save, cancel or clear them, and after 7 days at most. Your browser holds these and they go when you clear its data.</p>
     <p><b>If you turn on reminders:</b> each phone's push address and browser type, so the reminder reaches it. <b>For Daybook Assistant:</b> a daily count per household of how many requests were made and how many words they used, for the cost.</p>
     <h3>Where it is kept</h3>
@@ -817,7 +825,7 @@
     </ul>
     <h3>What leaves your household's folder, and when</h3>
     <ul>
-      <li><b>Daybook Assistant, only when you tap.</b> Daybook Assistant is Daybook's name for its AI helper, which is Claude, an AI model made by Anthropic, a US company. Five features send something through Daybook's bridge to Anthropic for it: <b>Explain with Daybook Assistant</b> (a letter's text or page photos), <b>Suggest questions to ask</b> and <b>Summarise with Daybook Assistant</b> (the Notes for the team text), <b>Read it from a photo</b> (a photo of a medicine) and <b>Add from a photo or PDF of the plan</b> (an exercise or physio plan). So that information goes to the United States. Anthropic does not use what is sent through its API to train its models and handles it under its own terms. The bridge keeps nothing of what was sent or returned, only a count of words used, for the cost. An explanation of a letter is saved with the letter, and you can change or delete it; the other replies are shown for you to check, and only what you then save is kept. There is a daily limit per household.</li>
+      <li><b>Daybook Assistant, only when you tap.</b> Daybook Assistant is Daybook's name for its AI helper, which is Claude, an AI model made by Anthropic, a US company. Six features send something through Daybook's bridge to Anthropic for it: <b>Explain with Daybook Assistant</b> (a letter's text or page photos), <b>Suggest questions to ask</b> and <b>Summarise with Daybook Assistant</b> (the Notes for the team text), <b>Write the brief with Daybook Assistant</b> (the scores and notes behind the Mood and wellbeing report), <b>Read it from a photo</b> (a photo of a medicine) and <b>Add from a photo or PDF of the plan</b> (an exercise or physio plan). So that information goes to the United States. Anthropic does not use what is sent through its API to train its models and handles it under its own terms. The bridge keeps nothing of what was sent or returned, only a count of words used, for the cost. An explanation of a letter is saved with the letter, and you can change or delete it; the other replies are shown for you to check, and only what you then save is kept. There is a daily limit per household.</li>
       <li><b>Your own AI app.</b> "Send to my AI app" and "Copy for my AI app" put the text on your phone's share sheet or clipboard. Where it goes from there is between you and the app you choose.</li>
       <li><b>Save as PDF, Print, Share and Copy</b> make a copy for you to give to the clinic or someone else. Once it has left the app, it is in your hands.</li>
       <li><b>Tap to speak</b> uses your phone's own speech recognition (Apple's on an iPhone, Google's in Chrome). Depending on the phone, the audio may be processed on the phone or on that company's servers under their terms. Daybook receives only the words.</li>
@@ -921,6 +929,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=155"></script>
+  <script type="module" src="scripts.js?v=156"></script>
 </body>
 </html>
