@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '156';
+const APP_VERSION = '157';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -6546,11 +6546,14 @@ async function renderMoodReport() {
   $('mood-brief-note').textContent = ai ? 'Written by Daybook Assistant from your scores and notes. Change any word; the report uses what is in the box.' : W.briefNote + (explainAvailable() && !state.readOnly ? ' Tap the button for a written brief from your notes.' : '');
   /* the weeks */
   $('mood-weeks').replaceChildren(...W.weeks.map((w) => h('div', { class: 'card wkcard' },
-    h('div', { class: 'wk-head' }, h('span', { text: w.label }), h('span', { class: 'muted', text: w.sleep })),
-    h('div', { class: 'wk-dots' }, ...[['Felt low', w.low], ['Worried or on edge', w.worried], ['Enjoyed something', w.enjoyed]].map(([label, d]) =>
-      h('span', null, ...[1, 2, 3, 4].map((k) => h('i', { class: k <= d.n ? (d.warm ? 'on warm' : 'on') : '' })), ' ' + label + (d.sub ? ', ' + d.sub : '')))),
-    w.sentence ? h('p', { class: 'wk-sentence', text: '“' + w.sentence + '”' }) : h('p', { class: 'wk-sub', text: 'No weekly check this week.' }),
+    h('div', { class: 'wk-head' }, h('span', { text: w.label }), h('span', { class: 'muted', text: 'Sleep ' + w.sleep })),
+    W.cols.taps
+      ? h('div', { class: 'wk-dots' }, ...[['Felt low', w.low], ['Worried or on edge', w.worried], ['Enjoyed something', w.enjoyed]].map(([label, d]) =>
+        h('span', null, ...[1, 2, 3, 4].map((k) => h('i', { class: k <= d.n ? (d.warm ? 'on warm' : 'on') : '' })), ' ' + label + (d.sub ? ', ' + d.sub : ''))))
+      : h('p', { class: 'wk-sub', text: `Mood ${w.mood}${w.moodSub ? ', ' + w.moodSub : ''}. Low days: ${w.lowDays}${w.lowSub ? ' ' + w.lowSub : ''}.` }),
+    w.sentence ? h('p', { class: 'wk-sentence', text: '“' + w.sentence + '”' }) : (W.cols.checks ? h('p', { class: 'wk-sub', text: 'No weekly check this week.' }) : null),
     w.sub ? h('p', { class: 'wk-sub', text: w.sub }) : null)));
+  $('mood-weeks-hint').textContent = W.cols.taps ? 'The three evening taps, sleep, and your weekly check in your own words. Your week is on Today, five minutes once a week.' : 'Mood, low days and sleep by week. The three evening taps and Your week on Today add how you felt and your own words from now on.';
   $('mood-send').hidden = state.readOnly || state.viewer;
   warmReport('mood');
 }
@@ -6670,7 +6673,9 @@ function buildMoodReport(n) {
       : { k: 'Hardest day', v: 'None', unit: '', tone: '', n: 'No mood scores in this period.' },
     taps.length ? { k: 'Felt low', v: String(tapCount('low')), unit: 'of ' + plural(tapAnswered('low'), 'evening'), tone: tapCount('low') ? 'amber' : 'green',
       n: `Quite a bit or a lot. Worried or on edge on ${plural(tapCount('worried'), 'evening')}. Enjoyed something on ${tapCount('enjoyed')}.` }
-      : { k: 'Felt low', v: 'None', unit: '', tone: '', n: 'The three evening taps were not answered in this period.' },
+      : scored.length ? { k: 'Low days', v: String(lowDays.length), unit: 'of ' + plural(scored.length, 'day') + ' scored', tone: lowDays.length ? 'amber' : 'green',
+        n: lowDays.length ? 'Mood 4 or under: ' + lowDays.slice(0, 3).map((d) => rDay(d.day)).join(', ') + (lowDays.length > 3 ? ' and ' + (lowDays.length - 3) + ' more' : '') + '.' : 'No day with mood 4 or under.' }
+      : { k: 'Low days', v: 'None', unit: '', tone: '', n: 'No mood scores in this period.' },
     nights.length ? { k: 'Sleep', v: String(avg(nights)), unit: 'h a night', tone: shortN ? 'amber' : 'green', n: `${shortN ? plural(shortN, 'night') + ' under 5 hours' : 'No night under 5 hours'}, from ${plural(nights.length, 'night')} logged.` }
       : { k: 'Sleep', v: 'None', unit: '', tone: '', n: 'No sleep logged in this period.' }
   ];
@@ -6690,9 +6695,12 @@ function buildMoodReport(n) {
       return { n: Math.round(mean) + 1, sub: hi ? `${hi} of ${vals.length}` : `none of ${vals.length}`, warm: warmAt && mean >= 1.5 };
     };
     const ns = inW.filter((d) => d.sleep != null).map((d) => d.sleep), sh = ns.filter((v) => v < 5).length;
+    const ms = inW.filter((d) => d.mood != null), lows = ms.filter((d) => lowDays.includes(d));
     const chk = wkChecks.find((e) => e.day >= w.from && e.day <= w.to) || null;
     const extra = chk ? [['Helped', text(chk.helped)], ['Hardest', text(chk.hardest)]].filter(([, v]) => v).map(([k, v]) => k + ': ' + v).join(' ') : '';
     return { key: w.key, from: w.from, to: w.to, label: rDay(w.from) + ' to ' + rDay(w.to), low: dots('low', true), worried: dots('worried', true), enjoyed: dots('enjoyed', false),
+      mood: ms.length ? String(avg(ms.map((d) => d.mood))) : 'None', moodSub: ms.length ? 'lowest ' + Math.min(...ms.map((d) => Math.min(d.moodM ?? 99, d.moodE ?? 99))) : 'no scores',
+      lowDays: ms.length ? String(lows.length) : 'None', lowSub: ms.length ? 'of ' + plural(ms.length, 'day') : '',
       sleep: ns.length ? avg(ns) + ' h' : 'None', sleepSub: ns.length ? (sh ? plural(sh, 'short night') : 'no short nights') : 'no sleep logged', sentence: chk ? text(chk.sentence) : '', sub: extra, check: chk || null };
   });
   /* the brief, the quotes and the two lists: Daybook Assistant's, or the app's plain version */
@@ -6708,10 +6716,10 @@ function buildMoodReport(n) {
     brief = [];
     if (scored.length) brief.push({ head: 'Overall', text: `Mood averaged ${avg(allScores)} out of 10 over ${plural(allScores.length, 'score')}, from ${worst.mood} on ${rDay(worst.day)} to ${best.mood} on ${rDay(best.day)}. Mood 4 or under on ${plural(lowDays.length, 'day')}.` + (scored.length >= 6 && a1 != null && a2 != null ? ` The second half of the period averaged ${a2} against ${a1} in the first.` : '') });
     else brief.push({ head: 'Overall', text: 'No mood scores were logged in this period. The morning and evening check-ins each ask for one.' });
-    brief.push({ head: 'Feeling', text: taps.length ? `From the three evening taps: felt low quite a bit or a lot on ${tapCount('low')} of ${plural(tapAnswered('low'), 'evening')}, worried or on edge on ${tapCount('worried')}, enjoyed something on ${tapCount('enjoyed')} of ${tapAnswered('enjoyed')}.` : 'The three evening taps (felt low, worried or on edge, enjoyed something) were not answered in this period.' });
+    if (taps.length) brief.push({ head: 'Feeling', text: `From the three evening taps: felt low quite a bit or a lot on ${tapCount('low')} of ${plural(tapAnswered('low'), 'evening')}, worried or on edge on ${tapCount('worried')}, enjoyed something on ${tapCount('enjoyed')} of ${tapAnswered('enjoyed')}.` });
     const lowPain = lowDays.filter((d) => d.pain != null && d.pain >= 7).length;
     brief.push({ head: 'Sleep and pain', text: (nights.length ? `Sleep averaged ${avg(nights)} hours a night over ${plural(nights.length, 'night')}, ${shortN} under 5 hours.` : 'No sleep was logged.') + (daysFull.some((d) => d.pain != null) ? ` Worst pain averaged ${avg(daysFull.filter((d) => d.pain != null).map((d) => d.pain))} out of 10.` : '') + (lowDays.length ? ` Of the ${plural(lowDays.length, 'low day')}, ${lowPain} had pain at 7 or more.` : '') });
-    brief.push({ head: 'The weeks', text: wkChecks.length ? `${plural(wkChecks.length, 'weekly check')} in the period; what helped and what was hardest are listed below, in ${patient}'s own words.` : 'No weekly check (Your week, on Today) was done in this period.' });
+    if (wkChecks.length) brief.push({ head: 'The weeks', text: `${plural(wkChecks.length, 'weekly check')} in the period; what helped and what was hardest are listed below, in ${patient}'s own words.` });
     briefNote = 'Worked out by the app from the scores and the weekly check.';
     const cands = daysFull.flatMap((d) => d.notes.filter(([l]) => !/good thing/.test(l)).map(([l, t]) => ({ when: rDay(d.day) + (/morning/.test(l) ? ', morning' : ', evening'), text: t, low: d.mood != null && d.mood <= 4 })))
       .filter((q) => q.text.length > 25 && !isRoutineNote({ text: q.text })).sort((a, b) => b.text.length - a.text.length).slice(0, 3)
@@ -6729,7 +6737,9 @@ function buildMoodReport(n) {
   if (questions.length) { items.push({ t: 'sec', s: 'q' }); questions.forEach((_, q) => items.push({ t: 'q', q })); }
   items.push({ t: 'notes' });
   const period = rPeriod(from, to);
-  return { patient, period, prepared: rDay(todayStr()) + ' ' + parseDay(todayStr()).getFullYear(), tiles, chart, days: dayLabels, daysFull, brief, briefNote, quotes, quotesNote, helped, hardest, weeks, questions, items, pages: [], docTitle: `Mood and wellbeing, ${patient}, ${period}` };
+  /* the table shows what was logged: the taps' columns only when some evening has them, the sentence only with a weekly check (v157) */
+  const cols = { taps: taps.length > 0, checks: wkChecks.length > 0 };
+  return { patient, period, prepared: rDay(todayStr()) + ' ' + parseDay(todayStr()).getFullYear(), tiles, chart, days: dayLabels, daysFull, brief, briefNote, quotes, quotesNote, helped, hardest, weeks, cols, questions, items, pages: [], docTitle: `Mood and wellbeing, ${patient}, ${period}` };
 }
 function fittedMoodReport() {
   return memoFit('mood', async () => {

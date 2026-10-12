@@ -81,6 +81,7 @@ One at a time, each a few days with its sources checked, on the profile mechanis
 - An "AI used this month: about 12p" line under Settings, from the bridge's own token tally. Offered 4 October; build if wanted.
 
 ## Done
+- v157 The Mood report shows what was logged: with no evening taps or weekly checks in the period (any history from before v156) the week table gives mood, low days and sleep and the tile reads Low days.
 - v156 Mood and wellbeing rebuilt: three evening taps (felt low, worried, enjoyed something) and an optional journal, Your week on Today with questions by condition pack, and the report rewritten as a story (best and hardest day, one chart in teal and terracotta with pain and sleep behind it, a brief written by Daybook Assistant or by the app, chosen quotes, what helped and what was hardest, the weeks); the raw notes never printed; the iPhone print PDF drawn inset.
 - v155 Mood and wellbeing report: a third card on the Reports tab, for a therapist, counsellor or GP: the mood scores morning and evening with the treatment sessions marked, the words behind them, one good thing each day, sleep and energy, Wellbeing questions and a panel for notes, in the house style, with Send by email.
 - v154 Provide feedback: the row renamed, no clock on the getting-started questions, Save for later beside Send so feedback can be added to over days and sent whole.

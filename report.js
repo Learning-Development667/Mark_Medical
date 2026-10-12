@@ -783,6 +783,8 @@ function moodChart(c, days) {
   return s + '</svg>';
 }
 const SW = (bg) => `<i style="background:${bg}"></i>`;
+/* the week table's columns: the taps' three or mood and low days, sleep, and the sentence only with a weekly check (v157) */
+const wkCols = (C) => (C.taps ? '22mm 22mm 24mm 24mm 20mm' : '26mm 24mm 24mm 24mm') + (C.checks ? ' 1fr' : '');
 /* W: { patient, period, prepared, tiles[{ k, v, unit, n, tone }], chart { mood[], pain[], sleep[], sessions[], hospital[], low[], stat, tone }, days[],
    brief[{ head, text }], briefNote, quotes[{ when, text, low }], quotesNote, helped[{ head, text }], hardest[], weeks[{ label, low{ n, sub, warm }, worried, enjoyed, sleep, sleepSub, sentence, sub }],
    questions[{ team, text, by }], items[{ t: 'brief'|'quotes'|'two'|'sec'|'wk'|'q'|'notes', s, r, q }], pages[[item index]], noteLines } */
@@ -809,9 +811,10 @@ export function moodReportHtml(W) {
         const which = it.t === 'sec' ? it.s : it.t === 'wk' ? 'weeks' : 'q';
         const cont = it.t !== 'sec';
         const title = which === 'weeks' ? 'Week by week' : 'Questions';
-        const note = which === 'weeks' ? 'The evening taps (how much, out of four: not at all to a lot) and the weekly check, in ' + esc(W.patient) + "'s words." : 'Labelled Wellbeing in the app. Space under each to write the reply.';
+        const C = W.cols || { taps: true, checks: true };
+        const note = which === 'weeks' ? (C.taps ? 'The evening taps (how much, out of four: not at all to a lot) and sleep' : 'Mood, low days and sleep') + (C.checks ? ', and the weekly check in ' + esc(W.patient) + "'s words." : ', week by week.') : 'Labelled Wellbeing in the app. Space under each to write the reply.';
         html += `<div class="wsec"><h2 class="sec"${cont ? '' : ` data-i="${i}"`}>${title}${cont ? ', continued' : ` <small>${note}</small>`}</h2>`;
-        if (which === 'weeks') html += '<div class="wkhead"><span>Week</span><span>Felt low</span><span>Worried or on edge</span><span>Enjoyed something</span><span>Sleep</span><span>The week in a sentence</span></div>';
+        if (which === 'weeks') html += `<div class="wkhead" style="grid-template-columns:${wkCols(C)}"><span>Week</span>${C.taps ? '<span>Felt low</span><span>Worried or on edge</span><span>Enjoyed something</span>' : '<span>Mood</span><span>Low days</span>'}<span>Sleep</span>${C.checks ? '<span>The week in a sentence</span>' : ''}</div>`;
         if (which === 'q') html += '<div class="wq">';
         open = which;
         if (it.t === 'sec') return;
@@ -819,7 +822,10 @@ export function moodReportHtml(W) {
       if (it.t === 'wk') {
         const w = W.weeks[it.r];
         const cell = (d) => (d.n ? `${dots(d)}<span class="sm">${esc(d.sub)}</span>` : '<span class="sm">No taps</span>');
-        html += `<div class="wkrow" data-i="${i}"><span class="n">${esc(w.label)}</span><span>${cell(w.low)}</span><span>${cell(w.worried)}</span><span>${cell(w.enjoyed)}</span><span class="n">${esc(w.sleep)}${w.sleepSub ? `<span class="sm">${esc(w.sleepSub)}</span>` : ''}</span><span>${w.sentence ? '“' + esc(w.sentence) + '”' : '<span class="sm">No weekly check</span>'}${w.sub ? `<span class="sm">${esc(w.sub)}</span>` : ''}</span></div>`;
+        const C = W.cols || { taps: true, checks: true };
+        const mid = C.taps ? `<span>${cell(w.low)}</span><span>${cell(w.worried)}</span><span>${cell(w.enjoyed)}</span>` : `<span class="n">${esc(w.mood)}${w.moodSub ? `<span class="sm">${esc(w.moodSub)}</span>` : ''}</span><span class="n">${esc(w.lowDays)}${w.lowSub ? `<span class="sm">${esc(w.lowSub)}</span>` : ''}</span>`;
+        const last = C.checks ? `<span>${w.sentence ? '“' + esc(w.sentence) + '”' : '<span class="sm">No weekly check</span>'}${w.sub ? `<span class="sm">${esc(w.sub)}</span>` : ''}</span>` : '';
+        html += `<div class="wkrow" style="grid-template-columns:${wkCols(C)}" data-i="${i}"><span class="n">${esc(w.label)}</span>${mid}<span class="n">${esc(w.sleep)}${w.sleepSub ? `<span class="sm">${esc(w.sleepSub)}</span>` : ''}</span>${last}</div>`;
       }
       /* the card's own three ruled lines, never the 40 clipped ones: rules running past the paper, even clipped, make Chrome print a blank page after the last */
       if (it.t === 'q') { const q = W.questions[it.q]; html += `<article class="q" data-i="${i}"><header><div>${q.team ? `<div class="team">${esc(q.team)}</div>` : ''}<h3>${esc(q.text)}</h3><div class="by">${esc(q.by)}</div></div></header><div class="lines" style="min-height:16.2mm">${lines(3)}</div></article>`; }
