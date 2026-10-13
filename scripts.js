@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '161';
+const APP_VERSION = '162';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -7022,7 +7022,7 @@ function buildPainReport(n) {
       n: `${shortN.length ? plural(shortN.length, 'night') + ' under 5 hours' : 'No night under 5 hours'}, from ${plural(nights.length, 'night')} logged.` + (shortBad ? ` Pain at 7 or more on the day before or after ${shortBad === shortN.length ? (shortN.length === 1 ? 'it' : 'all of them') : shortBad + ' of them'}.` : '') }
       : { k: 'Sleep', v: 'None', unit: '', tone: '', n: 'No sleep logged in this period.' }
   ];
-  const chart = { lo: daysFull.map((d) => d.lo), hi: daysFull.map((d) => d.hi), worst: daysFull.map((d) => d.worst), prn: daysFull.map((d) => d.prn), sessions: daysFull.map((d, i) => (d.session ? i : -1)).filter((i) => i >= 0),
+  const chart = { avg: daysFull.map((d) => (d.now.length ? avg(d.now) : null)), worst: daysFull.map((d) => d.worst), prn: daysFull.map((d) => d.prn), sessions: daysFull.map((d, i) => (d.session ? i : -1)).filter((i) => i >= 0),
     hospital: daysFull.map((d, i) => (d.hospital ? i : -1)).filter((i) => i >= 0), bad: daysFull.map((d, i) => (bad.includes(d) ? i : -1)).filter((i) => i >= 0),
     stat: !scored.length ? 'No scores' : bad.length ? plural(bad.length, 'day') + ' at 7 or more' : 'Under 7 throughout', tone: !scored.length ? '' : bad.length ? (bad.length * 2 >= scored.length ? 'red' : 'amber') : 'green' };
   const dayLabels = days.map((d, i) => (i === 0 || i === days.length - 1 || parseDay(d).getDate() === 1 ? rDay(d) : String(parseDay(d).getDate())));
@@ -7037,7 +7037,8 @@ function buildPainReport(n) {
   const WORDS_MAX = 16;
   if (words.length > WORDS_MAX) { const keep = new Set(words.slice().sort((a, b) => b.text.length - a.text.length).slice(0, WORDS_MAX)); words = words.filter((w) => keep.has(w)); }
   const wordsTotal = daysFull.flatMap((d) => d.notes).length;
-  words = words.map((w) => ({ ...w, text: firstSentence(w.text, 200, 60) }));
+  /* printed whole (the report takes as many pages as it needs); only a very long note is cut at a sentence past 600 characters, 900 at most */
+  words = words.map((w) => ({ ...w, text: firstSentence(w.text, 900, 600) }));
   const weeks = reportWeeks(from, to).map((w) => {
     const inW = daysFull.filter((d) => d.day >= w.from && d.day <= w.to);
     const nw = inW.flatMap((d) => d.now), sc = inW.filter((d) => d.max != null), b = sc.filter((d) => d.max >= 7), ws = inW.map((d) => d.worst).filter((v) => v != null);
@@ -7050,8 +7051,8 @@ function buildPainReport(n) {
   const patient = (state.profile && state.profile.reportName) || state.patientName || state.name || 'The patient';
   const questions = (n.questions || []).map((q) => ({ team: q.teamLabel || 'Pain team', text: fixMedWords(q.text), by: `Asked by ${q.who}, ${rDay(q.day)}` }));
   const items = [{ t: 'tod' }];
-  items.push({ t: 'sec', s: 'words' }); words.forEach((_, r) => items.push({ t: 'word', r }));
   items.push({ t: 'sec', s: 'weeks' }); weeks.forEach((_, r) => items.push({ t: 'wk', r }));
+  items.push({ t: 'sec', s: 'words' }); words.forEach((_, r) => items.push({ t: 'word', r }));
   if (questions.length) { items.push({ t: 'sec', s: 'q' }); questions.forEach((_, q) => items.push({ t: 'q', q })); }
   items.push({ t: 'notes' });
   const period = rPeriod(from, to);

@@ -83,6 +83,7 @@ One at a time, each a few days with its sources checked, on the profile mechanis
 
 ## Done
 - v161 Pain and pain relief, the report for the pain nurse or team: pain morning and evening, the worst pain, where it was in the patient's words, every dose of pain relief, the nights, questions labelled Pain team; in the house style from what is already logged.
+- v162 The pain chart redrawn as two lines (the day's pain and the worst pain, as the Mood chart), Week by week above the words, and the words printed whole.
 - v160 An unfinished check-in is kept whole (scores, words, hours and the step) on the phone and in the household, and reopens on the step it was left at; the other phone can carry it on.
 - v159 Send to the team sent by Daybook itself: one tap, the PDF attached, from reporting@mymedicaldaybook.co.uk in the sender's name through Resend, replies and a copy to the sender's own address; the Mail app route kept underneath. Needs the Resend account, the domain verified and the RESEND_API_KEY secret (Mark).
 - v158 A new contact goes to the top of the Who to contact sheet, headed New contact; the covering emails name the patient in full in the subject and sign-off, from the name on the report.
