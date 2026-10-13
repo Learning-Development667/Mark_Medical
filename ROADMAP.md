@@ -82,6 +82,7 @@ One at a time, each a few days with its sources checked, on the profile mechanis
 - An "AI used this month: about 12p" line under Settings, from the bridge's own token tally. Offered 4 October; build if wanted.
 
 ## Done
+- v160 An unfinished check-in is kept whole (scores, words, hours and the step) on the phone and in the household, and reopens on the step it was left at; the other phone can carry it on.
 - v159 Send to the team sent by Daybook itself: one tap, the PDF attached, from reporting@mymedicaldaybook.co.uk in the sender's name through Resend, replies and a copy to the sender's own address; the Mail app route kept underneath. Needs the Resend account, the domain verified and the RESEND_API_KEY secret (Mark).
 - v158 A new contact goes to the top of the Who to contact sheet, headed New contact; the covering emails name the patient in full in the subject and sign-off, from the name on the report.
 - v157 The Mood report shows what was logged: with no evening taps or weekly checks in the period (any history from before v156) the week table gives mood, low days and sleep and the tile reads Low days.
