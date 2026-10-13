@@ -10,10 +10,10 @@ import {
 import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager, memoryLocalCache,
   collection, doc, setDoc, updateDoc, deleteDoc, getDoc, getDocs,
-  query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
+  query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '159';
+const APP_VERSION = '160';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -351,6 +351,7 @@ function openSheet(title, body, onClose) {
 }
 function closeSheet() {
   clearSheetDrafts();
+  if (state.checkinProgress) { const keep = state.checkinProgress; state.checkinProgress = null; for (const k of keep) { const [slot, day] = k.split(':'); clearProgress(slot, day); } }
   if (state.sheetOnClose) { const fn = state.sheetOnClose; state.sheetOnClose = null; fn(); }
   $('sheet').hidden = true;
   $('sheet-body').replaceChildren();
@@ -475,13 +476,65 @@ function clearSheetDrafts() {
 function offerDraft() {
   if (state.readOnly || state.viewer) return;
   const list = Object.values(readDrafts()).filter((d) => d.reopen).sort((a, b) => b.at - a.at);
+  for (const k of keptCheckins()) if (!findCheckin(k.day, k.slot)) list.push({ at: k.at, reopen: 'checkin:' + k.slot + ':' + k.day, title: checkinTitle(k.slot) });
+  list.sort((a, b) => b.at - a.at);
   const d = list[0];
   if (!d) return;
   const what = d.reopen === 'note' ? 'note' : d.reopen === 'question' ? 'question for the team' : /^checkin:/.test(d.reopen) ? (d.title || 'check-in').toLowerCase() : 'words';
-  toast(`Your unfinished ${what} was kept on this phone.`, { label: 'Open it', onClick: () => {
+  toast(`Your unfinished ${what} was kept${/^checkin:/.test(d.reopen) ? ', as you left it' : ' on this phone'}.`, { label: 'Open it', onClick: () => {
     if (d.reopen === 'note' || d.reopen === 'question') openAdd(d.reopen);
     else if (/^checkin:/.test(d.reopen)) { const [, slot, day] = d.reopen.split(':'); openCheckin(slot, day || todayStr()); }
   } });
+}
+/* An unfinished check-in is kept whole (v160): every score, the hours, the words and the step you were on, on this
+   phone (localStorage daybook.checkin.{slot}:{day}) and, for a real sign-in, in the household's profile/main.checkinDrafts
+   ("slot:day" -> { answers (JSON), step, at, by }), so a frozen phone, a dead battery, a reinstall or the other phone finds
+   it and reopens the check-in on the same step. Cleared when the check-in is saved or its sheet is closed on purpose.
+   Mark, 13 October 2026: the v136 words-only draft put him back on 1 of 5 with every score gone, and the words for the
+   later steps only came back on reaching each step, so it looked as though all of it was lost. */
+const PROG_PREFIX = 'daybook.checkin.';
+const progKey = (slot, day) => PROG_PREFIX + slot + ':' + day;
+let progTimer = null, progWritten = false;
+function readProgress(slot, day) {
+  const cut = Date.now() - DRAFT_DAYS * 86400000;
+  let local = null; try { local = JSON.parse(localStorage.getItem(progKey(slot, day)) || 'null'); } catch (e) { local = null; }
+  let remote = null;
+  const r = state.profile && state.profile.checkinDrafts && state.profile.checkinDrafts[slot + ':' + day];
+  if (r && r.answers) { try { remote = { answers: JSON.parse(r.answers), step: Number(r.step) || 0, at: Number(r.at) || 0, by: r.by || '' }; } catch (e) { remote = null; } }
+  return [local, remote].filter((x) => x && x.answers && typeof x.answers === 'object' && x.at > cut).sort((a, b) => b.at - a.at)[0] || null;
+}
+function writeProgress(slot, day, answers, step) {
+  const rec = { answers, step, at: Date.now(), by: state.name || '' };
+  try { localStorage.setItem(progKey(slot, day), JSON.stringify(rec)); } catch (e) { /* private window */ }
+  if (state.demo || state.readOnly || state.viewer || !state.household) return;
+  clearTimeout(progTimer);
+  progTimer = setTimeout(() => {
+    progWritten = true;
+    setDoc(hdoc('profile', 'main'), { checkinDrafts: { [slot + ':' + day]: { answers: JSON.stringify(answers), step, at: rec.at, by: rec.by } } }, { merge: true }).catch((e) => console.error(e));
+  }, 1500);
+}
+function clearProgress(slot, day) {
+  try { localStorage.removeItem(progKey(slot, day)); } catch (e) { /* nothing kept */ }
+  clearTimeout(progTimer);
+  const had = state.profile && state.profile.checkinDrafts && state.profile.checkinDrafts[slot + ':' + day];
+  if (had) { const d = { ...state.profile.checkinDrafts }; delete d[slot + ':' + day]; state.profile = { ...state.profile, checkinDrafts: d }; } // gone at once, before the snapshot catches up
+  if (state.demo || state.readOnly || state.viewer || !state.household) return;
+  if (had || progWritten) { progWritten = false; setDoc(hdoc('profile', 'main'), { checkinDrafts: { [slot + ':' + day]: deleteField() } }, { merge: true }).catch((e) => console.error(e)); }
+}
+/* every kept check-in known to this phone or the household, newest first, as { slot, day, at } */
+function keptCheckins() {
+  const cut = Date.now() - DRAFT_DAYS * 86400000, out = {};
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k || !k.startsWith(PROG_PREFIX)) continue;
+      const p = JSON.parse(localStorage.getItem(k) || 'null');
+      if (p && p.at > cut) out[k.slice(PROG_PREFIX.length)] = p.at;
+    }
+  } catch (e) { /* nothing kept */ }
+  const remote = (state.profile && state.profile.checkinDrafts) || {};
+  for (const k of Object.keys(remote)) { const at = Number(remote[k] && remote[k].at) || 0; if (at > cut && at > (out[k] || 0)) out[k] = at; }
+  return Object.keys(out).map((k) => { const [slot, day] = k.split(':'); return { slot, day, at: out[k] }; }).sort((a, b) => b.at - a.at);
 }
 function confirmSheet(title, message, okLabel, danger) {
   return new Promise((resolve) => {
@@ -631,6 +684,7 @@ const state = {
   notesCustomTo: null,
   notesText: '',
   notesPdf: null,
+  checkinProgress: null, // the open check-in's kept slot:day keys, cleared on close (v160)
   moodAI: null, // { range "from|to", brief[{ head, text }], quotes[{ when, text, low }], helped[], hardest[] } from Daybook Assistant for the Mood report, this session only (v156)
   notesAI: null, // { range "from|to", weeks { weekKey: { theme, entries } }, questions { id: text }, latest } from Daybook Assistant, this session only
   patientName: '', // the patient's name from the household's members, for the report's masthead
@@ -6158,7 +6212,8 @@ function renderCheckins() {
       return;
     }
     holder.replaceChildren();
-    if (isToday && dueSlot() === slot) { row.classList.add('is-due'); sub.textContent = state.readOnly ? 'Due now' : 'Due now, about a minute'; }
+    if (!state.readOnly && readProgress(slot, day)) { if (isToday && dueSlot() === slot) row.classList.add('is-due'); sub.textContent = 'Unfinished, kept as you left it. Tap to carry on'; }
+    else if (isToday && dueSlot() === slot) { row.classList.add('is-due'); sub.textContent = state.readOnly ? 'Due now' : 'Due now, about a minute'; }
     else if (isToday && slot === 'morning') sub.textContent = state.readOnly ? 'Missed this morning' : 'Missed this morning, tap to fill in';
     else if (isToday) sub.textContent = 'Later today';
     else sub.textContent = state.readOnly ? 'Not filled in' : 'Not filled in, tap to add';
@@ -6217,7 +6272,8 @@ function openCheckin(slot, initialDay) {
   const today = todayStr();
   let day = initialDay > today ? today : initialDay;
   const qs = checkinSteps(slot, day, findCheckin(day, slot));
-  let answers = {}, existing = null, step = 0, dir = 1, sleepFrom = null;
+  let answers = {}, existing = null, step = 0, dir = 1, sleepFrom = null, restored = null, restoredNote = false;
+  state.checkinProgress = new Set();
 
   const load = () => {
     existing = findCheckin(day, slot);
@@ -6233,10 +6289,25 @@ function openCheckin(slot, initialDay) {
       if (night) { answers.sleepHours = Math.round(Number(night.value) / 30) / 2; sleepFrom = night; }
     }
     checkinNoteKeys(slot).forEach((k) => { answers[k] = existing && existing[k] ? String(existing[k]) : ''; });
+    /* an unfinished check-in for this day comes back whole, on the step it was left at (v160) */
+    restored = null;
+    state.checkinProgress.add(slot + ':' + day);
+    if (!existing && !state.readOnly) {
+      const p = readProgress(slot, day);
+      if (p) {
+        Object.keys(p.answers).forEach((k) => { if (k in answers) answers[k] = p.answers[k]; });
+        step = Math.max(0, Math.min(Number(p.step) || 0, qs.length));
+        restored = p; restoredNote = false;
+      }
+    }
   };
   load();
   /* editing a saved check-in opens straight on the review screen: every answer is there, tap one to change it */
   if (existing) step = qs.length;
+  const keep = () => { if (!existing && !state.readOnly) writeProgress(slot, day, answers, step); };
+  let keepTimer = null;
+  const keepSoon = () => { clearTimeout(keepTimer); keepTimer = setTimeout(() => { if (capture) capture(); keep(); }, 300); };
+  let capture = null;
 
   const body = h('div', null);
   const cancelLink = () => existing ? h('button', { class: 'btn-link wiz-cancel', type: 'button', onclick: closeSheet }, 'Cancel') : null;
@@ -6254,6 +6325,13 @@ function openCheckin(slot, initialDay) {
       const bar = h('div', { class: 'progress-bar' }, h('div'));
       bar.firstChild.style.width = Math.round(((step + 1) / (qs.length + 1)) * 100) + '%';
       wrap.append(h('div', { class: 'wiz-progress' }, h('span', { text: `${step + 1} of ${qs.length}` }), bar));
+      if (restored && !restoredNote) {
+        restoredNote = true;
+        const at = new Date(restored.at);
+        wrap.append(h('div', { class: 'draftnote', role: 'status' },
+          h('span', { text: `Your unfinished check-in from ${fmtTime(at)}${dayStr(at) === today ? '' : ' on ' + fmtDayShort(dayStr(at))} is back, as you left it.` }),
+          h('button', { class: 'btn-inline', type: 'button', onclick: () => { clearProgress(slot, day); restored = null; load(); step = 0; dir = -1; render(); } }, 'Start again')));
+      }
       wrap.append(h('p', { class: 'wiz-q', text: q.q }));
 
       let getVal;
@@ -6305,7 +6383,8 @@ function openCheckin(slot, initialDay) {
           return sl.value();
         };
       }
-      const go = (n, d) => { dir = d; step = n; render(); };
+      capture = () => { answers[q.key] = getVal(); };
+      const go = (n, d) => { dir = d; step = n; clearTimeout(keepTimer); keep(); render(); };
       const back = h('button', { class: 'btn btn-secondary btn-back', type: 'button', disabled: step === 0, onclick: () => { answers[q.key] = getVal(); go(step - 1, -1); } }, 'Back');
       const skip = h('button', { class: 'btn-link wiz-skip', type: 'button', onclick: () => { if (q.kind === 'sleep' || q.note) getVal(); answers[q.key] = q.kind === 'text' ? '' : null; go(step + 1, 1); } }, 'Skip');
       const next = h('button', { class: 'btn btn-primary btn-next', type: 'button', onclick: () => { answers[q.key] = getVal(); go(step + 1, 1); } }, step === qs.length - 1 ? 'Review' : 'Next');
@@ -6335,6 +6414,8 @@ function openCheckin(slot, initialDay) {
       } }, existing ? 'Save changes' : 'Save check-in');
       wrap.append(save, h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => { dir = -1; step = qs.length - 1; render(); } }, 'Back'), cancelLink() || '');
     }
+    if (step < qs.length) { wrap.addEventListener('input', keepSoon); wrap.addEventListener('change', keepSoon); }
+    else capture = null;
     body.replaceChildren(wrap);
     const panel = document.querySelector('.sheet-panel');
     if (panel) panel.scrollTop = 0;
