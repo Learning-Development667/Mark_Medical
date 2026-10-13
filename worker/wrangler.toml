@@ -14,6 +14,9 @@ workers_dev = true
 #                            without it the /explain route answers "not switched on yet"
 #   BETA_PHONE               optional: Mark's phone number for Beta testers, shown inside the Feedback sheet
 #                            to signed-in members only, never on the website
+#   RESEND_API_KEY           the key for Send to the team by email (resend.com, free tier; the domain
+#                            mymedicaldaybook.co.uk verified there); without it /send-report answers
+#                            "not switched on yet" and the app offers the share sheet instead
 
 # Public settings. DEMO_PROJECT_ID is the shared demo's Firebase project (already public in
 # config.js); its guest sign-in may use Explain in Daybook with its own smaller daily limit.
@@ -22,6 +25,8 @@ workers_dev = true
 [vars]
 DEMO_PROJECT_ID = "daybook-demo-34eae"
 BETA_CODES_REQUIRED = "yes"
+# SEND_FROM: the address the reports are emailed from; replies go to the sender's own address, never here.
+SEND_FROM = "reporting@mymedicaldaybook.co.uk"
 
 # Medicine reminders: the check runs every five minutes (free plan allows cron triggers)
 [triggers]

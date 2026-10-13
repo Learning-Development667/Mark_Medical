@@ -28,6 +28,7 @@ export default {
       if (url.pathname === '/beta-info' && request.method === 'GET') return withCors(request, await handleBetaInfo(url, env));
       if (url.pathname === '/feedback' && request.method === 'POST') return withCors(request, await handleFeedback(request, env));
       if (url.pathname === '/feedback-info' && request.method === 'POST') return withCors(request, await handleFeedbackInfo(request, env));
+      if (url.pathname === '/send-report' && request.method === 'POST') return withCors(request, await handleSendReport(request, env));
       if (url.pathname === '/invite' && request.method === 'POST') return withCors(request, await handleInvite(request, env));
       if (url.pathname === '/invite-info' && request.method === 'GET') return withCors(request, await handleInviteInfo(url, env));
       if (url.pathname === '/join' && request.method === 'POST') return withCors(request, await handleJoin(request, env));
@@ -681,6 +682,63 @@ async function handleFeedbackInfo(request, env) {
   return json({ email: 'support@mymedicaldaybook.co.uk', phone: a.demo ? null : (env.BETA_PHONE || null) });
 }
 
+/* Send to the team, sent by Daybook (v159). POST /send-report { kind, to, toName, subject, text, filename, pdf (base64),
+   fromName }: a family member's report goes out by email from SEND_FROM ("Mark Brown via My Medical Daybook"), through
+   Resend (the RESEND_API_KEY secret; without it the route answers "not switched on yet" and the app offers the share
+   sheet), with the sender's own sign-in email as the reply address and in copy, so a clinic's reply comes straight back
+   to the patient and never to a Mark 1 Apps inbox. Nothing of the report is kept here; the app writes its own "sent"
+   record in the household. SEND_A_DAY per household keeps a stuck finger off the free tier. Mark's ask of 13 October
+   2026: one tap, the PDF attached, no Mail app hop (a web app cannot attach a file to a mailto: link, and the share
+   sheet cannot fill in the recipient, which was why the old route took two hops). */
+const SEND_FROM = 'reporting@mymedicaldaybook.co.uk';
+const SEND_A_DAY = 20;
+const SEND_PDF_CHARS = 8000000; // about 6 MB of PDF; the reports are about 1 MB
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+async function handleSendReport(request, env) {
+  const a = await whoIs(request, env); if (a.error) return a.error;
+  if (a.demo) return json({ error: 'demo', message: 'The demo cannot send email. Use Send from my own Mail app.' }, 403);
+  if (!env.RESEND_API_KEY) return json({ error: 'not-set-up', message: 'Sending from Daybook is not switched on yet. Use Send from my own Mail app.' }, 503);
+  const { who, fs } = a;
+  const me = await memberOf(fs, who.uid);
+  if (!me.hid || !me.role) return json({ error: 'unauthorised', message: 'This sign-in is not in a Daybook household.' }, 403);
+  if (me.role !== 'family') return json({ error: 'unauthorised', message: 'Only a family member can send a report.' }, 403);
+  if (!who.email || !EMAIL_RE.test(who.email)) return json({ error: 'no-email', message: 'This sign-in has no email address for replies to go to.' }, 400);
+  const body = await readJson(request); if (!body) return json({ error: 'bad-request', message: 'Could not read what was sent.' }, 400);
+  const to = clean(body.to, 120).toLowerCase();
+  if (!EMAIL_RE.test(to)) return json({ error: 'bad-request', message: 'Check the email address of the contact.' }, 400);
+  const pdf = typeof body.pdf === 'string' && /^[A-Za-z0-9+/=]+$/.test(body.pdf) ? body.pdf : '';
+  if (!pdf) return json({ error: 'bad-request', message: 'The PDF did not arrive. Try again.' }, 400);
+  if (pdf.length > SEND_PDF_CHARS) return json({ error: 'too-large', message: 'That PDF is too large to email. Use a shorter range.' }, 413);
+  const toName = clean(body.toName, 80);
+  const subject = clean(body.subject, 150) || 'Notes from My Medical Daybook';
+  const text = String(body.text || '').replace(/\r/g, '').trim().slice(0, 6000);
+  const filename = clean(body.filename, 90).replace(/[^\w .()-]/g, '') || 'Daybook report.pdf';
+  const fromName = clean(body.fromName, 60) || me.name || 'A Daybook member';
+  const kind = clean(body.kind, 12);
+  const day = londonNow().day;
+  const logDoc = await fs.get(hp(me.hid, 'bridge/sendLog'));
+  const logFields = logDoc ? logDoc.fields : {};
+  const count = f(logFields, 'day') === day ? Number(f(logFields, 'count') || 0) : 0;
+  if (count >= SEND_A_DAY) return json({ error: 'limit', message: 'That is the limit of emails for one day. Use Send from my own Mail app for the rest.' }, 429);
+  await fs.set(hp(me.hid, 'bridge/sendLog'), { day: strVal(day), count: intVal(count + 1), updatedAt: nowTs() });
+  const from = `${fromName.replace(/["<>]/g, '')} via My Medical Daybook <${env.SEND_FROM || SEND_FROM}>`;
+  let r, data = null;
+  try {
+    r = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { Authorization: 'Bearer ' + env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from, to: [toName ? `${toName.replace(/["<>,]/g, '')} <${to}>` : to], cc: [who.email], reply_to: who.email, subject, text, attachments: [{ filename, content: pdf }], headers: { 'X-Entity-Ref-ID': randomCode().slice(0, 16) } }) });
+    try { data = await r.json(); } catch (e) { data = null; }
+  } catch (e) {
+    console.error('send-report: no reach', e && e.message);
+    return json({ error: 'unreachable', message: 'The email service could not be reached. Try again, or use Send from my own Mail app.' }, 502);
+  }
+  if (!r.ok) {
+    console.error('send-report: refused', r.status, data && (data.message || data.name));
+    const why = r.status === 401 || r.status === 403 ? 'the sending key was not accepted' : r.status === 422 ? 'the email service refused it' : r.status === 429 ? 'the email service is busy' : 'the email service said ' + r.status;
+    return json({ error: 'refused', message: `Could not send (${why}). Use Send from my own Mail app for now.` }, 502);
+  }
+  return json({ ok: true, id: (data && data.id) || null, to, copyTo: who.email, at: new Date().toISOString(), kind });
+}
+
 /* POST /household { name, relation, householdName?, betaCode?, heardFrom? }: a sign-in with no household makes its own and becomes its family owner */
 async function handleCreateHousehold(request, env) {
   const a = await whoIs(request, env); if (a.error) return a.error;
@@ -915,7 +973,7 @@ async function verifyFirebaseToken(token, projects, fetchFn) {
   const key = await crypto.subtle.importKey('jwk', jwk, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify']);
   const ok = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, b64urlDecode(parts[2]), new TextEncoder().encode(parts[0] + '.' + parts[1]));
   if (!ok) throw new Error('signature');
-  return { uid: claims.sub, project: claims.aud };
+  return { uid: claims.sub, project: claims.aud, email: typeof claims.email === 'string' ? claims.email.trim().toLowerCase() : '' };
 }
 async function googleKey(kid, fetchFn) {
   const now = Date.now();

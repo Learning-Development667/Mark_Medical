@@ -736,6 +736,9 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 .entry.type-checkin { --cat: var(--teal); }
 .entry.type-pain { --cat: var(--warm); }
 .entry.type-question { --cat: var(--teal); }
+.entry.type-sent { --cat: var(--teal); }
+/* an email address in a hint or on the legal pages breaks rather than pushing a 320px screen sideways (v159) */
+.hint, .legal li, .legal p, .sendto-email { overflow-wrap: anywhere; }
 .entry.type-exercise { --cat: var(--cat-exercise); }
 .entry.type-bowel { --cat: var(--cat-bowel); }
 .entry.type-symptom { --cat: var(--cat-symptom); }

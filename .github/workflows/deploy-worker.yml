@@ -88,6 +88,22 @@ jobs:
           secrets: |
             BETA_PHONE
 
+      # Send to the team by email needs the Resend key (v159); the bridge answers "not switched on yet" until it exists.
+      - name: Set the email sending key
+        if: steps.check.outputs.ready == 'true' && env.RESEND != ''
+        uses: cloudflare/wrangler-action@v3
+        env:
+          RESEND: ${{ secrets.RESEND_API_KEY }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: worker
+          wranglerVersion: '4'
+          command: deploy
+          secrets: |
+            RESEND_API_KEY
+
       # Explain in Daybook needs the Claude API key; the bridge answers "not switched on yet" until it exists.
       - name: Set the AI key
         if: steps.check.outputs.ready == 'true' && env.AIKEY != ''

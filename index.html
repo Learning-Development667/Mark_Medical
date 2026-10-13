@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=158">
+  <link rel="stylesheet" href="styles.css?v=159">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -642,7 +642,7 @@
           <button id="notes-share" class="btn btn-tint tint-blue" type="button">Send to my AI app</button>
           <button id="notes-copy" class="btn btn-tint tint-blue" type="button">Copy for my AI app</button>
         </div>
-        <p class="hint">Two A4 pages to hand over or email: what is new, eight readings at a glance, your medicines and your questions with room to write the answers, then the charts and the notes week by week. Every figure comes from what was logged. <b>Preview</b> shows the two pages and prints them; <b>Send to the team</b> puts them in an email from your own Mail app, for a contact with an email address. <b>Summarise with Daybook Assistant</b> sends these notes and your questions to Daybook Assistant (AI from Anthropic, in the US) to write each week up in a few lines and tidy the spelling; without it the report shows the most telling note of each day. <b>Suggest questions to ask</b> sends them too, and offers questions you can add with one tap. Send or copy does the same through your own AI app. Any of these sends the notes to an AI company's servers, so leave out anything you would not want sent.</p>
+        <p class="hint">Two A4 pages to hand over or email: what is new, eight readings at a glance, your medicines and your questions with room to write the answers, then the charts and the notes week by week. Every figure comes from what was logged. <b>Preview</b> shows the two pages and prints them; <b>Send to the team</b> emails them to a contact with an email address, with the PDF attached, from reporting@mymedicaldaybook.co.uk in your name and with your own address as the reply address (or through your own Mail app where Daybook cannot send). <b>Summarise with Daybook Assistant</b> sends these notes and your questions to Daybook Assistant (AI from Anthropic, in the US) to write each week up in a few lines and tidy the spelling; without it the report shows the most telling note of each day. <b>Suggest questions to ask</b> sends them too, and offers questions you can add with one tap. Send or copy does the same through your own AI app. Any of these sends the notes to an AI company's servers, so leave out anything you would not want sent.</p>
         <h3 class="section-title">Questions for the team</h3>
         <button id="notes-record" class="recbtn recbtn-appt" type="button"><svg class="icon" aria-hidden="true"><use href="#i-mic"/></svg><span>Record the appointment</span></button>
         <p id="notes-record-hint" class="hint">One recording for the whole appointment. Tap a question as they start answering it, so each answer is easy to find later.</p>
@@ -798,7 +798,7 @@
   <!-- Privacy, terms and About (since v90): plain English, opened in the sheet from the Settings App card,
        the sign-in and sign-up screens, or ?page=privacy|terms|about in the address (openLegal()). -->
   <template id="tpl-privacy">
-    <p class="legal-date mono">Last updated 12 October 2026</p>
+    <p class="legal-date mono">Last updated 13 October 2026</p>
     <p>My Medical Daybook (Daybook for short) is made and run by Mark 1 Apps Ltd, a company registered in England and Wales (company number 17510025), which is responsible for the information the app holds (the "data controller" in UK law). <span data-contact></span></p>
     <h3>The short version</h3>
     <ul>
@@ -820,11 +820,12 @@
       <li><b>The members of your household,</b> according to the access they were given. Family members can add, change and delete. A read-only member sees everything and changes nothing. A "medicines and treatment only" member sees medicines, the treatment calendar (with the mood marks) and the readings, sleep and drinks charts, and nothing else. The database itself enforces these rules, not just the app.</li>
       <li><b>Mark 1 Apps Ltd,</b> as the operator, has administrative access to the database in order to run it. That access is used only to fix a problem you have reported or to keep the service running, not to read anyone's records.</li>
       <li><b>Google,</b> as the company hosting the database, under its own data processing terms.</li>
-      <li><b>Cloudflare,</b> which runs Daybook's bridge, and <b>Anthropic,</b> only for what you send with an AI button, as described below.</li>
+      <li><b>Cloudflare,</b> which runs Daybook's bridge, <b>Resend,</b> only for a report you email from Daybook, and <b>Anthropic,</b> only for what you send with an AI button, as described below.</li>
       <li>Nobody else, unless the law requires it.</li>
     </ul>
     <h3>What leaves your household's folder, and when</h3>
     <ul>
+      <li><b>Send to the team and Send by email, only when you tap Send.</b> The report PDF, your message and the contact's address go through Daybook's bridge to Resend, the email service that sends it, from reporting@mymedicaldaybook.co.uk in your name. Your own sign-in email address is the reply address and gets a copy, so the clinic's reply comes straight to you, never to Mark 1 Apps Ltd. Resend keeps the email in its sending records for a limited time under its own terms; the bridge keeps only a daily count, and your household keeps a note of what was sent to whom and when, which you can delete. Where Daybook cannot send (the demo, or before it is switched on) the email goes through your own Mail app instead and nothing passes through the bridge.</li>
       <li><b>Daybook Assistant, only when you tap.</b> Daybook Assistant is Daybook's name for its AI helper, which is Claude, an AI model made by Anthropic, a US company. Six features send something through Daybook's bridge to Anthropic for it: <b>Explain with Daybook Assistant</b> (a letter's text or page photos), <b>Suggest questions to ask</b> and <b>Summarise with Daybook Assistant</b> (the Notes for the team text), <b>Write the brief with Daybook Assistant</b> (the scores and notes behind the Mood and wellbeing report), <b>Read it from a photo</b> (a photo of a medicine) and <b>Add from a photo or PDF of the plan</b> (an exercise or physio plan). So that information goes to the United States. Anthropic does not use what is sent through its API to train its models and handles it under its own terms. The bridge keeps nothing of what was sent or returned, only a count of words used, for the cost. An explanation of a letter is saved with the letter, and you can change or delete it; the other replies are shown for you to check, and only what you then save is kept. There is a daily limit per household.</li>
       <li><b>Your own AI app.</b> "Send to my AI app" and "Copy for my AI app" put the text on your phone's share sheet or clipboard. Where it goes from there is between you and the app you choose.</li>
       <li><b>Save as PDF, Print, Share and Copy</b> make a copy for you to give to the clinic or someone else. Once it has left the app, it is in your hands.</li>
@@ -833,7 +834,7 @@
       <li><b>Apple Health.</b> Nothing goes to Apple from Daybook. If you set up the Health Auto Export app to send steps, sleep, workouts, weight and BMI, and food totals, that data comes from your phone to Daybook's bridge and into your household's folder. The bridge keeps the last message it received, trimmed, so a problem with the feed can be checked.</li>
       <li><b>Reminders.</b> If you turn on medicine reminders, each notification goes through your browser's push service (Apple, Google or Mozilla). The message is encrypted so that service cannot read it, and unless you switch it off it names no medicine ("A medicine is due"), so no medicine name shows on your lock screen.</li>
       <li><b>Fonts and chart code.</b> The app loads its fonts from Google Fonts and some code libraries from Cloudflare's cdnjs. Those servers see your phone's internet address when the app loads, as with any website. None of your entries go to them.</li>
-      <li><b>Daybook's bridge.</b> A small service on Cloudflare that handles sign-up, invites, the Apple Health feed, reminders and Daybook Assistant's requests. It checks your sign-in, or for the Apple Health feed your household's inbox key, and writes only your household's records and your own sign-up record. Cloudflare keeps standard request logs for a short time.</li>
+      <li><b>Daybook's bridge.</b> A small service on Cloudflare that handles sign-up, invites, the Apple Health feed, reminders, the emailed reports and Daybook Assistant's requests. It checks your sign-in, or for the Apple Health feed your household's inbox key, and writes only your household's records and your own sign-up record. Cloudflare keeps standard request logs for a short time.</li>
     </ul>
     <h3>Why it is held</h3>
     <p>To provide the service you have asked for, with your explicit consent for the health information you choose to record. UK data protection law calls health information "special category data", which is why it is handled with the care above. You can withdraw consent at any time by deleting what you recorded or asking for it to be erased.</p>
@@ -850,7 +851,7 @@
   </template>
 
   <template id="tpl-terms">
-    <p class="legal-date mono">Last updated 10 October 2026</p>
+    <p class="legal-date mono">Last updated 13 October 2026</p>
     <h3>1. What Daybook is</h3>
     <p>My Medical Daybook (Daybook for short) is a personal record-keeping tool for a patient and the people looking after them, made and run by Mark 1 Apps Ltd, a company registered in England and Wales (company number 17510025). <span data-contact></span></p>
     <p>It is not a medical device, it gives no medical advice, and it does not replace your doctors, nurses or pharmacist. Everything it shows, including the summary lines, the flags, the food estimates and the AI explanations, is there to help you talk to your care team, not to decide anything for you. If you are worried about a symptom, contact your care team or NHS 111. In an emergency call 999.</p>
@@ -865,7 +866,7 @@
     <h3>6. Daybook Assistant (the AI features)</h3>
     <p>They are optional. Daybook Assistant is an AI helper that runs on Claude, made by Anthropic. When you use it, the text or photo you chose goes to Anthropic in the United States, as the privacy policy describes. Anything it writes or reads, including explanations, summaries, suggested questions and details read from a label or plan, can be wrong. Check anything that matters with your care team.</p>
     <h3>7. Availability</h3>
-    <p>Daybook is provided free and as it is. It depends on Google, Cloudflare, GitHub, your phone's maker and, for Daybook Assistant, Anthropic, and may be unavailable or change without notice. Mark 1 Apps Ltd may change, pause or withdraw it. If it is to be withdrawn you will be given reasonable notice and a way to take your records with you.</p>
+    <p>Daybook is provided free and as it is. It depends on Google, Cloudflare, GitHub, your phone's maker, Resend for the emailed reports and, for Daybook Assistant, Anthropic, and may be unavailable or change without notice. Mark 1 Apps Ltd may change, pause or withdraw it. If it is to be withdrawn you will be given reasonable notice and a way to take your records with you.</p>
     <h3>8. No warranty, limited liability</h3>
     <p>As far as the law allows, Mark 1 Apps Ltd is not liable for loss arising from your use of the app, from an error in what it shows, or from anything decided on the basis of it. Nothing in these terms limits liability for death or personal injury caused by negligence, or for anything else the law does not allow to be limited.</p>
     <h3>9. The code and the name</h3>
@@ -896,6 +897,7 @@
       <li>GitHub Pages (the app) and a Cloudflare Worker (the bridge)</li>
       <li>Chart.js, pdf.js, mammoth.js, jsPDF and html2canvas</li>
       <li>Anthropic's Claude, behind Daybook Assistant (the optional AI features)</li>
+      <li>Resend, which sends the emailed reports</li>
       <li>The Fraunces and Inter typefaces</li>
     </ul>
     <h3>Data sources</h3>
@@ -929,6 +931,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=158"></script>
+  <script type="module" src="scripts.js?v=159"></script>
 </body>
 </html>
