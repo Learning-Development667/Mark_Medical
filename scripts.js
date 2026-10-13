@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '160';
+const APP_VERSION = '161';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -676,6 +676,7 @@ const state = {
   foodRange: 14,
   notesRange: 14,
   moodRange: 28,
+  painRange: 28,
   foodRangeMode: 'preset',
   notesRangeMode: 'preset',
   foodCustomFrom: null,
@@ -1218,6 +1219,13 @@ function buildDemoFixture() {
     e(-1, '10:30', 'Mark', { type: 'med', medId: null, medName: 'Sodium chloride 0.9%', dose: '1000 ml', route: 'drip', hospital: true, note: 'Over 4 hours' }),
     e(-1, '20:10', 'Mark', { type: 'symptom', what: 'Mouth', value: 3, note: 'Sore on the left' }),
     e(0, '11:40', 'Mark', { type: 'pain', value: 4 }),
+    /* pain relief and the words under the pain scores (v161), so the Pain report has something to show */
+    e(-16, '19:00', 'Mark', { type: 'med', medId: 'oramorph', medName: 'Oramorph 10mg/5ml', dose: '2.5 ml (5 mg)' }),
+    e(-9, '14:00', 'Shelley', { type: 'med', medId: 'oramorph', medName: 'Oramorph 10mg/5ml', dose: '2.5 ml (5 mg)' }),
+    e(-5, '22:40', 'Mark', { type: 'med', medId: 'oramorph', medName: 'Oramorph 10mg/5ml', dose: '2.5 ml (5 mg)', note: 'Could not get comfortable' }),
+    e(-2, '16:05', 'Mark', { type: 'med', medId: 'oramorph', medName: 'Oramorph 10mg/5ml', dose: '2.5 ml (5 mg)' }),
+    e(-2, '21:15', 'Mark', { type: 'med', medId: 'oramorph', medName: 'Oramorph 10mg/5ml', dose: '2.5 ml (5 mg)', note: 'Second dose, back and leg' }),
+    e(-9, '13:30', 'Mark', { type: 'pain', value: 6, note: 'Right side, under the ribs, after lunch' }),
     /* Your week (v156): two weekly checks, so the Mood and wellbeing report has a week in Mark's words */
     ci(-11, 'week', { wkResults: 1, wkCutOff: 1, wkTired: 2, helped: 'Getting back in the garden. Shelley.', hardest: 'The two sick days after the session, and not being able to taste anything.', sentence: 'A rough start and a good end.' }),
     ci(-4, 'week', { wkResults: 2, wkCutOff: 0, wkTired: 1, helped: 'The pub lunch. Knowing the pattern now, so the bad days did not frighten me.', hardest: 'The temperature on Wednesday and watching the thermometer all evening.', sentence: 'Steadier, and I know what to expect now.' }),
@@ -1255,9 +1263,9 @@ function buildDemoFixture() {
     ci(-5, 'morning', { sleep: 7, sleepHours: 7, pain: 2, mood: 7, symptoms: '', lookingForward: '' }),
     ci(-5, 'evening', { pain: 3, mood: 7, worstPain: 4, sickness: 2, appetite: 6, energy: 5, symptoms: '', settled: 'The sickness has eased', goodThing: 'Beat Shelley at cards' }),
     ci(-2, 'morning', { sleep: 4, sleepHours: 4.5, pain: 6, painNote: 'Lower back, worse lying flat', mood: 4, symptoms: 'Back pain woke me twice', lookingForward: '' }),
-    ci(-2, 'evening', { pain: 7, mood: 4, worstPain: 8, sickness: 6, appetite: 2, energy: 3, symptoms: 'Felt sick most of the afternoon', settled: '', goodThing: 'Shelley made soup' }),
+    ci(-2, 'evening', { pain: 7, mood: 4, worstPain: 8, sickness: 6, appetite: 2, energy: 3, symptoms: 'Felt sick most of the afternoon', settled: '', goodThing: 'Shelley made soup', painNote: 'Lower back and down the right leg, worse sitting', worstPainNote: 'In the car coming home, 8, eased lying flat' }),
     ci(-1, 'morning', { sleep: 6, sleepHours: 7.5, sleepNote: 'Slept for ages but still not rested', pain: 4, mood: 6, moodNote: 'Flat, no real reason', symptoms: '', lookingForward: 'Quiet day' }),
-    ci(-1, 'evening', { pain: 3, mood: 6, worstPain: 5, sickness: 3, appetite: 5, energy: 5, symptoms: '', settled: 'Back is easier than yesterday', goodThing: 'Sun on the patio' }),
+    ci(-1, 'evening', { pain: 3, mood: 6, worstPain: 5, sickness: 3, appetite: 5, energy: 5, symptoms: '', settled: 'Back is easier than yesterday', goodThing: 'Sun on the patio', painNote: 'A dull ache low down, nothing down the leg today' }),
     ci(0, 'morning', { sleep: 7, sleepHours: 7, pain: 3, mood: 7, symptoms: '', lookingForward: 'Hayley visiting later' }),
     e(0, '09:00', 'Shelley', { type: 'drink', value: 250, note: 'Water' })
   ];
@@ -1754,7 +1762,7 @@ document.querySelectorAll('.tab').forEach((btn) => {
 
 /* The topbar carries the page name ("Care Log: Food diary"), so the report
    pages and the Chemo tab no longer need a heading of their own */
-const PAGE_TITLES = { today: 'Today', meds: 'Medicines', vitals: 'Reports', chemo: 'Treatment plan', exercise: 'Exercise', more: 'More', food: 'Food diary', notes: 'Notes for the team', mood: 'Mood and wellbeing', docs: 'Documents', settings: 'Settings' };
+const PAGE_TITLES = { today: 'Today', meds: 'Medicines', vitals: 'Reports', chemo: 'Treatment plan', exercise: 'Exercise', more: 'More', food: 'Food diary', notes: 'Notes for the team', mood: 'Mood and wellbeing', pain: 'Pain and pain relief', docs: 'Documents', settings: 'Settings' };
 function setBrand(page) {
   $('brand').replaceChildren('Daybook', page ? h('span', { class: 'brand-page', text: ': ' + page }) : null);
   document.title = page ? 'Daybook: ' + page : 'My Medical Daybook';
@@ -1765,7 +1773,7 @@ function showTab(name) {
   let highlight = name;
   if (name === 'docs') highlight = state.docsReturn || 'more';
   if (name === 'settings') highlight = 'more';
-  if (highlight === 'food' || highlight === 'notes' || highlight === 'mood') highlight = state.reportReturn || 'vitals';
+  if (highlight === 'food' || highlight === 'notes' || highlight === 'mood' || highlight === 'pain') highlight = state.reportReturn || 'vitals';
   document.querySelectorAll('.tab').forEach((b) => { const on = b.dataset.tab === highlight; b.classList.toggle('is-active', on); if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
   document.querySelectorAll('.view').forEach((v) => { v.hidden = v.dataset.view !== name; });
   setBrand(PAGE_TITLES[name] || '');
@@ -1777,6 +1785,7 @@ function showTab(name) {
   if (name === 'food') renderFoodDiary();
   if (name === 'notes') renderNotesReport();
   if (name === 'mood') renderMoodReport();
+  if (name === 'pain') renderPainReport();
   if (name === 'chemo') renderChemo();
   if (name === 'exercise') renderExercise();
   if (name === 'docs') showDocsList();
@@ -2031,7 +2040,7 @@ function entrySub(e) {
   if (e.type === 'pain' && e.note) bits.push(e.note);
   if (e.type === 'symptom') { bits.push('Symptom'); if (e.note) bits.push(e.note); }
   if (e.type === 'bowel') { const ts = bowelTypes(e); if (ts.length > 1) bits.push(ts.map((t) => bristolName(t)).join(', ')); const f = bowelFlagWords(e); if (f) bits.push(f); if (e.note) bits.push(e.note); }
-  if (e.type === 'question') bits.push((isDietitianQ(e) ? 'Question for the dietitian' : isWellbeingQ(e) ? 'Question for the therapist' : 'Question for the team') + (e.answered ? ', answered' : '') + (isDietitianQ(e) || isWellbeingQ(e) ? '' : ' · ' + teamLabel(teamOf(e))));
+  if (e.type === 'question') bits.push((isDietitianQ(e) ? 'Question for the dietitian' : isWellbeingQ(e) ? 'Question for the therapist' : isPainQ(e) ? 'Question for the pain team' : 'Question for the team') + (e.answered ? ', answered' : '') + (isDietitianQ(e) || isWellbeingQ(e) || isPainQ(e) ? '' : ' · ' + teamLabel(teamOf(e))));
   if (e.type === 'sent') bits.push('By email to ' + (e.to || '') + (e.copyTo ? ', with a copy to ' + e.copyTo : ''));
   if (e.type === 'question' && e.answerText) bits.push('Answer: ' + excerpt(e.answerText, 90));
   if (e.type === 'question' && e.recordings) bits.push(plural(e.recordings, 'recording'));
@@ -2933,7 +2942,7 @@ function openAdd(type, editEntry) {
     const teamHint = h('p', { class: 'hint' });
     const drawTeams = () => {
       teamRow.replaceChildren(...QUESTION_TEAMS.map(([k, label]) => h('button', { class: 'preset' + (team === k ? ' is-active' : ''), type: 'button', 'aria-pressed': team === k ? 'true' : 'false', onclick: () => { team = k; drawTeams(); } }, label)));
-      teamHint.textContent = team === 'dietitian' ? 'Goes on the Food diary screen and report, for the dietitian, and stays there until it is marked as answered.' : team === 'wellbeing' ? 'Goes on the Mood and wellbeing screen and report, for a therapist, counsellor or GP, and stays there until it is marked as answered.' : 'Goes to the top of Notes for the team, and stays there until it is marked as answered.';
+      teamHint.textContent = team === 'dietitian' ? 'Goes on the Food diary screen and report, for the dietitian, and stays there until it is marked as answered.' : team === 'wellbeing' ? 'Goes on the Mood and wellbeing screen and report, for a therapist, counsellor or GP, and stays there until it is marked as answered.' : team === 'pain' ? 'Goes on the Pain screen and report, for the pain nurse or team, and stays there until it is marked as answered.' : 'Goes to the top of Notes for the team, and stays there until it is marked as answered.';
     };
     drawTeams();
     body.append(
@@ -3326,6 +3335,9 @@ $('rep-food').addEventListener('click', () => openReport('food', 'vitals'));
 $('rep-notes').addEventListener('click', () => openReport('notes', 'vitals'));
 $('rep-docs').addEventListener('click', () => openDocs('vitals'));
 $('rep-mood').addEventListener('click', () => openReport('mood', 'vitals'));
+$('rep-pain').addEventListener('click', () => openReport('pain', 'vitals'));
+$('pain-back').addEventListener('click', () => showTab(state.reportReturn || 'vitals'));
+$('pain-print').addEventListener('click', () => openReportViewer('pain', true));
 $('mood-back').addEventListener('click', () => showTab(state.reportReturn || 'vitals'));
 $('mood-print').addEventListener('click', () => openReportViewer('mood', true));
 $('food-back').addEventListener('click', () => showTab(state.reportReturn || 'vitals'));
@@ -3392,6 +3404,7 @@ function wireReportRange(kind, render) {
 wireReportRange('food', () => renderFoodDiary());
 wireReportRange('notes', () => renderNotesReport());
 wireReportRange('mood', () => renderMoodReport());
+wireReportRange('pain', () => renderPainReport());
 
 function fmtMl(ml) {
   return ml >= 1000 ? (ml / 1000).toFixed(2).replace(/0+$/, '').replace(/\.$/, '') + ' L' : ml + ' ml';
@@ -4508,6 +4521,16 @@ const SEND_KINDS = {
     attached: (range) => `Attached: Mood and wellbeing, ${range}.`,
     check: ' Use Preview on the Mood and wellbeing screen to look at it first.'
   },
+  pain: {
+    data: () => state.painPdf,
+    file: (n) => n.filename,
+    blob: () => painReportBlob(),
+    subject: (range) => `My pain and pain relief, ${range}`,
+    named: (who, range) => `Pain and pain relief: ${who}, ${range}`,
+    words: (range, n) => `Ahead of our appointment, here is my pain report from Daybook for ${range}: my pain scores morning and evening, the worst pain each day, where it was in my own words, the pain relief I took and how I slept${n && n.questions && n.questions.length ? `, and ${n.questions.length === 1 ? 'a question' : n.questions.length + ' questions'} I would like to ask` : ''}.`,
+    attached: (range) => `Attached: Pain and pain relief, ${range}.`,
+    check: ' Use Preview on the Pain screen to look at it first.'
+  },
   meds: {
     data: () => state.medsPdf,
     file: (n) => n.filename,
@@ -4631,6 +4654,9 @@ $('food-send').addEventListener('click', () => openSendSheet('food'));
 $('mood-send').addEventListener('click', () => openSendSheet('mood'));
 $('mood-preview').addEventListener('click', () => { if (state.moodPdf) openReportViewer('mood', false); });
 $('mood-pdf').addEventListener('click', () => { if (state.moodPdf) savePdf(state.moodPdf.filename, state.moodPdf.title, moodReportBlob); });
+$('pain-send').addEventListener('click', () => openSendSheet('pain'));
+$('pain-preview').addEventListener('click', () => { if (state.painPdf) openReportViewer('pain', false); });
+$('pain-pdf').addEventListener('click', () => { if (state.painPdf) savePdf(state.painPdf.filename, state.painPdf.title, painReportBlob); });
 $('notes-record').addEventListener('click', openAppointmentSheet);
 
 
@@ -5029,7 +5055,7 @@ function buildTwoPage(n) {
 
 /* The report fitted into a hidden frame (two A4 pages or nothing), ready to print or turn into a PDF */
 let reportModule = null;
-const REPORT_NAMES = { notes: 'Notes for the team', food: 'Food diary', meds: 'Medicine history', mood: 'Mood and wellbeing' };
+const REPORT_NAMES = { notes: 'Notes for the team', food: 'Food diary', meds: 'Medicine history', mood: 'Mood and wellbeing', pain: 'Pain and pain relief' };
 /* One hidden frame per report (v121), so the fitted Notes for the team survives a Food diary fit */
 function reportFrame(kind) {
   const id = 'report-frame-' + (kind || 'notes');
@@ -5044,12 +5070,13 @@ function reportFrame(kind) {
    because every Preview, Print, Save and Send fitted the whole report again). The key is the report's
    own data object (replaced on every redraw), the Daybook Assistant summary and the settings the
    report reads; fits on one frame run one after another, never at once. */
-const fitMemo = { notes: null, food: null, meds: null, mood: null };
-const fitQueue = { notes: Promise.resolve(), food: Promise.resolve(), meds: Promise.resolve(), mood: Promise.resolve() };
+const fitMemo = { notes: null, food: null, meds: null, mood: null, pain: null };
+const fitQueue = { notes: Promise.resolve(), food: Promise.resolve(), meds: Promise.resolve(), mood: Promise.resolve(), pain: Promise.resolve() };
 function fitKey(kind) {
   const p = state.profile || {};
   if (kind === 'meds') return [state.medsPdf, p.reportName, state.patientName, state.medicines];
   if (kind === 'mood') return [state.moodPdf, state.moodAI, p.reportName, state.patientName, state.days];
+  if (kind === 'pain') return [state.painPdf, p.reportName, state.patientName, state.days, state.medicines];
   return kind === 'food' ? [state.foodPdf, p.reportName, state.patientName, p.proteinTarget, p.detailedNutrition, state.nutrition]
     : [state.notesPdf, state.notesAI, p.reportName, state.patientName, p.proteinTarget];
 }
@@ -5066,7 +5093,7 @@ function memoFit(kind, run) {
 function warmReport(kind) {
   setTimeout(() => {
     if ($('view-' + (kind === 'notes' ? 'notes' : kind)).hidden) return;
-    (kind === 'food' ? fittedFoodReport() : kind === 'mood' ? fittedMoodReport() : fittedReport()).catch(() => {});
+    (kind === 'food' ? fittedFoodReport() : kind === 'mood' ? fittedMoodReport() : kind === 'pain' ? fittedPainReport() : fittedReport()).catch(() => {});
     loadScript(CDN.jspdf).catch(() => {});
     loadScript(CDN.html2canvas).catch(() => {});
   }, 900);
@@ -5420,7 +5447,8 @@ const REPORT_KINDS = {
   notes: { data: () => state.notesPdf, fit: () => fittedReport(), blob: () => notesReportBlob(), html: (R) => reportModule.reportHtml(R) },
   food: { data: () => state.foodPdf, fit: () => fittedFoodReport(), blob: () => foodReportBlob(), html: (R) => reportModule.foodReportHtml(R) },
   meds: { data: () => state.medsPdf, fit: () => fittedMedsReport(), blob: () => medsReportBlob(), html: (R) => reportModule.medsReportHtml(R) },
-  mood: { data: () => state.moodPdf, fit: () => fittedMoodReport(), blob: () => moodReportBlob(), html: (R) => reportModule.moodReportHtml(R) }
+  mood: { data: () => state.moodPdf, fit: () => fittedMoodReport(), blob: () => moodReportBlob(), html: (R) => reportModule.moodReportHtml(R) },
+  pain: { data: () => state.painPdf, fit: () => fittedPainReport(), blob: () => painReportBlob(), html: (R) => reportModule.painReportHtml(R) }
 };
 let PDF_INSET_MM = 0;
 async function printThroughShare(kind, makeBlob) {
@@ -5433,7 +5461,7 @@ async function openReportViewer(kind, printNow) {
   const K = REPORT_KINDS[kind];
   if (printNow && IS_IOS) { printThroughShare(kind, K.blob); return; }
   const name = REPORT_NAMES[kind];
-  const body = h('div', { class: 'viewer' }, h('p', { class: 'hint', text: kind === 'meds' || kind === 'mood' ? 'Making the pages, a few seconds.' : 'Making the two pages, a few seconds.' }));
+  const body = h('div', { class: 'viewer' }, h('p', { class: 'hint', text: kind === 'meds' || kind === 'mood' || kind === 'pain' ? 'Making the pages, a few seconds.' : 'Making the two pages, a few seconds.' }));
   openSheet(name, body);
   let res = null;
   try { res = await K.fit(); }
@@ -5905,10 +5933,11 @@ function weekLabel(w) { return w.from === w.to ? fmtDayLong(w.from) : `${w.from.
 function buildNotesReport(entries, questionsAll, from, to, rangeLabel) {
   const glance = summaryRows(entries, from, to);
   /* Open questions by team (v133): the oncologist's first, then gastro, general and not sure; dietitian ones go to the Food diary report and are only counted here */
-  const open = sortQuestions(questionsAll.filter((q) => !q.answered && !isDietitianQ(q) && !isWellbeingQ(q)));
+  const open = sortQuestions(questionsAll.filter((q) => !q.answered && !isDietitianQ(q) && !isWellbeingQ(q) && !isPainQ(q)));
   const questions = open.map((q) => ({ id: q.id, team: teamOf(q), teamLabel: teamLabel(teamOf(q)), text: q.note, who: q.addedBy || 'unknown', day: q.day }));
   const dietitian = questionsAll.filter((q) => !q.answered && isDietitianQ(q)).length;
   const wellbeing = questionsAll.filter((q) => !q.answered && isWellbeingQ(q)).length;
+  const painQ = questionsAll.filter((q) => !q.answered && isPainQ(q)).length;
   const dayAnswered = (q) => answeredDayOf(q) || q.day;
   const answers = questionsAll.filter((q) => q.answered && dayAnswered(q) >= from && dayAnswered(q) <= to)
     .sort((a, b) => entryDate(a) - entryDate(b))
@@ -5942,6 +5971,7 @@ function buildNotesReport(entries, questionsAll, from, to, rangeLabel) {
   else lines.push('- No open questions.');
   if (dietitian) lines.push(`- ${plural(dietitian, 'question')} for the dietitian ${dietitian === 1 ? 'is' : 'are'} on the Food diary report.`);
   if (wellbeing) lines.push(`- ${plural(wellbeing, 'question')} for the therapist ${wellbeing === 1 ? 'is' : 'are'} on the Mood and wellbeing report.`);
+  if (painQ) lines.push(`- ${plural(painQ, 'question')} for the pain team ${painQ === 1 ? 'is' : 'are'} on the Pain report.`);
   lines.push('', 'Summary (simple checks by the app, not a diagnosis):');
   if (glance.length) glance.forEach((g) => lines.push(`- ${LEVEL_WORD[g.level]}: ${g.text}`));
   else lines.push('- No readings logged in this period.');
@@ -5951,7 +5981,7 @@ function buildNotesReport(entries, questionsAll, from, to, rangeLabel) {
     d.notes.forEach((n) => lines.push(`- ${n.who}, ${n.time}${n.context ? ' (' + n.context + ')' : ''}: ${n.text}`));
   });
   else lines.push('- No written notes in this period.');
-  return { questions, dietitian, wellbeing, answers, answered, glance, days, weeks: notesByWeek(days, from, to), rangeLabel, text: lines.join('\n') };
+  return { questions, dietitian, wellbeing, painQ, answers, answered, glance, days, weeks: notesByWeek(days, from, to), rangeLabel, text: lines.join('\n') };
 }
 
 /* The name on the report: Settings' "Name on the report" if set, else the member whose relation is the patient */
@@ -5999,6 +6029,7 @@ async function renderNotesReport() {
   if (!report.questions.length) $('notes-questions').append(h('p', { class: 'muted', text: 'No open questions. Add one from Today with "Question for the team".' }));
   if (report.dietitian) $('notes-questions').append(h('p', { class: 'muted', text: `${plural(report.dietitian, 'question')} for the dietitian ${report.dietitian === 1 ? 'is' : 'are'} on the Food diary, with its report.` }));
   if (report.wellbeing) $('notes-questions').append(h('p', { class: 'muted', text: `${plural(report.wellbeing, 'question')} for the therapist ${report.wellbeing === 1 ? 'is' : 'are'} on the Mood and wellbeing report.` }));
+  if (report.painQ) $('notes-questions').append(h('p', { class: 'muted', text: `${plural(report.painQ, 'question')} for the pain team ${report.painQ === 1 ? 'is' : 'are'} on the Pain report.` }));
   /* Answered questions are filed, not listed (v114): one line and a way to the documents */
   syncAnswerDocs(questionsAll);
   if (report.answered) {
@@ -6879,6 +6910,165 @@ function fittedMoodReport() {
 }
 async function moodReportBlob() {
   const res = await fittedMoodReport();
+  return res ? reportPdfBlob(res) : null;
+}
+
+/* ---------- Pain and pain relief (v161, 13 October 2026) ----------
+   Mark, seeing his pain nurse: "I would like to be able to take a report like the other reports I do." The house
+   style, as many A4 pages as it needs, usually two. Everything comes from what is already logged: the morning and
+   evening Pain right now scores, the evening Worst pain, the between-times Pain readings, the words written under
+   those sliders (where it was, what helped), every dose of a pain relief medicine (isPainMed(): the purpose or the
+   name says so), hours asleep, treatment sessions and hospital days. Tiles, one chart of each day's pain with the
+   relief taken under it, pain by time of day, the pain relief table, the words by day, the weeks, questions labelled
+   Pain team and a panel to write on. No Daybook Assistant on this report: the pain words are short and print as
+   written. Facts only, never advice. */
+const PAIN_MED_RE = /morphin|oramorph|zomorph|mst\b|oxycod|oxynorm|oxycontin|codeine|co-codamol|kapake|paracetamol|ibuprofen|naproxen|diclofenac|tramadol|gabapentin|pregabalin|amitriptyline|duloxetine|fentanyl|buprenorphine|nefopam|lidocaine|ketamine|nortriptyline|celecoxib|etoricoxib/i;
+const PAIN_PURPOSE_RE = /pain|ache|sore|nerve|neuropath|spasm|cramp|relief|analges|breakthrough/i;
+function isPainMed(m) { return !!m && (PAIN_PURPOSE_RE.test(m.purpose || '') || PAIN_MED_RE.test(m.name || '')); }
+async function renderPainReport() {
+  const range = reportRange('pain');
+  const { from, to } = range;
+  $('pain-sub').textContent = reportRangeLabel('pain', range);
+  const [loaded, questionsAll] = await Promise.all([loadEntriesFrom(from), loadQuestions()]);
+  if (!loaded) return;
+  const entries = loaded.filter((e) => e.day <= to);
+  const qs = sortQuestions(questionsAll.filter((q) => !q.answered && isPainQ(q)));
+  state.painPdf = { from, to, entries, questions: qs.map((q) => ({ id: q.id, team: 'pain', teamLabel: 'Pain team', text: q.note, who: q.addedBy || 'unknown', day: q.day })), filename: `Daybook pain ${to}.pdf`, title: 'Pain and pain relief' };
+  loadPatientName();
+  $('pain-questions-section').hidden = !qs.length;
+  $('pain-questions').replaceChildren(...state.painPdf.questions.map((q) => questionCard(q, renderPainReport)));
+  const P = buildPainReport(state.painPdf);
+  $('pain-tiles').replaceChildren(...P.tiles.map((t) => h('div', { class: 'tile' + (t.tone ? ' is-' + t.tone : '') },
+    h('span', { class: 'tile-label', text: t.k }), h('span', { class: 'tile-value' }, t.v, t.unit ? h('small', { text: t.unit }) : null), h('span', { class: 'tile-sub', text: t.n }))));
+  $('pain-tod').replaceChildren(...P.tod.map((r) => h('div', { class: 'todrow' }, h('span', { class: 'tod-k', text: r.label }), h('span', { class: 'tod-bar', role: 'img', 'aria-label': r.n ? r.avg + ' out of 10' : 'none' }, h('i', { style: 'width:' + (r.n ? Math.round(r.avg * 10) : 0) + '%' })), h('span', { class: 'tod-v', text: r.n ? r.avg + ' (' + plural(r.n, 'score') + ')' : 'None' }))));
+  $('pain-relief').replaceChildren(...(P.relief.length ? P.relief.map((r) => h('div', { class: 'card reliefcard' },
+    h('div', { class: 'wk-head' }, h('span', { text: r.name }), h('span', { class: 'muted', text: r.kind })),
+    h('p', { class: 'wk-sub', text: r.dose + (r.how ? ' · ' + r.how : '') }),
+    h('p', { class: 'wk-sentence', text: r.line }))) : [h('p', { class: 'hint', text: 'No pain relief medicine on the list, or none logged in this period. A medicine counts as pain relief when its "what it is for" says pain, or its name is a known painkiller.' })]));
+  $('pain-words').replaceChildren(...(P.words.length ? P.words.map((w) => h('div', { class: 'card wordcard' }, h('span', { class: 'word-when', text: w.when + (w.score != null ? ' · ' + w.score + '/10' : '') }), h('p', { text: w.text }))) : [h('p', { class: 'hint', text: 'Nothing written under the pain sliders in this period. The box under each pain score ("Where is it, or anything else?") goes here.' })]));
+  $('pain-weeks').replaceChildren(...P.weeks.map((w) => h('div', { class: 'card wkcard' },
+    h('div', { class: 'wk-head' }, h('span', { text: w.label }), h('span', { class: 'muted', text: 'Pain ' + w.pain })),
+    h('p', { class: 'wk-sub', text: `${w.painSub}. Days at 7 or more: ${w.bad}. Worst pain: ${w.worst}. Relief: ${w.relief}. ${w.nights}.` }))));
+  $('pain-send').hidden = state.readOnly || state.viewer;
+  warmReport('pain');
+}
+function buildPainReport(n) {
+  const { from, to, entries } = n;
+  const days = []; for (let d = from; d <= to; d = addDays(d, 1)) days.push(d);
+  const ci = entries.filter((e) => isPatientCheckin(e) && e.slot !== 'week');
+  const score = (e, k) => (e == null || e[k] == null || e[k] === '' || isNaN(Number(e[k])) ? null : Number(e[k]));
+  const avg = (l) => (l.length ? Math.round(l.reduce((t, v) => t + v, 0) / l.length * 10) / 10 : null);
+  const text = (x) => (x == null ? '' : String(x).trim());
+  const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const dayWord = (d) => DOW[parseDay(d).getDay()] + ' ' + rDay(d);
+  const firstSentence = (s, max, min) => { const t = text(s).replace(/\s+/g, ' '); if (t.length <= max) return t; let end = 0; const re = /[.!?](\s|$)/g; let m; while ((m = re.exec(t))) { if (m.index + 1 > max) break; end = m.index + 1; if (end >= (min || 0)) break; } return end ? t.slice(0, end) : t.slice(0, max - 1).replace(/\s\S*$/, '') + '…'; };
+  const painMeds = state.medicines.filter(isPainMed);
+  const painIds = new Set(painMeds.map((m) => m.id));
+  const doses = entries.filter((e) => e.type === 'med' && e.medId && painIds.has(e.medId));
+  const prnIds = new Set(painMeds.filter((m) => m.kind === 'prn').map((m) => m.id));
+  const hospitalDays = new Set(entries.filter((e) => e.type === 'med' && e.hospital).map((e) => e.day));
+  const daysFull = days.map((d) => {
+    const m = ci.find((e) => e.day === d && e.slot === 'morning'), ev = ci.find((e) => e.day === d && e.slot === 'evening');
+    const pm = score(m, 'pain'), pe = score(ev, 'pain'), worst = score(ev, 'worstPain');
+    const readings = entries.filter((e) => e.type === 'pain' && e.day === d).map((e) => ({ v: Number(e.value), at: entryDate(e), note: text(e.note) })).filter((r) => !isNaN(r.v)).sort((a, b) => a.at - b.at);
+    const now = [pm, pe, ...readings.map((r) => r.v)].filter((v) => v != null);
+    const all = [...now, worst].filter((v) => v != null);
+    const dDoses = doses.filter((e) => e.day === d).sort((a, b) => entryDate(a) - entryDate(b));
+    const sleeps = entries.filter((e) => e.type === 'sleep' && e.day === d && Number(e.value) > 0).map((e) => Number(e.value));
+    const notes = [];
+    if (m && text(m.painNote)) notes.push({ day: d, when: dayWord(d) + ', morning', text: text(m.painNote), score: pm });
+    readings.forEach((r) => { if (r.note) notes.push({ day: d, when: dayWord(d) + ', ' + fmtTime(r.at), text: r.note, score: r.v }); });
+    if (ev && text(ev.painNote)) notes.push({ day: d, when: dayWord(d) + ', evening', text: text(ev.painNote), score: pe });
+    if (ev && text(ev.worstPainNote)) notes.push({ day: d, when: dayWord(d) + ', worst today', text: text(ev.worstPainNote), score: worst });
+    dDoses.forEach((e) => { if (text(e.note)) notes.push({ day: d, when: dayWord(d) + ', ' + fmtTime(entryDate(e)) + ' with ' + (e.medName || 'pain relief'), text: text(e.note), score: null }); });
+    return { day: d, dow: DOW[parseDay(d).getDay()], pm, pe, worst, readings, lo: now.length ? Math.min(...now) : null, hi: now.length ? Math.max(...now) : null, max: all.length ? Math.max(...all) : null, now,
+      prn: dDoses.filter((e) => prnIds.has(e.medId)).length, dosesN: dDoses.length, sleep: sleeps.length ? Math.round(Math.max(...sleeps) / 60 * 10) / 10 : null,
+      session: !!(state.days[d] && state.days[d].chemo), hospital: hospitalDays.has(d), notes };
+  });
+  const scored = daysFull.filter((d) => d.max != null);
+  const nowAll = daysFull.flatMap((d) => d.now);
+  const mornings = daysFull.map((d) => d.pm).filter((v) => v != null), evenings = daysFull.map((d) => d.pe).filter((v) => v != null), worsts = daysFull.map((d) => d.worst).filter((v) => v != null);
+  const readingsAll = daysFull.flatMap((d) => d.readings.map((r) => r.v));
+  const bad = scored.filter((d) => d.max >= 7);
+  const peak = scored.slice().sort((a, b) => b.max - a.max || b.day.localeCompare(a.day))[0];
+  const nights = daysFull.filter((d) => d.sleep != null), shortN = nights.filter((d) => d.sleep < 5);
+  const shortBad = shortN.filter((d) => { const prev = daysFull[days.indexOf(d.day) - 1]; return (prev && prev.max != null && prev.max >= 7) || (d.max != null && d.max >= 7); }).length;
+  const mean = avg(nowAll);
+  /* the pain relief, medicine by medicine */
+  const relief = painMeds.map((m) => {
+    const mine = doses.filter((e) => e.medId === m.id);
+    const perDay = {}; mine.forEach((e) => { perDay[e.day] = (perDay[e.day] || 0) + 1; });
+    const dayList = Object.keys(perDay);
+    const most = dayList.length ? Math.max(...dayList.map((d) => perDay[d])) : 0;
+    const last = mine.slice().sort((a, b) => entryDate(b) - entryDate(a))[0];
+    const hitMax = m.kind === 'prn' && m.maxPerDay && most >= m.maxPerDay;
+    const line = !mine.length ? 'None logged in this period.' : `${plural(mine.length, 'dose')} on ${plural(dayList.length, 'day')} of ${days.length}` + (most > 1 ? `, up to ${most} a day${hitMax ? ' (the maximum)' : m.maxPerDay ? ` (at most ${m.maxPerDay})` : ''}` : '') + `. Last ${rDay(last.day)}, ${fmtTime(entryDate(last))}.`;
+    return { id: m.id, name: m.name, dose: m.dose || '', how: m.how || medFrequency(m) || '', kind: m.kind === 'prn' ? 'When needed' : 'Regular', n: mine.length, days: dayList.length, most, maxPerDay: m.maxPerDay || null, hitMax, last: last ? rDay(last.day) + ', ' + fmtTime(entryDate(last)) : '', line, active: m.active !== false };
+  }).filter((r) => r.n || r.active).sort((a, b) => (a.kind === b.kind ? b.n - a.n : a.kind === 'When needed' ? -1 : 1));
+  const prnDoses = doses.filter((e) => prnIds.has(e.medId));
+  const prnDays = new Set(prnDoses.map((e) => e.day)).size;
+  const reliefNote = relief.filter((r) => r.n).map((r) => `${r.name.split(/\s+/)[0]} on ${plural(r.days, 'day')}`).slice(0, 3).join(', ');
+  const tiles = [
+    mean != null ? { k: 'Pain right now', v: String(mean), unit: 'out of 10', tone: mean >= 7 ? 'red' : mean >= 5 ? 'amber' : 'green',
+      n: `Average of ${plural(nowAll.length, 'score')}: morning ${avg(mornings) ?? 'none'}, evening ${avg(evenings) ?? 'none'}${readingsAll.length ? ', between times ' + avg(readingsAll) : ''}.` }
+      : { k: 'Pain right now', v: 'None', unit: '', tone: '', n: 'No pain scores in this period. The check-ins ask morning and evening.' },
+    scored.length ? { k: 'Days at 7 or more', v: String(bad.length), unit: 'of ' + plural(scored.length, 'day') + ' scored', tone: bad.length ? (bad.length * 2 >= scored.length ? 'red' : 'amber') : 'green',
+      n: bad.length ? 'Pain reached 7 or more on ' + bad.slice(0, 3).map((d) => rDay(d.day)).join(', ') + (bad.length > 3 ? ' and ' + (bad.length - 3) + ' more' : '') + `. Highest ${peak.max} on ${rDay(peak.day)}.` : `No day at 7 or more. Highest ${peak.max} on ${rDay(peak.day)}.` }
+      : { k: 'Days at 7 or more', v: 'None', unit: '', tone: '', n: 'No pain scores in this period.' },
+    painMeds.length ? { k: 'Pain relief', v: String(doses.length), unit: plural(doses.length, 'dose').replace(/^\d+\s/, ''), tone: relief.some((r) => r.hitMax) ? 'amber' : doses.length ? '' : 'green',
+      n: doses.length ? (prnDoses.length ? `When needed on ${plural(prnDays, 'day')} of ${days.length}: ` : '') + (reliefNote || 'as logged') + (relief.some((r) => r.hitMax) ? '. The daily maximum was reached.' : '.') : 'None logged in this period.' }
+      : { k: 'Pain relief', v: 'None', unit: '', tone: '', n: 'No pain relief medicine on the list.' },
+    nights.length ? { k: 'Sleep', v: String(avg(nights.map((d) => d.sleep))), unit: 'h a night', tone: shortN.length ? 'amber' : 'green',
+      n: `${shortN.length ? plural(shortN.length, 'night') + ' under 5 hours' : 'No night under 5 hours'}, from ${plural(nights.length, 'night')} logged.` + (shortBad ? ` Pain at 7 or more on the day before or after ${shortBad === shortN.length ? (shortN.length === 1 ? 'it' : 'all of them') : shortBad + ' of them'}.` : '') }
+      : { k: 'Sleep', v: 'None', unit: '', tone: '', n: 'No sleep logged in this period.' }
+  ];
+  const chart = { lo: daysFull.map((d) => d.lo), hi: daysFull.map((d) => d.hi), worst: daysFull.map((d) => d.worst), prn: daysFull.map((d) => d.prn), sessions: daysFull.map((d, i) => (d.session ? i : -1)).filter((i) => i >= 0),
+    hospital: daysFull.map((d, i) => (d.hospital ? i : -1)).filter((i) => i >= 0), bad: daysFull.map((d, i) => (bad.includes(d) ? i : -1)).filter((i) => i >= 0),
+    stat: !scored.length ? 'No scores' : bad.length ? plural(bad.length, 'day') + ' at 7 or more' : 'Under 7 throughout', tone: !scored.length ? '' : bad.length ? (bad.length * 2 >= scored.length ? 'red' : 'amber') : 'green' };
+  const dayLabels = days.map((d, i) => (i === 0 || i === days.length - 1 || parseDay(d).getDate() === 1 ? rDay(d) : String(parseDay(d).getDate())));
+  const tod = [
+    { label: 'Morning check-in', avg: avg(mornings), n: mornings.length },
+    { label: 'Between times', avg: avg(readingsAll), n: readingsAll.length },
+    { label: 'Evening check-in', avg: avg(evenings), n: evenings.length },
+    { label: 'Worst pain today', avg: avg(worsts), n: worsts.length }
+  ];
+  /* the words: everything written under a pain score, in time order; the longest kept when there are too many */
+  let words = daysFull.flatMap((d) => d.notes).filter((w) => !isRoutineNote({ text: w.text }));
+  const WORDS_MAX = 16;
+  if (words.length > WORDS_MAX) { const keep = new Set(words.slice().sort((a, b) => b.text.length - a.text.length).slice(0, WORDS_MAX)); words = words.filter((w) => keep.has(w)); }
+  const wordsTotal = daysFull.flatMap((d) => d.notes).length;
+  words = words.map((w) => ({ ...w, text: firstSentence(w.text, 200, 60) }));
+  const weeks = reportWeeks(from, to).map((w) => {
+    const inW = daysFull.filter((d) => d.day >= w.from && d.day <= w.to);
+    const nw = inW.flatMap((d) => d.now), sc = inW.filter((d) => d.max != null), b = sc.filter((d) => d.max >= 7), ws = inW.map((d) => d.worst).filter((v) => v != null);
+    const dn = inW.reduce((t, d) => t + d.dosesN, 0), dd = inW.filter((d) => d.dosesN).length, ns = inW.filter((d) => d.sleep != null), sh = ns.filter((d) => d.sleep < 5).length;
+    return { key: w.key, from: w.from, to: w.to, label: rDay(w.from) + ' to ' + rDay(w.to),
+      pain: nw.length ? String(avg(nw)) : 'None', painSub: nw.length ? (Math.min(...nw) === Math.max(...nw) ? 'all ' + nw[0] : Math.min(...nw) + ' to ' + Math.max(...nw)) : 'no scores',
+      bad: sc.length ? b.length + ' of ' + sc.length : 'None', worst: ws.length ? String(avg(ws)) : 'None', worstSub: ws.length ? 'highest ' + Math.max(...ws) : '',
+      relief: dn ? plural(dn, 'dose') + ' on ' + plural(dd, 'day') : 'None', nights: ns.length ? (sh ? plural(sh, 'short night') : 'No short nights') : 'No sleep logged' };
+  });
+  const patient = (state.profile && state.profile.reportName) || state.patientName || state.name || 'The patient';
+  const questions = (n.questions || []).map((q) => ({ team: q.teamLabel || 'Pain team', text: fixMedWords(q.text), by: `Asked by ${q.who}, ${rDay(q.day)}` }));
+  const items = [{ t: 'tod' }];
+  items.push({ t: 'sec', s: 'words' }); words.forEach((_, r) => items.push({ t: 'word', r }));
+  items.push({ t: 'sec', s: 'weeks' }); weeks.forEach((_, r) => items.push({ t: 'wk', r }));
+  if (questions.length) { items.push({ t: 'sec', s: 'q' }); questions.forEach((_, q) => items.push({ t: 'q', q })); }
+  items.push({ t: 'notes' });
+  const period = rPeriod(from, to);
+  return { patient, period, prepared: rDay(todayStr()) + ' ' + parseDay(todayStr()).getFullYear(), tiles, chart, days: dayLabels, daysFull, tod, relief, words, wordsTotal, weeks, questions, items, pages: [], docTitle: `Pain and pain relief, ${patient}, ${period}` };
+}
+function fittedPainReport() {
+  return memoFit('pain', async () => {
+    if (!state.painPdf) return null;
+    if (!reportModule) reportModule = await import('./report.js?v=' + APP_VERSION);
+    const P = buildPainReport(state.painPdf);
+    const res = await reportModule.fitPainReport(reportFrame('pain'), P);
+    if (!res.ok) { toast('One entry is too long to fit on a page. Shorten it and try again.'); return null; }
+    return res;
+  });
+}
+async function painReportBlob() {
+  const res = await fittedPainReport();
   return res ? reportPdfBlob(res) : null;
 }
 
@@ -8453,13 +8643,14 @@ function allQuestions() { return state.demo ? state.recentEntries.filter((e) => 
    question saved before v133 has none and counts as General. Dietitian questions go to the Food
    diary screen and report; the rest head Notes for the team. The order here is the order they are
    listed in, so the oncologist's come first. */
-const QUESTION_TEAMS = [['oncology', 'Oncology'], ['gastro', 'Gastro'], ['general', 'General'], ['unsure', 'Not sure'], ['dietitian', 'Dietitian'], ['wellbeing', 'Wellbeing']];
+const QUESTION_TEAMS = [['oncology', 'Oncology'], ['gastro', 'Gastro'], ['general', 'General'], ['unsure', 'Not sure'], ['dietitian', 'Dietitian'], ['wellbeing', 'Wellbeing'], ['pain', 'Pain team']];
 function teamOf(q) { return QUESTION_TEAMS.some(([k]) => k === (q && q.team)) ? q.team : 'general'; }
 function teamLabel(key) { const t = QUESTION_TEAMS.find(([k]) => k === key); return t ? t[1] : 'General'; }
 function teamRank(q) { return QUESTION_TEAMS.findIndex(([k]) => k === teamOf(q)); }
 function isDietitianQ(q) { return teamOf(q) === 'dietitian'; }
 /* Wellbeing questions (v155) go to the Mood and wellbeing report, for a therapist, counsellor or GP */
 function isWellbeingQ(q) { return teamOf(q) === 'wellbeing'; }
+function isPainQ(q) { return teamOf(q) === 'pain'; }
 /* Oldest first within each team, the teams in QUESTION_TEAMS order */
 function sortQuestions(list) { return list.slice().sort((a, b) => teamRank(a) - teamRank(b) || entryDate(a) - entryDate(b)); }
 /* A few words of a question, for a chip or a file name: "Scan results when", never the whole sentence */
