@@ -571,6 +571,11 @@ const EXPLAIN_SYSTEM = {
     'Reply with JSON only, no prose and no code fence, in exactly this shape: {"brief": [{"head": "Overall", "text": string}, {"head": "What lifted mood", "text": string}, {"head": "What pulled it down", "text": string}, {"head": "Sleep and pain", "text": string}], "quotes": [{"when": "D Mon, morning" or "D Mon, evening", "text": string, "low": true or false}], "helped": [{"head": string, "text": string}], "hardest": [{"head": string, "text": string}]}. ' +
     'The four brief paragraphs are each under 70 words and only say what the scores and notes show: patterns over the period, the swings and what went with them, with dates. Quotes: the three notes that best carry how the person felt (one of them from a low day if there was one), each under 45 words, tidied for dictation and typing slips with the meaning and the person\'s own phrasing kept, never rewritten into other words and never invented; "low" is true when that day\'s mood was 4 or under. helped and hardest: up to four themes each, head of two to four words, text under 25 words, drawn from the notes and the weekly checks, naming days or counts where they help. ' +
     'Never diagnose, advise, reassure or interpret beyond what was written; no medical terms the person did not use; no em dashes; UK English.',
+  pain: 'You write the brief at the top of the Pain and pain relief report a patient hands to their pain nurse or pain team, from the pain scores, the words written under them and the pain relief doses they logged day by day in a health app, in plain UK English, about the patient by name as given. ' +
+    'You are given the period, the pain relief medicines on the list, then one line per day (pain right now out of 10 at the morning check-in, the evening check-in and any readings between times; the worst pain that day out of 10; every pain relief dose with its time, regular ones marked; hours slept; treatment sessions; days in hospital) with that day\'s words under it, each with where in the day it was written and the score it came with. ' +
+    'Reply with JSON only, no prose and no code fence, in exactly this shape: {"brief": [{"head": "Overall", "text": string}, {"head": "Where and when", "text": string}, {"head": "Pain relief", "text": string}, {"head": "Sleep", "text": string}]}. ' +
+    'Each paragraph is under 70 words and only says what the scores, words and doses show, with dates: Overall, the level over the period, the range, the days at 7 or more and whether the second half differed from the first; Where and when, where the pain was and what made it better or worse in the patient\'s own words, and the time of day it ran highest; Pain relief, what was taken, how often, whether a daily maximum was reached, and anything the words say about whether it helped; Sleep, the nights, short nights and whether they fell beside days of high pain. Use the patient\'s own phrases for where and how the pain felt, tidied for dictation slips with the meaning kept, never invented. ' +
+    'Never diagnose, advise, reassure, suggest a change of medicine or interpret beyond what was written; no medical terms the person did not use; no em dashes; UK English.',
   report: 'You prepare the notes part of a two-page summary a patient hands to their oncologist or specialist nurse, from the patient\'s and carer\'s own care notes written day by day in a health app, in plain UK English. ' +
     'You are given the report period, the medicines on the list, the open questions for the team and the notes, grouped into weeks headed "Week N, YYYY-MM-DD to YYYY-MM-DD", each note with who wrote it, the date and time. ' +
     'For each week write one theme sentence under 20 words summarising the week, then at most six short dated entries in date order, each one to three short lines (under 40 words). Summarise, do not copy every note: merge days with similar content into one entry with a "to" date, leave out routine answers such as "nothing new", keep the patient\'s meaning and their own words where they are clear, and where the patient raised a question inside a note keep it as a question. Mark an entry alert when it records a new or worsening symptom, a hospital visit or admission, or a high reading the note itself mentions. ' +
@@ -874,7 +879,7 @@ async function handleExplain(request, env) {
 
   let body;
   try { body = await request.json(); } catch (e) { return json({ error: 'bad-request', message: 'Could not read what was sent. Try again.' }, 400); }
-  const kind = ['notes', 'programme', 'medicine', 'weekly', 'report', 'mood'].includes(body.kind) ? body.kind : 'document';
+  const kind = ['notes', 'programme', 'medicine', 'weekly', 'report', 'mood', 'pain'].includes(body.kind) ? body.kind : 'document';
   const text = String(body.text || '').slice(0, EXPLAIN_MAX_TEXT_CHARS);
   const pages = Array.isArray(body.pages) ? body.pages.slice(0, EXPLAIN_MAX_PAGES).filter((p) => typeof p === 'string' && p.length > 100 && p.length <= EXPLAIN_MAX_PAGE_CHARS) : [];
   if (!text.trim() && !pages.length) return json({ error: 'bad-request', message: 'Nothing to explain.' }, 400);
@@ -896,7 +901,8 @@ async function handleExplain(request, env) {
     : kind === 'medicine' ? 'A photo of a medicine follows.'
     : kind === 'weekly' ? 'Care notes from Daybook, grouped by week.'
     : kind === 'report' ? 'Care notes and open questions from Daybook, for the two-page report.'
-    : kind === 'mood' ? 'Scores and notes from Daybook, day by day, for the Mood and wellbeing report.' : 'Care notes from Daybook.';
+    : kind === 'mood' ? 'Scores and notes from Daybook, day by day, for the Mood and wellbeing report.'
+    : kind === 'pain' ? 'Pain scores, words and pain relief doses from Daybook, day by day, for the Pain and pain relief report.' : 'Care notes from Daybook.';
   content.push({ type: 'text', text: head + (text.trim() ? '\n\n' + text : '\n\n(The document is in the attached page photos.)') });
   let reply;
   try { reply = await askClaude(env, EXPLAIN_SYSTEM[kind], content); }

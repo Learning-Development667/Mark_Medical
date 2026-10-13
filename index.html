@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=162">
+  <link rel="stylesheet" href="styles.css?v=163">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -646,6 +646,11 @@
         <div class="status" role="group" aria-label="At a glance">
           <div class="tiles tiles-2" id="pain-tiles"></div>
         </div>
+        <h3 class="section-title">The period in brief</h3>
+        <button id="pain-brief" class="btn btn-tint tint-blue btn-block" type="button" hidden>Write the brief with Daybook Assistant</button>
+        <p id="pain-brief-note" class="mood-brief-note"></p>
+        <textarea id="pain-brief-text" class="brief-box" aria-label="The period in brief" readonly></textarea>
+        <button id="pain-brief-undo" class="btn btn-link" type="button" hidden>Use the app's plain version instead</button>
         <h3 class="section-title">By time of day</h3>
         <div id="pain-tod" class="card todcard"></div>
         <h3 class="section-title">Pain relief</h3>
@@ -870,7 +875,7 @@
     <h3>What leaves your household's folder, and when</h3>
     <ul>
       <li><b>Send to the team and Send by email, only when you tap Send.</b> The report PDF, your message and the contact's address go through Daybook's bridge to Resend, the email service that sends it, from reporting@mymedicaldaybook.co.uk in your name. Your own sign-in email address is the reply address and gets a copy, so the clinic's reply comes straight to you, never to Mark 1 Apps Ltd. Resend keeps the email in its sending records for a limited time under its own terms; the bridge keeps only a daily count, and your household keeps a note of what was sent to whom and when, which you can delete. Where Daybook cannot send (the demo, or before it is switched on) the email goes through your own Mail app instead and nothing passes through the bridge.</li>
-      <li><b>Daybook Assistant, only when you tap.</b> Daybook Assistant is Daybook's name for its AI helper, which is Claude, an AI model made by Anthropic, a US company. Six features send something through Daybook's bridge to Anthropic for it: <b>Explain with Daybook Assistant</b> (a letter's text or page photos), <b>Suggest questions to ask</b> and <b>Summarise with Daybook Assistant</b> (the Notes for the team text), <b>Write the brief with Daybook Assistant</b> (the scores and notes behind the Mood and wellbeing report), <b>Read it from a photo</b> (a photo of a medicine) and <b>Add from a photo or PDF of the plan</b> (an exercise or physio plan). So that information goes to the United States. Anthropic does not use what is sent through its API to train its models and handles it under its own terms. The bridge keeps nothing of what was sent or returned, only a count of words used, for the cost. An explanation of a letter is saved with the letter, and you can change or delete it; the other replies are shown for you to check, and only what you then save is kept. There is a daily limit per household.</li>
+      <li><b>Daybook Assistant, only when you tap.</b> Daybook Assistant is Daybook's name for its AI helper, which is Claude, an AI model made by Anthropic, a US company. Seven features send something through Daybook's bridge to Anthropic for it: <b>Explain with Daybook Assistant</b> (a letter's text or page photos), <b>Suggest questions to ask</b> and <b>Summarise with Daybook Assistant</b> (the Notes for the team text), <b>Write the brief with Daybook Assistant</b> on two reports (the scores and notes behind the Mood and wellbeing report; the scores, words and doses behind the Pain and pain relief report), <b>Read it from a photo</b> (a photo of a medicine) and <b>Add from a photo or PDF of the plan</b> (an exercise or physio plan). So that information goes to the United States. Anthropic does not use what is sent through its API to train its models and handles it under its own terms. The bridge keeps nothing of what was sent or returned, only a count of words used, for the cost. An explanation of a letter is saved with the letter, and you can change or delete it; the other replies are shown for you to check, and only what you then save is kept. There is a daily limit per household.</li>
       <li><b>Your own AI app.</b> "Send to my AI app" and "Copy for my AI app" put the text on your phone's share sheet or clipboard. Where it goes from there is between you and the app you choose.</li>
       <li><b>Save as PDF, Print, Share and Copy</b> make a copy for you to give to the clinic or someone else. Once it has left the app, it is in your hands.</li>
       <li><b>Tap to speak</b> uses your phone's own speech recognition (Apple's on an iPhone, Google's in Chrome). Depending on the phone, the audio may be processed on the phone or on that company's servers under their terms. Daybook receives only the words.</li>
@@ -975,6 +980,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=162"></script>
+  <script type="module" src="scripts.js?v=163"></script>
 </body>
 </html>
