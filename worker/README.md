@@ -17,6 +17,13 @@ Endpoints:
   payload at `households/{id}/bridge/last`.
 - `GET /last?key=<inbox key>` the last send into that key's household, for checking field names.
 - `GET /ping` health check.
+- `POST /send-report` with the ID token and JSON `{ kind, to, toName, subject, text, filename, pdf (base64), fromName }`
+  (v159): a family member's report emailed through Resend (the `RESEND_API_KEY` secret; the domain
+  verified there) from `SEND_FROM` in wrangler.toml, "Mark Brown via My Medical Daybook", with the
+  sender's own sign-in email as the reply address and in copy, so a clinic's reply goes to the
+  patient, never to a Mark 1 Apps inbox. Nothing of the report is kept; a daily count in
+  `households/{id}/bridge/sendLog` (20 a day) caps it. Answers `503 not-set-up` until the key
+  exists, and the app then offers the share sheet instead.
 - `POST /explain` with header `Authorization: Bearer <Firebase ID token>` and JSON
   `{ kind: "document" | "notes" | "programme", title?, date?, text?, pages?: [base64 JPEG] }`.
   "Explain in Daybook": asks Claude (the Messages API over plain fetch, model `claude-opus-5`, the

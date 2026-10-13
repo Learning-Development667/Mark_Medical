@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '158';
+const APP_VERSION = '159';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -1942,6 +1942,7 @@ function entryTitle(e) {
         : [h('span', { class: 'val', text: 'Bowels: type ' + ts[0] }), h('span', { text: ', ' + bristolName(ts[0]).toLowerCase() })];
     }
     case 'question': return [h('span', { text: e.note || 'Question' })];
+    case 'sent': return [h('span', { text: (e.report || 'Report') + ' sent to ' + (e.toName || e.to || 'the team') })];
     case 'exercise': return [h('span', { text: e.note || 'Exercise' })];
     case 'weight': return [h('span', { class: 'val', text: fmtKg(e.value) })];
     case 'vitals': {
@@ -1977,6 +1978,7 @@ function entrySub(e) {
   if (e.type === 'symptom') { bits.push('Symptom'); if (e.note) bits.push(e.note); }
   if (e.type === 'bowel') { const ts = bowelTypes(e); if (ts.length > 1) bits.push(ts.map((t) => bristolName(t)).join(', ')); const f = bowelFlagWords(e); if (f) bits.push(f); if (e.note) bits.push(e.note); }
   if (e.type === 'question') bits.push((isDietitianQ(e) ? 'Question for the dietitian' : isWellbeingQ(e) ? 'Question for the therapist' : 'Question for the team') + (e.answered ? ', answered' : '') + (isDietitianQ(e) || isWellbeingQ(e) ? '' : ' · ' + teamLabel(teamOf(e))));
+  if (e.type === 'sent') bits.push('By email to ' + (e.to || '') + (e.copyTo ? ', with a copy to ' + e.copyTo : ''));
   if (e.type === 'question' && e.answerText) bits.push('Answer: ' + excerpt(e.answerText, 90));
   if (e.type === 'question' && e.recordings) bits.push(plural(e.recordings, 'recording'));
   if (e.type === 'weight' && Number(e.bmi) > 0) bits.push('BMI ' + Number(e.bmi).toFixed(1));
@@ -4503,8 +4505,32 @@ function openSendSheet(kind) {
     const subject = h('input', { type: 'text', id: 'send-subject', value: emailSubject(K, range) });
     const note = h('textarea', { id: 'send-note', rows: '6' });
     note.value = `${greetingFor(c)}\n\n${K.words(range, n)} The PDF is attached.\n\nThank you,\n${emailSignOff()}`.trim() + '\n\n' + SENT_FROM;
-    const send = h('button', { class: 'btn btn-primary btn-block', type: 'button', id: 'send-go' }, 'Open in my Mail app');
-    send.addEventListener('click', () => {
+    /* Sent by Daybook (v159): with the bridge and a real sign-in, one tap sends the email itself (the bridge's
+       /send-report, from reporting@mymedicaldaybook.co.uk in the sender's name, the sender's own address as the reply
+       address and in copy). The share sheet stays as "Send from my own Mail app" under it, and is the only route in the
+       preview, the shared demo and without the bridge. A web app cannot attach a file to a mailto: link and the share
+       sheet cannot fill in the recipient, which is why the old route took two hops (Mark, 13 October 2026). */
+    const direct = explainAvailable() && !state.demoLive && !state.readOnly;
+    const myEmail = (auth && auth.currentUser && auth.currentUser.email) || '';
+    const send = h('button', { class: 'btn btn-primary btn-block', type: 'button', id: 'send-go' }, direct ? 'Send to ' + String(c.label).split(/\s+/)[0] : 'Open in my Mail app');
+    const sendDirect = async () => {
+      if (!blob) { toast(blobError ? pdfErrorText(blobError) : 'Still making the PDF. Try again in a moment.'); return; }
+      const subj = subject.value.trim() || emailSubject(K, range);
+      send.disabled = true; send.textContent = 'Sending';
+      try {
+        const pdf = await blobToB64(blob);
+        const res = await bridgeCall('/send-report', { kind, to: c.email, toName: c.label, subject: subj, text: note.value.trim(), filename: fname, pdf, fromName: emailSignOff().replace(/, for .*$/, '') });
+        const at = new Date();
+        const rec = { type: 'sent', kind, report: REPORT_NAMES[kind] || 'Report', to: c.email, toName: c.label, subject: subj, filename: fname, copyTo: res.copyTo || myEmail, day: dayStr(at), at };
+        await addEntry(rec);
+        closeSheet();
+        toast('Sent to ' + c.label + '. A copy is in your own inbox.');
+      } catch (e) {
+        send.disabled = false; send.textContent = 'Send to ' + String(c.label).split(/\s+/)[0];
+        toast(e && e.message ? e.message : 'Could not send. Use Send from my own Mail app.');
+      }
+    };
+    const share = () => {
       if (!blob) { toast(blobError ? pdfErrorText(blobError) : 'Still making the PDF. Try again in a moment.'); return; }
       const file = new File([blob], fname, { type: 'application/pdf' });
       copyText(c.email); // copied inside the tap, before the share sheet, for pasting into To
@@ -4524,7 +4550,8 @@ function openSendSheet(kind) {
       document.body.append(mail); mail.click(); mail.remove();
       closeSheet();
       toast('The PDF is in your Downloads as "' + fname + '". Attach it to the email that has opened.');
-    });
+    };
+    send.addEventListener('click', direct ? sendDirect : share);
     body.replaceChildren(
       h('div', { class: 'sendto' },
         h('span', { class: 'sendto-label', text: 'To' }),
@@ -4534,8 +4561,11 @@ function openSendSheet(kind) {
       field('Subject', subject),
       field('Message', note),
       h('p', { class: 'sendpdf' }, h('b', { text: K.attached(range) }), K.check),
-      h('p', { class: 'hint', text: 'Your Mail app opens with the PDF and this message, sent from your own email address. The address is copied, to paste into To. iPhone Mail leaves the subject empty, so the subject is also the first line of the message, to copy into Subject.' }),
+      direct
+        ? h('p', { class: 'hint', id: 'send-direct-hint', text: 'Daybook sends it for you, from reporting@mymedicaldaybook.co.uk in your name, with the PDF attached. Your own address' + (myEmail ? ', ' + myEmail + ',' : '') + ' is the reply address and gets a copy, so a reply comes straight to you.' })
+        : h('p', { class: 'hint', text: 'Your Mail app opens with the PDF and this message, sent from your own email address. The address is copied, to paste into To. iPhone Mail leaves the subject empty, so the subject is also the first line of the message, to copy into Subject.' }),
       send,
+      direct ? h('button', { class: 'btn btn-link btn-block', type: 'button', id: 'send-other', onclick: share }, 'Send from my own Mail app instead') : null,
       h('button', { class: 'btn btn-link btn-block', type: 'button', onclick: pick }, 'Choose someone else'));
     subject.focus();
   };
