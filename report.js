@@ -872,7 +872,8 @@ const PAIN_CSS = `
 .c .legend i{display:inline-block;width:4mm;height:1.3mm;border-radius:.6mm;margin-right:1.2mm;vertical-align:middle}
 .c .legend i.swb{width:1.6mm;height:3.4mm;border-radius:.4mm}
 .c .legend i.sq{width:1.8mm;height:1.8mm;border-radius:.3mm}
-.c .legend i.dia{width:2.2mm;height:2.2mm;border-radius:.2mm;transform:rotate(45deg)}
+.c .legend i.dash{background:none;border-top:.7mm dashed #C2703D;height:0;border-radius:0;vertical-align:.3mm}
+.c .legend i.dot{width:2.2mm;height:2.2mm;border-radius:50%;background:#B0372E}
 .c .legend .tri{display:inline-block;width:0;height:0;border-left:1.4mm solid transparent;border-right:1.4mm solid transparent;border-top:2.2mm solid var(--ink);margin-right:1.2mm;vertical-align:middle}
 .wbody{flex:1;display:flex;flex-direction:column;gap:3.6mm;min-height:0}
 .wsec{display:flex;flex-direction:column;gap:1.8mm}
@@ -906,10 +907,11 @@ const PAIN_CSS = `
 .mnotes .lines{flex:1;margin-top:1.4mm;position:relative;overflow:hidden}
 .mnotes .lines i{position:absolute;left:0;right:0;height:0;border-top:1px solid rgba(30,127,134,.35)}
 `;
-/* The pain chart: for each day a teal bar from the lowest to the highest "pain right now" (the check-ins and the
-   between-times readings; a dot when there was one score), the evening's worst pain as a terracotta diamond, a dashed
-   amber line at 7, the when-needed pain relief as terracotta squares under the plot (one a dose), treatment sessions as
-   ink triangles at the top, hospital days shaded. Teal and terracotta, the pair that reads apart (v156). */
+/* The pain chart (redrawn in v162 after Mark: "that graph is very difficult to understand"; the v161 cut had range bars,
+   diamonds and squares at once). Now it reads like the Mood chart he approved: one teal line for the day's pain right now
+   (the average of the check-ins and readings, a dot a day, red where the day reached 7), one dashed terracotta line for the
+   evening's worst pain, a dashed amber line at 7, and the when-needed pain relief as small squares under the days, one a
+   dose. Treatment sessions as ink triangles at the top and hospital days shaded, as on the Mood chart. */
 function painChart(c, days) {
   const n = days.length, W = 180, H = 70, L = 9, R = 2, T = 4, B = 16, pw = W - L - R, ph = H - T - B;
   const x = (i) => L + (n > 1 ? i * pw / (n - 1) : pw / 2), y = (v) => T + ph - Math.max(0, Math.min(10, v)) / 10 * ph;
@@ -923,28 +925,24 @@ function painChart(c, days) {
   }
   [0, 5, 10].forEach((t) => { s += `<line x1="${L}" x2="${W - R}" y1="${y(t).toFixed(1)}" y2="${y(t).toFixed(1)}" stroke="#E3E9EE" stroke-width=".3"/><text x="${L - 1.5}" y="${(y(t) + 1.1).toFixed(1)}" font-size="3" fill="#5B6B7C" text-anchor="end">${t}</text>`; });
   s += `<line x1="${L}" x2="${W - R}" y1="${y(7).toFixed(1)}" y2="${y(7).toFixed(1)}" stroke="#E0A030" stroke-width=".4" stroke-dasharray="1.2 1"/><text x="${L - 1.5}" y="${(y(7) + 1.1).toFixed(1)}" font-size="3" fill="#8A5E10" text-anchor="end">7</text>`;
-  const bw = Math.min(step * 0.5, 3.2);
-  const bad = new Set(c.bad || []);
-  let any = false;
-  (c.lo || []).forEach((lo, i) => {
-    const hi = c.hi[i];
-    if (lo == null) return;
-    any = true;
-    const col = bad.has(i) ? '#B0372E' : '#1E7F86';
-    if (hi > lo) s += `<rect x="${(x(i) - bw / 2).toFixed(1)}" y="${y(hi).toFixed(1)}" width="${bw.toFixed(1)}" height="${(y(lo) - y(hi)).toFixed(1)}" rx="${(bw / 2).toFixed(1)}" fill="${col}"/>`;
-    else s += `<circle cx="${x(i).toFixed(1)}" cy="${y(lo).toFixed(1)}" r="${(bw / 2).toFixed(1)}" fill="${col}"/>`;
-  });
-  (c.worst || []).forEach((v, i) => { if (v == null) return; any = true; const cx = x(i), cy = y(v), r = 1.7; s += `<path d="M${cx.toFixed(1)} ${(cy - r).toFixed(1)} L${(cx + r).toFixed(1)} ${cy.toFixed(1)} L${cx.toFixed(1)} ${(cy + r).toFixed(1)} L${(cx - r).toFixed(1)} ${cy.toFixed(1)} Z" fill="#C2703D" stroke="#fff" stroke-width=".4"/>`; });
+  const path = (arr) => { let d = '', pen = false; arr.forEach((v, i) => { if (v == null) return; d += (pen ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1); pen = true; }); return d; };
+  const hasAvg = (c.avg || []).some((v) => v != null), hasWorst = (c.worst || []).some((v) => v != null);
+  if (hasWorst) s += `<path d="${path(c.worst)}" fill="none" stroke="#C2703D" stroke-width=".9" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="1.6 1.1"/>`;
+  if (hasAvg) {
+    s += `<path d="${path(c.avg)}" fill="none" stroke="#1E7F86" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/>`;
+    const bad = new Set(c.bad || []);
+    c.avg.forEach((v, i) => { if (v == null) return; s += bad.has(i) ? `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="1.9" fill="#B0372E" stroke="#fff" stroke-width=".5"/>` : `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="1" fill="#1E7F86"/>`; });
+  }
   const base = T + ph + 2.2, sq = Math.min(step * 0.5, 2.2);
   (c.prn || []).forEach((k, i) => { for (let j = 0; j < Math.min(k, 4); j++) s += `<rect x="${(x(i) - sq / 2).toFixed(1)}" y="${(base + j * (sq + .5)).toFixed(1)}" width="${sq.toFixed(1)}" height="${sq.toFixed(1)}" rx=".3" fill="#C2703D"/>`; if (k > 4) s += `<text x="${x(i).toFixed(1)}" y="${(base + 4 * (sq + .5) + 2).toFixed(1)}" font-size="2.4" fill="#C2703D" text-anchor="middle">+${k - 4}</text>`; });
   (c.sessions || []).forEach((i) => { s += `<path d="M${(x(i) - 1.6).toFixed(1)} ${(T - 2.6).toFixed(1)} L${(x(i) + 1.6).toFixed(1)} ${(T - 2.6).toFixed(1)} L${x(i).toFixed(1)} ${(T + .2).toFixed(1)} Z" fill="#17263A"/>`; });
   const want = Math.min(n, 6), shown = [];
   for (let k = 0; k < want; k++) shown.push(Math.round(k * (n - 1) / Math.max(1, want - 1)));
   [...new Set(shown)].forEach((i) => { s += `<text x="${x(i).toFixed(1)}" y="${H - 1.8}" font-size="3" fill="#5B6B7C" text-anchor="${i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle'}">${esc(days[i])}</text>`; });
-  if (!any) s += `<text x="${(L + pw / 2).toFixed(1)}" y="${(T + ph / 2).toFixed(1)}" font-size="3.4" fill="#5B6B7C" text-anchor="middle">No pain scores in this period</text>`;
+  if (!hasAvg && !hasWorst) s += `<text x="${(L + pw / 2).toFixed(1)}" y="${(T + ph / 2).toFixed(1)}" font-size="3.4" fill="#5B6B7C" text-anchor="middle">No pain scores in this period</text>`;
   return s + '</svg>';
 }
-/* P: { patient, period, prepared, tiles[], chart { lo[], hi[], worst[], prn[], sessions[], hospital[], bad[], stat, tone }, days[], tod[{ label, avg, n }],
+/* P: { patient, period, prepared, tiles[], chart { avg[], worst[], prn[], sessions[], hospital[], bad[], stat, tone }, days[], tod[{ label, avg, n }],
    relief[{ name, dose, how, kind, n, days, most, maxPerDay, hitMax, last, line }], words[{ when, text, score }], wordsTotal, weeks[{ label, pain, painSub, bad, worst, worstSub, relief, nights }],
    questions[{ team, text, by }], items[{ t: 'tod'|'sec'|'word'|'wk'|'q'|'notes', s, r, q }], pages[[item index]], noteLines } */
 export function painReportHtml(P) {
@@ -990,7 +988,7 @@ export function painReportHtml(P) {
     if (open === 'q') html += '</div>';
     close();
     const c = P.chart;
-    const legend = `<div class="legend"><span><i class="swb" style="background:#1E7F86"></i>Pain right now, lowest to highest that day</span><span><i class="swb" style="background:#B0372E"></i>A day at 7 or more</span><span><i class="dia" style="background:#C2703D"></i>Worst pain today</span><span><i class="sq" style="background:#C2703D"></i>When-needed pain relief, one square a dose</span>${c.sessions.length ? '<span><i class="tri"></i>Treatment session</span>' : ''}${c.hospital.length ? '<span><i class="swb" style="background:#F8E1DE"></i>In hospital</span>' : ''}</div>`;
+    const legend = `<div class="legend"><span><i style="background:#1E7F86"></i>Pain right now, the day's average (1 to 10)</span><span><i class="dash"></i>Worst pain today</span><span><i class="dot"></i>A day that reached 7 or more</span><span><i class="sq" style="background:#C2703D"></i>When-needed pain relief, one square a dose</span>${c.sessions.length ? '<span><i class="tri"></i>Treatment session</span>' : ''}${c.hospital.length ? '<span><i class="swb" style="background:#F8E1DE"></i>In hospital</span>' : ''}</div>`;
     const first = p === 0
       ? `<div class="masthead"><div><div class="titlerow"><h1>Pain and pain relief</h1><span class="madeby">Created with <b>My Medical Daybook</b></span></div><div class="sub">Pain scores morning and evening, where it was in ${esc(P.patient)}'s words, and the pain relief taken, for the pain nurse or team.</div></div><div class="who"><strong>${esc(P.patient)}</strong>Period: ${esc(P.period)}<br>Prepared: ${esc(P.prepared)}</div></div>`
         + `<div class="tiles pain">${P.tiles.map((t) => `<div class="tile ${esc(t.tone || '')}"><div class="k">${esc(t.k)}</div><div class="v">${esc(t.v)}${t.unit ? `<em>${esc(t.unit)}</em>` : ''}</div><div class="n">${esc(t.n)}</div></div>`).join('')}</div>`
