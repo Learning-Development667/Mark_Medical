@@ -1032,7 +1032,7 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 /* Reports: five range buttons (7/14/30/90 and Custom) have to sit on one line on a phone */
 #view-food .seg, #view-notes .seg { white-space: nowrap; font-size: 15px; padding-left: 4px; padding-right: 4px; }
 @media (max-width: 359px) {
-  #view-food .segmented, #view-notes .segmented, #view-mood .segmented { flex-wrap: wrap; }
+  #view-food .segmented, #view-notes .segmented, #view-mood .segmented, #view-pain .segmented { flex-wrap: wrap; }
   #view-food .seg, #view-notes .seg { flex: 1 1 30%; }
 }
 /* Reports: custom From and To range */
@@ -1304,7 +1304,7 @@ body.is-readonly .workout .btn { display: none; }
 #chemo-cycle-section .section-title, #chemo-docs-section .section-title { margin-top: var(--s-6); } /* first children of their own wrappers, like the Meds documents section */
 #chemo-cycle-section .status { margin-top: var(--s-2); }
 #cycle-tile .tile-sub { white-space: normal; overflow: visible; text-overflow: clip; } /* "after the session on 25 Sep, next in 12 days" may take two lines */
-#vt-weight-sub, #mood-tiles .tile-sub { white-space: normal; overflow: visible; text-overflow: clip; } /* "today 07:30, BMI 24.8" (v126) may take two lines on a small phone */
+#vt-weight-sub, #mood-tiles .tile-sub, #pain-tiles .tile-sub { white-space: normal; overflow: visible; text-overflow: clip; } /* "today 07:30, BMI 24.8" (v126) may take two lines on a small phone */
 #carer-card { margin-top: var(--s-3); }
 /* Six measure chips in two rows of three: a grid, not a wrapped pill, so the track is a rounded
    box the chips actually fit in (v79) */
@@ -1607,3 +1607,14 @@ h1, h2, h3 { font-weight: 600; }
 .wkcard .wk-dots i.warm { background: var(--warm); }
 .wkcard .wk-sentence { margin: 4px 0 0; }
 .wkcard .wk-sub { font-size: 15px; color: var(--text-secondary); margin: 4px 0 0; }
+/* The Pain report screen (v161) */
+.todcard { display: flex; flex-direction: column; gap: var(--s-3); }
+.todrow { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) auto; gap: var(--s-3); align-items: center; font-size: 17px; }
+.tod-bar { height: 12px; background: var(--surface-sunken); border-radius: 6px; overflow: hidden; }
+.tod-bar i { display: block; height: 100%; background: var(--teal); border-radius: 6px; }
+.tod-v { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 15px; color: var(--text-secondary); white-space: nowrap; }
+.reliefcard, .wordcard { margin: 0 0 var(--s-3); }
+.wordcard .word-when { display: block; font-size: 15px; font-weight: 600; color: var(--teal-dark); margin-bottom: 4px; }
+.wordcard p { margin: 0; white-space: pre-wrap; }
+@media (prefers-color-scheme: dark) { .wordcard .word-when { color: var(--teal); } }
+@media (max-width: 359px) { .todrow { grid-template-columns: 1fr; gap: 4px; } }
