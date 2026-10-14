@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '166';
+const APP_VERSION = '167';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -332,6 +332,7 @@ function hideToast() { $('toast').hidden = true; }
 
 /* Sheet */
 function openSheet(title, body, onClose) {
+  state.sheetSeq = (state.sheetSeq || 0) + 1;
   $('sheet-title').textContent = title;
   const b = $('sheet-body');
   b.replaceChildren(body);
@@ -1909,7 +1910,7 @@ document.querySelectorAll('.tab').forEach((btn) => {
 
 /* The topbar carries the page name ("Care Log: Food diary"), so the report
    pages and the Chemo tab no longer need a heading of their own */
-const PAGE_TITLES = { today: 'Today', meds: 'Medicines', vitals: 'Reports', chemo: 'Treatment plan', exercise: 'Exercise', more: 'More', food: 'Food diary', notes: 'Notes for the team', mood: 'Mood and wellbeing', pain: 'Pain and pain relief', docs: 'Documents', settings: 'Settings' };
+const PAGE_TITLES = { today: 'Today', meds: 'Medicines', vitals: 'Reports', chemo: 'Treatment plan', exercise: 'Exercise', more: 'More', food: 'Food diary', notes: 'Notes for the team', mood: 'Mood and wellbeing', pain: 'Pain and pain relief', docs: 'Documents', settings: 'Settings', guide: 'Guide' };
 function setBrand(page) {
   $('brand').replaceChildren('Daybook', page ? h('span', { class: 'brand-page', text: ': ' + page }) : null);
   document.title = page ? 'Daybook: ' + page : 'My Medical Daybook';
@@ -1919,7 +1920,7 @@ function showTab(name) {
   /* Report pages highlight the tab they were opened from (Documents can be reached from a report too) */
   let highlight = name;
   if (name === 'docs') highlight = state.docsReturn || 'more';
-  if (name === 'settings') highlight = 'more';
+  if (name === 'settings' || name === 'guide') highlight = 'more';
   if (highlight === 'food' || highlight === 'notes' || highlight === 'mood' || highlight === 'pain') highlight = state.reportReturn || 'vitals';
   document.querySelectorAll('.tab').forEach((b) => { const on = b.dataset.tab === highlight; b.classList.toggle('is-active', on); if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
   document.querySelectorAll('.view').forEach((v) => { v.hidden = v.dataset.view !== name; });
@@ -2463,10 +2464,29 @@ function openDoseSheet() {
    not shown where the browser has no support; the keyboard's own microphone
    still works in every box. */
 const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition || null;
+/* The one-line hint under Tap to speak (v167): shown under the button on the first SPEAK_HINT_TIMES sheets that have one
+   on this phone (counted per sheet, not per box, so a five-step check-in is one), and never again once it has heard
+   something. localStorage daybook.speak.hints. */
+const SPEAK_HINT = 'Tap, say it, tap again to stop. The words appear in the box and can be changed like typed text.';
+const SPEAK_HINT_TIMES = 3;
+function speakHintsShown() { try { return Number(localStorage.getItem('daybook.speak.hints') || 0); } catch (e) { return SPEAK_HINT_TIMES; } }
+function speakHintsSet(n) { try { localStorage.setItem('daybook.speak.hints', String(n)); } catch (e) { /* ignore */ } }
+function speakHintFor(btn) {
+  queueMicrotask(() => {
+    if (!btn.isConnected || !btn.closest('#sheet-body')) return;
+    const seq = String(state.sheetSeq || 0);
+    if (state.speakHintSeq !== seq) { // a new sheet: one of the three, or none left
+      if (speakHintsShown() >= SPEAK_HINT_TIMES) return;
+      state.speakHintSeq = seq; speakHintsSet(speakHintsShown() + 1);
+    }
+    btn.insertAdjacentElement('afterend', h('p', { class: 'speakhint', text: SPEAK_HINT }));
+  });
+}
 function speakButton(target) {
   if (!SpeechRec) return null;
   const label = h('span', { class: 'speakbtn-label', text: 'Tap to speak' });
   const btn = h('button', { class: 'speakbtn', type: 'button', 'aria-pressed': 'false' }, icon('mic'), label);
+  speakHintFor(btn);
   let rec = null;
   const setState = (on) => { btn.classList.toggle('is-listening', on); btn.setAttribute('aria-pressed', on ? 'true' : 'false'); label.textContent = on ? 'Listening, tap to stop' : 'Tap to speak'; };
   btn.addEventListener('click', () => {
@@ -2482,6 +2502,7 @@ function speakButton(target) {
       for (let i = 0; i < ev.results.length; i++) text += ev.results[i][0].transcript + (ev.results[i].isFinal ? ' ' : '');
       target.value = join(text);
       target.dispatchEvent(new Event('input', { bubbles: true }));
+      if (text.trim()) speakHintsSet(SPEAK_HINT_TIMES);
     };
     rec.onerror = (ev) => {
       if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') toast('Allow the microphone for this site to speak your notes');
@@ -3428,6 +3449,84 @@ function deleteMeal(id) {
 $('more-meals').addEventListener('click', openManageMeals);
 $('more-settings').addEventListener('click', () => showTab('settings'));
 $('settings-back').addEventListener('click', () => showTab('more'));
+
+/* ---------- The Guide (v167) ----------
+   More > Guide: one topic per job, each a walk-through of the real screens (made by tools/guide_shots.js from the
+   preview's made-up data, guide/guide.json and guide/*.webp, retaken in one command whenever the look changes), played
+   as a stepped film in a phone frame: the screen, a pulsing ring where the finger goes next, one line of caption, and
+   the same captions as a numbered list under it. Plays itself every GUIDE_STEP_MS, pauses on a tap, steps with the
+   arrows; never plays itself under prefers-reduced-motion. Mark, 14 October 2026: "screenshots have real value, even
+   more so if you animate them being completed". */
+const GUIDE_STEP_MS = 2600;
+const guide = { data: null, topic: null, i: 0, timer: 0, playing: false };
+async function loadGuide() {
+  if (guide.data) return guide.data;
+  const r = await fetch('guide/guide.json?v=' + APP_VERSION);
+  if (!r.ok) throw new Error('guide ' + r.status);
+  guide.data = await r.json();
+  return guide.data;
+}
+function openGuide() {
+  showTab('guide');
+  $('guide-player').hidden = true; $('guide-topics').hidden = false;
+  guideStop();
+  const list = $('guide-list');
+  list.replaceChildren(h('p', { class: 'hint', text: 'Loading the guide' }));
+  loadGuide().then((d) => {
+    list.replaceChildren(...d.topics.map((t) => h('button', { class: 'checkin-row menu-row', type: 'button', 'data-topic': t.key, onclick: () => openGuideTopic(t) },
+      icon('eye', 'icon checkin-icon'),
+      h('span', { class: 'checkin-main' }, h('span', { class: 'checkin-title', text: t.title }), h('span', { class: 'checkin-sub', text: t.sub + ' ' + plural(t.steps.length, 'step') + '.' })),
+      icon('chevron', 'icon checkin-chev'))));
+  }).catch((e) => { console.error(e); list.replaceChildren(h('p', { class: 'hint', text: 'The guide needs a connection the first time. Try again when you have signal.' })); });
+}
+function openGuideTopic(t) {
+  guide.topic = t; guide.i = 0;
+  $('guide-topics').hidden = true; $('guide-player').hidden = false;
+  $('guide-title').textContent = t.title;
+  $('guide-intro').textContent = t.intro || '';
+  $('guide-words').replaceChildren(...t.steps.map((st, i) => h('li', { onclick: () => { guideStop(); guideShow(i); } }, st.caption)));
+  setBrand('Guide: ' + t.title);
+  window.scrollTo(0, 0);
+  guideShow(0);
+  if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) guidePlay(); else guideStop();
+  $('guide-all').focus({ preventScroll: true });
+}
+function guideShow(i) {
+  const t = guide.topic; if (!t) return;
+  guide.i = (i + t.steps.length) % t.steps.length;
+  const st = t.steps[guide.i];
+  const img = $('guide-img');
+  img.src = 'guide/' + st.file;
+  img.alt = st.alt || st.caption;
+  const next = t.steps[(guide.i + 1) % t.steps.length];
+  if (next && next.file !== st.file) { const pre = new Image(); pre.src = 'guide/' + next.file; }
+  const ring = $('guide-tap');
+  if (st.tap) { ring.hidden = false; ring.style.left = (st.tap.x * 100) + '%'; ring.style.top = (st.tap.y * 100) + '%'; } else ring.hidden = true;
+  $('guide-step').textContent = 'Step ' + (guide.i + 1) + ' of ' + t.steps.length;
+  $('guide-caption').textContent = st.caption;
+  [...$('guide-words').children].forEach((li, k) => li.classList.toggle('is-current', k === guide.i));
+}
+function guidePlay() {
+  guide.playing = true;
+  $('guide-play').textContent = 'Pause'; $('guide-play').setAttribute('aria-pressed', 'true');
+  clearInterval(guide.timer);
+  guide.timer = setInterval(() => {
+    if ($('view-guide').hidden || $('guide-player').hidden) { guideStop(); return; }
+    guideShow(guide.i + 1);
+  }, GUIDE_STEP_MS);
+}
+function guideStop() {
+  guide.playing = false;
+  clearInterval(guide.timer); guide.timer = 0;
+  $('guide-play').textContent = 'Play'; $('guide-play').setAttribute('aria-pressed', 'false');
+}
+$('more-guide').addEventListener('click', openGuide);
+$('guide-back').addEventListener('click', () => { guideStop(); showTab('more'); });
+$('guide-all').addEventListener('click', () => { guideStop(); $('guide-player').hidden = true; $('guide-topics').hidden = false; setBrand(PAGE_TITLES.guide); window.scrollTo(0, 0); });
+$('guide-prev').addEventListener('click', () => { guideStop(); guideShow(guide.i - 1); });
+$('guide-next').addEventListener('click', () => { guideStop(); guideShow(guide.i + 1); });
+$('guide-play').addEventListener('click', () => { if (guide.playing) guideStop(); else { guideShow(guide.i + 1); guidePlay(); } });
+$('guide-phone').addEventListener('click', () => { if (guide.playing) guideStop(); else guidePlay(); });
 
 function openManageMeals() {
   const list = h('div', { class: 'medlist' });

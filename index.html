@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=166">
+  <link rel="stylesheet" href="styles.css?v=167">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -719,6 +719,11 @@
             <span class="checkin-main"><span class="checkin-title">Set-up</span><span id="more-setup-sub" class="checkin-sub">What Daybook is for, your name on reports, who to contact, the Home Screen</span></span>
             <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
           </button>
+          <button id="more-guide" class="checkin-row menu-row" type="button">
+            <svg class="icon checkin-icon" aria-hidden="true"><use href="#i-eye"/></svg>
+            <span class="checkin-main"><span class="checkin-title">Guide</span><span class="checkin-sub">How to do each thing, shown on screen step by step</span></span>
+            <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
+          </button>
           <button id="more-docs" class="checkin-row menu-row" type="button">
             <svg class="icon checkin-icon" aria-hidden="true"><use href="#i-doc"/></svg>
             <span class="checkin-main"><span class="checkin-title">Letters, results and paperwork</span><span class="checkin-sub">Documents, the treatment plan and the exemption certificate</span></span>
@@ -746,6 +751,33 @@
       </section>
 
       <!-- SETTINGS (reached from More) -->
+      <section id="view-guide" class="view" data-view="guide" hidden>
+        <div class="diary-head">
+          <button id="guide-back" class="btn btn-link" type="button">&#8249; Back</button>
+        </div>
+        <div id="guide-topics">
+          <p class="hint">Each one plays through the real screens, step by step, with a ring where to tap. Tap a step to pause, and the arrows to go back or on. Made-up example data throughout.</p>
+          <div id="guide-list" class="menu"></div>
+          <p class="hint">Tap to speak, under every note box, listens through your phone's own speech recognition: tap, say it, tap again to stop, and change any word like typed text.</p>
+        </div>
+        <div id="guide-player" hidden>
+          <button id="guide-all" class="btn btn-link" type="button">&#8249; All topics</button>
+          <h2 id="guide-title" class="section-title"></h2>
+          <p id="guide-intro" class="hint"></p>
+          <div class="guide-phone" id="guide-phone">
+            <img id="guide-img" alt="" draggable="false">
+            <span id="guide-tap" class="guide-tap" hidden aria-hidden="true"></span>
+          </div>
+          <p class="guide-cap"><span id="guide-step" class="guide-step"></span><span id="guide-caption"></span></p>
+          <div class="guide-controls">
+            <button id="guide-prev" class="btn btn-secondary" type="button" aria-label="Previous step">&#8249;</button>
+            <button id="guide-play" class="btn btn-primary" type="button" aria-pressed="false">Pause</button>
+            <button id="guide-next" class="btn btn-secondary" type="button" aria-label="Next step">&#8250;</button>
+          </div>
+          <h3 class="guide-words-title">In words</h3>
+          <ol id="guide-words" class="guide-words"></ol>
+        </div>
+      </section>
       <section id="view-settings" class="view" data-view="settings" hidden>
         <div class="diary-head">
           <button id="settings-back" class="btn btn-link" type="button">&#8249; Back</button>
@@ -989,6 +1021,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=166"></script>
+  <script type="module" src="scripts.js?v=167"></script>
 </body>
 </html>
