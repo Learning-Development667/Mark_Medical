@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '165';
+const APP_VERSION = '166';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -1164,7 +1164,7 @@ function buildDemoFixture() {
     id: fakeId('entry'), day: day(offset), at: demoTs(at(offset, hhmm)), addedBy: who, createdAt: demoTs(at(offset, hhmm)), note: '', ...fields
   });
   const ci = (offset, slot, fields) => {
-    const when = at(offset, slot === 'morning' ? '08:30' : slot === 'carer' ? '20:30' : slot === 'week' ? '18:00' : '21:00');
+    const when = at(offset, slot === 'morning' ? '08:30' : slot === 'carer' ? '20:30' : slot === 'week' ? '18:00' : slot === 'weekcarer' ? '18:30' : '21:00');
     return { id: day(offset) + '_' + slot, type: 'checkin', slot, day: day(offset), at: demoTs(when), addedBy: 'Mark', createdAt: demoTs(when), updatedAt: demoTs(when), ...fields };
   };
 
@@ -1231,9 +1231,11 @@ function buildDemoFixture() {
     e(-2, '16:05', 'Mark', { type: 'med', medId: 'oramorph', medName: 'Oramorph 10mg/5ml', dose: '2.5 ml (5 mg)' }),
     e(-2, '21:15', 'Mark', { type: 'med', medId: 'oramorph', medName: 'Oramorph 10mg/5ml', dose: '2.5 ml (5 mg)', note: 'Second dose, back and leg' }),
     e(-9, '13:30', 'Mark', { type: 'pain', value: 6, note: 'Right side, under the ribs, after lunch' }),
-    /* Your week (v156): two weekly checks, so the Mood and wellbeing report has a week in Mark's words */
-    ci(-11, 'week', { wkResults: 1, wkCutOff: 1, wkTired: 2, helped: 'Getting back in the garden. Shelley.', hardest: 'The two sick days after the session, and not being able to taste anything.', sentence: 'A rough start and a good end.' }),
-    ci(-4, 'week', { wkResults: 2, wkCutOff: 0, wkTired: 1, helped: 'The pub lunch. Knowing the pattern now, so the bad days did not frighten me.', hardest: 'The temperature on Wednesday and watching the thermometer all evening.', sentence: 'Steadier, and I know what to expect now.' }),
+    /* Your week (v156): two weekly checks in earlier weeks (never the current one, which the Friday-to-Sunday row offers new), so the Mood and wellbeing report has a week in Mark's words */
+    ci(-15, 'week', { wkResults: 1, wkCutOff: 1, wkTired: 2, helped: 'Getting back in the garden. Shelley.', hardest: 'The two sick days after the session, and not being able to taste anything.', sentence: 'A rough start and a good end.' }),
+    ci(-8, 'week', { wkResults: 2, wkCutOff: 0, wkTired: 1, helped: 'The pub lunch. Knowing the pattern now, so the bad days did not frighten me.', hardest: 'The temperature on Wednesday and watching the thermometer all evening.', sentence: 'Steadier, and I know what to expect now.' }),
+    /* Your week, as you see it (v166): the carer's own check on the same week, kept apart from Mark's */
+    ci(-8, 'weekcarer', { addedBy: 'Shelley', wkcTired: 1, wkcLow: 0, wkcSymptoms: 2, wkcHelp: 1, helped: 'Getting out for the pub lunch, and a proper sleep on Thursday.', hardest: 'Wednesday evening with the thermometer. He was quieter than he let on.', sentence: 'Brighter by the weekend, and eating again.' }),
     /* Three weekly cycles (sessions on -17, -10 and -3): energy and appetite dip on days 1 and 2, sickness peaks, all back by day 4 or 5 */
     ci(-17, 'evening', { pain: 3, mood: 6, worstPain: 4, sickness: 4, appetite: 4, energy: 5, symptoms: '', settled: '', goodThing: 'Session went smoothly', wb: { low: 1, worried: 2, enjoyed: 2 }, journal: 'Long day at the unit but the session went smoothly. Tired more than anything.' }),
     ci(-16, 'morning', { sleep: 5, sleepHours: 5.5, pain: 3, mood: 5, symptoms: '', lookingForward: '' }),
@@ -4693,12 +4695,21 @@ const SENT_FROM = 'Sent from My Medical Daybook';
    email signed "Mark" could be lost). The name on the report (Settings), else the household's patient as
    recorded; "" in the preview and until one is set, when the email reads as before. */
 function patientFullName() { return (state.profile && state.profile.reportName) || state.patientName || ''; }
+/* Whether the person signed in is looking after the patient rather than being the patient (v166): the members record's
+   relation says carer, or says nothing and the household's patient is named and is someone else. The preview, the demo and
+   a household with no patient named read as the patient. Decides the sign-off on the emails and which Your week is asked. */
+function isCarerUser() {
+  const rel = (state.account && state.account.relation) || '';
+  if (rel === 'patient') return false;
+  if (rel === 'carer') return true;
+  const who = patientFullName(), me = state.name || '';
+  return Boolean(who) && who.split(/\s+/)[0].toLowerCase() !== me.toLowerCase();
+}
 function emailSubject(K, range) { const who = patientFullName(); return who ? K.named(who, range) : K.subject(range); }
 function emailSignOff() {
   const who = patientFullName(), me = state.name || '';
   if (!who) return me;
-  const isPatient = (state.account && state.account.relation === 'patient') || who.split(/\s+/)[0].toLowerCase() === me.toLowerCase();
-  return isPatient ? who : `${me}, for ${who}`;
+  return isCarerUser() ? `${me}, for ${who}` : who;
 }
 function openSendSheet(kind) {
   const K = SEND_KINDS[kind] || SEND_KINDS.notes;
@@ -6095,7 +6106,7 @@ function buildNotesReport(entries, questionsAll, from, to, rangeLabel) {
     const list = (byDay[day] || []).slice().sort((a, b) => entryDate(a) - entryDate(b));
     const notes = list.filter((e) => e.type === 'note' || (e.note && ['temp', 'weight', 'vitals', 'med', 'pain', 'bowel', 'symptom'].includes(e.type)))
       .map((e) => ({ time: fmtTime(entryDate(e)), who: e.addedBy || 'unknown', text: e.note, context: e.type === 'note' ? '' : noteContext(e) }));
-    list.filter((e) => e.type === 'checkin' && e.slot !== 'week').forEach((e) => {
+    list.filter((e) => e.type === 'checkin' && !isWeekSlot(e.slot)).forEach((e) => {
       const keys = e.slot === 'carer' ? REPORT_CARER_KEYS : REPORT_CHECKIN_KEYS;
       keys.forEach(([k, label]) => {
         if (e[k]) notes.push({ time: fmtTime(entryDate(e)), who: e.addedBy || 'unknown', text: label + ': ' + e[k], context: e.slot === 'carer' ? "carer's view" : e.slot + ' check-in' });
@@ -6249,6 +6260,17 @@ const CHECKIN_QUESTIONS = {
     { key: 'hardest', kind: 'text', q: 'What was hardest?', ph: 'e.g. the nights, waiting for results' },
     { key: 'sentence', kind: 'text', q: 'This week in a sentence', ph: 'e.g. steady, and the garden kept me going' }
   ],
+  /* Your week, as you see it (v166): the carer's own weekly check on how the patient seemed, kept apart from the patient's
+     answers (entries/{day}_weekcarer), in the same four words, no pack questions. Feeds the Mood and wellbeing report. */
+  weekcarer: [
+    { key: 'wkcTired', kind: 'scale', q: 'Tiredness got in the way of their week?' },
+    { key: 'wkcLow', kind: 'scale', q: 'Seemed low, or withdrawn?' },
+    { key: 'wkcSymptoms', kind: 'scale', q: 'Pain or symptoms got in the way of the day?' },
+    { key: 'wkcHelp', kind: 'scale', q: 'Needed more help than usual?' },
+    { key: 'helped', kind: 'text', q: 'What helped them this week, as you saw it?', ph: 'e.g. the new pain plan, a visit from a friend' },
+    { key: 'hardest', kind: 'text', q: 'What was hardest for them?', ph: 'e.g. the nights, the two days after the session' },
+    { key: 'sentence', kind: 'text', q: 'Their week in a sentence', ph: 'e.g. quieter than usual, but eating again by Sunday' }
+  ],
   /* The carer's view: the same scores from the outside, once a day, on the Chemo tab. Kept out of
      every patient statistic, chart and tile; shown only on the cycle chart (dashed) and, the text, in Notes for the team. */
   carer: [
@@ -6291,22 +6313,29 @@ const CHECKIN_LABELS = {
   energy: 'Energy', settled: 'Settled since yesterday', goodThing: 'One good thing', noticed: 'What you noticed', outside: 'Outside the gut, last week',
   wb: 'How much', journal: 'How was today', wkResults: 'Worried about results or scans', wkCutOff: 'Felt cut off from people', wkTired: 'Tiredness got in the way',
   wkGutOut: 'Gut stopped me going out', wkToilet: 'Worried about getting to a toilet', wkSwings: 'Mood swings or irritability', wkAnxious: 'Anxious or panicky',
-  wkFog: 'Brain fog or memory', wkSweats: 'Sleep broken by sweats', helped: 'What helped', hardest: 'What was hardest', sentence: 'The week in a sentence'
+  wkFog: 'Brain fog or memory', wkSweats: 'Sleep broken by sweats', helped: 'What helped', hardest: 'What was hardest', sentence: 'The week in a sentence',
+  wkcTired: 'Tiredness got in the way', wkcLow: 'Seemed low or withdrawn', wkcSymptoms: 'Pain or symptoms got in the way', wkcHelp: 'Needed more help than usual'
 };
+/* The two weekly slots (v166): the patient's Your week and the carer's Your week, as you see it */
+function isWeekSlot(slot) { return slot === 'week' || slot === 'weekcarer'; }
+function weekSlot() { return isCarerUser() ? 'weekcarer' : 'week'; }
 /* A patient check-in, as opposed to the carer's view */
-function isPatientCheckin(e) { return e.type === 'checkin' && e.slot !== 'carer'; }
-function checkinTitle(slot) { return slot === 'carer' ? "Carer's view" : slot === 'week' ? 'Your week' : slotWord(slot) + ' check-in'; }
+function isPatientCheckin(e) { return e.type === 'checkin' && e.slot !== 'carer' && e.slot !== 'weekcarer'; }
+function checkinTitle(slot, e) {
+  if (slot === 'weekcarer') return e && e.addedBy ? 'The week as ' + e.addedBy + ' saw it' : 'Your week, as you see it';
+  return slot === 'carer' ? "Carer's view" : slot === 'week' ? 'Your week' : slotWord(slot) + ' check-in';
+}
 function checkinId(day, slot) { return day + '_' + slot; }
 function findCheckin(day, slot) {
   const id = checkinId(day, slot);
   return state.dayEntries.find((e) => e.id === id) || state.recentEntries.find((e) => e.id === id) || null;
 }
 function dueSlot() { return new Date().getHours() < 15 ? 'morning' : 'evening'; }
-function slotWord(slot) { return slot === 'morning' ? 'Morning' : slot === 'evening' ? 'Evening' : slot === 'week' ? 'Your week' : "Carer's view"; }
+function slotWord(slot) { return slot === 'morning' ? 'Morning' : slot === 'evening' ? 'Evening' : slot === 'week' ? 'Your week' : slot === 'weekcarer' ? 'Your week, as you see it' : "Carer's view"; }
 
 function checkinSummary(e) {
   const bits = [];
-  if (e.slot === 'week') return e.sentence ? String(e.sentence) : 'Your week';
+  if (isWeekSlot(e.slot)) return e.sentence ? String(e.sentence) : checkinTitle(e.slot, e);
   if (e.sleep != null) bits.push('Sleep ' + e.sleep + (e.sleepHours != null ? ' (' + e.sleepHours + ' h)' : ''));
   if (e.pain != null) bits.push('Pain ' + e.pain);
   if (e.mood != null) bits.push('Mood ' + e.mood);
@@ -6327,7 +6356,7 @@ function whenText(d) { return d ? (dayStr(d) === todayStr() ? '' : fmtDayShort(d
 function checkinSubmittedAt(c) { return tsDate(c.createdAt) || entryDate(c); }
 function checkinLine(c) {
   const bits = ['pain', 'mood'].filter((k) => c[k] != null).map((k) => k + ' ' + c[k]);
-  return checkinTitle(c.slot) + ' done ' + fmtTime(checkinSubmittedAt(c)) + (bits.length ? ', ' + bits.join(', ') : '');
+  return checkinTitle(c.slot, c) + (c.done === false ? ' started ' : ' done ') + fmtTime(checkinSubmittedAt(c)) + (bits.length ? ', ' + bits.join(', ') : '');
 }
 function checkinOpenSet() { if (!state.openCheckins) state.openCheckins = new Set(); return state.openCheckins; }
 function checkinCard(c, inEntry) {
@@ -6444,7 +6473,7 @@ function checkinSteps(slot, day, existing) {
   });
 }
 function openCheckin(slot, initialDay) {
-  if (slot === 'week') { openWeekCheck(initialDay); return; }
+  if (isWeekSlot(slot)) { openWeekCheck(initialDay, slot); return; }
   const today = todayStr();
   let day = initialDay > today ? today : initialDay;
   const qs = checkinSteps(slot, day, findCheckin(day, slot));
@@ -6602,7 +6631,10 @@ function openCheckin(slot, initialDay) {
   openSheet(checkinTitle(slot), body);
 }
 
-async function saveCheckin(slot, day, answers, existing) {
+/* opts (v166): { quiet } saves with no toast and no "edited" stamp on a check still being filled in (Your week saves as it
+   goes); { done } is written as the entry's done flag (false while unfinished; a check saved before v166 has none and counts
+   as done). Returns what was written, or null when nothing changed. */
+async function saveCheckin(slot, day, answers, existing, opts = {}) {
   const id = checkinId(day, slot);
   const today = todayStr();
   const at = existing ? entryDate(existing) : atFromInputs(day, day === today ? fmtTime(new Date()) : (slot === 'morning' ? '09:00' : slot === 'carer' ? '20:00' : '21:00'));
@@ -6610,21 +6642,23 @@ async function saveCheckin(slot, day, answers, existing) {
   CHECKIN_QUESTIONS[slot].forEach((q) => { if (q.key in answers) data[q.key] = answers[q.key]; });
   if (slot === 'morning') data.sleepHours = answers.sleepHours;
   checkinNoteKeys(slot).forEach((k) => { data[k] = answers[k] || ''; });
+  if ('done' in opts) data.done = Boolean(opts.done);
+  const inProgress = Boolean(existing && existing.done === false);
   if (existing) {
     /* nothing changed: no second write, and no "edited" stamp for a look and a tap on Save */
-    const keys = CHECKIN_QUESTIONS[slot].map((q) => q.key).filter((k) => k in data).concat(slot === 'morning' ? ['sleepHours'] : [], checkinNoteKeys(slot));
+    const keys = CHECKIN_QUESTIONS[slot].map((q) => q.key).filter((k) => k in data).concat(slot === 'morning' ? ['sleepHours'] : [], checkinNoteKeys(slot), 'done' in data ? ['done'] : []);
     const same = keys.every((k) => { const a = data[k] == null ? null : data[k], b = existing[k] == null ? null : existing[k]; if (Array.isArray(a) || Array.isArray(b) || (a && typeof a === 'object') || (b && typeof b === 'object')) return JSON.stringify(a) === JSON.stringify(b); return typeof a === 'string' || typeof b === 'string' ? String(a == null ? '' : a) === String(b == null ? '' : b) : a === b; });
-    if (same) { toast('No changes to save'); return; }
-    data.editedBy = state.name;
+    if (same) { if (!opts.quiet) toast('No changes to save'); return null; }
+    if (!inProgress) data.editedBy = state.name;
   }
   const mirror = {};
   if (slot !== 'carer' && data.mood != null) mirror.mood = Math.max(1, Math.min(5, Math.ceil(data.mood / 2)));
   if (slot === 'evening' && data.goodThing) mirror.good = data.goodThing;
-  const label = checkinTitle(slot) + (existing ? ' updated' : ' saved');
+  const label = (slot === 'weekcarer' ? 'Your week' : checkinTitle(slot)) + (existing && !inProgress ? ' updated' : ' saved');
 
   if (state.demo) {
     const now = new Date();
-    const entry = { id, ...data, at: demoTs(at), createdAt: existing ? existing.createdAt : demoTs(now), updatedAt: demoTs(now), ...(existing ? { editedAt: demoTs(now) } : {}) };
+    const entry = { id, ...data, at: demoTs(at), createdAt: existing && existing.createdAt ? existing.createdAt : demoTs(now), updatedAt: demoTs(now), ...(existing && !inProgress ? { editedAt: demoTs(now) } : {}) };
     state.recentEntries = state.recentEntries.filter((e) => e.id !== id);
     state.recentEntries.push(entry);
     sortEntries(state.recentEntries);
@@ -6632,8 +6666,8 @@ async function saveCheckin(slot, day, answers, existing) {
     if (Object.keys(mirror).length) state.days[day] = { ...(state.days[day] || {}), ...mirror };
     renderToday(); renderChemo();
     if (!$('view-vitals').hidden) renderVitals();
-    toast(label);
-    return;
+    if (!opts.quiet) toast(label);
+    return entry;
   }
   try {
     await setDoc(hdoc('entries', id), {
@@ -6641,13 +6675,14 @@ async function saveCheckin(slot, day, answers, existing) {
       at: Timestamp.fromDate(at),
       createdAt: existing && existing.createdAt ? existing.createdAt : serverTimestamp(),
       updatedAt: serverTimestamp(),
-      ...(existing ? { editedAt: serverTimestamp() } : {})
+      ...(existing && !inProgress ? { editedAt: serverTimestamp() } : {})
     });
     if (Object.keys(mirror).length) await setDoc(hdoc('days', day), { ...mirror, updatedBy: state.name, updatedAt: serverTimestamp() }, { merge: true });
     state.cycleFetched = 0;
     if (!$('view-chemo').hidden) renderChemo();
-    toast(label);
-  } catch (e) { console.error(e); toast('Could not save the check-in'); }
+    if (!opts.quiet) toast(label);
+    return { id, ...data, createdAt: existing && existing.createdAt };
+  } catch (e) { console.error(e); toast('Could not save the check-in'); return null; }
 }
 
 /* ---------- Your week (v156) ----------
@@ -6660,69 +6695,114 @@ function weekBounds(day) {
   const from = addDays(day, -dow);
   return { from, to: addDays(from, 6) };
 }
-function weekCheckFor(day) {
+function weekCheckFor(day, slot = 'week') {
   const { from, to } = weekBounds(day);
-  const all = state.recentEntries.concat(state.dayEntries).filter((e) => e.type === 'checkin' && e.slot === 'week' && e.day >= from && e.day <= to);
+  const all = state.recentEntries.concat(state.dayEntries).filter((e) => e.type === 'checkin' && e.slot === slot && e.day >= from && e.day <= to);
   return all.sort((a, b) => b.day.localeCompare(a.day))[0] || null;
 }
-function weekQuestions(existing) {
-  return CHECKIN_QUESTIONS.week.filter((q) => (existing && existing[q.key] !== undefined) || !q.pack || (Array.isArray(q.pack) ? q.pack.some(packOn) : packOn(q.pack)));
+function weekQuestions(existing, slot = 'week') {
+  return CHECKIN_QUESTIONS[slot].filter((q) => (existing && existing[q.key] !== undefined) || !q.pack || (Array.isArray(q.pack) ? q.pack.some(packOn) : packOn(q.pack)));
 }
-function openWeekCheck(initialDay) {
+/* One screen for the week (the patient's, or since v166 the carer's "as you see it", slot weekcarer). Saves as it goes
+   (v166, Mark: a week's answers should never be lost to a closed app): every tap and, 800 ms after typing stops, every
+   box writes the entry with done false; Finish writes done true. The row on Today says when one is started and not
+   finished. Closing the sheet keeps whatever is there. */
+function openWeekCheck(initialDay, slot = weekSlot()) {
   const today = todayStr();
   const day = !initialDay || initialDay > today ? today : initialDay;
-  const existing = weekCheckFor(day);
-  const qs = weekQuestions(existing);
+  let existing = weekCheckFor(day, slot);
+  const carer = slot === 'weekcarer';
+  const qs = weekQuestions(existing, slot);
   const answers = {};
   qs.forEach((q) => { answers[q.key] = existing && existing[q.key] !== undefined ? existing[q.key] : (q.kind === 'text' ? '' : null); });
   const body = h('div', { class: 'weekcheck' });
   const { from, to } = weekBounds(existing ? existing.day : day);
-  body.append(h('p', { class: 'wiz-hint', text: `Once a week, about five minutes. ${fmtDayShort(from)} to ${fmtDayShort(to)}. These go on the Mood and wellbeing report, never on Notes for the team.` }));
-  const on = PACKS.filter((pk) => packOn(pk.key) && qs.some((q) => q.pack && (Array.isArray(q.pack) ? q.pack.includes(pk.key) : q.pack === pk.key)));
+  const first = patientFullName().split(/\s+/)[0];
+  body.append(h('p', { class: 'wiz-hint', text: carer
+    ? `Once a week, about five minutes. ${fmtDayShort(from)} to ${fmtDayShort(to)}. How ${first || 'they'} seemed to you, kept apart from ${first ? first + "'s" : 'their'} own answers. It goes on the Mood and wellbeing report, never on Notes for the team. Saved as you go.`
+    : `Once a week, about five minutes. ${fmtDayShort(from)} to ${fmtDayShort(to)}. These go on the Mood and wellbeing report, never on Notes for the team. Saved as you go.` }));
+  const on = carer ? [] : PACKS.filter((pk) => packOn(pk.key) && qs.some((q) => q.pack && (Array.isArray(q.pack) ? q.pack.includes(pk.key) : q.pack === pk.key)));
   if (on.length) body.append(h('div', { class: 'pack-badges' }, ...on.map((pk) => h('span', { class: 'pill q-team', text: pk.name }))));
   const getters = {};
+  const current = () => { const a = {}; qs.forEach((q) => { a[q.key] = getters[q.key](); }); return a; };
+  const answered = (a) => qs.some((q) => (q.kind === 'text' ? a[q.key] : a[q.key] != null));
+  let keepT = 0, saving = null, finishing = false;
+  const keep = (now) => {
+    clearTimeout(keepT);
+    const run = async () => {
+      const a = current();
+      if (!answered(a) || state.readOnly || finishing) return;
+      if (saving) await saving;
+      const wasDone = existing ? existing.done !== false : false;
+      saving = saveCheckin(slot, existing ? existing.day : day, a, existing, { quiet: true, done: wasDone });
+      const w = await saving; saving = null;
+      if (w) existing = weekCheckFor(existing ? existing.day : day, slot) || w;
+      renderWeekRow();
+    };
+    if (now) return run();
+    keepT = setTimeout(run, 800);
+  };
   qs.forEach((q) => {
     if (q.kind === 'scale') {
       const chips = h('div', { class: 'chips taps-chips', role: 'group', 'aria-label': q.q });
       WB_WORDS.forEach((w, i) => chips.append(h('button', { class: 'preset' + (answers[q.key] === i ? ' is-active' : ''), type: 'button', 'aria-pressed': answers[q.key] === i ? 'true' : 'false', onclick: () => {
         answers[q.key] = answers[q.key] === i ? null : i;
         [...chips.children].forEach((b, j) => { b.classList.toggle('is-active', answers[q.key] === j); b.setAttribute('aria-pressed', answers[q.key] === j ? 'true' : 'false'); });
+        keep(true);
       } }, w)));
       body.append(h('div', { class: 'taps-row' }, h('p', { class: 'taps-label', text: q.q }), chips));
       getters[q.key] = () => answers[q.key];
     } else {
       const ta = h('textarea', { rows: '2', placeholder: q.ph || '', 'aria-label': q.q });
       ta.value = answers[q.key] || '';
+      ta.addEventListener('input', () => keep());
       body.append(h('div', { class: 'field weekfield' }, h('p', { class: 'taps-label', text: q.q }), ta, speakButton(ta) || ''));
       getters[q.key] = () => ta.value.trim();
     }
   });
+  const finished = existing && existing.done !== false;
   const save = h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
-    qs.forEach((q) => { answers[q.key] = getters[q.key](); });
-    if (!qs.some((q) => (q.kind === 'text' ? answers[q.key] : answers[q.key] != null))) { toast('Nothing answered yet'); return; }
+    clearTimeout(keepT);
+    const a = current();
+    if (!answered(a)) { toast('Nothing answered yet'); return; }
     save.disabled = true;
-    await saveCheckin('week', existing ? existing.day : day, answers, existing);
+    if (saving) await saving;
+    finishing = true; // the close guard must not write the unfinished copy back over this
+    await saveCheckin(slot, existing ? existing.day : day, a, existing, { done: true });
     closeSheet();
     renderToday();
-  } }, existing ? 'Save changes' : 'Save');
-  body.append(save, existing ? h('button', { class: 'btn-link wiz-cancel', type: 'button', onclick: closeSheet }, 'Cancel') : '');
-  body.dataset.draft = 'week:' + from;
-  body.dataset.reopen = 'checkin:week:' + day;
-  openSheet('Your week', body);
+  } }, finished ? 'Save changes' : 'Finish');
+  body.append(save, h('button', { class: 'btn-link wiz-cancel', type: 'button', onclick: closeSheet }, finished ? 'Cancel' : 'Close, carry on later'));
+  body.dataset.draft = slot + ':' + from;
+  body.dataset.reopen = 'checkin:' + slot + ':' + day;
+  openSheet(carer ? 'Your week, as you see it' : 'Your week', body, () => keep(true));
 }
+/* The row on Today (v166): from Friday to Sunday for the week on screen (Mark: the week ends Sunday and the option comes up
+   on the Friday); Monday to Thursday only when last week's was started and not finished. A started one says so. */
 function renderWeekRow() {
-  const row = $('week-check'), sub = $('week-check-sub');
+  const row = $('week-check'), sub = $('week-check-sub'), title = $('week-check-title');
   if (!row) return;
-  const c = weekCheckFor(state.selectedDay);
+  const slot = weekSlot(), day = state.selectedDay, dow = (parseDay(day).getDay() + 6) % 7; // Monday 0
+  title.textContent = slot === 'weekcarer' ? 'Your week, as you see it' : 'Your week';
   row.disabled = state.readOnly;
-  row.classList.toggle('is-done', !!c);
-  if (c) sub.textContent = 'Done ' + fmtDayShort(c.day) + ' ' + fmtTime(checkinSubmittedAt(c)) + (state.readOnly ? '' : ', tap to change');
+  row.classList.remove('is-done', 'is-due');
+  let c = weekCheckFor(day, slot), forDay = day, show = true;
+  if (!c && dow < 4) {
+    const prev = weekCheckFor(addDays(day, -7), slot);
+    if (prev && prev.done === false) { c = prev; forDay = addDays(day, -7); } else show = false;
+  }
+  row.hidden = !show;
+  row.dataset.day = forDay;
+  if (!show) return;
+  if (c && c.done === false) { row.classList.add('is-due'); sub.textContent = (forDay === day ? 'Started ' : "Last week's, started ") + fmtDayShort(c.day) + ', not finished yet. Tap to carry on'; }
+  else if (c) { row.classList.add('is-done'); sub.textContent = 'Done ' + fmtDayShort(c.day) + ' ' + fmtTime(checkinSubmittedAt(c)) + (state.readOnly ? '' : ', tap to change'); }
   else {
-    const last = state.recentEntries.filter((e) => e.type === 'checkin' && e.slot === 'week').sort((a, b) => b.day.localeCompare(a.day))[0];
-    sub.textContent = 'Five minutes, once a week.' + (last ? ' Last done ' + fmtDayShort(last.day) + '.' : ' Not done yet.');
+    const last = state.recentEntries.filter((e) => e.type === 'checkin' && e.slot === slot && e.done !== false).sort((a, b) => b.day.localeCompare(a.day))[0];
+    if (dow === 6) row.classList.add('is-due');
+    sub.textContent = (dow === 6 ? 'Last day of the week. Five minutes.' : 'Five minutes, any time up to Sunday.') + (last ? ' Last done ' + fmtDayShort(last.day) + '.' : ' Not done yet.');
   }
 }
-$('week-check').addEventListener('click', () => openWeekCheck(state.selectedDay));
+$('week-check').addEventListener('click', () => openWeekCheck($('week-check').dataset.day || state.selectedDay));
 
 /* Extra pain readings during the day: ordinary timestamped entries, separate from the check-in scores */
 $('question-now').addEventListener('click', () => openAdd('question'));
@@ -6854,7 +6934,8 @@ async function renderMoodReport() {
         h('span', null, ...[1, 2, 3, 4].map((k) => h('i', { class: k <= d.n ? (d.warm ? 'on warm' : 'on') : '' })), ' ' + label + (d.sub ? ', ' + d.sub : ''))))
       : h('p', { class: 'wk-sub', text: `Mood ${w.mood}${w.moodSub ? ', ' + w.moodSub : ''}. Low days: ${w.lowDays}${w.lowSub ? ' ' + w.lowSub : ''}.` }),
     w.sentence ? h('p', { class: 'wk-sentence', text: '“' + w.sentence + '”' }) : (W.cols.checks ? h('p', { class: 'wk-sub', text: 'No weekly check this week.' }) : null),
-    w.sub ? h('p', { class: 'wk-sub', text: w.sub }) : null)));
+    w.sub ? h('p', { class: 'wk-sub', text: w.sub }) : null,
+    w.carer ? h('p', { class: 'wk-sub wk-carer', text: w.carer }) : null)));
   $('mood-weeks-hint').textContent = W.cols.taps ? 'The three evening taps, sleep, and your weekly check in your own words. Your week is on Today, five minutes once a week.' : 'Mood, low days and sleep by week. The three evening taps and Your week on Today add how you felt and your own words from now on.';
   $('mood-send').hidden = state.readOnly || state.viewer;
   warmReport('mood');
@@ -6908,6 +6989,14 @@ function moodAiText(W, n) {
     const f = CHECKIN_QUESTIONS.week.filter((q) => e[q.key] != null && e[q.key] !== '').map((q) => q.q.replace(/\?$/, '') + ': ' + (q.kind === 'scale' ? WB_WORDS[e[q.key]].toLowerCase() : e[q.key]));
     lines.push(`${e.day}: ${f.join('; ')}`);
   });
+  const cwks = n.entries.filter((e) => e.type === 'checkin' && e.slot === 'weekcarer');
+  if (cwks.length) {
+    lines.push('', 'Weekly checks by the carer, as they saw it (not the patient\'s own words):');
+    cwks.forEach((e) => {
+      const f = CHECKIN_QUESTIONS.weekcarer.filter((q) => e[q.key] != null && e[q.key] !== '').map((q) => q.q.replace(/\?$/, '') + ': ' + (q.kind === 'scale' ? WB_WORDS[e[q.key]].toLowerCase() : e[q.key]));
+      lines.push(`${e.day}, by ${e.addedBy || 'the carer'}: ${f.join('; ')}`);
+    });
+  }
   return lines.join('\n');
 }
 function parseMoodReply(raw, n) {
@@ -6987,6 +7076,7 @@ function buildMoodReport(n) {
   const dayLabels = days.map((d, i) => (i === 0 || i === days.length - 1 || parseDay(d).getDate() === 1 ? rDay(d) : String(parseDay(d).getDate())));
   /* the weeks: seven-day blocks counted back from the last day, as the other reports */
   const wkChecks = entries.filter((e) => e.type === 'checkin' && e.slot === 'week');
+  const carerChecks = entries.filter((e) => e.type === 'checkin' && e.slot === 'weekcarer');
   const weeks = reportWeeks(from, to).map((w) => {
     const inW = daysFull.filter((d) => d.day >= w.from && d.day <= w.to);
     const t = inW.filter((d) => d.wb);
@@ -7000,10 +7090,13 @@ function buildMoodReport(n) {
     const ms = inW.filter((d) => d.mood != null), lows = ms.filter((d) => lowDays.includes(d));
     const chk = wkChecks.find((e) => e.day >= w.from && e.day <= w.to) || null;
     const extra = chk ? [['Helped', text(chk.helped)], ['Hardest', text(chk.hardest)]].filter(([, v]) => v).map(([k, v]) => k + ': ' + v).join(' ') : '';
+    /* the carer's own check on the week (v166), one line after the patient's: "As Shelley saw it: ..." */
+    const cchk = carerChecks.find((e) => e.day >= w.from && e.day <= w.to) || null;
+    const carer = cchk && (text(cchk.sentence) || text(cchk.hardest) || text(cchk.helped)) ? 'As ' + (cchk.addedBy || 'the carer') + ' saw it: ' + (text(cchk.sentence) || text(cchk.hardest) || text(cchk.helped)) : '';
     return { key: w.key, from: w.from, to: w.to, label: rDay(w.from) + ' to ' + rDay(w.to), low: dots('low', true), worried: dots('worried', true), enjoyed: dots('enjoyed', false),
       mood: ms.length ? String(avg(ms.map((d) => d.mood))) : 'None', moodSub: ms.length ? 'lowest ' + Math.min(...ms.map((d) => Math.min(d.moodM ?? 99, d.moodE ?? 99))) : 'no scores',
       lowDays: ms.length ? String(lows.length) : 'None', lowSub: ms.length ? 'of ' + plural(ms.length, 'day') : '',
-      sleep: ns.length ? avg(ns) + ' h' : 'None', sleepSub: ns.length ? (sh ? plural(sh, 'short night') : 'no short nights') : 'no sleep logged', sentence: chk ? text(chk.sentence) : '', sub: extra, check: chk || null };
+      sleep: ns.length ? avg(ns) + ' h' : 'None', sleepSub: ns.length ? (sh ? plural(sh, 'short night') : 'no short nights') : 'no sleep logged', sentence: chk ? text(chk.sentence) : '', sub: extra, carer, check: chk || null };
   });
   /* the brief, the quotes and the two lists: Daybook Assistant's, or the app's plain version */
   const ai = state.moodAI && state.moodAI.range === from + '|' + to ? state.moodAI : null;
@@ -7040,7 +7133,7 @@ function buildMoodReport(n) {
   items.push({ t: 'notes' });
   const period = rPeriod(from, to);
   /* the table shows what was logged: the taps' columns only when some evening has them, the sentence only with a weekly check (v157) */
-  const cols = { taps: taps.length > 0, checks: wkChecks.length > 0 };
+  const cols = { taps: taps.length > 0, checks: wkChecks.length > 0 || carerChecks.length > 0 };
   return { patient, period, prepared: rDay(todayStr()) + ' ' + parseDay(todayStr()).getFullYear(), tiles, chart, days: dayLabels, daysFull, brief, briefNote, quotes, quotesNote, helped, hardest, weeks, cols, questions, items, pages: [], docTitle: `Mood and wellbeing, ${patient}, ${period}` };
 }
 function fittedMoodReport() {
