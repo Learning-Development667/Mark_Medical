@@ -824,7 +824,7 @@ export function moodReportHtml(W) {
         const cell = (d) => (d.n ? `${dots(d)}<span class="sm">${esc(d.sub)}</span>` : '<span class="sm">No taps</span>');
         const C = W.cols || { taps: true, checks: true };
         const mid = C.taps ? `<span>${cell(w.low)}</span><span>${cell(w.worried)}</span><span>${cell(w.enjoyed)}</span>` : `<span class="n">${esc(w.mood)}${w.moodSub ? `<span class="sm">${esc(w.moodSub)}</span>` : ''}</span><span class="n">${esc(w.lowDays)}${w.lowSub ? `<span class="sm">${esc(w.lowSub)}</span>` : ''}</span>`;
-        const last = C.checks ? `<span>${w.sentence ? '“' + esc(w.sentence) + '”' : '<span class="sm">No weekly check</span>'}${w.sub ? `<span class="sm">${esc(w.sub)}</span>` : ''}</span>` : '';
+        const last = C.checks ? `<span>${w.sentence ? '“' + esc(w.sentence) + '”' : '<span class="sm">No weekly check</span>'}${w.sub ? `<span class="sm">${esc(w.sub)}</span>` : ''}${w.carer ? `<span class="sm">${esc(w.carer)}</span>` : ''}</span>` : '';
         html += `<div class="wkrow" style="grid-template-columns:${wkCols(C)}" data-i="${i}"><span class="n">${esc(w.label)}</span>${mid}<span class="n">${esc(w.sleep)}${w.sleepSub ? `<span class="sm">${esc(w.sleepSub)}</span>` : ''}</span>${last}</div>`;
       }
       /* the card's own three ruled lines, never the 40 clipped ones: rules running past the paper, even clipped, make Chrome print a blank page after the last */

@@ -1599,6 +1599,7 @@ h1, h2, h3 { font-weight: 600; }
 .weekcheck .pack-badges { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 var(--s-4); }
 .weekfield { margin: 0 0 var(--s-4); }
 .weekfield textarea { width: 100%; min-height: 64px; }
+.wk-carer { font-style: italic; }
 .brief-box { width: 100%; min-height: 220px; }
 .mood-brief-note { font-size: 15px; color: var(--text-muted); margin: 6px 0 0; }
 .wkcard { margin: 0 0 var(--s-3); }
