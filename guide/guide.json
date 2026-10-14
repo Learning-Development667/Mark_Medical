@@ -1,0 +1,319 @@
+{
+ "made": "2026-10-14",
+ "width": 390,
+ "height": 844,
+ "topics": [
+  {
+   "key": "reading",
+   "title": "Log a reading",
+   "sub": "Vitals, pain, a drink, food, a note, sleep, bowels, a symptom or a dose, from Today.",
+   "intro": "Everything between the check-ins is logged from the tiles on Today, in the same way.",
+   "steps": [
+    {
+     "file": "reading-1.webp",
+     "caption": "On Today, tap Vitals. The other tiles log pain, a drink, food, a note, sleep, bowels, a symptom or a dose the same way.",
+     "tap": {
+      "x": 0.187,
+      "y": 0.612
+     }
+    },
+    {
+     "file": "reading-2.webp",
+     "caption": "Type the readings you have. Any box can be left empty, and the time is filled in for you.",
+     "tap": {
+      "x": 0.451,
+      "y": 0.328
+     }
+    },
+    {
+     "file": "reading-3.webp",
+     "caption": "37.6 and 97 typed. For a reading taken earlier, change the time or the date, then tap Save.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.868
+     }
+    },
+    {
+     "file": "reading-4.webp",
+     "caption": "Saved. It is on the timeline for the day, coloured if it is raised, and the Reports charts have it too. The three dots on an entry edit or delete it."
+    }
+   ]
+  },
+  {
+   "key": "checkin",
+   "title": "The morning and evening check-ins",
+   "sub": "A minute each: sleep, symptoms, pain and mood, one question a screen.",
+   "intro": "The check-ins are what the reports are built from. A minute each, twice a day.",
+   "steps": [
+    {
+     "file": "checkin-1.webp",
+     "caption": "Twice a day, a morning check-in and an evening one. Tap the row when it says Due now.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.325
+     }
+    },
+    {
+     "file": "checkin-2.webp",
+     "caption": "One question a screen. Slide to the score, 1 to 10. Hours slept come from Apple Health when it is connected.",
+     "tap": {
+      "x": 0.675,
+      "y": 0.944
+     }
+    },
+    {
+     "file": "checkin-3.webp",
+     "caption": "A written answer has Tap to speak under it: tap, say it, tap again to stop. Skip is always there.",
+     "tap": {
+      "x": 0.675,
+      "y": 0.944
+     }
+    },
+    {
+     "file": "checkin-4.webp",
+     "caption": "Pain right now, with where it is in words underneath. The words go on Notes for the team and the Pain report.",
+     "tap": {
+      "x": 0.675,
+      "y": 0.944
+     }
+    },
+    {
+     "file": "checkin-5.webp",
+     "caption": "The review: every answer, tap one to change it, then Save.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.933
+     }
+    },
+    {
+     "file": "checkin-6.webp",
+     "caption": "Done. The check-in is a card on Today: tap it to open it, and Edit to change an answer later.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.323
+     }
+    }
+   ]
+  },
+  {
+   "key": "meds",
+   "title": "Medicines and reminders",
+   "sub": "Log a dose, see what is due, set reminder times.",
+   "intro": "The Meds tab is the list; the Medicine tile on Today is the quick way to log a dose.",
+   "steps": [
+    {
+     "file": "meds-1.webp",
+     "caption": "The Meds tab lists today's medicines, a dot for each dose due. Tap Log now when one is taken.",
+     "tap": {
+      "x": 0.285,
+      "y": 0.611
+     }
+    },
+    {
+     "file": "meds-2.webp",
+     "caption": "Logged, with the time as a chip. A when-needed medicine says when the next dose can be given, and when the day's maximum is reached."
+    },
+    {
+     "file": "meds-3.webp",
+     "caption": "From Today, the Medicine tile logs a dose without leaving the screen.",
+     "tap": {
+      "x": 0.813,
+      "y": 0.435
+     }
+    },
+    {
+     "file": "meds-4.webp",
+     "caption": "Tap the medicine taken. When-needed ones come first, with whether they can be given now."
+    },
+    {
+     "file": "meds-5.webp",
+     "caption": "Manage medicines adds one, changes a dose, or sets reminder times. Reminders arrive as notifications once they are switched on under Settings.",
+     "tap": {
+      "x": 0.264,
+      "y": 0.193
+     }
+    },
+    {
+     "file": "meds-6.webp",
+     "caption": "Every medicine on the list, with Edit. A finished course keeps its history under Medicine history."
+    }
+   ]
+  },
+  {
+   "key": "question",
+   "title": "A question for the team",
+   "sub": "Keep the questions for the next appointment, labelled for who answers them.",
+   "intro": "A question written down when it comes to you is a question that gets asked.",
+   "steps": [
+    {
+     "file": "question-1.webp",
+     "caption": "Something to ask at the next appointment? Tap Question for the team on Today.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.511
+     }
+    },
+    {
+     "file": "question-2.webp",
+     "caption": "Type it, or Tap to speak, and say who it is for: Oncology, Gastro, General, Dietitian or the Pain team. It goes to the top of that report.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.959
+     }
+    },
+    {
+     "file": "question-3.webp",
+     "caption": "Every open question heads Notes for the team, with room under it for the answer in clinic. Record or write the answer, then mark it answered.",
+     "tap": {
+      "x": 0.406,
+      "y": 0.434
+     }
+    }
+   ]
+  },
+  {
+   "key": "week",
+   "title": "Your week",
+   "sub": "Five minutes, once a week, from Friday to Sunday.",
+   "intro": "The weekly check is what the Mood and wellbeing report builds its weeks from.",
+   "steps": [
+    {
+     "file": "week-1.webp",
+     "caption": "From Friday to Sunday, Your week appears on Today: five minutes, once a week.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.646
+     }
+    },
+    {
+     "file": "week-2.webp",
+     "caption": "Four words for each question, then three boxes in your own words. Every tap is saved as you go.",
+     "tap": {
+      "x": 0.729,
+      "y": 0.613
+     }
+    },
+    {
+     "file": "week-3.webp",
+     "caption": "Finish when it is done. Close it instead and Today says it is not finished yet, with everything kept.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.87
+     }
+    },
+    {
+     "file": "week-4.webp",
+     "caption": "Done for the week. Tap the row again to change an answer."
+    }
+   ]
+  },
+  {
+   "key": "reports",
+   "title": "Reports, and emailing them",
+   "sub": "Notes for the team, the Food diary, Mood and wellbeing, Pain, and the charts.",
+   "intro": "Each report is a page or two for one person on the team, made from what is already logged.",
+   "steps": [
+    {
+     "file": "reports-1.webp",
+     "caption": "The Reports tab: Notes for the team first, then the Food diary, Mood and wellbeing, Pain and pain relief, Documents, and the charts of every reading.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.179
+     }
+    },
+    {
+     "file": "reports-2.webp",
+     "caption": "Choose the period, then Send to the team, Preview or Save as PDF. The summary and the notes are below.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.285
+     }
+    },
+    {
+     "file": "reports-3.webp",
+     "caption": "Pick who it goes to. Contacts with an email address come from Who to contact on More.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.769
+     }
+    },
+    {
+     "file": "reports-4.webp",
+     "caption": "The subject and message are written for you and can be changed. The report is attached as a PDF, and a copy goes to your own inbox."
+    },
+    {
+     "file": "reports-5.webp",
+     "caption": "Preview shows the pages exactly as they print, with Print and Save as PDF above them."
+    }
+   ]
+  },
+  {
+   "key": "contacts",
+   "title": "Who to contact, and the set-up",
+   "sub": "The ward, the nurse, the GP: one tap to call or email, and where the reports go.",
+   "intro": "More holds the Set-up, this Guide, letters and paperwork, saved meals, Settings and Who to contact.",
+   "steps": [
+    {
+     "file": "contacts-1.webp",
+     "caption": "More: the Set-up, the Guide, letters and paperwork, saved meals, Settings, and Who to contact. Tap Add a new contact.",
+     "tap": {
+      "x": 0.264,
+      "y": 0.435
+     }
+    },
+    {
+     "file": "contacts-2.webp",
+     "caption": "A name, and a phone number or an email address, or both. Save.",
+     "tap": {
+      "x": 0.5,
+      "y": 2.646
+     }
+    },
+    {
+     "file": "contacts-3.webp",
+     "caption": "Call and Email are one tap. Any contact with an email address can be sent a report from the Reports tab.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.324
+     }
+    },
+    {
+     "file": "contacts-4.webp",
+     "caption": "The Set-up: what Daybook is for, your name on the reports, a contact, the Home Screen and Tap to speak. Run it again any time, from here or from Settings."
+    }
+   ]
+  },
+  {
+   "key": "carer",
+   "title": "A carer's phone",
+   "sub": "Invited as a carer: the same Daybook, with your own view of the week and the day.",
+   "intro": "Someone invited as a carer logs and reads everything the same way, and adds their own view alongside.",
+   "steps": [
+    {
+     "file": "carer-1.webp",
+     "caption": "A carer sees the same Today, and from Friday, Your week, as you see it: how the patient seemed, kept apart from their own answers.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.646
+     }
+    },
+    {
+     "file": "carer-2.webp",
+     "caption": "Four questions on how they seemed this week, then three in your own words. It goes on the Mood and wellbeing report as \"As Shelley saw it\"."
+    },
+    {
+     "file": "carer-3.webp",
+     "caption": "On the Treatment tab, the Carer's view: the day's energy, sickness, eating, pain and mood as you see it.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.434
+     }
+    },
+    {
+     "file": "carer-4.webp",
+     "caption": "The same sliders, worded as you see it. They are shown beside the patient's own scores on the treatment cycle chart, never mixed with them."
+    }
+   ]
+  }
+ ]
+}

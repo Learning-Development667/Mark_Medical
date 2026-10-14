@@ -1630,3 +1630,21 @@ h1, h2, h3 { font-weight: 600; }
 .setup-done .icon { width: 22px; height: 22px; }
 .setup-try { margin-top: var(--s-3); }
 body.is-readonly #more-setup, body.is-readonly .settings-setup-hint { display: none; }
+
+/* ---------- The Guide (v167): walk-throughs of the real screens, and the Tap to speak hint ---------- */
+.guide-phone { position: relative; width: min(100%, 330px); margin: var(--s-3) auto 0; aspect-ratio: 390 / 844; border-radius: 22px; overflow: hidden; background: var(--surface-sunken); box-shadow: var(--elev-raised); border: 1px solid var(--border-subtle); }
+.guide-phone img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.guide-tap { position: absolute; width: 56px; height: 56px; margin: -28px 0 0 -28px; border-radius: 50%; border: 3px solid var(--warm); box-shadow: 0 0 0 4px rgba(194, 112, 61, 0.28); pointer-events: none; animation: guide-pulse 1.2s ease-out infinite; }
+@keyframes guide-pulse { 0% { transform: scale(0.7); opacity: 1; } 100% { transform: scale(1.25); opacity: 0.35; } }
+.guide-cap { margin: var(--s-4) 0 0; font-size: 17px; line-height: 1.45; min-height: 3.2em; }
+.guide-step { display: block; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 14px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 4px; }
+.guide-controls { display: flex; gap: 10px; margin-top: var(--s-3); }
+.guide-controls .btn { margin-top: 0; min-height: 48px; }
+.guide-controls #guide-prev, .guide-controls #guide-next { flex: 0 0 64px; font-size: 26px; line-height: 1; }
+.guide-controls #guide-play { flex: 1; }
+.guide-words-title { font-family: var(--font-head); font-weight: 600; font-size: 19px; margin: var(--s-6) 0 var(--s-2); }
+.guide-words { margin: 0; padding-left: 1.4em; font-size: 17px; line-height: 1.5; }
+.guide-words li { margin-bottom: 6px; }
+.guide-words li.is-current { color: var(--teal); font-weight: 600; }
+@media (prefers-reduced-motion: reduce) { .guide-tap { animation: none; } }
+.speakhint { margin: 6px 0 0; font-size: 15px; line-height: 1.4; color: var(--text-muted); }
