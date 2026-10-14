@@ -347,6 +347,8 @@ code { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-s
 }
 .btn-small { min-height: var(--tap); padding: var(--s-2) 14px; font-size: var(--fs-md); }
 .btnrow { display: flex; gap: 10px; margin-top: var(--s-3); }
+.calls-actions { margin-bottom: var(--s-3); }
+.calls-actions .btn { min-width: 0; padding-left: var(--s-3); padding-right: var(--s-3); }
 .btnrow .btn { flex: 1; margin-top: 0; }
 .iconbtn {
   width: var(--tap); height: var(--tap);
@@ -510,7 +512,7 @@ body.is-readonly #doc-save-explanation,
 body.is-readonly #doc-delete,
 body.is-readonly #more-meals,
 body.is-readonly #settings-food,
-body.is-readonly #calls-edit { display: none; }
+body.is-readonly #calls-edit, body.is-readonly .calls-actions { display: none; }
 
 /* ---------- Tab bar ---------- */
 .tabs {

@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '164';
+const APP_VERSION = '165';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -10737,9 +10737,15 @@ function renderCalls() {
       c.email ? h('a', { class: 'btn btn-secondary', href: 'mailto:' + c.email, 'aria-label': 'Email ' + c.label }, 'Email') : '')
   )));
   if (!calls.length) wrap.append(h('p', { class: 'empty', 'data-art': 'call', text: 'No contacts saved yet. Add the ward, your nurse, the hospice or GP so they are one tap away.' }));
+  $('calls-edit').hidden = !calls.length; // nothing to edit yet: Add a new contact is the one button
 }
 
-$('calls-edit').addEventListener('click', () => {
+/* The two buttons sit above the list (v165; Edit contacts alone sat below it until then, and Mark wanted
+   Add a new contact beside it where it is seen first). Both open the same sheet; Add puts a new block at
+   the top with focus in Name. */
+$('calls-add').addEventListener('click', () => openContactsSheet(true));
+$('calls-edit').addEventListener('click', () => openContactsSheet(false));
+function openContactsSheet(addNew) {
   const rows = h('div', { class: 'editlist' });
   /* A saved contact is appended in its own order; a new one (v158) goes to the top, outlined and headed
      "New contact", with the box scrolled into view and focus in Name, so nobody types over the first contact
@@ -10761,8 +10767,9 @@ $('calls-edit').addEventListener('click', () => {
   /* "Contact 1", "Contact 2": a heading per saved block, so a long list stays readable; a block added this
      time is headed "New contact" until it is saved */
   const number_ = () => { let n = 0; rows.querySelectorAll('.contactrow').forEach((r) => { r.querySelector('.contactrow-n').textContent = r.dataset.new ? 'New contact' : 'Contact ' + (++n); }); };
-  ((state.profile && state.profile.calls) || []).forEach((c) => addRow(c));
-  if (!rows.children.length) addRow(null);
+  const saved = (state.profile && state.profile.calls) || [];
+  saved.forEach((c) => addRow(c));
+  if (!saved.length) addRow(null, addNew);
   const body = h('div', null,
     h('p', { class: 'hint', text: 'A phone number, an email address, or both. Email opens your own Mail app. If the line asks you to press an option or an extension, put it in its own box; it shows under the number.' }),
     h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => addRow(null, true) }, 'Add a new contact'),
@@ -10786,8 +10793,9 @@ $('calls-edit').addEventListener('click', () => {
     } }, 'Save'),
     h('button', { class: 'btn btn-link btn-block', type: 'button', onclick: closeSheet }, 'Cancel')
   );
-  openSheet('Who to contact', body);
-});
+  openSheet(addNew ? 'Add a new contact' : 'Who to contact', body);
+  if (addNew) { if (saved.length) addRow(null, true); else rows.querySelector('input').focus(); }
+}
 
 /* ------------------------------------------------------------------ */
 /* Housekeeping                                                         */
