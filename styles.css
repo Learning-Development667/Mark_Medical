@@ -1618,3 +1618,12 @@ h1, h2, h3 { font-weight: 600; }
 .wordcard p { margin: 0; white-space: pre-wrap; }
 @media (prefers-color-scheme: dark) { .wordcard .word-when { color: var(--teal); } }
 @media (max-width: 359px) { .todrow { grid-template-columns: 1fr; gap: 4px; } }
+
+/* ---------- The set-up (v164) ---------- */
+.setup-list { padding-left: 22px; margin: 0 0 var(--s-4); }
+.setup-list li { margin-bottom: 8px; }
+.setup-p { margin: 0 0 var(--s-3); }
+.setup-done { display: flex; align-items: center; gap: 10px; color: var(--success); font-weight: 600; margin: 0 0 var(--s-3); }
+.setup-done .icon { width: 22px; height: 22px; }
+.setup-try { margin-top: var(--s-3); }
+body.is-readonly #more-setup, body.is-readonly .settings-setup-hint { display: none; }

@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '163';
+const APP_VERSION = '164';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -686,6 +686,7 @@ const state = {
   notesText: '',
   notesPdf: null,
   checkinProgress: null, // the open check-in's kept slot:day keys, cleared on close (v160)
+  setupPending: null, // 'full' after creating a household, 'phone' after joining one: the set-up opens once the app is in (v164)
   painAI: null, // { range "from|to", brief[{ head, text }] } from Daybook Assistant for the Pain report, this session only (v163)
   moodAI: null, // { range "from|to", brief[{ head, text }], quotes[{ when, text, low }], helped[], hardest[] } from Daybook Assistant for the Mood report, this session only (v156)
   notesAI: null, // { range "from|to", weeks { weekKey: { theme, entries } }, questions { id: text }, latest } from Daybook Assistant, this session only
@@ -773,6 +774,7 @@ $('signup-form').addEventListener('submit', async (ev) => {
     if (code) await bridgeCall('/join', { code, name });
     else await bridgeCall('/household', { name, relation: signupRelation(), ...betaPayload('signup-beta', 'signup-heard') });
     state.pendingInvite = null; state.pendingBeta = null;
+    state.setupPending = code ? 'phone' : 'full';
     $('signup').hidden = true;
     $('signup-password').value = '';
     await enterApp(cred.user);
@@ -813,6 +815,7 @@ $('nohousehold-form').addEventListener('submit', async (ev) => {
     if (code) await bridgeCall('/join', { code, name });
     else await bridgeCall('/household', { name, relation: nohouseholdRelation(), ...betaPayload('nohousehold-beta', 'nohousehold-heard') });
     state.pendingInvite = null; state.pendingBeta = null;
+    state.setupPending = code ? 'phone' : 'full';
     $('nohousehold').hidden = true;
     await enterApp(auth.currentUser);
   } catch (e) { err.textContent = e.message; err.hidden = false; }
@@ -908,7 +911,7 @@ async function enterApp(user) {
     /* Signed in, but in no household: join the one an invite link is for, or make one (since v78) */
     if (state.pendingInvite && BRIDGE) {
       const code = state.pendingInvite; state.pendingInvite = null;
-      try { await bridgeCall('/join', { code }); return enterApp(user); }
+      try { await bridgeCall('/join', { code }); state.setupPending = 'phone'; return enterApp(user); }
       catch (e) { toast(e.message); }
     }
     showNoHousehold(user);
@@ -948,6 +951,7 @@ async function enterApp(user) {
     await startData();
     syncReminders();
     setTimeout(offerDraft, 1500);
+    if (state.setupPending && !state.readOnly && !state.viewer) { const kind = state.setupPending; state.setupPending = null; setTimeout(() => openSetup(kind), 700); }
   } else if (!state.demo) {
     stopData();
     state.user = null;
@@ -1468,6 +1472,7 @@ function syncSettings() {
   syncHealthCard();
   syncHouseholdCard();
   renderPacksCard();
+  renderSetupRow();
   const nudge = $('settings-stretch-nudge');
   if (nudge) { const on = !!(state.profile && state.profile.stretchNudge); if (nudge.checked !== on) nudge.checked = on; nudge.disabled = state.readOnly || state.demo; }
 }
@@ -1518,6 +1523,145 @@ function renderPacksCard() {
     field(stoma ? 'On a usual settled day, how many times do you empty your bag?' : 'On a usual settled day, how many times do you open your bowels?', usual),
     h('p', { class: 'hint', text: 'Your usual is what the reports compare each day with, the way IBD teams do. Change it if your team gives you a different figure.' }));
 }
+
+/* The set-up (v164). Mark found Settings by accident on 14 October 2026, a week after the condition packs went in
+   there, and asked for a walk-through that new people see before anything else. It runs once, straight after
+   Create account: what Daybook is for (the packs; at least one, since every new household would otherwise be
+   cancer by default), the Crohn's or colitis details, the name on the report, one contact, the Home Screen and
+   reminders, and Tap to speak. Someone joining by invite gets the two phone steps only. Each step saves as it is
+   passed, through the same profile fields Settings edits, so the set-up and Settings are one set of answers;
+   profile/main.setupDone marks it finished. Run again any time from More or Settings. */
+function setupDone() { const p = state.profile || {}; return Boolean(p.setupDone || p.packs); }
+function renderSetupRow() {
+  const row = $('more-setup'), sub = $('more-setup-sub');
+  if (!row) return;
+  const done = setupDone();
+  row.classList.toggle('is-due', !done && !state.readOnly);
+  sub.textContent = done ? 'What Daybook is for, your name on reports, who to contact, the Home Screen. Run it again any time.' : 'Not done yet. What Daybook is for, your name on reports, who to contact, the Home Screen.';
+}
+function isStandalone() { return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true; }
+function openSetup(kind) {
+  const full = kind !== 'phone';
+  const p = state.profile || {};
+  const draft = { packs: p.packs && typeof p.packs === 'object' ? { ...p.packs } : {}, ibd: { ...ibdInfo() }, reportName: p.reportName || '', contact: { label: '', role: '', number: '', email: '' } };
+  const chipRow = (name, options, current, pick) => h('div', { class: 'presets', role: 'group', 'aria-label': name },
+    ...options.map(([v, label]) => h('button', { class: 'preset' + (v === current ? ' is-active' : ''), type: 'button', text: label, 'aria-pressed': v === current ? 'true' : 'false', onclick: () => pick(v) })));
+  const para = (text) => h('p', { class: 'setup-p', text });
+  const steps = [
+    { key: 'welcome', title: full ? "Let's set Daybook up" : 'Welcome to Daybook', next: 'Start', noSkip: true,
+      body: () => full
+        ? [para('A few short steps, about two minutes. Each one can be changed later under More, then Settings.'), para('Daybook keeps the readings, notes and questions from every day in between, and turns them into reports your team can read in a minute.')]
+        : [para('You have joined this household\'s Daybook. Two short steps so it works well on this phone, then you are in.')] },
+    { key: 'packs', only: full, title: 'What is Daybook for?', hint: 'Tick what applies; more than one is fine. Each brings its own questions and its own limits on the reports. Shared by everyone in the household.', noSkip: true,
+      body: () => PACKS.map((pk) => h('div', { class: 'pack-row' },
+        h('label', { class: 'check settings-toggle' },
+          h('input', { type: 'checkbox', id: 'setup-pack-' + pk.key, disabled: !!pk.later, checked: Boolean(draft.packs[pk.key]) && !pk.later, onchange: (ev) => { draft.packs[pk.key] = ev.target.checked; } }),
+          h('span', { text: pk.name + (pk.later ? ' (coming later)' : '') })),
+        h('p', { class: 'hint', text: pk.hint }))),
+      save: async () => {
+        if (!PACKS.some((pk) => !pk.later && draft.packs[pk.key])) { toast('Tick at least one. It can be changed later in Settings.'); return false; }
+        return saveProfilePatch({ packs: PACKS.reduce((o, pk) => ({ ...o, [pk.key]: Boolean(draft.packs[pk.key]) && !pk.later }), {}) });
+      } },
+    { key: 'ibd', only: full, when: () => Boolean(draft.packs.ibd), title: "Crohn's or colitis", hint: 'What the reports compare each day with, the way IBD teams do. Skip anything you are not sure of.',
+      body: () => {
+        const redraw = () => box.replaceChildren(
+          h('p', { class: 'fieldlabel', text: 'Which is it?' }), chipRow('Which is it', IBD_KINDS, draft.ibd.kind || '', (v) => { draft.ibd.kind = v; redraw(); }),
+          h('p', { class: 'fieldlabel', text: 'Do you have a stoma?' }), chipRow('Do you have a stoma', STOMA_KINDS, draft.ibd.stoma || '', (v) => { draft.ibd.stoma = v || null; redraw(); }),
+          field(draft.ibd.stoma ? 'On a usual settled day, how many times do you empty your bag?' : 'On a usual settled day, how many times do you open your bowels?', usual));
+        const usual = h('input', { id: 'setup-ibd-usual', type: 'text', inputmode: 'numeric', autocomplete: 'off', maxlength: '3', value: draft.ibd.usual ? String(draft.ibd.usual) : '' });
+        const box = h('div', { class: 'ibd-setup' });
+        redraw();
+        return [box];
+      },
+      save: async () => {
+        const t = ($('setup-ibd-usual') || { value: '' }).value.trim();
+        let usual = null;
+        if (t) { const n = Number(t.replace(',', '.')); if (!(n >= 0 && n <= 30)) { toast('Type a number from 0 to 30, like on a settled day'); return false; } usual = Math.round(n * 2) / 2; }
+        draft.ibd.usual = usual;
+        return saveProfilePatch({ ibd: { kind: draft.ibd.kind || null, stoma: draft.ibd.stoma || null, usual } });
+      } },
+    { key: 'name', only: full, title: 'Your name on the reports', hint: 'Your full name, as the hospital has it. It goes at the top of every report and in the subject of the covering email, so the team can file them against your records.',
+      body: () => [field('Name on the report', h('input', { id: 'setup-report-name', type: 'text', autocomplete: 'name', maxlength: '60', value: draft.reportName }))],
+      save: async () => { const v = $('setup-report-name').value.trim(); draft.reportName = v; if (!v) return true; return saveProfilePatch({ reportName: v }); } },
+    { key: 'contact', only: full, title: 'Who to contact', hint: 'The nurse, the ward or the team you ring first. Reports can be emailed to them from Daybook. More can be added later under More.',
+      body: () => [
+        field('Name', h('input', { id: 'setup-c-name', type: 'text', placeholder: 'e.g. Sarah, or the ward', autocomplete: 'off', value: draft.contact.label })),
+        field('Role (optional)', h('input', { id: 'setup-c-role', type: 'text', placeholder: 'e.g. Oncology nurse specialist', autocomplete: 'off', value: draft.contact.role })),
+        field('Phone', h('input', { id: 'setup-c-number', type: 'tel', placeholder: '01234 567890', autocomplete: 'off', value: draft.contact.number })),
+        field('Email', h('input', { id: 'setup-c-email', type: 'email', placeholder: 'name@nhs.net', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false', value: draft.contact.email }))],
+      save: async () => {
+        const c = { label: $('setup-c-name').value.trim(), role: $('setup-c-role').value.trim(), number: $('setup-c-number').value.trim(), ext: '', email: $('setup-c-email').value.trim() };
+        draft.contact = { ...c };
+        if (!c.label && !c.role && !c.number && !c.email) return true;
+        if (!c.label) { toast('Add a name for the contact, or skip this step'); $('setup-c-name').focus(); return false; }
+        if (!c.number && !c.email) { toast('Add a phone number or an email for ' + c.label); $('setup-c-number').focus(); return false; }
+        if (c.email && !EMAIL_RE.test(c.email)) { toast('Check the email address for ' + c.label); $('setup-c-email').focus(); return false; }
+        const calls = [...((state.profile && state.profile.calls) || [])];
+        if (draft.contactAt != null && calls[draft.contactAt]) calls[draft.contactAt] = c; else { draft.contactAt = calls.length; calls.push(c); }
+        return saveProfilePatch({ calls });
+      } },
+    { key: 'home', title: 'Put Daybook on your Home Screen', hint: 'It then opens like any other app, works full screen, and medicine reminders can be switched on.',
+      body: () => {
+        if (isStandalone()) {
+          const out = [h('p', { class: 'setup-done' }, icon('check'), 'Daybook is on your Home Screen.')];
+          if (pushSupported() && !state.demo && !state.demoLive && !state.readOnly) {
+            out.push(para('Reminders on this phone: a notification at each medicine\'s reminder times, and one nudge if the dose is still not logged.'),
+              h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: async (ev) => { ev.target.disabled = true; await setReminders(true); ev.target.textContent = state.pushEnabled ? 'Reminders are on' : 'Turn on reminders on this phone'; ev.target.disabled = state.pushEnabled; } }, state.pushEnabled ? 'Reminders are on' : 'Turn on reminders on this phone'));
+          } else out.push(para('Reminders can be switched on under More, then Settings.'));
+          return out;
+        }
+        const items = IS_IOS
+          ? ['Tap the Share button at the bottom of Safari: the square with an arrow pointing up.', 'Scroll down the list and tap Add to Home Screen.', 'Tap Add, top right.', 'Open Daybook from the Home Screen from now on. That is where reminders can be switched on.']
+          : /Android/i.test(navigator.userAgent)
+            ? ['Tap the three dots at the top right of Chrome.', 'Tap Add to Home screen, or Install app.', 'Tap Add, or Install.']
+            : ['In the address bar, tap the install icon, or open the browser menu and choose Install Daybook.', 'On a phone, open this address in Safari or Chrome and use its Add to Home Screen.'];
+        return [para('Finish these steps first, then come back and do this; the set-up waits here.'), h('ol', { class: 'setup-list' }, ...items.map((t) => h('li', { text: t })))];
+      } },
+    { key: 'speak', title: 'Talk instead of type', hint: 'Under every note box there is a Tap to speak button.', next: 'Done',
+      body: () => {
+        const out = [para('Tap it once, say what you want, and tap it again to stop. You never need to tap in the box first: the words go in on their own, and they can be edited like typed text. Keyboards are hard on a bad day.')];
+        if (SpeechRec) { const ta = h('textarea', { rows: 2, placeholder: 'Try it here', 'aria-label': 'Try Tap to speak' }); out.push(h('div', { class: 'setup-try' }, field('Try it', ta), speakButton(ta))); }
+        else out.push(para('This browser has no speech of its own; the microphone key on the keyboard still works.'));
+        return out;
+      } }
+  ];
+  const active = () => steps.filter((st) => (st.only === undefined || st.only) && (!st.when || st.when()));
+  let i = 0;
+  const body = h('div', { class: 'setup' });
+  const finish = async () => {
+    if (full) await saveProfilePatch({ setupDone: true });
+    closeSheet();
+    renderSetupRow();
+    toast(full ? "You're set. Today is where each day starts." : 'You are in. Today is where each day starts.');
+    if (!$('view-today').hidden) renderToday(); else showTab('today');
+  };
+  const draw = (dir) => {
+    const list = active(); if (i >= list.length) { finish(); return; }
+    const st = list[i], n = list.length;
+    const wrap = h('div', { class: 'wiz-step' + (dir < 0 ? ' is-back' : '') });
+    const bar = h('div', { class: 'progress-bar' }, h('span', { style: `width:${Math.round((i + 1) / n * 100)}%` }));
+    wrap.append(h('div', { class: 'wiz-progress' }, h('span', { text: `Step ${i + 1} of ${n}` }), bar));
+    wrap.append(h('p', { class: 'wiz-q', text: st.title }));
+    if (st.hint) wrap.append(h('p', { class: 'wiz-hint', text: st.hint }));
+    wrap.append(...st.body());
+    const go = async (skip) => {
+      if (!skip && st.save) { const ok = await st.save(); if (!ok) return; }
+      i += 1; draw(1);
+    };
+    const back = h('button', { class: 'btn btn-secondary btn-back', type: 'button', disabled: i === 0, onclick: () => { i -= 1; draw(-1); } }, 'Back');
+    const skip = h('button', { class: 'btn btn-link', type: 'button', onclick: () => go(true) }, 'Skip');
+    const next = h('button', { class: 'btn btn-primary', type: 'button', onclick: () => go(false) }, st.next || 'Next');
+    wrap.append(h('div', { class: 'wiz-buttons' }, back, st.noSkip ? '' : skip, next));
+    wrap.append(h('button', { class: 'btn btn-link btn-block', type: 'button', onclick: closeSheet }, 'Finish later'));
+    body.replaceChildren(wrap);
+    $('sheet-body').scrollTop = 0;
+    const first = wrap.querySelector('.wiz-q'); if (first) { first.setAttribute('tabindex', '-1'); first.focus({ preventScroll: true }); }
+  };
+  openSheet('Set-up', body);
+  draw(1);
+}
+$('more-setup').addEventListener('click', () => openSetup('full'));
+$('settings-setup').addEventListener('click', () => openSetup('full'));
 
 /* Gentle nudge at 10:00 (v83): one notification if nothing has been logged on the Exercise tab by then. Household-wide, sent by the bridge to the phones with reminders on. */
 $('settings-stretch-nudge').addEventListener('change', async (ev) => {

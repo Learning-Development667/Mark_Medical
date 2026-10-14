@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=163">
+  <link rel="stylesheet" href="styles.css?v=164">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -714,6 +714,11 @@
           <p id="more-user" class="big"></p>
         </div>
         <div class="menu">
+          <button id="more-setup" class="checkin-row menu-row" type="button">
+            <svg class="icon checkin-icon" aria-hidden="true"><use href="#i-check"/></svg>
+            <span class="checkin-main"><span class="checkin-title">Set-up</span><span id="more-setup-sub" class="checkin-sub">What Daybook is for, your name on reports, who to contact, the Home Screen</span></span>
+            <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
+          </button>
           <button id="more-docs" class="checkin-row menu-row" type="button">
             <svg class="icon checkin-icon" aria-hidden="true"><use href="#i-doc"/></svg>
             <span class="checkin-main"><span class="checkin-title">Letters, results and paperwork</span><span class="checkin-sub">Documents, the treatment plan and the exemption certificate</span></span>
@@ -742,6 +747,7 @@
         <div class="diary-head">
           <button id="settings-back" class="btn btn-link" type="button">&#8249; Back</button>
         </div>
+        <p class="hint settings-setup-hint">Everything the set-up asked for lives here, and can be changed any time. <button id="settings-setup" class="btn-inline" type="button">Run the set-up again</button></p>
         <h2 class="section-title">What Daybook is for</h2>
         <div id="settings-packs" class="card settings-group">
           <p class="hint">Tick what applies; more than one is fine. Each brings its own questions and its own limits on the reports. Shared by everyone in the household.</p>
@@ -980,6 +986,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=163"></script>
+  <script type="module" src="scripts.js?v=164"></script>
 </body>
 </html>
