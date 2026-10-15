@@ -1684,3 +1684,5 @@ button.sidefx-inner { cursor: pointer; }
 .medhist-fx { margin-bottom: var(--s-3); }
 #side-cause { width: 100%; }
 .reports-2 > :only-child { grid-column: 1 / -1; }
+.question-btns .btn-danger-link { color: var(--danger); }
+.question-confirm { flex: 1 1 100%; font-weight: 600; color: var(--text-primary); }

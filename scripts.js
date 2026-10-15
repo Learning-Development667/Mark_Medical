@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '175';
+const APP_VERSION = '176';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -2251,6 +2251,7 @@ function entryOptions(e) {
       await deleteEntry(e.id);
       toast('Entry deleted');
       if (!$('view-food').hidden) renderFoodDiary();
+      if (!$('view-notes').hidden) renderNotesReport();
     } }, 'Delete this entry'),
     h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Cancel')
   );
@@ -6605,7 +6606,19 @@ function questionCard(q, redraw) {
         await updateEntry(q.id, { answered: true, answeredAt: stampNow() });
         toast('Marked as answered', { label: 'Undo', onClick: async () => { await updateEntry(q.id, { answered: false }); redraw(); } });
         redraw();
-      } }, 'Mark as answered')));
+      } }, 'Mark as answered'),
+      h('button', { class: 'btn btn-link btn-small btn-danger-link', type: 'button', onclick: (ev) => {
+        const row = ev.currentTarget.closest('.question-btns');
+        row.replaceChildren(
+          h('span', { class: 'question-confirm', role: 'status', text: 'Delete this question for good?' }),
+          h('button', { class: 'btn btn-danger btn-small', type: 'button', onclick: async () => {
+            await deleteEntry(q.id);
+            toast('Question deleted');
+            redraw();
+          } }, 'Yes, delete it'),
+          h('button', { class: 'btn btn-secondary btn-small', type: 'button', onclick: () => redraw() }, 'Keep it'));
+        row.querySelector('.btn-danger').focus();
+      } }, 'Delete')));
 }
 async function renderNotesReport() {
   const today = todayStr();
