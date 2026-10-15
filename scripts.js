@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '176';
+const APP_VERSION = '177';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -6607,6 +6607,7 @@ function questionCard(q, redraw) {
         toast('Marked as answered', { label: 'Undo', onClick: async () => { await updateEntry(q.id, { answered: false }); redraw(); } });
         redraw();
       } }, 'Mark as answered'),
+      h('button', { class: 'btn btn-link btn-small', type: 'button', onclick: () => { const full = allQuestions().find((x) => x.id === q.id); if (full) openAdd('question', full); } }, 'Edit'),
       h('button', { class: 'btn btn-link btn-small btn-danger-link', type: 'button', onclick: (ev) => {
         const row = ev.currentTarget.closest('.question-btns');
         row.replaceChildren(
@@ -6888,6 +6889,9 @@ function watchQuestions() {
   state.unsub.questions = onSnapshot(query(hcol('entries'), where('type', '==', 'question')), (snap) => {
     state.questions = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     renderCheckins();
+    /* an edit, answer or delete from either phone shows on an open report at once */
+    if (!$('view-notes').hidden) renderNotesReport();
+    if (!$('view-food').hidden) renderFoodDiary();
   }, (e) => console.error(e));
 }
 function openQuestions() {
