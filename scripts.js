@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '172';
+const APP_VERSION = '173';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -1221,9 +1221,9 @@ function buildDemoFixture() {
     e(-2, '13:40', 'Mark', { type: 'bowel', none: false, bristol: 7 }),
     e(-1, '08:30', 'Mark', { type: 'bowel', none: false, bristol: 4 }),
     e(0, '07:50', 'Mark', { type: 'bowel', none: false, bristol: 5, note: 'Better than yesterday' }),
-    e(-2, '11:20', 'Mark', { type: 'symptom', what: 'Sickness', value: 6, note: 'Queasy after the tablets' }),
+    e(-2, '11:20', 'Mark', { type: 'symptom', what: 'Sickness', value: 6, note: 'Queasy after the tablets', causeKind: 'treatment', causeId: 'chemo', causeName: 'Chemo' }),
     e(-1, '10:30', 'Mark', { type: 'med', medId: null, medName: 'Sodium chloride 0.9%', dose: '1000 ml', route: 'drip', hospital: true, note: 'Over 4 hours' }),
-    e(-1, '20:10', 'Mark', { type: 'symptom', what: 'Mouth', value: 3, note: 'Sore on the left' }),
+    e(-1, '20:10', 'Mark', { type: 'symptom', what: 'Mouth', value: 3, note: 'Sore on the left', causeKind: 'treatment', causeId: 'chemo', causeName: 'Chemo' }),
     e(0, '11:40', 'Mark', { type: 'pain', value: 4 }),
     /* pain relief and the words under the pain scores (v161), so the Pain report has something to show */
     e(-16, '19:00', 'Mark', { type: 'med', medId: 'oramorph', medName: 'Oramorph 10mg/5ml', dose: '2.5 ml (5 mg)' }),
@@ -2186,7 +2186,7 @@ function entrySub(e) {
   }
   if (e.type === 'checkin') { const s = checkinSummary(e); if (s) bits.push(s); }
   if (e.type === 'pain' && e.note) bits.push(e.note);
-  if (e.type === 'symptom') { bits.push('Symptom'); if (e.note) bits.push(e.note); }
+  if (e.type === 'symptom') { const c = causeOf(e); bits.push(c ? 'Side effect of ' + c.name : 'Symptom'); if (e.note) bits.push(e.note); }
   if (e.type === 'bowel') { const ts = bowelTypes(e); if (ts.length > 1) bits.push(ts.map((t) => bristolName(t)).join(', ')); const f = bowelFlagWords(e); if (f) bits.push(f); if (e.note) bits.push(e.note); }
   if (e.type === 'question') bits.push((isDietitianQ(e) ? 'Question for the dietitian' : isWellbeingQ(e) ? 'Question for the therapist' : isPainQ(e) ? 'Question for the pain team' : 'Question for the team') + (e.answered ? ', answered' : '') + (isDietitianQ(e) || isWellbeingQ(e) || isPainQ(e) ? '' : ' · ' + teamLabel(teamOf(e))));
   if (e.type === 'sent') bits.push('By email to ' + (e.to || '') + (e.copyTo ? ', with a copy to ' + e.copyTo : ''));
@@ -2751,9 +2751,40 @@ function bristolArt(t) {
 
 /* Symptom (since v92): a between-times symptom with a 1 to 10 score, the way the Pain tile works, for
    the things the evening check-in only asks about once a day. Stored { type "symptom", what, value, note }. */
-const SYMPTOMS = ['Sickness', 'Mouth', 'Skin', 'Breathing', 'Dizziness', 'Tingling', 'Tiredness', 'Other'];
+const SYMPTOMS = ['Sickness', 'Mouth', 'Skin', 'Breathing', 'Dizziness', 'Tingling', 'Tiredness', 'Taste changes', 'Poor appetite', 'Constipation', 'Aches and pains', 'Headache', 'Hair loss', 'Sore hands or feet', 'Other'];
+/* Side effects (v173): a symptom can say what caused it, a medicine on the list or a kind of treatment.
+   Stored beside the symptom as causeKind ('med' or 'treatment'), causeId (the medicine's id or the treatment's key)
+   and causeName (as it was called then), so it reads the same on the timeline, in Notes for the team and under
+   the medicine or the treatment it belongs to. Nothing about it is a new collection: it is still type "symptom". */
+function causeOf(e) { return e && e.causeKind && e.causeName ? { kind: e.causeKind, id: e.causeId || '', name: e.causeName } : null; }
+function causeValue(c) { return c ? (c.kind === 'med' ? 'med:' : 'tx:') + c.id : ''; }
+function causeSelect(current) {
+  const sel = h('select', { id: 'side-cause' });
+  sel.append(h('option', { value: '', text: 'No, or not sure' }));
+  const known = new Set(['']);
+  if (packOn('cancer')) {
+    const g = h('optgroup', { label: 'Treatment' });
+    TREATMENTS.filter((t) => t.key !== 'other').forEach((t) => { g.append(h('option', { value: 'tx:' + t.key, text: t.label })); known.add('tx:' + t.key); });
+    sel.append(g);
+  }
+  const meds = (state.medicines || []).filter((m) => m.active !== false).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  if (meds.length) {
+    const g = h('optgroup', { label: 'Medicines' });
+    meds.forEach((m) => { g.append(h('option', { value: 'med:' + m.id, text: m.name })); known.add('med:' + m.id); });
+    sel.append(g);
+  }
+  const cv = causeValue(current);
+  if (current && !known.has(cv)) sel.append(h('option', { value: cv, text: current.name })); // a medicine since stopped or removed
+  sel.value = cv || '';
+  const read = () => {
+    if (!sel.value) return null;
+    const opt = sel.selectedOptions[0];
+    return sel.value.startsWith('med:') ? { kind: 'med', id: sel.value.slice(4), name: opt.textContent } : { kind: 'treatment', id: sel.value.slice(3), name: opt.textContent };
+  };
+  return { sel, read };
+}
 
-function openAdd(type, editEntry) {
+function openAdd(type, editEntry, preset) {
   const day = editEntry ? editEntry.day : state.selectedDay;
   const time = timeInput(day);
   if (editEntry) time.value = fmtTime(entryDate(editEntry));
@@ -3165,9 +3196,12 @@ function openAdd(type, editEntry) {
     const sl = sliderBlock({ kind: 'pain', q: 'How bad right now', low: '1 mild', high: '10 severe' }, editEntry ? editEntry.value : null);
     const symNote = h('textarea', { rows: '2', placeholder: 'What it is like, what helped (optional)' });
     if (editEntry && editEntry.note) symNote.value = editEntry.note;
+    const cause = causeSelect(editEntry ? causeOf(editEntry) : (preset && preset.causeKind ? { kind: preset.causeKind, id: preset.causeId, name: preset.causeName || '' } : null));
+    const causeField = field('Is it a side effect of something? (optional)', cause.sel);
     body.append(
       h('p', { class: 'wiz-q', text: 'Which symptom?' }), chips, otherField,
       h('p', { class: 'wiz-q', text: 'How bad right now?' }), ...sl.nodes,
+      causeField,
       field('Time', time), field('Note', symNote), speakButton(symNote) || ''
     );
     getData = () => {
@@ -3175,7 +3209,11 @@ function openAdd(type, editEntry) {
       if (!what) { toast('Tap the symptom first'); return { hold: true }; }
       const v = sl.value();
       if (v == null) { toast('Slide to a number first'); return { hold: true }; }
-      return { type: 'symptom', what, value: v, note: symNote.value.trim() };
+      const c = cause.read();
+      const d = { type: 'symptom', what, value: v, note: symNote.value.trim() };
+      if (c) { d.causeKind = c.kind; d.causeId = c.id; d.causeName = c.name; }
+      else if (editEntry && editEntry.causeKind) { d.causeKind = null; d.causeId = null; d.causeName = null; } // cleared on an edit
+      return d;
     };
   }
 
@@ -6227,13 +6265,26 @@ function summaryRows(entries, from, to) {
   if (symptoms.length) {
     const byWhat = {};
     symptoms.forEach((e) => { const k = String(e.what || 'Symptom'); (byWhat[k] = byWhat[k] || []).push(e); });
-    const items = Object.keys(byWhat).map((k) => { const w = maxBy(byWhat[k], (e) => Number(e.value)); return { what: k, worst: Number(w.value), day: w.day, n: byWhat[k].length }; }).sort((a, b) => b.worst - a.worst);
+    const items = Object.keys(byWhat).map((k) => { const w = maxBy(byWhat[k], (e) => Number(e.value)); return { what: k, worst: Number(w.value), day: w.day, n: byWhat[k].length, causes: [...new Set(byWhat[k].map((e) => e.causeName).filter(Boolean))] }; }).sort((a, b) => b.worst - a.worst);
     const worst = items[0];
     if (worst.worst >= 5) {
-      const text = items.filter((i) => i.worst >= 5).map((i) => `${i.what.toLowerCase()} up to ${i.worst}/10 on ${fmtDayShort(i.day)}${i.n > 1 ? ' (' + plural(i.n, 'reading') + ')' : ''}`).join('; ');
+      const text = items.filter((i) => i.worst >= 5).map((i) => `${i.what.toLowerCase()}${i.causes.length ? ' (side effect of ' + i.causes.join(' and ') + ')' : ''} up to ${i.worst}/10 on ${fmtDayShort(i.day)}${i.n > 1 ? ' (' + plural(i.n, 'reading') + ')' : ''}`).join('; ');
       push(worst.worst >= 7 ? 'red' : 'amber', 'Symptoms', `Symptoms logged between check-ins: ${text}.`, worst.worst < 7 && symptoms.filter((e) => Number(e.value) >= 5).length === 1 ? `${worst.what.toLowerCase()} ${worst.worst}/10 on ${fmtDayShort(worst.day)}` : null,
         'Symptoms: ' + items.filter((i) => i.worst >= 5).map((i) => `${i.what.toLowerCase()} up to ${i.worst}/10`).join(', '));
     } else fine.push(`symptoms (${plural(symptoms.length, 'reading')}, none above ${worst.worst}/10)`);
+  }
+  /* Side effects (v173): every symptom with a cause, mild ones too, since a team wants to know what a treatment
+     or medicine is doing even when it is below the flagging line; a Context line, not a warning */
+  const sideFx = symptoms.filter((e) => causeOf(e));
+  if (sideFx.length) {
+    const byCause = {};
+    sideFx.forEach((e) => { (byCause[e.causeName] = byCause[e.causeName] || []).push(e); });
+    const parts = Object.keys(byCause).map((cn) => {
+      const w = {};
+      byCause[cn].forEach((e) => { const k = String(e.what || 'Symptom').toLowerCase(); (w[k] = w[k] || []).push(Number(e.value)); });
+      return cn + ': ' + Object.keys(w).map((k) => `${k} up to ${Math.max(...w[k])}/10${w[k].length > 1 ? ' on ' + plural(new Set(byCause[cn].filter((e) => String(e.what || 'Symptom').toLowerCase() === k).map((e) => e.day)).size, 'day') : ''}`).join(', ');
+    });
+    push('teal', 'Side effects', 'Side effects logged: ' + parts.join('; ') + '.', null, 'Side effects logged: ' + parts.join('; '));
   }
 
   /* Bowels: the UKONS triage lines. Loose means Bristol type 6 or 7. Red at 4 or more loose in a day
@@ -7289,6 +7340,30 @@ function finishedCard(m) {
 }
 /* Every dose of one medicine, from the start: two equality filters, so no composite index, and the
    viewer role's rules (med entries only) can see the query is theirs to read */
+/* Every side effect ever logged (a symptom with a cause), one single-field query like the dose history */
+async function loadSideEffects() {
+  if (state.demo) return state.recentEntries.filter((e) => e.type === 'symptom' && causeOf(e));
+  const snap = await getDocs(query(hcol('entries'), where('type', '==', 'symptom')));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((e) => causeOf(e));
+}
+/* The rows for a list of side effects, newest first: "Sickness 6/10", the cause, the day and the words; tap for options */
+function sideEffectRows(list, showCause) {
+  return list.slice().sort((a, b) => entryDate(b) - entryDate(a)).map((e) => {
+    const c = causeOf(e);
+    const inner = [
+      h('span', { class: 'sidefx-what', text: (e.what || 'Symptom') + ' ' + e.value + '/10' }),
+      h('span', { class: 'sidefx-meta', text: [showCause && c ? c.name : '', fmtDayShort(e.day) + ' ' + fmtTime(entryDate(e))].filter(Boolean).join(' \u00b7 ') }),
+      e.note ? h('span', { class: 'sidefx-note', text: e.note }) : null
+    ];
+    return h('li', { class: 'sidefx-row' }, (state.readOnly || state.viewer)
+      ? h('div', { class: 'sidefx-inner' }, ...inner)
+      : h('button', { class: 'sidefx-inner', type: 'button', 'aria-label': (e.what || 'Symptom') + ' ' + e.value + ' out of 10, ' + fmtDayShort(e.day) + ', tap for options', onclick: () => entryOptions(e) }, ...inner));
+  });
+}
+/* Open the Symptom sheet already saying what caused it (from a medicine's card, the Treatment tab or its history) */
+function logSideEffect(cause) {
+  openAdd('symptom', null, cause ? { causeKind: cause.kind, causeId: cause.id, causeName: cause.name } : null);
+}
 async function loadMedDoses(m) {
   if (state.demo) return state.recentEntries.filter((e) => e.type === 'med' && e.medId === m.id);
   const snap = await getDocs(query(hcol('entries'), where('type', '==', 'med'), where('medId', '==', m.id)));
@@ -7981,7 +8056,17 @@ async function openMedHistory(m, fromList) {
     out,
     fromList ? h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: openMedHistoryList }, 'All medicines') : null,
     h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Close'));
+  const fxBox = h('div', { class: 'medhist-fx' });
+  body.insertBefore(fxBox, body.querySelector('.btn-secondary, .btn-block'));
   openSheet(m.name, body);
+  /* side effects logged for this medicine, under the doses (v173) */
+  loadSideEffects().then((all) => {
+    const mine = all.filter((e) => e.causeKind === 'med' && e.causeId === m.id);
+    fxBox.replaceChildren(
+      h('h3', { class: 'sidefx-title', text: 'Side effects logged' }),
+      mine.length ? h('ul', { class: 'sidefx-list' }, ...sideEffectRows(mine, false)) : h('p', { class: 'hint', text: 'None logged for ' + m.name + ' yet.' }),
+      (state.readOnly || state.viewer) ? null : h('button', { class: 'btn btn-secondary btn-block', type: 'button', id: 'medhist-sidefx', onclick: () => { closeSheet(); logSideEffect({ kind: 'med', id: m.id, name: m.name }); } }, 'Log a side effect of ' + m.name));
+  }).catch((e) => { console.error(e); });
   let doses;
   try { doses = await loadMedDoses(m); }
   catch (e) { console.error(e); out.replaceChildren(h('p', { class: 'hint', text: 'Could not load the doses. Check the connection and try again.' })); return; }
@@ -8074,6 +8159,8 @@ function medCard(m, day) {
     isToday ? h('button', { class: 'btn btn-primary', type: 'button', onclick: () => logMed(m) }, 'Log now') : null,
     h('button', { class: isToday ? 'btn btn-secondary' : 'btn btn-primary', type: 'button', onclick: () => logMedAtTime(m) }, isToday ? 'Other time' : 'Log a dose')
   ));
+  card.append(h('div', { class: 'med-side' },
+    h('button', { class: 'btn btn-link btn-small med-sidefx', type: 'button', 'aria-label': 'Log a side effect of ' + m.name, onclick: () => logSideEffect({ kind: 'med', id: m.id, name: m.name }) }, 'Log a side effect')));
   return card;
 }
 
@@ -9975,6 +10062,7 @@ function renderChemo() {
   renderChemoProgress();
   renderCalendar();
   renderCycleTile();
+  renderSideEffects();
   renderCarerRow();
   renderCycleChart();
   renderChemoDocs();
@@ -10008,6 +10096,25 @@ function cycleFor(day) {
   if (!starts.length) return null;
   const s = starts[starts.length - 1];
   return { start: s.day, type: s.type, n: Math.round((parseDay(day) - parseDay(s.day)) / 864e5) };
+}
+/* The Treatment tab's side effects card (v173): a button that opens the Symptom sheet already saying "Chemo" (or the
+   kind of the latest session), and the latest side effects of treatment and medicines from the recent entries. */
+function latestTreatmentKey() {
+  const days = Object.keys(state.days || {}).filter((d) => state.days[d] && state.days[d].chemo && d <= todayStr()).sort();
+  const last = days.length ? state.days[days[days.length - 1]] : null;
+  const t = treatmentOf(last);
+  return t.key === 'other' ? 'chemo' : t.key;
+}
+function renderSideEffects() {
+  const list = $('sidefx-list'), empty = $('sidefx-empty'), add = $('sidefx-add');
+  if (!list) return;
+  const rows = (state.recentEntries || []).filter((e) => e.type === 'symptom' && causeOf(e)).sort((a, b) => entryDate(b) - entryDate(a)).slice(0, 8);
+  list.replaceChildren(...sideEffectRows(rows, true));
+  empty.hidden = rows.length > 0;
+  const key = latestTreatmentKey();
+  const t = TREATMENTS.find((x) => x.key === key);
+  add.dataset.key = key; add.textContent = 'Log a side effect';
+  add.onclick = () => logSideEffect(packOn('cancer') && t ? { kind: 'treatment', id: t.key, name: t.label } : null);
 }
 function renderCycleTile() {
   const val = $('cycle-value'), sub = $('cycle-sub');
