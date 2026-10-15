@@ -1693,16 +1693,20 @@ button.sidefx-inner { cursor: pointer; }
 .sym-remove-row { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); padding: var(--s-2) 0; border-top: 1px solid var(--border-subtle); }
 .sym-remove-row .btn { min-height: 44px; margin: 0; }
 
-/* The next treatment session: a comet of light travelling round the day's border (the forge-laser idea from the Forge app, in Daybook's own colours). Only this one day moves, however many sessions are planned. */
+/* Planned treatment days: a bright comet of light racing round the day's border with a pulsing glow (the forge-laser idea from the Forge app, in Daybook's colours). Done days go calm and green. */
 @property --calAngle { syntax: '<angle>'; initial-value: 0deg; inherits: false; }
 @keyframes calTrace { to { --calAngle: 360deg; } }
-.cal-cell.is-next { box-shadow: inset 0 0 0 2px var(--teal-fill); }
-.cal-cell.is-next::before {
-  content: ""; position: absolute; inset: 0; border-radius: var(--r-sm); padding: 3px; pointer-events: none;
-  background: conic-gradient(from var(--calAngle, 0deg), var(--warm) 0deg, var(--teal-fill) 14deg, transparent 70deg, transparent 360deg);
+@keyframes calGlow { 0%, 100% { box-shadow: inset 0 0 0 2px var(--warm), 0 0 6px 0 var(--warm); } 50% { box-shadow: inset 0 0 0 2px var(--warm), 0 0 16px 3px var(--warm); } }
+.cal-cell.is-chemo:not(.is-done) { animation: calGlow 2s ease-in-out infinite; }
+.cal-cell.is-chemo:not(.is-done)::before {
+  content: ""; position: absolute; inset: 0; border-radius: var(--r-sm); padding: 4px; pointer-events: none; z-index: 1;
+  background: conic-gradient(from var(--calAngle, 0deg), #fff 0deg, #FFD36B 10deg, var(--warm) 30deg, rgba(194, 112, 61, 0.55) 80deg, rgba(194, 112, 61, 0) 150deg, rgba(194, 112, 61, 0) 360deg);
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0); -webkit-mask-composite: xor;
   mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0); mask-composite: exclude;
-  animation: calTrace 3s linear infinite;
+  animation: calTrace 1.8s linear infinite; animation-delay: var(--laser-delay, 0s);
 }
-@media (prefers-reduced-motion: reduce) { .cal-cell.is-next::before { animation: none; background: var(--warm); } }
-.key-next { background: var(--teal-light); border: 2px solid var(--warm); }
+@media (prefers-reduced-motion: reduce) {
+  .cal-cell.is-chemo:not(.is-done) { animation: none; box-shadow: inset 0 0 0 3px var(--warm); }
+  .cal-cell.is-chemo:not(.is-done)::before { animation: none; background: none; }
+}
+.key-next { background: var(--teal-light); border: 2px solid var(--warm); box-shadow: 0 0 5px var(--warm); }
