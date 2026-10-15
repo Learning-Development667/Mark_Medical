@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '180';
+const APP_VERSION = '181';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -3194,10 +3194,16 @@ function openAdd(type, editEntry, preset) {
 
   if (type === 'symptom') {
     /* Two boxes side by side (v180): the list on the left, your own on the right. A new name typed on the right is saved to the household (profile/main.customSymptoms) and is in the list on the left from then on. */
-    const saved = Array.isArray(state.profile && state.profile.customSymptoms) ? state.profile.customSymptoms : [];
-    const used = (state.recentEntries || []).filter((e) => e.type === 'symptom' && e.what).map((e) => String(e.what).trim());
-    const offer = [...new Set([...SYMPTOMS, ...saved, ...used].filter((w) => w && w !== 'Other'))].sort((a, b) => a.localeCompare(b));
-    const listSel = h('select', { class: 'input', id: 'symptom-pick' }, h('option', { value: '', text: 'Choose from the list' }), ...offer.map((w) => h('option', { value: w, text: w })));
+    let saved = Array.isArray(state.profile && state.profile.customSymptoms) ? state.profile.customSymptoms.slice() : [];
+    let offer = [];
+    const listSel = h('select', { class: 'input', id: 'symptom-pick' });
+    const fillList = () => {
+      const keep = listSel.value;
+      offer = [...new Set([...SYMPTOMS, ...saved].filter((w) => w && w !== 'Other'))].sort((a, b) => a.localeCompare(b));
+      listSel.replaceChildren(h('option', { value: '', text: 'Choose from the list' }), ...offer.map((w) => h('option', { value: w, text: w })));
+      listSel.value = offer.includes(keep) ? keep : '';
+    };
+    fillList();
     const whatIn = h('input', { type: 'text', class: 'input', id: 'symptom-what', maxlength: '40', autocomplete: 'off', autocapitalize: 'sentences', placeholder: 'e.g. Night sweats' });
     const was = editEntry && editEntry.what && editEntry.what !== 'Other' ? String(editEntry.what) : '';
     if (was) { if (offer.includes(was)) listSel.value = was; else whatIn.value = was; }
@@ -3205,7 +3211,22 @@ function openAdd(type, editEntry, preset) {
     whatIn.addEventListener('input', () => { if (whatIn.value.trim()) listSel.value = ''; });
     const otherField = h('div', { class: 'field-row', role: 'group', 'aria-label': 'Which symptom' },
       field('From the list', listSel), field('Or type your own', whatIn));
-    const chips = h('p', { class: 'hint', text: 'A symptom you type is added to the list for next time.' });
+    const chips = h('div', null, h('p', { class: 'hint', text: 'A symptom you type is added to the list for next time.' }));
+    const rmPanel = h('div', { class: 'sym-remove', hidden: true });
+    const rmBtn = h('button', { class: 'btn btn-link btn-small', type: 'button', 'aria-expanded': 'false', text: 'Remove one I added' });
+    const drawRemove = () => {
+      rmBtn.hidden = !saved.length;
+      if (!saved.length) rmPanel.hidden = true;
+      rmPanel.replaceChildren(h('p', { class: 'hint', text: 'Takes it off the list only. Symptoms already logged stay as they are.' }),
+        ...saved.slice().sort((a, b) => a.localeCompare(b)).map((w) => h('div', { class: 'sym-remove-row' },
+          h('span', { text: w }),
+          h('button', { class: 'btn btn-danger btn-small', type: 'button', 'aria-label': 'Remove ' + w + ' from the list', onclick: async () => {
+            const next = saved.filter((x) => x !== w);
+            if (await saveProfilePatch({ customSymptoms: next }, w + ' removed from the list')) { saved = next; fillList(); drawRemove(); }
+          } }, 'Remove'))));
+    };
+    rmBtn.addEventListener('click', () => { rmPanel.hidden = !rmPanel.hidden; rmBtn.setAttribute('aria-expanded', String(!rmPanel.hidden)); });
+    if (!state.readOnly && !state.viewer) { drawRemove(); chips.append(rmBtn, rmPanel); }
     const sl = sliderBlock({ kind: 'pain', q: 'How bad right now', low: '1 mild', high: '10 severe' }, editEntry ? editEntry.value : null);
     const symNote = h('textarea', { rows: '2', placeholder: 'What it is like, what helped (optional)' });
     if (editEntry && editEntry.note) symNote.value = editEntry.note;
@@ -3223,7 +3244,7 @@ function openAdd(type, editEntry, preset) {
       if (!what) { toast('Choose a symptom, or type your own'); listSel.focus(); return { hold: true }; }
       const same = offer.find((w) => w.toLowerCase() === what.toLowerCase());
       what = same || what.charAt(0).toUpperCase() + what.slice(1);
-      if (!same && !state.readOnly && !state.viewer) saveProfilePatch({ customSymptoms: [...saved, what] });
+      if (!same && !state.readOnly && !state.viewer) { saved = [...saved, what]; saveProfilePatch({ customSymptoms: saved }); }
       const v = sl.value();
       if (v == null) { toast('Slide to a number first'); return { hold: true }; }
       const c = cause.read();
