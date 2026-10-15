@@ -1581,7 +1581,9 @@ h1, h2, h3 { font-weight: 600; }
 @media (prefers-color-scheme: dark) { .fb-contact a { color: var(--teal); } }
 
 /* ---------- Mood and wellbeing (v155) ---------- */
-.reports-2 > :nth-child(3) { grid-column: 1 / -1; }
+.reports-group { font-family: var(--font-body); font-size: var(--fs-sm, 14px); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text-secondary); margin: var(--s-5) 0 var(--s-2); }
+.reports-group:first-of-type { margin-top: var(--s-2); }
+.reports + .reports-group { margin-top: var(--s-5); }
 .report.tint-warm { box-shadow: var(--elev-raised); }
 .wordlist { display: grid; gap: var(--s-2); }
 .wordrow { display: grid; grid-template-columns: 92px 1fr; gap: var(--s-3); padding: var(--s-2) 0; border-bottom: 1px solid var(--border-subtle); font-size: 17px; }
@@ -1681,3 +1683,4 @@ button.sidefx-inner { cursor: pointer; }
 .sidefx-title { margin: var(--s-4) 0 var(--s-2); font-size: 18px; }
 .medhist-fx { margin-bottom: var(--s-3); }
 #side-cause { width: 100%; }
+.reports-2 > :only-child { grid-column: 1 / -1; }
