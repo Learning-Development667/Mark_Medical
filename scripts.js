@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '173';
+const APP_VERSION = '174';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -5500,6 +5500,22 @@ function twoPageMeds(entries, from, to) {
   return { meds, hospital };
 }
 
+/* Side effects for the strip (v174): symptoms that name a cause, by cause, worst first, as facts */
+function twoPageSideFx(entries) {
+  const fx = entries.filter((e) => e.type === 'symptom' && e.value != null && causeOf(e));
+  if (!fx.length) return null;
+  const byCause = new Map();
+  fx.forEach((e) => { const c = causeOf(e); if (!byCause.has(c.name)) byCause.set(c.name, []); byCause.get(c.name).push(e); });
+  const parts = [...byCause.entries()].map(([name, list]) => {
+    const w = new Map();
+    list.forEach((e) => { const k = String(e.what || 'Symptom').toLowerCase(); w.set(k, Math.max(w.get(k) || 0, Number(e.value))); });
+    const what = [...w.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k, v]) => `${k} up to ${v}/10`);
+    return { name, worst: Math.max(...w.values()), text: `${name}: ${what.join(', ')}` };
+  }).sort((a, b) => b.worst - a.worst);
+  const shown = parts.slice(0, 4).map((p) => p.text);
+  return shown.join('. ') + '.' + (parts.length > 4 ? ` Plus ${parts.length - 4} more in the app.` : '');
+}
+
 /* The weeks: blocks of seven days counted back from the last day of the period, so the period's
    last day ends a week (Tuesday to Monday in the design, where the period began on a Tuesday) */
 function reportWeeks(from, to) {
@@ -5616,7 +5632,7 @@ function buildTwoPage(n) {
     title: 'Notes for the team',
     subtitle: `A patient summary for the nursing and medical team. ${word} to ${t.getDate()} ${MON_LONG[t.getMonth()]} ${t.getFullYear()}.`,
     patient, period, prepared: rDay(today) + ' ' + parseDay(today).getFullYear(),
-    latest, tiles, meds, hospital, steady,
+    latest, tiles, meds, hospital, steady, sideFx: twoPageSideFx(entries),
     questions: qs.slice(0, 7), more: Math.max(0, qs.length - 7), lines: 3,
     charts, days: labels, weeks,
     weeksNote: ai ? 'Summarised from the daily notes by Daybook Assistant, an AI helper. Every note is in Daybook.' : 'The most telling note of each day. Every note is in Daybook.',
@@ -7921,8 +7937,15 @@ async function loadAllMedDoses() {
   const snap = await getDocs(query(hcol('entries'), where('type', '==', 'med')));
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
-function buildMedsReport(doses) {
+function buildMedsReport(doses, sideFx = []) {
   const today = todayStr();
+  /* Side effects logged against a medicine (v174): "Side effects: 3 logged, worst tingling 4/10 on 13 Oct" */
+  const fxLine = (m) => {
+    const list = sideFx.filter((e) => { const c = causeOf(e); return c && c.kind === 'med' && c.id === m.id && e.value != null; });
+    if (!list.length) return '';
+    const w = list.reduce((a, b) => (Number(b.value) > Number(a.value) ? b : a));
+    return `Side effects: ${list.length} logged, worst ${String(w.what || 'symptom').toLowerCase()} ${w.value}/10 on ${rDay(w.day)}`;
+  };
   const yr = (d) => rDay(d) + ' ' + parseDay(d).getFullYear();
   const at = (e) => rDay(e.day) + ', ' + fmtTime(entryDate(e));
   const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
@@ -7945,6 +7968,7 @@ function buildMedsReport(doses) {
     const freq = medFrequency(m), how = (m.how || '').trim();
     const lines = how && norm(how).startsWith(norm(freq)) ? [how] : how ? [freq, how] : [freq];
     const r = { name: m.name, purpose: m.purpose || '', dose: m.dose || '', lines, also: otherDoses(m, st.ds), taken: '', takenSub: '', doses: '', dosesSub: [], last14: '', bar: null, tag: null };
+    r.fx = fxLine(m);
     if (kind === 'done') r.tag = { text: 'Finished course', cls: 'green' };
     if (kind === 'stopped') r.tag = { text: 'Stopped', cls: 'slate' };
     if (!st.ds.length) { r.taken = 'No doses logged'; r.doses = 'None'; }
@@ -8032,7 +8056,7 @@ function fittedMedsReport() {
     if (!state.medsPdf) return null;
     const doses = await loadAllMedDoses();
     if (!reportModule) reportModule = await import('./report.js?v=' + APP_VERSION);
-    const M = buildMedsReport(doses);
+    const M = buildMedsReport(doses, await loadSideEffects());
     state.medsPdf.from = M.first;
     const res = await reportModule.fitMedsReport(reportFrame('meds'), M);
     if (!res.ok) { toast('A medicine has too much to fit on one page. Shorten its how and when text and try again.'); return null; }

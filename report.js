@@ -190,6 +190,7 @@ export function reportHtml(R) {
   const strip = [];
   const medsHtml = `<div data-sec="Medicines"><b>When-needed medicines.</b> ${esc(R.meds)}${R.hospital ? `<br><b>${esc(R.hospital.label)}</b> ${esc(R.hospital.text)}` : ''}</div>`;
   strip.push(medsHtml);
+  if (R.sideFx) strip.push(`<div data-sec="Side effects"><b>Side effects logged.</b> ${esc(R.sideFx)}</div>`);
   if (R.steady) strip.push(`<div class="steady" data-sec="Steady"><b>Steady.</b> ${esc(R.steady)}</div>`);
   const qs = R.questions.map((q, i) => questionHtml({ ...q, i: i + 1, lines: R.lines }, false));
   const other = questionHtml({ text: 'Other points from today', by: R.otherBy || 'For anything raised in the appointment', lines: R.lines }, true);
@@ -607,7 +608,7 @@ function medsRow(r, i) {
     + `<td>${r.tag ? `<span class="mpill tag ${esc(r.tag.cls)}">${esc(r.tag.text)}</span>` : ''}<b>${esc(r.name)}</b>${sm(r.purpose)}</td>`
     + `<td>${esc(r.dose || '')}${r.lines.map(sm).join('')}${(r.also || []).map((a) => `<span class="also">${esc(a)}</span>`).join('<br>')}</td>`
     + `<td>${esc(r.taken)}${sm(r.takenSub)}</td>`
-    + `<td><b>${esc(r.doses)}</b>${r.dosesSub.map(sm).join('')}${bar}${sm(r.last14)}</td></tr>`;
+    + `<td><b>${esc(r.doses)}</b>${r.dosesSub.map(sm).join('')}${bar}${sm(r.last14)}${r.fx ? `<span class="also">${esc(r.fx)}</span>` : ''}</td></tr>`;
 }
 const MEDS_HEAD = '<table class="mtable"><colgroup><col class="c1"><col class="c2"><col class="c3"><col class="c4"></colgroup><thead><tr><th>Medicine</th><th>Dose and how often</th><th>Taken</th><th>Doses logged</th></tr></thead><tbody>';
 const medsGroupRow = (g, i, cont) => `<tr class="grp"${i === null ? '' : ` data-i="${i}"`}><td colspan="4"><span class="mpill ${esc(g.cls)}">${esc(g.label)}</span>${esc(cont ? 'continued' : g.note + ' · ' + g.rows.length)}</td></tr>`;
