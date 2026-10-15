@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '179';
+const APP_VERSION = '180';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -3193,31 +3193,37 @@ function openAdd(type, editEntry, preset) {
   }
 
   if (type === 'symptom') {
-    /* One box (v179): type any symptom. Matching names from the usual list, and ones used before, are offered as you type; anything else is taken as typed. */
-    const mine = [...new Set((state.recentEntries || []).filter((e) => e.type === 'symptom' && e.what).map((e) => String(e.what).trim()).filter((w) => w && w !== 'Other'))];
-    const offer = [...new Set([...SYMPTOMS, ...mine])].sort((a, b) => a.localeCompare(b));
-    const listId = 'symptom-list';
-    const whatIn = h('input', { type: 'text', class: 'input', id: 'symptom-what', list: listId, maxlength: '40', autocomplete: 'off', autocapitalize: 'sentences', placeholder: 'Start typing, e.g. sickness, or your own' });
-    if (editEntry && editEntry.what && editEntry.what !== 'Other') whatIn.value = editEntry.what;
-    const dl = h('datalist', { id: listId }, ...offer.map((w) => h('option', { value: w })));
-    const otherField = h('div', null, whatIn, dl);
-    const chips = h('p', { class: 'hint', text: 'Pick from the list as you type, or type your own. It is remembered for next time.' });
+    /* Two boxes side by side (v180): the list on the left, your own on the right. A new name typed on the right is saved to the household (profile/main.customSymptoms) and is in the list on the left from then on. */
+    const saved = Array.isArray(state.profile && state.profile.customSymptoms) ? state.profile.customSymptoms : [];
+    const used = (state.recentEntries || []).filter((e) => e.type === 'symptom' && e.what).map((e) => String(e.what).trim());
+    const offer = [...new Set([...SYMPTOMS, ...saved, ...used].filter((w) => w && w !== 'Other'))].sort((a, b) => a.localeCompare(b));
+    const listSel = h('select', { class: 'input', id: 'symptom-pick' }, h('option', { value: '', text: 'Choose from the list' }), ...offer.map((w) => h('option', { value: w, text: w })));
+    const whatIn = h('input', { type: 'text', class: 'input', id: 'symptom-what', maxlength: '40', autocomplete: 'off', autocapitalize: 'sentences', placeholder: 'e.g. Night sweats' });
+    const was = editEntry && editEntry.what && editEntry.what !== 'Other' ? String(editEntry.what) : '';
+    if (was) { if (offer.includes(was)) listSel.value = was; else whatIn.value = was; }
+    listSel.addEventListener('change', () => { if (listSel.value) whatIn.value = ''; });
+    whatIn.addEventListener('input', () => { if (whatIn.value.trim()) listSel.value = ''; });
+    const otherField = h('div', { class: 'field-row', role: 'group', 'aria-label': 'Which symptom' },
+      field('From the list', listSel), field('Or type your own', whatIn));
+    const chips = h('p', { class: 'hint', text: 'A symptom you type is added to the list for next time.' });
     const sl = sliderBlock({ kind: 'pain', q: 'How bad right now', low: '1 mild', high: '10 severe' }, editEntry ? editEntry.value : null);
     const symNote = h('textarea', { rows: '2', placeholder: 'What it is like, what helped (optional)' });
     if (editEntry && editEntry.note) symNote.value = editEntry.note;
     const cause = causeSelect(editEntry ? causeOf(editEntry) : (preset && preset.causeKind ? { kind: preset.causeKind, id: preset.causeId, name: preset.causeName || '' } : null));
     const causeField = field('Is it a side effect of something? (optional)', cause.sel);
     body.append(
-      h('label', { class: 'wiz-q', for: 'symptom-what', text: 'Which symptom?' }), otherField, chips,
+      h('p', { class: 'wiz-q', text: 'Which symptom?' }), otherField, chips,
       h('p', { class: 'wiz-q', text: 'How bad right now?' }), ...sl.nodes,
       causeField,
       field('Time', time), field('Note', symNote), speakButton(symNote) || ''
     );
     getData = () => {
       let what = whatIn.value.trim().replace(/\s+/g, ' ');
-      if (!what) { toast('Type the symptom first'); whatIn.focus(); return { hold: true }; }
+      if (!what) what = listSel.value;
+      if (!what) { toast('Choose a symptom, or type your own'); listSel.focus(); return { hold: true }; }
       const same = offer.find((w) => w.toLowerCase() === what.toLowerCase());
       what = same || what.charAt(0).toUpperCase() + what.slice(1);
+      if (!same && !state.readOnly && !state.viewer) saveProfilePatch({ customSymptoms: [...saved, what] });
       const v = sl.value();
       if (v == null) { toast('Slide to a number first'); return { hold: true }; }
       const c = cause.read();
