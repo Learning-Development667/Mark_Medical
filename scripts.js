@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '181';
+const APP_VERSION = '182';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -10370,6 +10370,8 @@ function renderCalendar() {
   const startDow = (new Date(y, m - 1, 1).getDay() + 6) % 7; // Monday first
   const daysInMonth = new Date(y, m, 0).getDate();
   const today = todayStr();
+  /* the next session not yet done (today counts) is the one that gets the travelling light */
+  const nextSession = Object.keys(state.days).filter((k) => state.days[k].chemo && !state.days[k].chemoDone && k >= today).sort()[0] || '';
   const cells = [];
   for (let i = 0; i < startDow; i++) cells.push(h('div', { class: 'cal-cell is-empty' }));
   for (let d = 1; d <= daysInMonth; d++) {
@@ -10379,8 +10381,9 @@ function renderCalendar() {
     if (key === today) cls.push('is-today');
     if (info.chemo) cls.push('is-chemo');
     if (info.chemoDone) cls.push('is-done');
+    if (key === nextSession) cls.push('is-next');
     const type = treatmentOf(info);
-    const label = [fmtDayLong(key), info.chemo ? type.label.toLowerCase() + (info.chemoDone ? ' session done' : ' session') : null, info.mood ? 'mood ' + MOODS[info.mood - 1].label : null].filter(Boolean).join(', ');
+    const label = [fmtDayLong(key), info.chemo ? type.label.toLowerCase() + (info.chemoDone ? ' session done' : key === nextSession ? ' session, the next one' : ' session') : null, info.mood ? 'mood ' + MOODS[info.mood - 1].label : null].filter(Boolean).join(', ');
     cells.push(h('button', { class: cls.join(' '), type: 'button', 'aria-label': label, disabled: state.viewer, onclick: () => openDaySheet(key) },
       info.chemo ? h('span', { class: 'cal-type', 'aria-hidden': 'true', text: type.letter }) : null,
       h('span', { class: 'cal-num', text: String(d) }),
