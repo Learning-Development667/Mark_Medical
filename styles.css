@@ -1686,3 +1686,6 @@ button.sidefx-inner { cursor: pointer; }
 .reports-2 > :only-child { grid-column: 1 / -1; }
 .question-btns .btn-danger-link { color: var(--danger); }
 .question-confirm { flex: 1 1 100%; font-weight: 600; color: var(--text-primary); }
+.sym-remove { margin-top: var(--s-2); }
+.sym-remove-row { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); padding: var(--s-2) 0; border-top: 1px solid var(--border-subtle); }
+.sym-remove-row .btn { min-height: 44px; margin: 0; }
