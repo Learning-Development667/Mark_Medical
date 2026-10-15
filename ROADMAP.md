@@ -84,6 +84,7 @@ One at a time, each a few days with its sources checked, on the profile mechanis
 - An "AI used this month: about 12p" line under Settings, from the bridge's own token tally. Offered 4 October; build if wanted.
 
 ## Done
+- v169 Changing one answer of a check-in from the review comes straight back to the review (Done, back to the review), and Cancel asks before throwing away a changed answer. Mark's edit of a morning answer had not been saved because the screen walked on to the next question instead of back to the one button that saves.
 - v167 The Guide under More: eight walk-throughs of the real screens played step by step in a phone frame with a ring where to tap and a caption each, the frames taken by a script from the demo so they are retaken in one command; and the one-line Tap to speak hint under the button on the first three sheets.
 - v166 Your week for carers, as they see it (four scored questions on how the patient seemed and three in their words, kept apart from the patient's), the row from Friday to Sunday, saved as you go with Finish, a started one flagged on Today, and the carer's line on the Mood and wellbeing report.
 - v165 Add a new contact and Edit contacts above Who to contact on More; Add opens the sheet on a new block, Edit the saved ones.

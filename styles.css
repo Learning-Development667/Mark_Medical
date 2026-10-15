@@ -1648,3 +1648,8 @@ body.is-readonly #more-setup, body.is-readonly .settings-setup-hint { display: n
 .guide-words li.is-current { color: var(--teal); font-weight: 600; }
 @media (prefers-reduced-motion: reduce) { .guide-tap { animation: none; } }
 .speakhint { margin: 6px 0 0; font-size: 15px; line-height: 1.4; color: var(--text-muted); }
+
+/* An edit of a saved check-in: Cancel with an unsaved change asks first, and one answer changed from the review comes straight back to it (v169) */
+.wiz-cancelbox { margin-top: var(--s-3); }
+.wiz-cancelbox .btnrow { margin-top: var(--s-2); }
+.wiz-buttons.is-fromreview { justify-content: space-between; }

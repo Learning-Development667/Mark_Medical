@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '168';
+const APP_VERSION = '169';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -6614,7 +6614,30 @@ function openCheckin(slot, initialDay) {
   let capture = null;
 
   const body = h('div', null);
-  const cancelLink = () => existing ? h('button', { class: 'btn-link wiz-cancel', type: 'button', onclick: closeSheet }, 'Cancel') : null;
+  /* Whether an edit of a saved check-in has changed anything not yet saved (v169): the current step's value is read first */
+  const norm = (v) => (v == null || v === '' ? null : v);
+  const dirty = () => {
+    if (!existing) return false;
+    if (capture) capture();
+    return [...qs.map((q) => q.key), ...checkinNoteKeys(slot), 'sleepHours'].some((k) => JSON.stringify(norm(answers[k])) !== JSON.stringify(norm(existing[k])));
+  };
+  /* Cancel on an edit with an unsaved change asks first, so a changed answer is never thrown away by a stray tap (v169) */
+  const cancelLink = () => {
+    if (!existing) return null;
+    const box = h('div', { class: 'wiz-cancelbox' });
+    const link = h('button', { class: 'btn-link wiz-cancel', type: 'button', onclick: () => {
+      if (!dirty()) { closeSheet(); return; }
+      box.replaceChildren(
+        h('p', { class: 'hint', role: 'alert', text: 'You have changed an answer and not saved it. Throw the change away?' }),
+        h('div', { class: 'btnrow' },
+          h('button', { class: 'btn btn-primary', type: 'button', onclick: () => box.replaceChildren(link) }, 'Keep editing'),
+          h('button', { class: 'btn btn-secondary', type: 'button', onclick: closeSheet }, 'Throw it away')));
+    } }, 'Cancel');
+    box.append(link);
+    return box;
+  };
+  /* True while one answer is being changed from the review screen: the main button then goes straight back to the review (v169) */
+  let fromReview = false;
 
   function render() {
     const wrap = h('div', { class: 'wiz-step' + (dir < 0 ? ' is-back' : '') });
@@ -6690,22 +6713,22 @@ function openCheckin(slot, initialDay) {
       capture = () => { answers[q.key] = getVal(); };
       const go = (n, d) => { dir = d; step = n; clearTimeout(keepTimer); keep(); render(); };
       const back = h('button', { class: 'btn btn-secondary btn-back', type: 'button', disabled: step === 0, onclick: () => { answers[q.key] = getVal(); go(step - 1, -1); } }, 'Back');
-      const skip = h('button', { class: 'btn-link wiz-skip', type: 'button', onclick: () => { if (q.kind === 'sleep' || q.note) getVal(); answers[q.key] = q.kind === 'text' ? '' : null; go(step + 1, 1); } }, 'Skip');
-      const next = h('button', { class: 'btn btn-primary btn-next', type: 'button', onclick: () => { answers[q.key] = getVal(); go(step + 1, 1); } }, step === qs.length - 1 ? 'Review' : 'Next');
-      wrap.append(h('div', { class: 'wiz-buttons' }, back, skip, next), cancelLink() || '');
+      const skip = h('button', { class: 'btn-link wiz-skip', type: 'button', onclick: () => { if (q.kind === 'sleep' || q.note) getVal(); answers[q.key] = q.kind === 'text' ? '' : null; const r = fromReview; fromReview = false; go(r ? qs.length : step + 1, r ? -1 : 1); } }, fromReview ? 'Clear this answer' : 'Skip');
+      const next = h('button', { class: 'btn btn-primary btn-next', type: 'button', onclick: () => { answers[q.key] = getVal(); const r = fromReview; fromReview = false; go(r ? qs.length : step + 1, r ? -1 : 1); } }, fromReview ? 'Done, back to the review' : (step === qs.length - 1 ? 'Review' : 'Next'));
+      wrap.append(h('div', { class: 'wiz-buttons' + (fromReview ? ' is-fromreview' : '') }, fromReview ? '' : back, skip, next), cancelLink() || '');
     } else {
       const bar = h('div', { class: 'progress-bar' }, h('div'));
       bar.firstChild.style.width = '100%';
       wrap.append(h('div', { class: 'wiz-progress' }, h('span', { text: 'Review' }), bar));
       wrap.append(h('p', { class: 'wiz-q', text: fmtDayLong(day) + (day === today ? ', today' : '') }));
-      wrap.append(h('p', { class: 'wiz-hint', text: 'Tap an answer to change it.' }));
+      wrap.append(h('p', { class: 'wiz-hint', text: existing ? 'Tap an answer to change it. Nothing is saved until you press Save changes.' : 'Tap an answer to change it.' }));
       const list = h('ul', { class: 'wiz-summary' });
       qs.forEach((q, i) => {
         const v = answers[q.key];
         let skipped = q.kind === 'text' ? !v : v == null;
         let shown = skipped ? 'Skipped' : (q.kind === 'ticks' ? outsideText(v) : q.kind === 'taps' ? wbText(v) : q.kind === 'text' ? v : String(v) + (q.kind === 'sleep' && answers.sleepHours != null ? ' · ' + answers.sleepHours + ' h' : ''));
         const words = q.note && answers[q.note] ? h('span', { class: 'vnote', text: answers[q.note] }) : null;
-        list.append(h('li', null, h('button', { type: 'button', onclick: () => { dir = -1; step = i; render(); } },
+        list.append(h('li', null, h('button', { type: 'button', onclick: () => { dir = -1; step = i; fromReview = true; render(); } },
           h('span', { class: 'k', text: CHECKIN_LABELS[q.key] }),
           h('span', { class: 'v' + (skipped ? ' is-skipped' : (q.kind === 'text' || q.kind === 'ticks' || q.kind === 'taps' ? '' : ' is-num')) }, shown, words))));
       });
@@ -6716,7 +6739,7 @@ function openCheckin(slot, initialDay) {
         await saveCheckin(slot, day, answers, existing);
         closeSheet();
       } }, existing ? 'Save changes' : 'Save check-in');
-      wrap.append(save, h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => { dir = -1; step = qs.length - 1; render(); } }, 'Back'), cancelLink() || '');
+      wrap.append(save, h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => { dir = -1; step = qs.length - 1; fromReview = false; render(); } }, 'Back'), cancelLink() || '');
     }
     if (step < qs.length) { wrap.addEventListener('input', keepSoon); wrap.addEventListener('change', keepSoon); }
     else capture = null;
