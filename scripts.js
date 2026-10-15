@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '177';
+const APP_VERSION = '178';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -2606,7 +2606,7 @@ function speakHintFor(btn) {
    through a sentence. Each session that ends by itself is followed by a fresh one that carries on from
    the words already in the box; only a tap, a refused microphone, the page going to the background or
    several dead starts in a row really stop it. */
-const SPEAK_RESTART_MS = 150;
+const SPEAK_RESTART_MS = 400;
 const SPEAK_DEAD_MAX = 4;
 function speakButton(target) {
   if (!SpeechRec) return null;
@@ -2617,11 +2617,17 @@ function speakButton(target) {
   let want = false;      // the person wants it listening, until they tap stop
   let dead = 0;          // sessions in a row that ended at once with nothing heard
   let wake = null;
-  const setState = (on) => { btn.classList.toggle('is-listening', on); btn.setAttribute('aria-pressed', on ? 'true' : 'false'); label.textContent = on ? 'Listening, tap to stop' : 'Tap to speak'; };
+  let everHeard = false; // any words at all since the tap
+  let lastErr = '';      // the phone's own reason, shown on the button so a silent failure is visible
+  let quietTimer = null;
+  const setState = (on) => {
+    btn.classList.toggle('is-listening', on); btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    label.textContent = on ? 'Listening, tap to stop' + (lastErr ? ' (' + lastErr + ')' : everHeard ? '' : ' (nothing heard yet)') : 'Tap to speak';
+  };
   const keepAwake = async () => { try { if (navigator.wakeLock && !wake) { wake = await navigator.wakeLock.request('screen'); wake.addEventListener('release', () => { wake = null; if (want && !document.hidden) keepAwake(); }); } } catch (e) { wake = null; } };
   const letGo = () => { try { if (wake) wake.release(); } catch (e) { /* ignore */ } wake = null; };
   const finish = (focus) => {
-    want = false; rec = null; letGo(); setState(false);
+    want = false; rec = null; letGo(); clearTimeout(quietTimer); setState(false);
     document.removeEventListener('visibilitychange', onHide);
     if (focus) target.focus();
   };
@@ -2640,13 +2646,14 @@ function speakButton(target) {
       if (rec !== r) return;
       let text = '';
       for (let i = 0; i < ev.results.length; i++) text += ev.results[i][0].transcript + (ev.results[i].isFinal ? ' ' : '');
-      if (text.trim()) { heard = true; dead = 0; }
+      if (text.trim()) { heard = true; dead = 0; everHeard = true; lastErr = ''; setState(true); }
       target.value = join(text);
       target.dispatchEvent(new Event('input', { bubbles: true }));
       if (text.trim()) speakHintsSet(SPEAK_HINT_TIMES);
     };
     r.onerror = (ev) => {
       if (rec !== r) return;
+      if (ev.error !== 'no-speech') { lastErr = ev.error || 'error'; if (want) setState(true); }
       if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') { want = false; toast('Allow the microphone for this site to speak your notes'); }
       else if (ev.error !== 'aborted' && ev.error !== 'no-speech') toast('Could not hear that. Try again, or type it.');
     };
@@ -2670,8 +2677,8 @@ function speakButton(target) {
       if (was) { try { was.stop(); } catch (e) { finish(true); } } else finish(true);
       return;
     }
-    want = true; dead = 0;
-    try { begin(); setState(true); document.addEventListener('visibilitychange', onHide); }
+    want = true; dead = 0; everHeard = false; lastErr = '';
+    try { begin(); setState(true); clearTimeout(quietTimer); quietTimer = setTimeout(() => { if (want && !everHeard) { setState(true); toast('Not hearing anything yet. Check Settings, Siri, Dictation is on, or use the keyboard microphone.'); } }, 6000); document.addEventListener('visibilitychange', onHide); }
     catch (e) { finish(false); toast('Speech is not available here. The keyboard microphone still works.'); }
   });
   return btn;
