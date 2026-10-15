@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '178';
+const APP_VERSION = '179';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -2759,7 +2759,7 @@ function bristolArt(t) {
 
 /* Symptom (since v92): a between-times symptom with a 1 to 10 score, the way the Pain tile works, for
    the things the evening check-in only asks about once a day. Stored { type "symptom", what, value, note }. */
-const SYMPTOMS = ['Sickness', 'Mouth', 'Skin', 'Breathing', 'Dizziness', 'Tingling', 'Tiredness', 'Taste changes', 'Poor appetite', 'Constipation', 'Aches and pains', 'Headache', 'Hair loss', 'Sore hands or feet', 'Other'];
+const SYMPTOMS = ['Sickness', 'Mouth', 'Skin', 'Breathing', 'Dizziness', 'Tingling', 'Tiredness', 'Taste changes', 'Poor appetite', 'Constipation', 'Aches and pains', 'Headache', 'Hair loss', 'Sore hands or feet'];
 /* Side effects (v173): a symptom can say what caused it, a medicine on the list or a kind of treatment.
    Stored beside the symptom as causeKind ('med' or 'treatment'), causeId (the medicine's id or the treatment's key)
    and causeName (as it was called then), so it reads the same on the timeline, in Notes for the team and under
@@ -3193,28 +3193,31 @@ function openAdd(type, editEntry, preset) {
   }
 
   if (type === 'symptom') {
-    const known = editEntry && SYMPTOMS.includes(editEntry.what) ? editEntry.what : (editEntry ? 'Other' : '');
-    const whatHidden = h('input', { type: 'hidden', value: known });
-    const other = h('input', { type: 'text', placeholder: 'What is it?', maxlength: '40', value: editEntry && known === 'Other' ? editEntry.what : '' });
-    const otherField = field('Which symptom', other);
-    otherField.hidden = known !== 'Other';
-    const chips = presets(SYMPTOMS, whatHidden, known);
-    chips.setAttribute('role', 'group'); chips.setAttribute('aria-label', 'Which symptom');
-    chips.addEventListener('click', () => { otherField.hidden = whatHidden.value !== 'Other'; if (!otherField.hidden) other.focus(); });
+    /* One box (v179): type any symptom. Matching names from the usual list, and ones used before, are offered as you type; anything else is taken as typed. */
+    const mine = [...new Set((state.recentEntries || []).filter((e) => e.type === 'symptom' && e.what).map((e) => String(e.what).trim()).filter((w) => w && w !== 'Other'))];
+    const offer = [...new Set([...SYMPTOMS, ...mine])].sort((a, b) => a.localeCompare(b));
+    const listId = 'symptom-list';
+    const whatIn = h('input', { type: 'text', class: 'input', id: 'symptom-what', list: listId, maxlength: '40', autocomplete: 'off', autocapitalize: 'sentences', placeholder: 'Start typing, e.g. sickness, or your own' });
+    if (editEntry && editEntry.what && editEntry.what !== 'Other') whatIn.value = editEntry.what;
+    const dl = h('datalist', { id: listId }, ...offer.map((w) => h('option', { value: w })));
+    const otherField = h('div', null, whatIn, dl);
+    const chips = h('p', { class: 'hint', text: 'Pick from the list as you type, or type your own. It is remembered for next time.' });
     const sl = sliderBlock({ kind: 'pain', q: 'How bad right now', low: '1 mild', high: '10 severe' }, editEntry ? editEntry.value : null);
     const symNote = h('textarea', { rows: '2', placeholder: 'What it is like, what helped (optional)' });
     if (editEntry && editEntry.note) symNote.value = editEntry.note;
     const cause = causeSelect(editEntry ? causeOf(editEntry) : (preset && preset.causeKind ? { kind: preset.causeKind, id: preset.causeId, name: preset.causeName || '' } : null));
     const causeField = field('Is it a side effect of something? (optional)', cause.sel);
     body.append(
-      h('p', { class: 'wiz-q', text: 'Which symptom?' }), chips, otherField,
+      h('label', { class: 'wiz-q', for: 'symptom-what', text: 'Which symptom?' }), otherField, chips,
       h('p', { class: 'wiz-q', text: 'How bad right now?' }), ...sl.nodes,
       causeField,
       field('Time', time), field('Note', symNote), speakButton(symNote) || ''
     );
     getData = () => {
-      const what = whatHidden.value === 'Other' ? other.value.trim() : whatHidden.value;
-      if (!what) { toast('Tap the symptom first'); return { hold: true }; }
+      let what = whatIn.value.trim().replace(/\s+/g, ' ');
+      if (!what) { toast('Type the symptom first'); whatIn.focus(); return { hold: true }; }
+      const same = offer.find((w) => w.toLowerCase() === what.toLowerCase());
+      what = same || what.charAt(0).toUpperCase() + what.slice(1);
       const v = sl.value();
       if (v == null) { toast('Slide to a number first'); return { hold: true }; }
       const c = cause.read();
