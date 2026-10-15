@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=172">
+  <link rel="stylesheet" href="styles.css?v=173">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -432,6 +432,13 @@
               <span class="checkin-main"><span class="checkin-title">Carer's view</span><span class="checkin-sub" id="checkin-carer-sub"></span></span>
               <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
             </button>
+          </div>
+          <div class="card" id="sidefx-card">
+            <h2 class="section-title">Side effects</h2>
+            <p class="hint">What the treatment or a medicine is doing to you. Each one goes on the timeline and into Notes for the team, with what caused it. You can also log one from a medicine's card.</p>
+            <button id="sidefx-add" class="btn btn-primary btn-block" type="button">Log a side effect</button>
+            <ul id="sidefx-list" class="sidefx-list"></ul>
+            <p id="sidefx-empty" class="empty" data-art="note" hidden>No side effects logged yet.</p>
           </div>
           <div class="card chart-card" id="cycle-card">
             <h2 class="section-title">By day after treatment</h2>
@@ -1024,6 +1031,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=172"></script>
+  <script type="module" src="scripts.js?v=173"></script>
 </body>
 </html>

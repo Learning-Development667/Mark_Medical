@@ -1667,3 +1667,17 @@ body.is-readonly #more-setup, body.is-readonly .settings-setup-hint { display: n
 .scanbox .btnrow { margin-top: var(--s-2); }
 @media (prefers-reduced-motion: no-preference) { .scan-frame { animation: scan-pulse 2.2s ease-in-out infinite; } }
 @keyframes scan-pulse { 50% { border-color: var(--teal-fill); } }
+
+
+/* ---------- Side effects (v173) ---------- */
+.med-side { margin-top: var(--s-2); text-align: left; }
+.med-sidefx { min-height: 44px; padding-left: 0; }
+body.is-readonly .med-side, body.is-viewer .med-side, body.is-readonly #sidefx-add { display: none; }
+.sidefx-list { list-style: none; margin: var(--s-3) 0 0; padding: 0; display: grid; gap: var(--s-2); }
+.sidefx-inner { display: grid; gap: 2px; width: 100%; text-align: left; padding: var(--s-2) var(--s-3); border: 1.5px solid var(--border-subtle); border-radius: var(--r-sm); background: var(--surface); color: var(--text-primary); font: inherit; min-height: 44px; }
+button.sidefx-inner { cursor: pointer; }
+.sidefx-what { font-weight: 700; }
+.sidefx-meta, .sidefx-note { color: var(--text-secondary); font-size: 15px; overflow-wrap: anywhere; }
+.sidefx-title { margin: var(--s-4) 0 var(--s-2); font-size: 18px; }
+.medhist-fx { margin-bottom: var(--s-3); }
+#side-cause { width: 100%; }
