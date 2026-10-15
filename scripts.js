@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '170';
+const APP_VERSION = '171';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -2862,11 +2862,9 @@ function openAdd(type, editEntry) {
         const tq = cleaned.name.toLowerCase();
         if (foodIndex && tq.length >= 2) {
           const taken = new Set([...mealHits.map((m) => m.name.toLowerCase()), ...customHits.map((f) => f.name.toLowerCase())]);
-          const tableHits = foodIndex.foods.filter((f) => f.n && f.n.toLowerCase().includes(tq) && !taken.has(f.n.toLowerCase()))
-            .map((f) => ({ f, rank: f.n.toLowerCase().startsWith(tq) ? 0 : new RegExp('\\b' + tq.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).test(f.n.toLowerCase()) ? 1 : 2 }))
-            .sort((a, b) => a.rank - b.rank || a.f.n.length - b.f.n.length)
-            .slice(0, 6);
-          if (tableHits.length) { rows.push(heading('UK food table')); tableHits.forEach(({ f }) => rows.push(pickRow(f.n, '', () => choose(cleaned.count ? `${cleaned.count} x ${f.n}` : f.n, null)))); }
+          const tableHits = searchFoodTable(foodIndex, tq, 6).filter((f) => !taken.has(f.n.toLowerCase()));
+          if (tableHits.length) { rows.push(heading('UK food table')); tableHits.forEach((f) => rows.push(pickRow(f.n, '', () => choose(cleaned.count ? `${cleaned.count} x ${f.n}` : f.n, null)))); }
+          else if (!mealHits.length && !customHits.length) rows.push(h('p', { class: 'hint', text: 'Nothing close in the UK food table. Log it as typed, then say what is in it.' }));
         }
       }
       list.replaceChildren(...rows);
@@ -4014,10 +4012,56 @@ const FOOD_ALIASES = {
   'cracker': [[/^cream crackers/i]],
   'rice cakes': [[/^rice cakes|^rice cake/i, /^cream crackers/i]],
   'popcorn': [[/^popcorn, plain|^popcorn, candied/i]],
+  /* v171: bakery, coffee shop, curry-house and Crohn's-friendly everyday foods the table has under other names */
+  'pain au chocolat': [[/^croissants$/i]],
+  'pain au chocolate': [[/^croissants$/i]],
+  'pain au chocolats': [[/^croissants$/i]],
+  'pains au chocolat': [[/^croissants$/i]],
+  'chocolate croissant': [[/^croissants$/i]],
+  'almond croissant': [[/^croissants$/i]],
+  'pain aux raisins': [[/^pastries, Danish, retail/i]],
+  'danish': [[/^pastries, Danish, retail/i]],
+  'danish pastry': [[/^pastries, Danish, retail/i]],
+  'pastry': [[/^pastries, Danish, retail/i]],
+  'cinnamon swirl': [[/^pastries, Danish, retail/i]],
+  'cinnamon roll': [[/^pastries, Danish, retail/i]],
+  'cappuccino': [[/^coffee, cappuccino, latte/i]],
+  'latte': [[/^coffee, cappuccino, latte/i]],
+  'flat white': [[/^coffee, cappuccino, latte/i]],
+  'mocha': [[/^coffee, cappuccino, latte/i]],
+  'americano': [[/^coffee, infusion, average$/i]],
+  'espresso': [[/^coffee, infusion, average$/i]],
+  'black coffee': [[/^coffee, infusion, average$/i]],
+  'coffee': [[/^coffee, infusion, average, with semi-skimmed milk/i, /^coffee, infusion, average$/i]],
+  'hot chocolate': [[/^drinking chocolate powder, made up with semi-skimmed milk/i]],
+  'chocolate milk': [[/^milk, flavoured, pasteurised, chocolate/i]],
+  'yoghurt': [[/^yogurt, whole milk, plain/i]],
+  'yogurt': [[/^yogurt, whole milk, plain/i]],
+  'natural yoghurt': [[/^yogurt, whole milk, plain/i]],
+  'plain yoghurt': [[/^yogurt, whole milk, plain/i]],
+  'greek yoghurt': [[/^yogurt, greek style, plain/i]],
+  'rice pudding': [[/^pudding, rice, canned$/i, /^pudding, rice/i]],
+  'korma': [[/^curry, chicken korma, homemade/i]],
+  'chicken korma': [[/^curry, chicken korma, homemade/i]],
+  'tikka masala': [[/^curry, chicken tikka masala/i]],
+  'chicken tikka masala': [[/^curry, chicken tikka masala/i]],
+  'naan': [[/^bread, naan, retail/i]],
+  'naan bread': [[/^bread, naan, retail/i]],
+  'cheese toastie': [[/^bread, white, toasted/i], [/^cheese, cheddar, english/i]],
+  'toastie': [[/^bread, white, toasted/i], [/^cheese, cheddar, english/i]],
+  'cheese on toast': [[/^bread, white, toasted/i], [/^cheese, cheddar, english/i]],
+  'beans on toast': [[/^baked beans, canned in tomato sauce$/i], [/^bread, white, toasted/i]],
+  'tomato soup': [[/^soup, tomato, carton, chilled/i]],
+  'bone broth': [[/^stock, chicken, ready made, retail/i]],
+  'broth': [[/^stock, chicken, ready made, retail/i]],
+  'smooth peanut butter': [[/^peanut butter, smooth/i]],
+  'white rice': [[/^rice, white, basmati, boiled in unsalted water/i]],
+  'white pasta': [[/^pasta, white, dried, boiled in unsalted water/i]],
+  'pasta': [[/^pasta, white, dried, boiled in unsalted water/i]],
 };
 
 /* Words that carry no food meaning on their own */
-const FOOD_STOP = new Set(['and', 'with', 'of', 'on', 'in', 'the', 'a', 'an', 'x', 'some', 'plain', 'small', 'large', 'big', 'half', 'slice', 'slices', 'piece', 'pieces', 'bowl', 'cup', 'glass', 'portion', 'handful', 'few', 'bit', 'bits', 'homemade', 'fresh', 'hot', 'cold', 'leftover', 'leftovers', 'lunch', 'dinner', 'breakfast', 'tea', 'supper', 'snack', 'meal', 'picky', 'mixed', 'little', 'lots', 'more', 'extra', 'it', 'all', 'most', 'my', 'for', 'from', 'at', 'to']);
+const FOOD_STOP = new Set(['and', 'with', 'of', 'on', 'in', 'the', 'a', 'an', 'x', 'some', 'plain', 'small', 'large', 'big', 'half', 'slice', 'slices', 'piece', 'pieces', 'bowl', 'cup', 'glass', 'portion', 'handful', 'few', 'bit', 'bits', 'homemade', 'fresh', 'hot', 'cold', 'leftover', 'leftovers', 'lunch', 'dinner', 'breakfast', 'tea', 'supper', 'snack', 'meal', 'picky', 'mixed', 'little', 'lots', 'more', 'extra', 'it', 'all', 'most', 'my', 'for', 'from', 'at', 'to', 'au', 'aux', 'de', 'du', 'des', 'la', 'le', 'les', 'un', 'une']);
 
 const COOKING_WORDS = new Set(['roast', 'roasted', 'grilled', 'fried', 'boiled', 'baked', 'poached', 'scrambled', 'steamed', 'mashed', 'cooked', 'toasted', 'chopped', 'sliced', 'diced', 'raw', 'warm', 'whole', 'tinned', 'canned', 'frozen', 'dried', 'grated', 'melted', 'buttered', 'bowl', 'cup', 'mug', 'plate', 'tin', 'pot', 'tub', 'bag', 'packet']);
 
@@ -4123,6 +4167,42 @@ function editDistance(a, b) {
   return dp[a.length][b.length];
 }
 
+/* Search for the Food sheet (v171). The old search wanted the whole typed phrase inside one table name,
+   so "pain au chocolat" found nothing and a Crohn's user got no help. Now: an everyday name the app knows
+   (the alias list, also by its first letters), then table names that hold every word typed (the last word
+   may be half typed, an earlier word may be a letter out), best first. Nothing is guessed from a single
+   word of several, so "pain au chocolat" never offers chocolate milk. */
+function searchFoodTable(index, query, limit) {
+  const rawPhrase = foodClean(query);
+  const words = rawPhrase.split(' ').filter((w) => w && !FOOD_STOP.has(w));
+  if (!words.length) return [];
+  const sing = words.map(foodSingular);
+  const phrase = words.join(' '), phraseS = sing.join(' ');
+  const rawS = rawPhrase.split(' ').map(foodSingular).join(' ');
+  const out = new Map();
+  const push = (f, score) => { const cur = out.get(f.c); if (!cur || score < cur.score) out.set(f.c, { f, score }); };
+  index.alias.forEach((foods, k) => {
+    if (k === rawPhrase || k === rawS || k === phrase || k === phraseS) foods.forEach((f) => push(f, 0));
+    /* a half-typed everyday name, only once it is more than one word ("pain au choc") */
+    else if (rawPhrase.includes(' ') && rawPhrase.length >= 5 && (k.startsWith(rawPhrase) || k.startsWith(rawS))) foods.forEach((f) => push(f, 1));
+  });
+  const last = words.length - 1;
+  index.foods.forEach((f) => {
+    const name = String(f.n || '').toLowerCase();
+    const nw = name.replace(/[^a-z' ]+/g, ' ').split(' ').filter(Boolean);
+    const nws = nw.map(foodSingular);
+    let ok = true;
+    for (let i = 0; i < sing.length && ok; i++) {
+      const w = sing[i], raw = words[i];
+      ok = nws.some((x, j) => x === w || nw[j] === raw || (i === last && (nw[j].startsWith(raw) || x.startsWith(w))) || (w.length >= 6 && editDistance(w, x) <= 1));
+    }
+    if (!ok) return;
+    const head = name.split(',')[0];
+    push(f, 2 + (name.startsWith(phrase) ? 0 : head.includes(sing[0]) || head.includes(words[0]) ? 0.5 : 1) + name.length / 400);
+  });
+  return [...out.values()].sort((a, b) => a.score - b.score || a.f.n.length - b.f.n.length).slice(0, limit || 6).map((x) => x.f);
+}
+
 function lookupPhrase(index, phrase) {
   if (!phrase) return null;
   if (index.alias.has(phrase)) return index.alias.get(phrase);
@@ -4174,12 +4254,15 @@ function matchFoodText(index, text) {
       const h2 = lookupPhrase(index, two);
       if (h2) { take(h2, two); any = true; words[i] = words[i + 1] = null; i++; }
     }
+    const left = []; // content words nothing was found for, said aloud rather than dropped (v171: "pain" in "pain au chocolat")
     for (const w of words) {
       if (!w || COOKING_WORDS.has(w)) continue;
       const h1 = lookupPhrase(index, w) || fuzzyPhrase(index, w);
       if (h1) { take(h1, w); any = true; }
+      else if (w.length >= 3) left.push(w);
     }
     if (!any) unmatched.push(phrase);
+    else if (left.length && phrase.split(' ').length > 1) unmatched.push(left.join(' '));
   }
   return { matches, unmatched };
 }
