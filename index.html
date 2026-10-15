@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=171">
+  <link rel="stylesheet" href="styles.css?v=172">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -51,6 +51,7 @@
     <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2.5L5 13.5h6l-1 8 8-11h-6z"/></symbol>
     <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
     <symbol id="i-image" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="M20.5 15.5l-4.5-4.5-7 7"/></symbol>
+    <symbol id="i-barcode" viewBox="0 0 24 24"><path d="M4 6v12M7 6v12M11 6v12M14 6v12M17 6v12M20 6v12" /><path d="M3 4h2M3 20h2M19 4h2M19 20h2" /></symbol>
   </svg>
 
   <!-- Opener: the loading page. The full name at the top (My Medical over Daybook), the Mark 1 Apps film, the version at the bottom.
@@ -888,7 +889,7 @@
   <!-- Privacy, terms and About (since v90): plain English, opened in the sheet from the Settings App card,
        the sign-in and sign-up screens, or ?page=privacy|terms|about in the address (openLegal()). -->
   <template id="tpl-privacy">
-    <p class="legal-date mono">Last updated 14 October 2026</p>
+    <p class="legal-date mono">Last updated 15 October 2026</p>
     <p>My Medical Daybook (Daybook for short) is made and run by Mark 1 Apps Ltd, a company registered in England and Wales (company number 17510025), which is responsible for the information the app holds (the "data controller" in UK law). <span data-contact></span></p>
     <h3>The short version</h3>
     <ul>
@@ -916,6 +917,7 @@
     <h3>What leaves your household's folder, and when</h3>
     <ul>
       <li><b>Send to the team and Send by email, only when you tap Send.</b> The report PDF, your message and the contact's address go through Daybook's bridge to Resend, the email service that sends it, from reporting@mymedicaldaybook.co.uk in your name. Your own sign-in email address is the reply address and gets a copy, so the clinic's reply comes straight to you, never to Mark 1 Apps Ltd. Resend keeps the email in its sending records for a limited time under its own terms; the bridge keeps only a daily count, and your household keeps a note of what was sent to whom and when, which you can delete. Where Daybook cannot send (the demo, or before it is switched on) the email goes through your own Mail app instead and nothing passes through the bridge.</li>
+      <li><b>Scan a barcode, only when you tap it.</b> The camera looks for a barcode on your phone and no picture is kept or sent. Only the barcode number goes, through Daybook's bridge, to Open Food Facts, a free and open food database, to ask what the product is; nothing about you goes with it. If the product is found, its name and label figures are saved in your household's My foods, so they can be used again. The camera is used only while the scanner is open.</li>
       <li><b>Daybook Assistant, only when you tap.</b> Daybook Assistant is Daybook's name for its AI helper, which is Claude, an AI model made by Anthropic, a US company. Seven features send something through Daybook's bridge to Anthropic for it: <b>Explain with Daybook Assistant</b> (a letter's text or page photos), <b>Suggest questions to ask</b> and <b>Summarise with Daybook Assistant</b> (the Notes for the team text), <b>Write the brief with Daybook Assistant</b> on two reports (the scores and notes behind the Mood and wellbeing report; the scores, words and doses behind the Pain and pain relief report), <b>Read it from a photo</b> (a photo of a medicine) and <b>Add from a photo or PDF of the plan</b> (an exercise or physio plan). So that information goes to the United States. Anthropic does not use what is sent through its API to train its models and handles it under its own terms. The bridge keeps nothing of what was sent or returned, only a count of words used, for the cost. An explanation of a letter is saved with the letter, and you can change or delete it; the other replies are shown for you to check, and only what you then save is kept. There is a daily limit per household.</li>
       <li><b>Your own AI app.</b> "Send to my AI app" and "Copy for my AI app" put the text on your phone's share sheet or clipboard. Where it goes from there is between you and the app you choose.</li>
       <li><b>Save as PDF, Print, Share and Copy</b> make a copy for you to give to the clinic or someone else. Once it has left the app, it is in your hands.</li>
@@ -993,6 +995,7 @@
     <h3>Data sources</h3>
     <ul>
       <li>Food tags and estimates: CoFID 2021, McCance and Widdowson's The Composition of Foods Integrated Dataset, Public Health England, under the Open Government Licence v3</li>
+      <li>Scanned barcodes: product names and label figures from Open Food Facts (openfoodfacts.org), made available under the Open Database Licence by its contributors</li>
       <li>Gentle exercises: NHS Live Well sitting, flexibility and strength exercises; Memorial Sloan Kettering Cancer Center, Chair Exercises</li>
     </ul>
     <h3>Licence</h3>
@@ -1021,6 +1024,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=171"></script>
+  <script type="module" src="scripts.js?v=172"></script>
 </body>
 </html>

@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '171';
+const APP_VERSION = '172';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -2467,6 +2467,124 @@ const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition || 
 /* The one-line hint under Tap to speak (v167): shown under the button on the first SPEAK_HINT_TIMES sheets that have one
    on this phone (counted per sheet, not per box, so a five-step check-in is one), and never again once it has heard
    something. localStorage daybook.speak.hints. */
+/* Barcode scanner for the Food sheet (v172). The camera looks for an EAN or UPC barcode (the phone's own
+   BarcodeDetector where it has one, otherwise the ZXing library in vendor/, loaded only when Scan is tapped),
+   the check digit is verified before a number is trusted, and the bridge asks Open Food Facts what it is.
+   A scanned product is saved into My foods (name, label figures per 100 g, the barcode) so it is matched whole
+   next time and earns tags from its own label. Nothing is sent but the number; no picture leaves the phone. */
+function barcodeValid(code) {
+  const d = String(code || '').replace(/\D/g, '');
+  if (![8, 12, 13, 14].includes(d.length)) return false;
+  let sum = 0;
+  for (let i = 0; i < d.length - 1; i++) sum += Number(d[d.length - 2 - i]) * (i % 2 === 0 ? 3 : 1);
+  return (10 - (sum % 10)) % 10 === Number(d[d.length - 1]);
+}
+function scanAvailable() { return explainAvailable() && !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia); }
+const BARCODE_FORMATS = ['ean_13', 'ean_8', 'upc_a', 'upc_e'];
+function startBarcodeCamera(video, onCode, onProblem) {
+  let stopped = false, timer = null, stream = null;
+  const stop = () => { stopped = true; clearTimeout(timer); if (stream) stream.getTracks().forEach((t) => t.stop()); stream = null; video.srcObject = null; };
+  (async () => {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+    } catch (e) {
+      onProblem(e && e.name === 'NotAllowedError' ? 'Allow the camera for Daybook in your phone\'s settings, or type the number below.' : 'No camera found here. Type the number below.');
+      return;
+    }
+    if (stopped) { stream.getTracks().forEach((t) => t.stop()); return; }
+    video.srcObject = stream;
+    try { await video.play(); } catch (e) { /* autoplay is allowed for a muted inline video; ignore */ }
+    let detector = null, ZX = null, reader = null;
+    try { if ('BarcodeDetector' in window) detector = new window.BarcodeDetector({ formats: BARCODE_FORMATS }); } catch (e) { detector = null; }
+    if (!detector) {
+      try {
+        await loadScript('vendor/zxing-library.min.js?v=' + APP_VERSION);
+        ZX = window.ZXing;
+        const hints = new Map();
+        hints.set(ZX.DecodeHintType.POSSIBLE_FORMATS, [ZX.BarcodeFormat.EAN_13, ZX.BarcodeFormat.EAN_8, ZX.BarcodeFormat.UPC_A, ZX.BarcodeFormat.UPC_E]);
+        hints.set(ZX.DecodeHintType.TRY_HARDER, true);
+        reader = new ZX.MultiFormatReader();
+        reader.setHints(hints);
+      } catch (e) { stop(); onProblem('The scanner could not load. Check the signal, or type the number below.'); return; }
+    }
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const tick = async () => {
+      if (stopped) return;
+      if (!video.isConnected) { stop(); return; }
+      if (video.readyState >= 2 && video.videoWidth) {
+        const vw = video.videoWidth, vh = video.videoHeight;
+        const sw = Math.round(vw * 0.92), sh = Math.round(vh * 0.55), sx = Math.round((vw - sw) / 2), sy = Math.round((vh - sh) / 2);
+        const k = Math.min(1, 1000 / sw);
+        canvas.width = Math.round(sw * k); canvas.height = Math.round(sh * k);
+        ctx.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+        let found = null;
+        if (detector) { try { const r = await detector.detect(canvas); if (r && r[0]) found = r[0].rawValue; } catch (e) { /* nothing this frame */ } }
+        else {
+          try { found = reader.decode(new ZX.BinaryBitmap(new ZX.HybridBinarizer(new ZX.HTMLCanvasElementLuminanceSource(canvas)))).getText(); }
+          catch (e) { found = null; /* NotFoundException every frame without a code in view */ }
+        }
+        if (found && barcodeValid(found)) { stop(); onCode(String(found).replace(/\D/g, '')); return; }
+      }
+      timer = setTimeout(tick, 110);
+    };
+    tick();
+  })();
+  return stop;
+}
+/* Ask the bridge what a barcode is; resolves to { found, name, per100, hasFigures, ... } */
+async function lookupBarcode(code) {
+  const d = String(code || '').replace(/\D/g, '');
+  return bridgeCall('/food', { barcode: d.length === 12 ? '0' + d : d }, 'Could not look that up just now. Try again, or type the food in.');
+}
+/* The button and the little camera panel under the search box. onFood(result) gets a found product. */
+function foodScanControl(onFood) {
+  const status = h('p', { class: 'hint scan-status', role: 'status', 'aria-live': 'polite' });
+  const video = h('video', { class: 'scan-video', playsinline: '', muted: '', autoplay: '', 'aria-label': 'Camera view for scanning a barcode' });
+  video.muted = true;
+  const numberIn = h('input', { type: 'text', inputmode: 'numeric', autocomplete: 'off', class: 'input', id: 'scan-number', placeholder: '', maxlength: '20' });
+  const goBtn = h('button', { class: 'btn btn-secondary', type: 'button', text: 'Look it up' });
+  const closeBtn = h('button', { class: 'btn btn-plain', type: 'button', id: 'scan-close', text: 'Close the camera' });
+  const box = h('div', { class: 'scanbox', hidden: true, role: 'group', 'aria-label': 'Scan a barcode' },
+    h('div', { class: 'scan-view' }, video, h('div', { class: 'scan-frame', 'aria-hidden': 'true' })),
+    status,
+    h('label', { class: 'field', for: 'scan-number' }, h('span', { class: 'field-label', text: 'Or type the number under the barcode' }), numberIn),
+    h('div', { class: 'btnrow' }, goBtn, closeBtn));
+  const btn = h('button', { class: 'btn btn-secondary scan-btn', type: 'button', id: 'food-scan', 'aria-expanded': 'false' }, icon('barcode'), ' Scan a barcode');
+  let stop = null, busy = false;
+  const close = () => { if (stop) { stop(); stop = null; } box.hidden = true; btn.setAttribute('aria-expanded', 'false'); busy = false; };
+  const say = (t) => { status.textContent = t; };
+  const handle = async (code) => {
+    if (busy) return;
+    if (!barcodeValid(code)) { say('That number does not look right. Check it against the barcode and try again.'); return; }
+    busy = true; say('Found ' + code + '. Looking it up…');
+    try {
+      const r = await lookupBarcode(code);
+      busy = false;
+      if (!box.isConnected) return;
+      if (r.found) { close(); onFood(r); return; }
+      say('That barcode is not in the food database yet. Type its name in the box above, then "Enter from the packet" to add the label figures.');
+      if (!stop) startAgainSoon();
+    } catch (e) { busy = false; say(e.message || 'Could not look that up just now.'); }
+  };
+  const startCamera = () => {
+    stop = startBarcodeCamera(video, (code) => { stop = null; handle(code); }, (msg) => { say(msg); numberIn.focus(); });
+  };
+  let againTimer = null;
+  const startAgainSoon = () => { clearTimeout(againTimer); againTimer = setTimeout(() => { if (!box.hidden && !stop && !busy) { say('Point the camera at a barcode.'); startCamera(); } }, 3500); };
+  btn.addEventListener('click', () => {
+    if (!box.hidden) { close(); return; }
+    box.hidden = false; btn.setAttribute('aria-expanded', 'true');
+    say('Point the camera at the barcode. Hold it steady, about 15 cm away, with good light.');
+    startCamera();
+    box.scrollIntoView({ block: 'nearest' });
+  });
+  closeBtn.addEventListener('click', () => { clearTimeout(againTimer); close(); });
+  goBtn.addEventListener('click', () => handle(numberIn.value));
+  numberIn.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); handle(numberIn.value); } });
+  return h('div', { class: 'scanwrap' }, btn, box);
+}
+
 const SPEAK_HINT = 'Tap, say it, tap again to stop. The words appear in the box and can be changed like typed text.';
 const SPEAK_HINT_TIMES = 3;
 function speakHintsShown() { try { return Number(localStorage.getItem('daybook.speak.hints') || 0); } catch (e) { return SPEAK_HINT_TIMES; } }
@@ -2872,7 +2990,13 @@ function openAdd(type, editEntry) {
     what.addEventListener('input', renderPick);
     what.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' && what.value.trim()) { ev.preventDefault(); choose(what.value.trim(), findMeal(what.value) || findMeal(cleanName(what.value))); } });
     loadFoodTable().then(() => { if (!pick.hidden) renderPick(); });
-    pick.append(field('Food', what), list);
+    const scanControl = scanAvailable() ? foodScanControl((r) => {
+      const label = r.name + (r.hasFigures ? ': ' + (r.per100.kcal != null ? Math.round(r.per100.kcal) + ' kcal' : '') + (r.per100.prot != null ? ', ' + r.per100.prot + ' g protein' : '') + ' per 100 g' : '');
+      if (r.hasFigures) saveCustomFood(r.name, r.per100, { barcode: r.code, source: r.source });
+      choose(r.name, null);
+      toast(r.hasFigures ? 'Found ' + label + ' (Open Food Facts)' : 'Found ' + r.name + ', but the database has no nutrition figures for it.');
+    }) : null;
+    pick.append(field('Food', what), scanControl, list);
 
     /* The time is shown as a line, and only becomes a field when it needs changing */
     const timeField = field('Time', time);
@@ -4225,9 +4349,29 @@ function fuzzyPhrase(index, word) {
   return best && bestD <= (word.length >= 8 ? 2 : 1) ? lookupPhrase(index, best) : null;
 }
 
+/* Foods saved in My foods (typed from a packet or scanned) as table-shaped rows, so they are matched by name
+   before anything in the UK table, earn tags from their label values and carry their own figures into the
+   estimates (v172). Matched on the whole name, so "Ambrosia Rice Pudding" is that product and not the table's. */
+function customFoodRows() {
+  const list = (state.profile && state.profile.customFoods) || [];
+  return list.filter((f) => f && f.name).map((f) => ({
+    c: 'custom:' + String(f.name).trim().toLowerCase(), n: f.name, g: null,
+    kcal: f.kcal || 0, prot: f.prot || 0, fat: f.fat || 0, carb: f.carb || 0,
+    sat: f.sat != null ? f.sat : null, sugar: f.sugar != null ? f.sugar : null, fibre: f.fibre != null ? f.fibre : null, salt: f.salt != null ? f.salt : null
+  })).sort((a, b) => b.n.length - a.n.length);
+}
+
 /* Turn a food entry's text into matched table rows and the phrases nothing was found for */
 function matchFoodText(index, text) {
-  const clean = foodClean(text);
+  let clean = foodClean(text);
+  /* a saved or scanned product, named whole, comes out of the text first */
+  const customHits = [];
+  customFoodRows().forEach((row) => {
+    const key = foodClean(row.n);
+    if (key.length < 3) return;
+    const re = new RegExp('(^| )' + key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '( |$)');
+    if (re.test(clean)) { customHits.push({ row, key }); clean = clean.replace(re, ' , ').replace(/\s+/g, ' ').trim(); }
+  });
   const raw = clean.split(/\s+(?:and|with|on|in|plus|or)\s+|,|;|\/|&|\+/).map((p) => p.trim()).filter(Boolean);
   const phrases = [];
   const seenRaw = new Set();
@@ -4242,6 +4386,7 @@ function matchFoodText(index, text) {
   const matches = [];
   const unmatched = [];
   const take = (foods, phrase) => { foods.forEach((f) => { if (!seen.has(f.c)) { seen.add(f.c); matches.push({ phrase, food: f }); } }); };
+  customHits.forEach(({ row, key }) => take([row], key));
   pre.forEach((p) => take(index.alias.get(p), p));
   for (const phrase of phrases) {
     let hit = lookupPhrase(index, phrase);
@@ -4513,9 +4658,10 @@ function customFoodByName(name) {
   return list.find((f) => (f.name || '').trim().toLowerCase() === key) || null;
 }
 
-function saveCustomFood(name, per100) {
+function saveCustomFood(name, per100, extra) {
   const key = String(name || '').trim().toLowerCase();
   if (!key) return Promise.resolve();
+  const rd = (v) => (v == null || v === '' || isNaN(Number(v)) ? undefined : Math.round(Number(v) * 10) / 10);
   const entry = {
     name: name.trim(),
     kcal: Math.round((per100.kcal || 0) * 10) / 10,
@@ -4524,10 +4670,15 @@ function saveCustomFood(name, per100) {
     fat: Math.round((per100.fat || 0) * 10) / 10,
     addedBy: state.name
   };
+  /* A scanned product (v172) also carries the label's saturates, sugars, fibre and salt, which give it
+     the same tags (High sugar, Fibre and so on) as a table food, and the barcode it came from */
+  ['sat', 'sugar', 'fibre', 'salt'].forEach((k) => { const v = rd(per100[k]); if (v !== undefined) entry[k] = v; });
+  if (extra && extra.barcode) { entry.barcode = String(extra.barcode); entry.source = extra.source || 'Open Food Facts'; }
   const current = ((state.profile && state.profile.customFoods) || []).slice();
   const i = current.findIndex((f) => (f.name || '').trim().toLowerCase() === key);
   if (i >= 0) current[i] = entry; else current.push(entry);
-  if (state.demo) { state.profile = { ...state.profile, customFoods: current }; return Promise.resolve(); }
+  state.profile = { ...state.profile, customFoods: current }; // at once, so the sheet that follows can already use it
+  if (state.demo) return Promise.resolve();
   return setDoc(hdoc('profile', 'main'), { customFoods: current }, { merge: true }).catch((e) => { console.error(e); toast('Could not save to My foods'); });
 }
 

@@ -28,6 +28,7 @@ export default {
       if (url.pathname === '/beta-info' && request.method === 'GET') return withCors(request, await handleBetaInfo(url, env));
       if (url.pathname === '/feedback' && request.method === 'POST') return withCors(request, await handleFeedback(request, env));
       if (url.pathname === '/feedback-info' && request.method === 'POST') return withCors(request, await handleFeedbackInfo(request, env));
+      if (url.pathname === '/food' && request.method === 'POST') return withCors(request, await handleFood(request, env));
       if (url.pathname === '/send-report' && request.method === 'POST') return withCors(request, await handleSendReport(request, env));
       if (url.pathname === '/invite' && request.method === 'POST') return withCors(request, await handleInvite(request, env));
       if (url.pathname === '/invite-info' && request.method === 'GET') return withCors(request, await handleInviteInfo(url, env));
@@ -687,6 +688,47 @@ async function handleFeedbackInfo(request, env) {
   return json({ email: 'support@mymedicaldaybook.co.uk', phone: a.demo ? null : (env.BETA_PHONE || null) });
 }
 
+/* Barcode lookup (v172). POST /food { barcode }: any signed-in member (the demo included, it is only a public
+   product lookup). The bridge asks Open Food Facts (a free, open database of packaged food, ODbL licence, data
+   credited in the app) for that one number and hands back the name, brand and the per 100 g label figures; nothing
+   about the person goes with it (the request carries the bridge's own User-Agent, never the sign-in or the household),
+   and nothing is kept here beyond Cloudflare's day-long cache of the public answer. A miss is { found: false }, not
+   an error: plenty of UK own-brand products are not in the database, and the app then offers to type the label in. */
+const OFF_FIELDS = 'code,product_name,product_name_en,brands,quantity,serving_size,nutriments';
+const num = (v) => { const n = typeof v === 'string' ? parseFloat(v.replace(',', '.')) : v; return typeof n === 'number' && isFinite(n) ? n : null; };
+const r1 = (n) => (n == null ? null : Math.round(n * 10) / 10);
+function mapOffProduct(code, p) {
+  const n = (p && p.nutriments) || {};
+  let kcal = num(n['energy-kcal_100g']);
+  if (kcal == null) { const kj = num(n['energy-kj_100g']) != null ? num(n['energy-kj_100g']) : num(n['energy_100g']); if (kj != null) kcal = kj / 4.184; }
+  const per100 = { kcal: r1(kcal), prot: r1(num(n['proteins_100g'])), carb: r1(num(n['carbohydrates_100g'])), fat: r1(num(n['fat_100g'])), sat: r1(num(n['saturated-fat_100g'])), sugar: r1(num(n['sugars_100g'])), fibre: r1(num(n['fiber_100g'])), salt: r1(num(n['salt_100g'])) };
+  const name = clean(p.product_name || p.product_name_en || '', 90);
+  const brand = clean(String(p.brands || '').split(',')[0], 40);
+  if (!name && !brand) return { found: false, code };
+  const full = brand && !name.toLowerCase().includes(brand.toLowerCase()) ? (brand + ' ' + name).trim() : (name || brand);
+  const hasFigures = per100.kcal != null || per100.prot != null || per100.carb != null || per100.fat != null;
+  return { found: true, code, name: full, brand, quantity: clean(p.quantity, 40), serving: clean(p.serving_size, 40), per100, hasFigures, source: 'Open Food Facts' };
+}
+async function handleFood(request, env) {
+  const a = await whoIs(request, env); if (a.error) return a.error;
+  const body = await readJson(request);
+  const code = String((body && body.barcode) || '').replace(/\D/g, '');
+  if (code.length < 8 || code.length > 14) return json({ error: 'bad-barcode', message: 'That does not look like a barcode number. It has 8 to 14 digits.' }, 400);
+  let res;
+  try {
+    res = await fetch('https://world.openfoodfacts.org/api/v2/product/' + code + '.json?fields=' + OFF_FIELDS, {
+      headers: { 'User-Agent': 'MyMedicalDaybook/1.0 (support@mymedicaldaybook.co.uk)', Accept: 'application/json' },
+      cf: { cacheTtl: 86400, cacheEverything: true }
+    });
+  } catch (e) { console.error('open food facts', e && e.message); return json({ error: 'lookup-failed', message: 'Could not reach the food database just now. Try again, or type the food in.' }, 502); }
+  if (res.status === 404) return json({ found: false, code });
+  if (!res.ok) { console.error('open food facts status', res.status); return json({ error: 'lookup-failed', message: 'The food database is busy just now. Try again in a moment, or type the food in.' }, 502); }
+  let data = null;
+  try { data = await res.json(); } catch (e) { data = null; }
+  if (!data || data.status === 0 || !data.product) return json({ found: false, code });
+  return json(mapOffProduct(code, data.product));
+}
+
 /* Send to the team, sent by Daybook (v159). POST /send-report { kind, to, toName, subject, text, filename, pdf (base64),
    fromName }: a family member's report goes out by email from SEND_FROM ("Mark Brown via My Medical Daybook"), through
    Resend (the RESEND_API_KEY secret; without it the route answers "not switched on yet" and the app offers the share
@@ -994,7 +1036,7 @@ async function googleKey(kid, fetchFn) {
 }
 
 /* For the test harness only (scratchpad): nothing in the app or the workflow uses these */
-export const _test = { verifyFirebaseToken, askClaude, aiErrorMessage, EXPLAIN_SYSTEM, distanceKm, payloadFor, sha256Hex, hp, stretchNudgeDue, stretchTickedOn };
+export const _test = { mapOffProduct, handleFood, verifyFirebaseToken, askClaude, aiErrorMessage, EXPLAIN_SYSTEM, distanceKm, payloadFor, sha256Hex, hp, stretchNudgeDue, stretchTickedOn };
 
 /* ------------------------------------------------------------------ */
 /* Plumbing                                                             */
