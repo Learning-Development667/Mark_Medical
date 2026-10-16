@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '197';
+const APP_VERSION = '198';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -8513,7 +8513,8 @@ function medDoseLabel(m) {
   const p = splitDose(m), f = doseFormOf(p.form);
   const str = String(p.strength || '').trim();
   if (f.key === 'ml') return 'Liquid' + (str ? ', ' + str : '') + ', how many ml asked each time';
-  return f.label + (str ? (parseStrength(str) ? ', ' + str + ' each' : ', ' + str) : '') + ', how many asked each time';
+  const each = parseStrength(str) || (/\bml\b/i.test(str) && !/^each\b/i.test(str)); // "in 250 ml water each"
+  return f.label + (str ? ', ' + str + (each ? ' each' : '') : '') + ', how many asked each time';
 }
 function askCountNow(m) {
   return new Promise((resolve) => {
@@ -8821,6 +8822,14 @@ function composeDose(count, formKey, strength) {
   if (!str) return head;
   const p = parseStrength(str);
   if (p) return `${head} (${(Math.round(p.n * c * 100) / 100).toLocaleString('en-GB')} ${p.unit})`;
+  /* v198 (Mark: "if you change the number of sachets it should change the amount of water, 1 sachet 250, 2 500"):
+     a volume in the strength of one is for one, so it is multiplied by the count: "2 sachets, in 500 ml water" */
+  const vol = str.match(/([\d,]*\.?\d+)\s*ml\b/i);
+  if (vol) {
+    const per = parseFloat(vol[1].replace(/,/g, ''));
+    const scaled = str.replace(/^each\s+/i, '').replace(vol[0], (Math.round(per * c * 10) / 10).toLocaleString('en-GB') + ' ml');
+    return `${head}, ${scaled}`;
+  }
   if (/^each\b/i.test(str)) return `${head}, ${str}`; // "2 sachets, each in 250 ml water" (v197)
   return `${head} of ${str}`;
 }
@@ -8971,7 +8980,7 @@ function doseControls(parts, opts = {}) {
     count.unitEl.textContent = unitWord();
     countField.querySelector('.fieldlabel').textContent = f && f.key === 'ml' ? 'How many ml each time' : 'How many each time';
     doseLabel.textContent = !f ? 'Dose' : f.key === 'ml' ? 'Strength (optional, as on the bottle)' : `Strength of one ${f.one} (optional, as on the box)`;
-    dose.placeholder = !f ? 'e.g. 7,500 units, or apply to skin' : f.key === 'ml' ? 'e.g. 10 mg in 5 ml' : 'e.g. 500 mg';
+    dose.placeholder = !f ? 'e.g. 7,500 units, or apply to skin' : f.key === 'ml' ? 'e.g. 10 mg in 5 ml' : f.key === 'sachet' ? 'e.g. in 250 ml water' : 'e.g. 500 mg';
     const text = composeDose(count.value(), formIn.value, dose.value);
     dosePreview.textContent = text ? 'Each dose is logged as ' + text + '.' : '';
   };
