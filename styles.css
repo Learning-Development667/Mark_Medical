@@ -1710,3 +1710,14 @@ button.sidefx-inner { cursor: pointer; }
   .cal-cell.is-chemo:not(.is-done)::before { animation: none; background: none; }
 }
 .key-next { background: var(--teal-light); border: 2px solid var(--warm); box-shadow: 0 0 5px var(--warm); }
+
+/* Bigger writing boxes (v184): taller to start with, growing as you type, and a full-screen writing space */
+#sheet-body textarea { min-height: 9em; max-height: 50vh; overflow-y: auto; }
+.bigedit-open { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; margin: var(--s-1) 0 var(--s-2); }
+.bigedit-open .icon { width: 18px; height: 18px; }
+.bigedit { position: fixed; left: 0; right: 0; top: 0; height: 100dvh; z-index: 400; display: flex; flex-direction: column; gap: var(--s-3); padding: calc(var(--s-3) + var(--safe-t, 0px)) var(--s-4) calc(var(--s-3) + var(--safe-b, 0px)); background: var(--surface); color: var(--text-primary); overflow: hidden; }
+.bigedit-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); }
+.bigedit-title { margin: 0; font-family: var(--font-head); font-weight: 600; font-size: 20px; min-width: 0; overflow-wrap: anywhere; }
+.bigedit-done { min-height: 48px; min-width: 96px; margin: 0; }
+.bigedit-text { flex: 1 1 auto; width: 100%; min-height: 0; max-height: none !important; font-size: 18px; line-height: 1.55; resize: none; }
+.bigedit .speakbtn { flex: none; }

@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '183';
+const APP_VERSION = '184';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -351,8 +351,9 @@ function openSheet(title, body, onClose) {
   else $('sheet-title').focus({ preventScroll: true });
 }
 function closeSheet() {
+  closeBigEdit();
   clearSheetDrafts();
-  if (state.checkinProgress) { const keep = state.checkinProgress; state.checkinProgress = null; for (const k of keep) { const [slot, day] = k.split(':'); clearProgress(slot, day); } }
+  state.checkinProgress = null; /* an unfinished check-in is kept whatever closed the sheet; only Save or Start again clears it (v184) */
   if (state.sheetOnClose) { const fn = state.sheetOnClose; state.sheetOnClose = null; fn(); }
   $('sheet').hidden = true;
   $('sheet-body').replaceChildren();
@@ -361,7 +362,7 @@ function closeSheet() {
   const back = state.sheetOpener; state.sheetOpener = null;
   if (back && document.contains(back) && typeof back.focus === 'function') back.focus({ preventScroll: true });
 }
-document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && !$('sheet').hidden) { ev.preventDefault(); closeSheet(); } });
+document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && document.querySelector('.bigedit')) { ev.preventDefault(); closeBigEdit(); return; } if (ev.key === 'Escape' && !$('sheet').hidden) { ev.preventDefault(); closeSheet(); } });
 /* The on-screen keyboard. iPhone Safari lays the keyboard over the page rather than shrinking it, so a
    sheet anchored to the bottom ended up behind it and a check-in answer was typed blind (Mark, 5 October).
    The visual viewport is the part still visible: the sheet sits on its bottom edge and is no taller than
@@ -462,9 +463,49 @@ function restoreDraftsIn(root) {
     writeDrafts(all);
   });
   new MutationObserver((list) => {
-    for (const m of list) for (const n of m.addedNodes) if (n.nodeType === 1) restoreDraftsIn(n.matches && n.matches('textarea') ? n.parentNode : n);
+    for (const m of list) for (const n of m.addedNodes) if (n.nodeType === 1) { const root = n.matches && n.matches('textarea') ? n.parentNode : n; restoreDraftsIn(root); enhanceTextareas(root); }
   }).observe(body, { childList: true, subtree: true });
 })();
+/* Bigger writing boxes (v184): every text box in a sheet starts taller and grows as you type, and has an "Open full screen"
+   link for a whole screen to write in. The full-screen box is a second textarea kept in step with the first, so drafts, kept
+   check-ins and Tap to speak all see the same words. */
+function growBox(el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight + 4, Math.round(window.innerHeight * 0.5)) + 'px'; }
+function enhanceTextareas(root) {
+  for (const el of root.querySelectorAll ? root.querySelectorAll('textarea') : []) {
+    if (el.dataset.big || el.readOnly || el.closest('.bigedit')) continue;
+    el.dataset.big = '1';
+    el.addEventListener('input', () => growBox(el));
+    requestAnimationFrame(() => growBox(el));
+    const open = h('button', { class: 'btn-link bigedit-open', type: 'button', 'aria-haspopup': 'dialog', onclick: () => openBigEdit(el) }, icon('expand'), ' Open full screen');
+    el.after(open);
+  }
+}
+function closeBigEdit() {
+  const o = document.querySelector('.bigedit');
+  if (!o) return;
+  const lis = o.querySelector('.speakbtn.is-listening'); if (lis) lis.click();
+  if (o._vv && window.visualViewport) { window.visualViewport.removeEventListener('resize', o._vv); window.visualViewport.removeEventListener('scroll', o._vv); }
+  o.remove();
+  $('sheet').inert = false;
+  const t = o._for; if (t && document.contains(t)) growBox(t);
+}
+function openBigEdit(el) {
+  closeBigEdit();
+  const label = (el.closest('.field') && el.closest('.field').firstElementChild && el.closest('.field').firstElementChild !== el ? el.closest('.field').firstElementChild.textContent.trim() : '') || (document.querySelector('#sheet-body .wiz-q') && document.querySelector('#sheet-body .wiz-q').textContent.trim()) || 'Writing space';
+  const big = h('textarea', { class: 'bigedit-text', 'aria-label': label, placeholder: el.placeholder || '' });
+  big.value = el.value;
+  big.addEventListener('input', () => { el.value = big.value; el.dispatchEvent(new Event('input', { bubbles: true })); });
+  const done = h('button', { class: 'btn btn-primary bigedit-done', type: 'button', onclick: closeBigEdit }, 'Done');
+  const speak = speakButton(big);
+  const o = h('div', { class: 'bigedit', role: 'dialog', 'aria-modal': 'true', 'aria-label': label },
+    h('div', { class: 'bigedit-head' }, h('p', { class: 'bigedit-title', text: label }), done), big, speak || '');
+  o._for = el;
+  const fit = () => { const v = window.visualViewport; if (!v) return; o.style.height = v.height + 'px'; o.style.top = v.offsetTop + 'px'; };
+  o._vv = fit; if (window.visualViewport) { window.visualViewport.addEventListener('resize', fit); window.visualViewport.addEventListener('scroll', fit); }
+  document.body.append(o); fit();
+  $('sheet').inert = true;
+  big.focus(); big.setSelectionRange(big.value.length, big.value.length);
+}
 function clearSheetDrafts() {
   if ($('sheet').hidden) return;
   const all = readDrafts();
@@ -7008,7 +7049,7 @@ function openCheckin(slot, initialDay) {
   /* editing a saved check-in opens straight on the review screen: every answer is there, tap one to change it */
   if (existing) step = qs.length;
   const keep = () => { if (!existing && !state.readOnly) writeProgress(slot, day, answers, step); };
-  let keepTimer = null;
+  let keepTimer = null, finished = false;
   const keepSoon = () => { clearTimeout(keepTimer); keepTimer = setTimeout(() => { if (capture) capture(); keep(); }, 300); };
   let capture = null;
 
@@ -7055,7 +7096,7 @@ function openCheckin(slot, initialDay) {
         restoredNote = true;
         const at = new Date(restored.at);
         wrap.append(h('div', { class: 'draftnote', role: 'status' },
-          h('span', { text: `Your unfinished check-in from ${fmtTime(at)}${dayStr(at) === today ? '' : ' on ' + fmtDayShort(dayStr(at))} is back, as you left it.` }),
+          h('span', { text: `${restored.by && restored.by !== state.name ? restored.by + "'s unfinished" : 'Your unfinished'} check-in from ${fmtTime(at)}${dayStr(at) === today ? '' : ' on ' + fmtDayShort(dayStr(at))} is back, as you left it.` }),
           h('button', { class: 'btn-inline', type: 'button', onclick: () => { clearProgress(slot, day); restored = null; load(); step = 0; dir = -1; render(); } }, 'Start again')));
       }
       wrap.append(h('p', { class: 'wiz-q', text: q.q }));
@@ -7136,6 +7177,7 @@ function openCheckin(slot, initialDay) {
       const save = h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
         save.disabled = true;
         await saveCheckin(slot, day, answers, existing);
+        finished = true; clearTimeout(keepTimer); clearProgress(slot, day);
         closeSheet();
       } }, existing ? 'Save changes' : 'Save check-in');
       wrap.append(save, h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => { dir = -1; step = qs.length - 1; fromReview = false; render(); } }, 'Back'), cancelLink() || '');
@@ -7149,7 +7191,9 @@ function openCheckin(slot, initialDay) {
   render();
   body.dataset.draft = slot + ':' + day;
   body.dataset.reopen = 'checkin:' + slot + ':' + day;
-  openSheet(checkinTitle(slot), body);
+  /* closing by any route (X, backdrop, Escape) writes what is on the step first, so the last words are kept too */
+  const hasAnswers = () => Object.keys(answers).some((k) => { const v = answers[k]; if (k === 'sleepHours' && sleepFrom) return false; return v != null && v !== '' && !(Array.isArray(v) && !v.length) && !(typeof v === 'object' && !Array.isArray(v) && !Object.values(v).some((x) => x != null)); });
+  openSheet(checkinTitle(slot), body, () => { clearTimeout(keepTimer); if (!finished) { if (capture) capture(); if (hasAnswers()) keep(); } });
 }
 
 /* opts (v166): { quiet } saves with no toast and no "edited" stamp on a check still being filled in (Your week saves as it
