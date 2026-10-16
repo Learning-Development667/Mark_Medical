@@ -802,6 +802,7 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 .med-name { font-size: var(--fs-lg); font-weight: 700; line-height: 1.2; }
 .med-dose { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text-secondary); font-size: 16px; margin-top: 2px; }
 .med-how { color: var(--text-secondary); font-size: 16px; }
+.med-was { color: var(--teal); font-size: 15px; margin-top: 2px; overflow-wrap: anywhere; }
 .med-purpose { display: inline-flex; align-items: center; min-height: 30px; background: var(--surface-sunken); border-radius: var(--r-pill); padding: 2px 12px; font-size: 15px; font-weight: 600; color: var(--text-secondary); text-align: center; min-width: 0; flex-shrink: 1; }
 .med-status { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .dots { display: flex; gap: 6px; }
