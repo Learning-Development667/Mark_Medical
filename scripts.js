@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '186';
+const APP_VERSION = '187';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -7449,13 +7449,39 @@ function medStatus(m) {
   if (m.kind === 'scheduled' && m.courseEnd && m.courseEnd < todayStr()) return { level: 'green', text: 'Course complete' };
   return { level: 'teal', text: 'Taking now' };
 }
+/* The dose a medicine was taken at (v187). Shelley put Mark's Zomorph up from 10 mg to 30 mg and the old
+   one, now under Finished, read 30 mg too: a medicine has one Dose box, Edit overwrites it, and the
+   finished and stopped lists read that box. Every logged dose carries the amount it was taken at, so
+   anything no longer being taken shows the box only when some dose was really taken at it, otherwise
+   the dose most often logged (the latest of equals), so a one-off "2 tablets" does not take over. */
+function shownDose(m, doses) {
+  const box = (m.dose || '').trim();
+  if (medStatus(m).text === 'Taking now') return box;
+  const list = (doses || state.recentEntries.filter((e) => e.type === 'med' && e.medId === m.id))
+    .filter((e) => e.dose && String(e.dose).trim()).slice().sort((a, b) => entryDate(a) - entryDate(b));
+  if (!list.length || list.some((e) => String(e.dose).trim() === box)) return box;
+  const n = new Map();
+  list.forEach((e) => { const d = String(e.dose).trim(); n.set(d, (n.get(d) || 0) + 1); });
+  let best = '', most = 0;
+  n.forEach((c, d) => { if (c >= most) { most = c; best = d; } });
+  return best || box;
+}
+/* A dose changed in Edit medicine is noted on the medicine (v187): { from, to, day, by } */
+function doseChangeText(c) {
+  return `Dose changed from ${c.from} to ${c.to} on ${fmtDayShort(c.day)}${c.by ? ', by ' + c.by : ''}.`;
+}
+function recentDoseChange(m, days = 14) {
+  const list = Array.isArray(m.doseChanges) ? m.doseChanges : [];
+  const c = list[list.length - 1];
+  return c && c.day >= addDays(todayStr(), -days) ? c : null;
+}
 function finishedCard(m) {
   const last = lastMedEntry(m.id);
   return h('div', { class: 'card med is-finished' },
     h('div', { class: 'med-head' },
       h('div', null,
         h('div', { class: 'med-name', text: m.name }),
-        h('div', { class: 'med-dose', text: [m.dose, medFrequency(m)].filter(Boolean).join(' \u00b7 ') }),
+        h('div', { class: 'med-dose', text: [shownDose(m), medFrequency(m)].filter(Boolean).join(' \u00b7 ') }),
         m.how ? h('div', { class: 'med-how', text: m.how }) : null),
       m.purpose ? h('span', { class: 'med-purpose', text: m.purpose }) : null),
     h('div', { class: 'med-status' },
@@ -8019,7 +8045,7 @@ function openMedHistoryList() {
     return h('button', { class: 'pickrow medhist-row', type: 'button', onclick: () => openMedHistory(m, true) },
       h('span', { class: 'pickrow-main' },
         h('span', { class: 'pickrow-title', text: m.name }),
-        h('span', { class: 'pickrow-sub', text: [m.dose, medFrequency(m)].filter(Boolean).join(' \u00b7 ') + (st.text === 'Course complete' ? '. Ended ' + fmtDayShort(m.courseEnd) + '.' : '') })),
+        h('span', { class: 'pickrow-sub', text: [shownDose(m), medFrequency(m)].filter(Boolean).join(' \u00b7 ') + (st.text === 'Course complete' ? '. Ended ' + fmtDayShort(m.courseEnd) + '.' : '') })),
       h('span', { class: 'pill pill-' + st.level, text: st.text }));
   };
   state.medsPdf = { from: null, to: todayStr(), filename: `Daybook medicine history ${todayStr()}.pdf` };
@@ -8064,9 +8090,9 @@ function buildMedsReport(doses, sideFx = []) {
     const days = [...new Set(ds.map((e) => e.day))];
     return { ds, days, first: ds.length ? ds[0].day : null, last: ds.length ? ds[ds.length - 1] : null };
   };
-  const otherDoses = (m, ds) => {
+  const otherDoses = (shown, ds) => {
     const c = {};
-    ds.forEach((e) => { if (e.dose && m.dose && e.dose.trim() !== m.dose.trim()) c[e.dose.trim()] = (c[e.dose.trim()] || 0) + 1; });
+    ds.forEach((e) => { if (e.dose && shown && e.dose.trim() !== shown.trim()) c[e.dose.trim()] = (c[e.dose.trim()] || 0) + 1; });
     return Object.keys(c).map((d) => `Also logged as ${d} (${c[d] === 1 ? 'once' : c[d] + ' times'})`);
   };
   /* days used of the last 14 complete days, for the When needed tile */
@@ -8077,7 +8103,10 @@ function buildMedsReport(doses, sideFx = []) {
     const norm = (t) => String(t || '').trim().toLowerCase().replace(/^once\b/, '1 times').replace(/^twice\b/, '2 times').replace(/^three times\b/, '3 times').replace(/^four times\b/, '4 times');
     const freq = medFrequency(m), how = (m.how || '').trim();
     const lines = how && norm(how).startsWith(norm(freq)) ? [how] : how ? [freq, how] : [freq];
-    const r = { name: m.name, purpose: m.purpose || '', dose: m.dose || '', lines, also: otherDoses(m, st.ds), taken: '', takenSub: '', doses: '', dosesSub: [], last14: '', bar: null, tag: null };
+    /* a finished or stopped medicine at the dose it was last taken at, not what its Dose box says now (v187) */
+    const shown = kind === 'now' ? (m.dose || '') : shownDose(m, st.ds);
+    const changes = kind === 'now' && Array.isArray(m.doseChanges) ? m.doseChanges.map(doseChangeText) : [];
+    const r = { name: m.name, purpose: m.purpose || '', dose: shown, lines, also: [...changes, ...otherDoses(shown, st.ds)], taken: '', takenSub: '', doses: '', dosesSub: [], last14: '', bar: null, tag: null };
     r.fx = fxLine(m);
     if (kind === 'done') r.tag = { text: 'Finished course', cls: 'green' };
     if (kind === 'stopped') r.tag = { text: 'Stopped', cls: 'slate' };
@@ -8183,9 +8212,10 @@ async function openMedHistory(m, fromList) {
   const body = h('div', null,
     h('div', { class: 'medhist-head' },
       h('span', { class: 'pill pill-' + st.level, text: st.text }),
-      h('p', { class: 'medhist-dose', text: [m.dose, medFrequency(m)].filter(Boolean).join(' \u00b7 ') }),
+      h('p', { class: 'medhist-dose', text: [shownDose(m), medFrequency(m)].filter(Boolean).join(' \u00b7 ') }),
       m.how ? h('p', { class: 'muted', text: m.how }) : null,
       m.purpose ? h('p', { class: 'muted', text: 'For: ' + m.purpose }) : null,
+      ...(Array.isArray(m.doseChanges) ? m.doseChanges : []).map((c) => h('p', { class: 'muted medhist-change', text: doseChangeText(c) })),
       m.courseEnd ? h('p', { class: 'muted', text: (m.courseEnd < todayStr() ? 'Course ended ' : 'Course ends ') + fmtDayLong(m.courseEnd) + '.' }) : null),
     out,
     fromList ? h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: openMedHistoryList }, 'All medicines') : null,
@@ -8205,6 +8235,7 @@ async function openMedHistory(m, fromList) {
   try { doses = await loadMedDoses(m); }
   catch (e) { console.error(e); out.replaceChildren(h('p', { class: 'hint', text: 'Could not load the doses. Check the connection and try again.' })); return; }
   doses.sort((a, b) => entryDate(b) - entryDate(a));
+  if (doses.length && st.text !== 'Taking now') { const dl = body.querySelector('.medhist-dose'); if (dl) dl.textContent = [shownDose(m, doses), medFrequency(m)].filter(Boolean).join(' \u00b7 '); }
   if (!doses.length) { out.replaceChildren(h('p', { class: 'empty', 'data-art': 'pill', text: 'No doses logged yet.' })); return; }
   const days = [...new Set(doses.map((e) => e.day))];
   const first = doses[doses.length - 1].day, last = doses[0].day;
@@ -8246,6 +8277,7 @@ function medCard(m, day) {
       h('div', { class: 'med-name', text: m.name }),
       m.hospital ? h('span', { class: 'pill pill-hosp med-hosp', text: 'Given in hospital' }) : null,
       h('div', { class: 'med-dose', text: [m.dose, m.hospital && m.route ? ROUTE_WORDS[m.route] : ''].filter(Boolean).join(' \u00b7 ') }),
+      recentDoseChange(m) ? h('div', { class: 'med-was', text: doseChangeText(recentDoseChange(m)) }) : null,
       h('div', { class: 'med-how', text: m.how })
     ),
     m.purpose ? h('span', { class: 'med-purpose', text: m.purpose }) : null
@@ -8695,7 +8727,9 @@ function openEditMed(m, prefill) {
   const body = h('div', null,
     isNew && explainAvailable() ? h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => readMedicinePhoto((data) => openEditMed(null, data), () => openEditMed(null, pf)) }, 'Read it from a photo') : null,
     isNew && explainAvailable() ? h('p', { class: 'hint', text: "A photo of the box or the pharmacy label. Daybook Assistant (AI from Anthropic, in the US) reads it, and the details fill in below. It can misread a label, so check the name and dose before adding." }) : null,
-    field('Name', name), field('Dose', dose), field('How and when', how), field('What it is for', purpose),
+    field('Name', name), field('Dose', dose),
+    isNew ? null : h('p', { class: 'hint med-dose-hint', text: 'Changing the dose? Type the new one here and save. It stays the same medicine: the doses already logged keep the amount they were taken at, and the change is noted in its history. There is no need to add it again or end this one.' }),
+    field('How and when', how), field('What it is for', purpose),
     h('label', { class: 'check' }, hospital, h('span', { text: 'Given by the hospital (hospital monitored)' })),
     h('p', { class: 'hint', text: 'Tick this for a drip, an injection or anything the nurses give. Its doses are marked as given in hospital, and Daybook sends no reminders for it.' }),
     hospFields,
@@ -8709,6 +8743,12 @@ function openEditMed(m, prefill) {
         hospital: hospital.checked, route: hospital.checked ? routeIn.value : null,
         order: m.order || (Math.max(0, ...state.medicines.map((x) => x.order || 0)) + 1)
       };
+      /* a new dose on a medicine still being taken is noted, so its history says when it changed (v187) */
+      const oldDose = (m.dose || '').trim();
+      const stillTaken = active.checked && !(kind.value === 'scheduled' && courseEnd.value && courseEnd.value < todayStr());
+      if (!isNew && oldDose && data.dose && data.dose !== oldDose && stillTaken) {
+        data.doseChanges = [...(Array.isArray(m.doseChanges) ? m.doseChanges : []), { from: oldDose, to: data.dose, day: todayStr(), by: state.name || '' }];
+      }
       if (kind.value === 'scheduled') {
         data.perDay = hospital.checked ? null : Math.max(1, parseInt(perDay.value, 10) || 1);
         data.courseEnd = courseEnd.value || null;
