@@ -480,6 +480,7 @@ body.is-viewer #meds-manage,
 body.is-viewer #meds-hospital-add,
 body.is-viewer .med-actions,
 body.is-viewer #chemo-cycle-section,
+body.is-viewer #chemo-add-run,
 body.is-viewer #chemo-docs-section,
 body.is-viewer #meds-docs-section { display: none; }
 body.is-viewer .cal-cell { pointer-events: none; }
@@ -497,6 +498,7 @@ body.is-readonly .med-actions,
 body.is-readonly #meds-doc-add,
 body.is-readonly #vitals-log,
 body.is-readonly #chemo-doc-add,
+body.is-readonly #chemo-add-run,
 body.is-readonly #ex-steps-edit,
 body.is-readonly #ex-goals-edit,
 body.is-readonly #doc-add,
@@ -1739,3 +1741,15 @@ button.sidefx-inner { cursor: pointer; }
 .bigedit-title { margin: 0; flex: none; font-family: var(--font-head); font-weight: 600; font-size: 18px; color: var(--text-secondary); overflow-wrap: anywhere; }
 .bigedit-text { flex: 1 1 auto; width: 100%; min-height: 0; max-height: none !important; font-size: 18px; line-height: 1.55; resize: none; }
 .bigedit .speakbtn { flex: none; }
+
+/* Cycles (v189): rest days, the cycle lines under the calendar, Add sessions, and the side effects step in the check-ins */
+#chemo-add-run { margin-top: var(--s-3); }
+.cal-cell.is-rest { background: repeating-linear-gradient(135deg, var(--surface-sunken) 0 6px, transparent 6px 12px); color: var(--text-secondary); }
+.key-rest { background: repeating-linear-gradient(135deg, var(--border-subtle) 0 3px, transparent 3px 6px); border: 1px solid var(--border-subtle); }
+.cal-cycles { list-style: none; margin: var(--s-3) var(--s-1) 0; padding: 0; display: grid; gap: var(--s-1); font-size: var(--fs-sm); color: var(--text-secondary); }
+.cal-cycles strong { color: var(--text-primary); }
+.cyc-where { font-weight: 600; color: var(--teal); margin: 0 0 var(--s-2); }
+.cyc-move { margin: var(--s-2) 0; }
+.cyc-preview { margin: var(--s-3) 0; padding: var(--s-3); border-radius: var(--r-sm); background: var(--surface-sunken); color: var(--text-primary); }
+.cycle-views { margin-bottom: var(--s-2); }
+.fx-row .taps-label { margin-bottom: var(--s-1); }

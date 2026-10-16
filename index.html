@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=188">
+  <link rel="stylesheet" href="styles.css?v=189">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -411,6 +411,7 @@
           <div class="progress-head"><span class="tile-label">Sessions</span><span class="mono" id="chemo-count">0 of 0 done</span></div>
           <div class="progress-bar"><div id="chemo-bar"></div></div>
           <p class="muted" id="chemo-next">Tap a day on the calendar to mark a treatment session.</p>
+          <button id="chemo-add-run" class="btn btn-secondary btn-block" type="button">Add sessions</button>
         </div>
 
         <div class="card cal">
@@ -421,7 +422,8 @@
           </div>
           <div class="cal-dow"><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span></div>
           <div class="cal-grid" id="cal-grid"></div>
-          <p class="cal-key"><span class="key-dot key-chemo"></span> Session <span class="key-dot key-gold"></span> Done <span class="key-dot key-next"></span> Planned <span class="key-letters">C chemo · R radiotherapy · I immunotherapy · O other</span> <span class="key-mood"><svg class="cal-face mood-5" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="5" class="mood-fill"/></svg><svg class="cal-face mood-3" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="5" class="mood-fill"/></svg><svg class="cal-face mood-1" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="4" class="mood-ring"/></svg> Mood, good to rough</span></p>
+          <ul class="cal-cycles" id="cal-cycles" hidden></ul>
+          <p class="cal-key"><span class="key-dot key-chemo"></span> Session <span class="key-dot key-gold"></span> Done  <span class="key-dot key-next"></span> Planned <span class="key-dot key-rest"></span> Rest week <span class="key-letters">C chemo · R radiotherapy · I immunotherapy · O other</span> <span class="key-mood"><svg class="cal-face mood-5" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="5" class="mood-fill"/></svg><svg class="cal-face mood-3" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="5" class="mood-fill"/></svg><svg class="cal-face mood-1" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="4" class="mood-ring"/></svg> Mood, good to rough</span></p>
         </div>
 
         <div id="chemo-cycle-section">
@@ -450,11 +452,12 @@
             <p id="sidefx-empty" class="empty" data-art="note" hidden>No side effects logged yet.</p>
           </div>
           <div class="card chart-card" id="cycle-card">
-            <h2 class="section-title">By day after treatment</h2>
+            <h2 class="section-title">How treatment goes</h2>
+            <div class="segmented cycle-views" role="group" aria-label="Look at" id="cycle-views"></div>
             <div class="segmented segmented-wrap" role="group" aria-label="Measure" id="cycle-measures"></div>
             <p class="cycle-note" id="cycle-note"></p>
             <div class="chart-wrap" id="cycle-wrap"><canvas id="chart-cycle"></canvas></div>
-            <p class="legend-note">Each point is the average of every cycle so far, day 0 being the chemo or immunotherapy session itself (a run of radiotherapy counts from its first day). Your check-ins make the solid line, the carer's view the dashed one.</p>
+            <p class="legend-note" id="cycle-legend"></p>
           </div>
         </div>
 
@@ -1040,6 +1043,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=188"></script>
+  <script type="module" src="scripts.js?v=189"></script>
 </body>
 </html>
