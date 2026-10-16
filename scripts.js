@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '200';
+const APP_VERSION = '201';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -3114,6 +3114,26 @@ function openAdd(type, editEntry, preset) {
       showDetails();
     };
     const cleanName = (n) => parseQuantityName(n).name;
+    /* Packaged foods by name (v201): the typed words go to Open Food Facts through the bridge, 450 ms after typing
+       stops, UK products first; a chosen product is saved into My foods exactly as a scanned one, so it is matched
+       whole next time. Only with the bridge and a sign-in (the preview never asks). */
+    const packaged = new Map(); // query -> products, or null while asked
+    let packTimer = null;
+    const askPackaged = (tq) => {
+      clearTimeout(packTimer);
+      packTimer = setTimeout(async () => {
+        if (packaged.has(tq)) return;
+        packaged.set(tq, null);
+        try { const r = await bridgeCall('/food', { query: tq }); packaged.set(tq, (r && r.products) || []); }
+        catch (e) { packaged.set(tq, []); }
+        if (pick.isConnected && !pick.hidden && parseQuantityName(what.value.trim()).name.toLowerCase() === tq) renderPick();
+      }, 450);
+    };
+    const takePackaged = (p) => {
+      if (p.hasFigures) saveCustomFood(p.name, p.per100, { barcode: p.code, source: p.source });
+      choose(p.name, null);
+      toast(p.hasFigures ? 'Found ' + p.name + ' (Open Food Facts), saved to My foods' : 'Found ' + p.name + ', but the database has no nutrition figures for it.');
+    };
     const renderPick = () => {
       const q = what.value.trim().toLowerCase();
       const rows = [];
@@ -3149,6 +3169,14 @@ function openAdd(type, editEntry, preset) {
           if (tableHits.length) { rows.push(heading('UK food table')); tableHits.forEach((f) => rows.push(pickRow(f.n, '', () => choose(cleaned.count ? `${cleaned.count} x ${f.n}` : f.n, null)))); }
           else if (!mealHits.length && !customHits.length) rows.push(h('p', { class: 'hint', text: 'Nothing close in the UK food table. Log it as typed, then say what is in it.' }));
         }
+        if (explainAvailable() && tq.length >= 3) {
+          const hits = packaged.get(tq);
+          if (hits === undefined || hits === null) { if (hits === undefined) askPackaged(tq); rows.push(h('p', { class: 'hint pack-wait', text: 'Looking in packaged foods…' })); }
+          else if (hits.length) {
+            rows.push(heading('Packaged foods'));
+            hits.forEach((p) => rows.push(pickRow(p.name, [p.quantity, p.hasFigures && p.per100.kcal != null ? Math.round(p.per100.kcal) + ' kcal per 100 g' : ''].filter(Boolean).join(' · ') || 'Open Food Facts', () => takePackaged(p))));
+          }
+        }
       }
       list.replaceChildren(...rows);
     };
@@ -3161,7 +3189,7 @@ function openAdd(type, editEntry, preset) {
       choose(r.name, null);
       toast(r.hasFigures ? 'Found ' + label + ' (Open Food Facts)' : 'Found ' + r.name + ', but the database has no nutrition figures for it.');
     }) : null;
-    pick.append(field('Food', what), scanControl, list);
+    pick.append(field('Food', what), ...(scanControl ? [scanControl] : []), list); // no camera: nothing between (v201; `null` drew the word)
 
     /* The time is shown as a line, and only becomes a field when it needs changing */
     const timeField = field('Time', time);
