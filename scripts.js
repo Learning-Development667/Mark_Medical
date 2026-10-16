@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '193';
+const APP_VERSION = '194';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -6036,6 +6036,43 @@ async function notesReportBlob() {
    period, as on the report), newest first. With Daybook Assistant's summary each week shows its
    theme and dated entries; without, its few most telling notes. */
 function aiWeek(w) { const s = state.notesAI; return s && state.notesPdf && s.range === state.notesPdf.from + '|' + state.notesPdf.to && s.weeks[w.key] ? s.weeks[w.key] : null; }
+/* Fix the words from a report (v194, Mark: "really bad spelling mistakes" seen in a report, and a way to go
+   straight to the note, fix it and come back). Every note shown on Notes for the team and the Pain report carries
+   its source (src: the entry's id, the field holding the words, a label, the day and time); "Fix the words" opens one
+   box with those words, Save writes that field alone (a check-in gets its edited stamp), the sheet closes on the
+   report, and the report is drawn again from the corrected words, so its pages are too. */
+function notesAllOpen() { if (!state.notesAllOpen) state.notesAllOpen = new Set(); return state.notesAllOpen; }
+function fixWordsLink(src, redraw) {
+  if (!src || !src.id || state.readOnly || state.viewer) return '';
+  return h('button', { class: 'btn btn-link btn-small fixwords', type: 'button', 'aria-label': 'Fix the words of the ' + src.label.toLowerCase() + ', ' + fmtDayShort(src.day) + ' ' + (src.time || ''), onclick: () => openFixWords(src, redraw) },
+    icon('edit'), 'Fix the words');
+}
+function openFixWords(src, redraw) {
+  const box = h('textarea', { rows: '6', 'aria-label': src.label });
+  box.value = String(src.words || '');
+  const save = h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
+    const words = box.value.trim();
+    if (!words) { toast('Type the words, or delete the entry from Today instead'); box.focus(); return; }
+    if (words === String(src.words || '').trim()) { closeSheet(); return; }
+    save.disabled = true;
+    const patch = { [src.field]: words };
+    if (src.checkin) { patch.editedBy = state.name; patch.editedAt = stampNow(); }
+    try {
+      await updateEntry(src.id, patch);
+      state.cycleFetched = 0;
+      closeSheet();
+      toast('Fixed. Back to the report.');
+      if (redraw) redraw();
+    } catch (e) { console.error(e); save.disabled = false; toast('Could not save the change'); }
+  } }, 'Save and back to the report');
+  openSheet('Fix the words', h('div', null,
+    h('p', { class: 'fix-where', text: src.label }),
+    h('p', { class: 'hint', text: fmtDayLong(src.day) + (src.time ? ', ' + src.time : '') + (src.who ? '. Written by ' + src.who + '.' : '.') + ' Only these words change; everything else about the entry stays as it is.' }),
+    box, speakButton(box) || '',
+    save,
+    h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Back to the report without changing it')));
+  setTimeout(() => { box.focus(); box.setSelectionRange(box.value.length, box.value.length); }, 60);
+}
 function renderWeeklyNotes(report) {
   const box = $('notes-days');
   const btn = $('notes-weekly');
@@ -6048,13 +6085,15 @@ function renderWeeklyNotes(report) {
       h('h3', { class: 'diary-title' }, weekLabel(w), h('small', { text: plural(w.notes.length, 'note') })),
       ai ? h('div', null, ai.theme ? h('p', { class: 'weektheme', text: ai.theme }) : '',
           h('ul', { class: 'weekpoints' }, ...ai.entries.map((e) => h('li', { class: e.alert ? 'is-alert' : '' }, h('b', { text: (e.to && e.to !== e.day ? rRange(e.day, e.to) : rDay(e.day)) + ' ' }), e.text))))
-        : h('ul', { class: 'timeline' }, ...w.shown.map((n) => h('li', { class: 'entry type-note' },
+        : h('ul', { class: 'timeline' }, ...(notesAllOpen().has(w.from) ? w.notes.slice().sort((a, b) => (a.day + a.time).localeCompare(b.day + b.time)) : w.shown).map((n) => h('li', { class: 'entry type-note' },
             h('span', { class: 'entry-time', text: n.time }),
             h('div', { class: 'entry-main' },
               h('div', { class: 'entry-sub' }, h('span', { class: 'note-who', text: n.who }), ' · ' + fmtDayShort(n.day) + ' ' + n.time + (n.context ? ' · ' + n.context : '')),
-              h('div', { class: 'entry-title', text: n.text }))))),
+              h('div', { class: 'entry-title', text: n.text }),
+              fixWordsLink(n.src, renderNotesReport))))),
       ai ? h('p', { class: 'muted weekmore', text: 'Summarised from the notes by Daybook Assistant, an AI helper. It can miss or misread things; every note is in Daybook.' })
-        : w.more > 0 ? h('p', { class: 'muted weekmore', text: `And ${plural(w.more, 'more note')} in Daybook, on Today for each day.` }) : '');
+        : w.more > 0 || notesAllOpen().has(w.from) ? h('button', { class: 'btn btn-link btn-small weekmore', type: 'button', onclick: () => { const o = notesAllOpen(); if (o.has(w.from)) o.delete(w.from); else o.add(w.from); renderWeeklyNotes(report); } },
+          notesAllOpen().has(w.from) ? 'Show the most telling notes only' : `Show all ${w.notes.length} notes this week, to check or fix them`) : '');
   }));
   if (!report.weeks.length) box.append(h('p', { class: 'muted', text: 'No written notes in this period.' }));
 }
@@ -6641,15 +6680,15 @@ function buildNotesReport(entries, questionsAll, from, to, rangeLabel) {
   for (let day = from; day <= to; day = addDays(day, 1)) {
     const list = (byDay[day] || []).slice().sort((a, b) => entryDate(a) - entryDate(b));
     const notes = list.filter((e) => e.type === 'note' || (e.note && ['temp', 'weight', 'vitals', 'med', 'pain', 'bowel', 'symptom'].includes(e.type)))
-      .map((e) => ({ time: fmtTime(entryDate(e)), who: e.addedBy || 'unknown', text: e.note, context: e.type === 'note' ? '' : noteContext(e) }));
+      .map((e) => ({ time: fmtTime(entryDate(e)), who: e.addedBy || 'unknown', text: e.note, context: e.type === 'note' ? '' : noteContext(e), src: { id: e.id, field: 'note', words: e.note, label: e.type === 'note' ? 'Note' : 'Note ' + (/^with /.test(noteContext(e)) ? '' : 'with ') + noteContext(e), day: e.day, time: fmtTime(entryDate(e)), who: e.addedBy } }));
     list.filter((e) => e.type === 'checkin' && !isWeekSlot(e.slot)).forEach((e) => {
       const keys = e.slot === 'carer' ? REPORT_CARER_KEYS : REPORT_CHECKIN_KEYS;
       keys.forEach(([k, label]) => {
-        if (e[k]) notes.push({ time: fmtTime(entryDate(e)), who: e.addedBy || 'unknown', text: label + ': ' + e[k], context: e.slot === 'carer' ? "carer's view" : e.slot + ' check-in' });
+        if (e[k]) notes.push({ time: fmtTime(entryDate(e)), who: e.addedBy || 'unknown', text: label + ': ' + e[k], context: e.slot === 'carer' ? "carer's view" : e.slot + ' check-in', src: { id: e.id, field: k, words: e[k], label: checkinTitle(e.slot, e) + ': ' + label, day: e.day, time: fmtTime(entryDate(e)), who: e.addedBy, checkin: true } });
       });
       /* the words under a pain slider (v128): "Pain 8/10: lower back, worse when I stand" */
       (CHECKIN_QUESTIONS[e.slot] || []).filter((q) => q.note && e[q.note]).forEach((q) => {
-        notes.push({ time: fmtTime(entryDate(e)), who: e.addedBy || 'unknown', text: CHECKIN_LABELS[q.key] + (e[q.key] != null ? ' ' + e[q.key] + '/10' : '') + ': ' + e[q.note], context: e.slot + ' check-in' });
+        notes.push({ time: fmtTime(entryDate(e)), who: e.addedBy || 'unknown', text: CHECKIN_LABELS[q.key] + (e[q.key] != null ? ' ' + e[q.key] + '/10' : '') + ': ' + e[q.note], context: e.slot + ' check-in', src: { id: e.id, field: q.note, words: e[q.note], label: checkinTitle(e.slot, e) + ': words under ' + CHECKIN_LABELS[q.key].toLowerCase(), day: e.day, time: fmtTime(entryDate(e)), who: e.addedBy, checkin: true } });
       });
     });
     notes.sort((a, b) => a.time.localeCompare(b.time));
@@ -7902,7 +7941,7 @@ async function renderPainReport() {
     h('div', { class: 'wk-head' }, h('span', { text: r.name }), h('span', { class: 'muted', text: r.kind })),
     h('p', { class: 'wk-sub', text: r.dose + (r.how ? ' · ' + r.how : '') }),
     h('p', { class: 'wk-sentence', text: r.line }))) : [h('p', { class: 'hint', text: 'No pain relief medicine on the list, or none logged in this period. A medicine counts as pain relief when its "what it is for" says pain, or its name is a known painkiller.' })]));
-  $('pain-words').replaceChildren(...(P.words.length ? P.words.map((w) => h('div', { class: 'card wordcard' }, h('span', { class: 'word-when', text: w.when + (w.score != null ? ' · ' + w.score + '/10' : '') }), h('p', { text: w.text }))) : [h('p', { class: 'hint', text: 'Nothing written under the pain sliders in this period. The box under each pain score ("Where is it, or anything else?") goes here.' })]));
+  $('pain-words').replaceChildren(...(P.words.length ? P.words.map((w) => h('div', { class: 'card wordcard' }, h('span', { class: 'word-when', text: w.when + (w.score != null ? ' · ' + w.score + '/10' : '') }), h('p', { text: w.text }), fixWordsLink(w.src, renderPainReport))) : [h('p', { class: 'hint', text: 'Nothing written under the pain sliders in this period. The box under each pain score ("Where is it, or anything else?") goes here.' })]));
   $('pain-weeks').replaceChildren(...P.weeks.map((w) => h('div', { class: 'card wkcard' },
     h('div', { class: 'wk-head' }, h('span', { text: w.label }), h('span', { class: 'muted', text: 'Pain ' + w.pain })),
     h('p', { class: 'wk-sub', text: `${w.painSub}. Days at 7 or more: ${w.bad}. Worst pain: ${w.worst}. Relief: ${w.relief}. ${w.nights}.` }))));
@@ -7983,17 +8022,18 @@ function buildPainReport(n) {
   const daysFull = days.map((d) => {
     const m = ci.find((e) => e.day === d && e.slot === 'morning'), ev = ci.find((e) => e.day === d && e.slot === 'evening');
     const pm = score(m, 'pain'), pe = score(ev, 'pain'), worst = score(ev, 'worstPain');
-    const readings = entries.filter((e) => e.type === 'pain' && e.day === d).map((e) => ({ v: Number(e.value), at: entryDate(e), note: text(e.note) })).filter((r) => !isNaN(r.v)).sort((a, b) => a.at - b.at);
+    const readings = entries.filter((e) => e.type === 'pain' && e.day === d).map((e) => ({ id: e.id, who: e.addedBy, v: Number(e.value), at: entryDate(e), note: text(e.note) })).filter((r) => !isNaN(r.v)).sort((a, b) => a.at - b.at);
     const now = [pm, pe, ...readings.map((r) => r.v)].filter((v) => v != null);
     const all = [...now, worst].filter((v) => v != null);
     const dDoses = doses.filter((e) => e.day === d).sort((a, b) => entryDate(a) - entryDate(b));
     const sleeps = entries.filter((e) => e.type === 'sleep' && e.day === d && Number(e.value) > 0).map((e) => Number(e.value));
     const notes = [];
-    if (m && text(m.painNote)) notes.push({ day: d, when: dayWord(d) + ', morning', text: text(m.painNote), score: pm });
-    readings.forEach((r) => { if (r.note) notes.push({ day: d, when: dayWord(d) + ', ' + fmtTime(r.at), text: r.note, score: r.v }); });
-    if (ev && text(ev.painNote)) notes.push({ day: d, when: dayWord(d) + ', evening', text: text(ev.painNote), score: pe });
-    if (ev && text(ev.worstPainNote)) notes.push({ day: d, when: dayWord(d) + ', worst today', text: text(ev.worstPainNote), score: worst });
-    dDoses.forEach((e) => { if (text(e.note)) notes.push({ day: d, when: dayWord(d) + ', ' + fmtTime(entryDate(e)) + ' with ' + (e.medName || 'pain relief'), text: text(e.note), score: null }); });
+    const ciSrc = (c, field, label) => ({ id: c.id, field, words: c[field], label, day: d, time: fmtTime(entryDate(c)), who: c.addedBy, checkin: true });
+    if (m && text(m.painNote)) notes.push({ day: d, when: dayWord(d) + ', morning', text: text(m.painNote), score: pm, src: ciSrc(m, 'painNote', 'Morning check-in: where the pain is') });
+    readings.forEach((r) => { if (r.note) notes.push({ day: d, when: dayWord(d) + ', ' + fmtTime(r.at), text: r.note, score: r.v, src: { id: r.id, field: 'note', words: r.note, label: 'Pain reading ' + r.v + '/10', day: d, time: fmtTime(r.at), who: r.who } }); });
+    if (ev && text(ev.painNote)) notes.push({ day: d, when: dayWord(d) + ', evening', text: text(ev.painNote), score: pe, src: ciSrc(ev, 'painNote', 'Evening check-in: where the pain is') });
+    if (ev && text(ev.worstPainNote)) notes.push({ day: d, when: dayWord(d) + ', worst today', text: text(ev.worstPainNote), score: worst, src: ciSrc(ev, 'worstPainNote', 'Evening check-in: worst pain today') });
+    dDoses.forEach((e) => { if (text(e.note)) notes.push({ day: d, when: dayWord(d) + ', ' + fmtTime(entryDate(e)) + ' with ' + (e.medName || 'pain relief'), text: text(e.note), score: null, src: { id: e.id, field: 'note', words: e.note, label: 'Note with ' + (e.medName || 'pain relief'), day: d, time: fmtTime(entryDate(e)), who: e.addedBy } }); });
     return { day: d, dow: DOW[parseDay(d).getDay()], pm, pe, worst, readings, lo: now.length ? Math.min(...now) : null, hi: now.length ? Math.max(...now) : null, max: all.length ? Math.max(...all) : null, now,
       prn: dDoses.filter((e) => prnIds.has(e.medId)).length, dosesN: dDoses.length, doseList: dDoses.map((e) => (e.medName || 'pain relief') + (prnIds.has(e.medId) ? '' : ' (regular)') + ' ' + fmtTime(entryDate(e))), sleep: sleeps.length ? Math.round(Math.max(...sleeps) / 60 * 10) / 10 : null,
       session: !!(state.days[d] && state.days[d].chemo), hospital: hospitalDays.has(d), notes };
