@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '189';
+const APP_VERSION = '190';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -10378,10 +10378,14 @@ function cycleInfo(day) {
   for (let j = 1; j < sessions.length; j++) { const g = dayGap(sessions[j - 1], sessions[j]); if (interval == null || g < interval) interval = g; }
   /* the last cycle marked has no next start to measure to: its sessions plus one more gap of rest (3 weekly sessions make 28 days),
      or, with a single session, as long as the cycle before it */
+  /* A cycle is its sessions plus one more gap of rest (Mark: three weekly sessions and the rest week make a 4-week, 28-day
+     cycle). When the next cycle starts later than that (a delay), the days in between belong to neither and are not rest. */
   const prevLen = i > 0 ? dayGap(starts[i - 1].day, start) : null;
-  const length = next ? dayGap(start, next) : interval && interval > 1 ? dayGap(start, sessions[sessions.length - 1]) + 2 * interval : prevLen;
-  const end = next || (length ? addDays(start, length) : null); // the day after the cycle
-  if (!next && end && day >= end) return null; // past the end of the last known cycle
+  const planned = interval && interval > 1 ? dayGap(start, sessions[sessions.length - 1]) + 2 * interval : null;
+  const gap = next ? dayGap(start, next) : null;
+  const length = next ? (planned && planned < gap ? planned : gap) : planned || prevLen;
+  const end = length ? addDays(start, length) : next; // the day after the cycle
+  if (end && day >= end) return null; // past the end of this cycle, waiting for the next one
   const restFrom = interval && interval > 1 ? addDays(sessions[sessions.length - 1], interval) : null;
   if (!end && restFrom && day >= addDays(restFrom, interval)) return null; // no next cycle marked and the rest is over
   if (!end && !restFrom && day > sessions[sessions.length - 1] && dayGap(sessions[sessions.length - 1], day) > 28) return null;
@@ -10418,6 +10422,13 @@ function renderCycleTile() {
   const today = todayStr(), c = cycleInfo(today);
   const next = chemoDays().find((k) => k > today);
   const nextText = next ? 'Next session ' + fmtDayShort(next) + ', ' + (dayGap(today, next) === 1 ? 'tomorrow' : 'in ' + dayGap(today, next) + ' days') + '.' : '';
+  const nextStart = cycleStarts().find((x) => x.day > today);
+  if (!c && nextStart && cycleStarts().some((x) => x.day <= today)) {
+    const g = dayGap(today, nextStart.day);
+    val.textContent = 'Next cycle';
+    sub.textContent = 'Cycle ' + (cycleStarts().indexOf(nextStart) + 1) + ' starts ' + fmtDayShort(nextStart.day) + ', ' + (g === 1 ? 'tomorrow' : 'in ' + g + ' days') + '.';
+    return;
+  }
   if (!c) {
     val.textContent = '--';
     sub.textContent = !chemoDays().length ? 'No sessions marked yet. Tap a day on the calendar, or Add sessions.' : (nextText || 'No session in a cycle yet.');
