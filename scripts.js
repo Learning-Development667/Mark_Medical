@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '184';
+const APP_VERSION = '185';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -484,6 +484,7 @@ function closeBigEdit() {
   const o = document.querySelector('.bigedit');
   if (!o) return;
   const lis = o.querySelector('.speakbtn.is-listening'); if (lis) lis.click();
+  if (o._win) window.removeEventListener('resize', o._win);
   if (o._vv && window.visualViewport) { window.visualViewport.removeEventListener('resize', o._vv); window.visualViewport.removeEventListener('scroll', o._vv); }
   o.remove();
   $('sheet').inert = false;
@@ -495,16 +496,27 @@ function openBigEdit(el) {
   const big = h('textarea', { class: 'bigedit-text', 'aria-label': label, placeholder: el.placeholder || '' });
   big.value = el.value;
   big.addEventListener('input', () => { el.value = big.value; el.dispatchEvent(new Event('input', { bubbles: true })); });
-  const done = h('button', { class: 'btn btn-primary bigedit-done', type: 'button', onclick: closeBigEdit }, 'Done');
+  const mini = h('button', { class: 'btn btn-secondary bigedit-done', type: 'button', 'aria-label': 'Minimise the writing space', onclick: closeBigEdit }, icon('shrink'), ' Minimise');
   const speak = speakButton(big);
-  const o = h('div', { class: 'bigedit', role: 'dialog', 'aria-modal': 'true', 'aria-label': label },
-    h('div', { class: 'bigedit-head' }, h('p', { class: 'bigedit-title', text: label }), done), big, speak || '');
+  const bar = h('div', { class: 'bigedit-bar' }, speak || h('span', { class: 'bigedit-gap' }), mini);
+  /* the outer layer covers the whole screen so nothing of the sheet shows through; the panel inside follows what is visible above the keyboard */
+  const panel = h('div', { class: 'bigedit-panel' }, bar, h('p', { class: 'bigedit-title', text: label }), big);
+  const o = h('div', { class: 'bigedit', role: 'dialog', 'aria-modal': 'true', 'aria-label': label }, panel);
   o._for = el;
-  const fit = () => { const v = window.visualViewport; if (!v) return; o.style.height = v.height + 'px'; o.style.top = v.offsetTop + 'px'; };
-  o._vv = fit; if (window.visualViewport) { window.visualViewport.addEventListener('resize', fit); window.visualViewport.addEventListener('scroll', fit); }
+  const fit = () => {
+    const v = window.visualViewport;
+    if (!v) return;
+    panel.style.top = Math.max(0, v.offsetTop) + 'px';
+    panel.style.height = v.height + 'px';
+  };
+  o._vv = fit;
+  if (window.visualViewport) { window.visualViewport.addEventListener('resize', fit); window.visualViewport.addEventListener('scroll', fit); }
+  window.addEventListener('resize', fit); o._win = fit;
   document.body.append(o); fit();
   $('sheet').inert = true;
   big.focus(); big.setSelectionRange(big.value.length, big.value.length);
+  /* the keyboard takes a moment to arrive; measure again as it does */
+  [120, 400, 900].forEach((ms) => setTimeout(() => { if (document.contains(o)) { fit(); window.scrollTo(0, 0); } }, ms));
 }
 function clearSheetDrafts() {
   if ($('sheet').hidden) return;
