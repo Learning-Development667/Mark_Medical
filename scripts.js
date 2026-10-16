@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '191';
+const APP_VERSION = '193';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -8414,7 +8414,45 @@ function medCard(m, day) {
   return card;
 }
 
-async function logMed(m, at, note) {
+/* The first dose of a medicine whose dose is only a strength (v193). Mark logged paracetamol after v191 and it
+   still said 500 mg: v191 set the dose in Edit medicine but changed nothing already saved, and nothing pointed
+   him there. Now a medicine saved as a bare strength ("500 mg", "4 mg"), with no dose form set and not an
+   injection, cream, liquid or the like, is asked once, on its next dose: how it is taken and how many each
+   time. Saved on the medicine (doseForm, doseCount, strength, dose), so it is never asked again on either
+   phone; Not counted keeps the dose as it was. */
+const UNCOUNTED_NAME_RE = /inject|cream|ointment|\bgel\b|patch|spray|inhaler|drops|solution|liquid|syrup|suspension|lotion|shampoo|infusion|drip/i;
+function needsDoseForm(m) {
+  if (!m || m.doseForm || m.hospital || state.readOnly || state.viewer) return false;
+  if (splitDose(m).form !== 'none') return false;
+  return !!parseStrength(m.dose) && !UNCOUNTED_NAME_RE.test(m.name || '');
+}
+function askDoseForm(m) {
+  return new Promise((resolve) => {
+    let result = null; // closing any other way counts as Cancel: nothing saved, nothing logged
+    const c = doseControls({ form: 'tablet', count: 1, strength: (m.dose || '').trim() }, { id: 'ask-strength' });
+    const body = h('div', { class: 'askdose' },
+      h('p', { class: 'wiz-hint', text: `Asked once. Saved as "${m.dose}" so far. How do you take it, and how many each time? Every dose from now on is logged with this, with nothing asked.` }),
+      h('p', { class: 'fieldlabel', text: 'How is it taken?' }), c.formChips,
+      c.countField, c.doseField, c.dosePreview,
+      h('p', { class: 'hint', text: 'Change it any time in Manage medicines, Edit. A different amount one day: use Other time, or change the dose afterwards from its "..." menu.' }),
+      h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
+        const data = c.result();
+        if (!data.dose) { toast('Please type the dose'); c.dose.focus(); return; }
+        const updated = { ...m, ...data };
+        try {
+          if (state.demo) Object.assign(state.medicines.find((x) => x.id === m.id) || {}, data);
+          else await setDoc(hdoc('medicines', m.id), data, { merge: true });
+          Object.assign(m, data);
+        } catch (e) { console.error(e); toast('Could not save the dose'); return; }
+        result = updated; closeSheet();
+      } }, 'Save and log the dose'),
+      h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Cancel'));
+    openSheet('How do you take ' + m.name + '?', body, () => resolve(result));
+  });
+}
+
+async function logMed(m, at, note, doseText) {
+  if (needsDoseForm(m)) { const set = await askDoseForm(m); if (!set) return; m = set; }
   if (m.kind === 'prn' && !at) {
     const s = prnStatus(m);
     if (s.block) {
@@ -8422,9 +8460,10 @@ async function logMed(m, at, note) {
       if (!ok) return;
     }
   }
+  const dose = doseText || m.dose;
   const hosp = m.hospital ? { hospital: true, route: m.route || null } : {};
-  const id = await addEntry({ type: 'med', medId: m.id, medName: m.name, dose: m.dose, note: note || '', ...hosp, at: at || new Date() });
-  toast(m.name + (m.hospital ? ' logged as given in hospital' : ' logged'), { label: 'Undo', onClick: () => deleteEntry(id) });
+  const id = await addEntry({ type: 'med', medId: m.id, medName: m.name, dose, note: note || '', ...hosp, at: at || new Date() });
+  toast(m.name + (dose ? ', ' + dose + ',' : '') + (m.hospital ? ' logged as given in hospital' : ' logged'), { label: 'Undo', onClick: () => deleteEntry(id) });
 }
 
 /* Change a logged dose's date, time, amount or note (since v137): Mark logged diazepam with the
@@ -8457,18 +8496,29 @@ function openDoseEdit(e) {
   openSheet('Change ' + (e.medName || 'the dose'), body);
 }
 
-function logMedAtTime(m) {
+async function logMedAtTime(m) {
+  if (needsDoseForm(m)) { const set = await askDoseForm(m); if (!set) return; m = set; }
   const day = h('input', { type: 'date', value: state.selectedDay, max: todayStr() });
   const time = timeInput(todayStr());
   const note = h('input', { type: 'text', placeholder: 'Optional note' });
+  /* a counted medicine can be logged with a different number this once (v193); the medicine keeps its own */
+  const parts = splitDose(m), form = doseFormOf(parts.form);
+  const thisTime = form ? stepper(parts.count, 0.5, 1, 'How many this time', () => syncThis(), 'each') : null;
+  const thisLine = h('p', { class: 'med-dose-preview', role: 'status' });
+  const doseNow = () => (form ? composeDose(thisTime.value(), parts.form, parts.strength) : m.dose);
+  const syncThis = () => { if (!form) return; thisTime.unitEl.textContent = thisTime.value() > 1 || form.key === 'ml' ? form.many : form.one; thisLine.textContent = 'Logged as ' + doseNow() + '.'; };
+  syncThis();
   const body = h('div', null,
     h('p', { class: 'muted', text: m.dose + '. ' + m.how }),
     h('div', { class: 'field-row' }, field('Date', day), field('Time', time)),
+    form ? h('div', { class: 'field med-count' }, h('span', { class: 'fieldlabel', text: form.key === 'ml' ? 'How many ml this time' : 'How many this time' }), thisTime.el) : null,
+    form ? thisLine : null,
     field('Note', note),
     h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => {
       if (!day.value) { toast('Please choose a date'); return; }
+      if (form && !(thisTime.value() > 0)) { toast('How many was it?'); return; }
       closeSheet();
-      logMed(m, atFromInputs(day.value, time.value), note.value.trim());
+      logMed(m, atFromInputs(day.value, time.value), note.value.trim(), doseNow());
     } }, 'Save'),
     h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Cancel')
   );
@@ -8804,22 +8854,17 @@ function openManageMeds() {
   openSheet('Manage medicines', body);
 }
 
-function openEditMed(m, prefill) {
-  const isNew = !m;
-  const pf = prefill || {};
-  m = m || { name: pf.name || '', dose: pf.amount || pf.dose || '', how: pf.how || '', purpose: pf.purpose || '',
-    kind: pf.whenNeeded ? 'prn' : 'scheduled', perDay: pf.perDay || 1, maxPerDay: pf.maxPerDay || null, minGapHours: pf.minGapHours || null, active: true,
-    hospital: pf.hospital === true || pf.route === 'drip', route: pf.route || null };
-  const name = h('input', { type: 'text', value: m.name, required: true });
-  /* the dose: how it is taken, how many each time, the strength of one (v191) */
-  const parts = splitDose(m);
-  const dose = h('input', { type: 'text', value: parts.strength, id: 'med-strength' });
+/* The three dose boxes (v191), shared by Edit medicine and the first-dose question (v193): the chips, How many
+   each time (halves allowed, the unit word after the number), the strength of one, and the teal line saying
+   what each dose is logged as. */
+function doseControls(parts, opts = {}) {
+  const dose = h('input', { type: 'text', value: parts.strength, id: opts.id || 'med-strength' });
   const formIn = h('input', { type: 'hidden', value: parts.form });
   const formChips = presets(DOSE_FORMS.map((f) => ({ value: f.key, label: f.label })), formIn, parts.form);
   formChips.setAttribute('role', 'group'); formChips.setAttribute('aria-label', 'How is it taken?');
   const unitWord = () => { const f = doseFormOf(formIn.value); return f ? (count.value() > 1 || f.key === 'ml' ? f.many : f.one) : ''; };
   const count = stepper(parts.count, 0.5, 1, 'How many each time', () => syncDose(), 'each'); // the unit word is set by syncDose()
-  const countField = h('div', { class: 'field med-count' }, h('span', { class: 'fieldlabel', id: 'med-count-label', text: 'How many each time' }), count.el);
+  const countField = h('div', { class: 'field med-count' }, h('span', { class: 'fieldlabel', text: 'How many each time' }), count.el);
   const doseLabel = h('span', { text: 'Dose' });
   const doseField = h('label', { class: 'field' }, doseLabel, dose);
   const dosePreview = h('p', { class: 'med-dose-preview', role: 'status' });
@@ -8836,6 +8881,20 @@ function openEditMed(m, prefill) {
   formChips.addEventListener('click', () => setTimeout(syncDose, 0));
   dose.addEventListener('input', syncDose);
   syncDose();
+  const result = () => ({ dose: composeDose(count.value(), formIn.value, dose.value), doseForm: formIn.value || 'none',
+    doseCount: doseFormOf(formIn.value) ? count.value() || 1 : null, strength: dose.value.trim() });
+  return { formIn, formChips, count, countField, dose, doseField, dosePreview, syncDose, result };
+}
+
+function openEditMed(m, prefill) {
+  const isNew = !m;
+  const pf = prefill || {};
+  m = m || { name: pf.name || '', dose: pf.amount || pf.dose || '', how: pf.how || '', purpose: pf.purpose || '',
+    kind: pf.whenNeeded ? 'prn' : 'scheduled', perDay: pf.perDay || 1, maxPerDay: pf.maxPerDay || null, minGapHours: pf.minGapHours || null, active: true,
+    hospital: pf.hospital === true || pf.route === 'drip', route: pf.route || null };
+  const name = h('input', { type: 'text', value: m.name, required: true });
+  /* the dose: how it is taken, how many each time, the strength of one (v191) */
+  const { formIn, formChips, count, countField, dose, doseField, dosePreview } = doseControls(splitDose(m));
   const how = h('input', { type: 'text', value: m.how || '' });
   const purpose = h('input', { type: 'text', value: m.purpose || '' });
   const kind = h('select', null, h('option', { value: 'scheduled', text: 'Scheduled (regular doses)' }), h('option', { value: 'prn', text: 'When needed' }));
