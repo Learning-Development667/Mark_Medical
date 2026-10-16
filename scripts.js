@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '190';
+const APP_VERSION = '191';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -8642,6 +8642,58 @@ $('settings-private').addEventListener('change', async (ev) => {
    shows on the timeline and the Meds tab with a "Given in hospital" pill and in Notes for the team, and
    never counts towards a listed medicine's doses. Read it from a photo fills the boxes through the bridge. */
 const ROUTE_WORDS = { drip: 'Drip (IV)', injection: 'Injection', mouth: 'By mouth', skin: 'On the skin', inhaled: 'Inhaled', other: 'Other' };
+
+/* How many each time (v191). Mark: paracetamol showed 500 mg, but he takes two tablets, so 1,000 mg. A
+   medicine's dose is set once in Edit medicine as how it is taken (tablets, capsules and so on), how many
+   each time and the strength of one, and the dose text every dose is logged with is made from them
+   ("2 tablets (1,000 mg)"), so nothing is asked when a dose is logged. "Not counted" keeps the old free
+   Dose box, for injections, creams and anything else. Stored as doseForm, doseCount and strength beside dose. */
+const DOSE_FORMS = [
+  { key: 'tablet', label: 'Tablets', one: 'tablet', many: 'tablets' },
+  { key: 'capsule', label: 'Capsules', one: 'capsule', many: 'capsules' },
+  { key: 'sachet', label: 'Sachets', one: 'sachet', many: 'sachets' },
+  { key: 'ml', label: 'Liquid (ml)', one: 'ml', many: 'ml' },
+  { key: 'puff', label: 'Puffs', one: 'puff', many: 'puffs' },
+  { key: 'drop', label: 'Drops', one: 'drop', many: 'drops' },
+  { key: 'none', label: 'Not counted' }
+];
+const doseFormOf = (key) => DOSE_FORMS.find((f) => f.key === key && key !== 'none') || null;
+function fmtDoseCount(n) {
+  const whole = Math.floor(n), half = Math.abs(n - whole - 0.5) < 0.01;
+  if (half) return (whole ? String(whole) : '') + '\u00bd';
+  return fmtQtyNumber(n);
+}
+/* "500 mg", "7,500 units", "0.5 g": a number and a unit, nothing else */
+function parseStrength(text) {
+  const m = String(text || '').trim().match(/^([\d,]*\.?\d+)\s*(mg|g|mcg|micrograms?|\u00b5g|units?|iu)$/i);
+  if (!m) return null;
+  const n = parseFloat(m[1].replace(/,/g, ''));
+  return isFinite(n) ? { n, unit: m[2] } : null;
+}
+function composeDose(count, formKey, strength) {
+  const f = doseFormOf(formKey);
+  const str = String(strength || '').trim();
+  if (!f) return str;
+  const c = count > 0 ? count : 1;
+  if (f.key === 'ml') return fmtQtyNumber(c) + ' ml' + (str ? ' (' + str + ')' : '');
+  const head = fmtDoseCount(c) + ' ' + (c > 1 ? f.many : f.one);
+  if (!str) return head;
+  const p = parseStrength(str);
+  if (p) return `${head} (${(Math.round(p.n * c * 100) / 100).toLocaleString('en-GB')} ${p.unit})`;
+  return `${head} of ${str}`;
+}
+/* The three parts of a medicine's dose: as stored since v191, else read from a dose typed before it
+   ("2 capsules", "1 tablet (500 mg)", "10 ml"); anything else is Not counted, kept exactly as typed */
+function splitDose(m) {
+  if (m && m.doseForm) return { form: m.doseForm, count: m.doseCount || 1, strength: m.strength || '' };
+  const dose = String((m && m.dose) || '').trim();
+  const words = { half: 0.5, 'half a': 0.5, 'half an': 0.5, one: 1, two: 2, three: 3, four: 4 };
+  const t = dose.match(/^(\d+(?:\.\d+)?|\u00bd|half an?|half|one|two|three|four)\s+(tablet|capsule|sachet|puff|drop)s?(?:\s*\(([^()]+)\))?$/i);
+  if (t) return { form: t[2].toLowerCase(), count: t[1] === '\u00bd' ? 0.5 : words[t[1].toLowerCase()] || parseFloat(t[1]), strength: (t[3] || '').trim() };
+  const l = dose.match(/^(\d+(?:\.\d+)?)\s*ml(?:\s*\(([^()]+)\))?$/i);
+  if (l) return { form: 'ml', count: parseFloat(l[1]), strength: (l[2] || '').trim() };
+  return { form: 'none', count: 1, strength: dose };
+}
 function openHospitalDose(edit, prefill) {
   const p = prefill || {};
   const day = edit ? edit.day : state.selectedDay;
@@ -8759,7 +8811,31 @@ function openEditMed(m, prefill) {
     kind: pf.whenNeeded ? 'prn' : 'scheduled', perDay: pf.perDay || 1, maxPerDay: pf.maxPerDay || null, minGapHours: pf.minGapHours || null, active: true,
     hospital: pf.hospital === true || pf.route === 'drip', route: pf.route || null };
   const name = h('input', { type: 'text', value: m.name, required: true });
-  const dose = h('input', { type: 'text', value: m.dose || '' });
+  /* the dose: how it is taken, how many each time, the strength of one (v191) */
+  const parts = splitDose(m);
+  const dose = h('input', { type: 'text', value: parts.strength, id: 'med-strength' });
+  const formIn = h('input', { type: 'hidden', value: parts.form });
+  const formChips = presets(DOSE_FORMS.map((f) => ({ value: f.key, label: f.label })), formIn, parts.form);
+  formChips.setAttribute('role', 'group'); formChips.setAttribute('aria-label', 'How is it taken?');
+  const unitWord = () => { const f = doseFormOf(formIn.value); return f ? (count.value() > 1 || f.key === 'ml' ? f.many : f.one) : ''; };
+  const count = stepper(parts.count, 0.5, 1, 'How many each time', () => syncDose(), 'each'); // the unit word is set by syncDose()
+  const countField = h('div', { class: 'field med-count' }, h('span', { class: 'fieldlabel', id: 'med-count-label', text: 'How many each time' }), count.el);
+  const doseLabel = h('span', { text: 'Dose' });
+  const doseField = h('label', { class: 'field' }, doseLabel, dose);
+  const dosePreview = h('p', { class: 'med-dose-preview', role: 'status' });
+  const syncDose = () => {
+    const f = doseFormOf(formIn.value);
+    countField.hidden = !f;
+    count.unitEl.textContent = unitWord();
+    countField.querySelector('.fieldlabel').textContent = f && f.key === 'ml' ? 'How many ml each time' : 'How many each time';
+    doseLabel.textContent = !f ? 'Dose' : f.key === 'ml' ? 'Strength (optional, as on the bottle)' : `Strength of one ${f.one} (optional, as on the box)`;
+    dose.placeholder = !f ? 'e.g. 7,500 units, or apply to skin' : f.key === 'ml' ? 'e.g. 10 mg in 5 ml' : 'e.g. 500 mg';
+    const text = composeDose(count.value(), formIn.value, dose.value);
+    dosePreview.textContent = text ? 'Each dose is logged as ' + text + '.' : '';
+  };
+  formChips.addEventListener('click', () => setTimeout(syncDose, 0));
+  dose.addEventListener('input', syncDose);
+  syncDose();
   const how = h('input', { type: 'text', value: m.how || '' });
   const purpose = h('input', { type: 'text', value: m.purpose || '' });
   const kind = h('select', null, h('option', { value: 'scheduled', text: 'Scheduled (regular doses)' }), h('option', { value: 'prn', text: 'When needed' }));
@@ -8811,8 +8887,10 @@ function openEditMed(m, prefill) {
   const body = h('div', null,
     isNew && explainAvailable() ? h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => readMedicinePhoto((data) => openEditMed(null, data), () => openEditMed(null, pf)) }, 'Read it from a photo') : null,
     isNew && explainAvailable() ? h('p', { class: 'hint', text: "A photo of the box or the pharmacy label. Daybook Assistant (AI from Anthropic, in the US) reads it, and the details fill in below. It can misread a label, so check the name and dose before adding." }) : null,
-    field('Name', name), field('Dose', dose),
-    isNew ? null : h('p', { class: 'hint med-dose-hint', text: 'Changing the dose? Type the new one here and save. It stays the same medicine: the doses already logged keep the amount they were taken at, and the change is noted in its history. There is no need to add it again or end this one.' }),
+    field('Name', name),
+    h('p', { class: 'fieldlabel', text: 'How is it taken?' }), formChips,
+    countField, doseField, dosePreview,
+    isNew ? null : h('p', { class: 'hint med-dose-hint', text: 'Changing the dose? Change it here and save. It stays the same medicine: the doses already logged keep the amount they were taken at, and the change is noted in its history. There is no need to add it again or end this one.' }),
     field('How and when', how), field('What it is for', purpose),
     h('label', { class: 'check' }, hospital, h('span', { text: 'Given by the hospital (hospital monitored)' })),
     h('p', { class: 'hint', text: 'Tick this for a drip, an injection or anything the nurses give. Its doses are marked as given in hospital, and Daybook sends no reminders for it.' }),
@@ -8822,7 +8900,8 @@ function openEditMed(m, prefill) {
     h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
       if (!name.value.trim()) { toast('Please enter a name'); return; }
       const data = {
-        name: name.value.trim(), dose: dose.value.trim(), how: how.value.trim(), purpose: purpose.value.trim(),
+        name: name.value.trim(), dose: composeDose(count.value(), formIn.value, dose.value), how: how.value.trim(), purpose: purpose.value.trim(),
+        doseForm: formIn.value || 'none', doseCount: doseFormOf(formIn.value) ? count.value() || 1 : null, strength: dose.value.trim(),
         kind: kind.value, active: active.checked,
         hospital: hospital.checked, route: hospital.checked ? routeIn.value : null,
         order: m.order || (Math.max(0, ...state.medicines.map((x) => x.order || 0)) + 1)
