@@ -1715,9 +1715,13 @@ button.sidefx-inner { cursor: pointer; }
 #sheet-body textarea { min-height: 9em; max-height: 50vh; overflow-y: auto; }
 .bigedit-open { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; margin: var(--s-1) 0 var(--s-2); }
 .bigedit-open .icon { width: 18px; height: 18px; }
-.bigedit { position: fixed; left: 0; right: 0; top: 0; height: 100dvh; z-index: 400; display: flex; flex-direction: column; gap: var(--s-3); padding: calc(var(--s-3) + var(--safe-t, 0px)) var(--s-4) calc(var(--s-3) + var(--safe-b, 0px)); background: var(--surface); color: var(--text-primary); overflow: hidden; }
-.bigedit-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); }
-.bigedit-title { margin: 0; font-family: var(--font-head); font-weight: 600; font-size: 20px; min-width: 0; overflow-wrap: anywhere; }
-.bigedit-done { min-height: 48px; min-width: 96px; margin: 0; }
+.bigedit { position: fixed; inset: 0; z-index: 400; background: var(--surface); color: var(--text-primary); overflow: hidden; }
+.bigedit-panel { position: absolute; left: 0; right: 0; top: 0; height: 100%; box-sizing: border-box; display: flex; flex-direction: column; gap: var(--s-3); padding: calc(var(--s-3) + var(--safe-t, 0px)) var(--s-4) var(--s-3); overflow: hidden; }
+.bigedit-bar { display: flex; align-items: stretch; gap: var(--s-3); flex: none; }
+.bigedit-bar .speakbtn { flex: 1 1 auto; width: auto; min-height: 56px; margin: 0; }
+.bigedit-gap { flex: 1 1 auto; }
+.bigedit-done { flex: none; min-height: 56px; min-width: 0; margin: 0; display: inline-flex; align-items: center; gap: 6px; }
+.bigedit-done .icon { width: 18px; height: 18px; }
+.bigedit-title { margin: 0; flex: none; font-family: var(--font-head); font-weight: 600; font-size: 18px; color: var(--text-secondary); overflow-wrap: anywhere; }
 .bigedit-text { flex: 1 1 auto; width: 100%; min-height: 0; max-height: none !important; font-size: 18px; line-height: 1.55; resize: none; }
 .bigedit .speakbtn { flex: none; }
