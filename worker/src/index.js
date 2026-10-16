@@ -721,17 +721,42 @@ function mapOffProduct(code, p) {
   const hasFigures = per100.kcal != null || per100.prot != null || per100.carb != null || per100.fat != null;
   return { found: true, code, name: full, brand, quantity: clean(p.quantity, 40), serving: clean(p.serving_size, 40), per100, hasFigures, source: 'Open Food Facts' };
 }
+const OFF_HEADERS = { 'User-Agent': 'MyMedicalDaybook/1.0 (support@mymedicaldaybook.co.uk)', Accept: 'application/json' };
+const OFF_SEARCH_MAX = 8;
+/* Search by name (v201, Mark: "jaffa cake" found only cake in the UK table). POST /food { query }: the typed words go to
+   Open Food Facts' text search, UK products first (the countries tag), the world when the UK has nothing; the same
+   per 100 g shape as a barcode hit, up to OFF_SEARCH_MAX products, cached a day at the edge. Nothing about the person
+   goes with the words. */
+async function searchOff(query, uk) {
+  const url = 'https://world.openfoodfacts.org/cgi/search.pl?search_simple=1&action=process&json=1&page_size=' + OFF_SEARCH_MAX
+    + '&fields=' + OFF_FIELDS + '&search_terms=' + encodeURIComponent(query)
+    + (uk ? '&tagtype_0=countries&tag_contains_0=contains&tag_0=united-kingdom' : '');
+  const res = await fetch(url, { headers: OFF_HEADERS, cf: { cacheTtl: 86400, cacheEverything: true } });
+  if (!res.ok) throw new Error('status ' + res.status);
+  const data = await res.json().catch(() => null);
+  return ((data && data.products) || []).map((p) => mapOffProduct(String(p.code || ''), p)).filter((p) => p.found && p.name);
+}
+async function handleFoodSearch(body) {
+  const query = clean(body && body.query, 60).replace(/\s+/g, ' ');
+  if (query.length < 2) return json({ error: 'bad-request', message: 'Type at least two letters to search.' }, 400);
+  try {
+    let products = await searchOff(query, true);
+    if (!products.length) products = await searchOff(query, false);
+    return json({ query, products: products.slice(0, OFF_SEARCH_MAX), source: 'Open Food Facts' });
+  } catch (e) {
+    console.error('open food facts search', e && e.message);
+    return json({ error: 'lookup-failed', message: 'Could not reach the food database just now. Log it as typed for now.' }, 502);
+  }
+}
 async function handleFood(request, env) {
   const a = await whoIs(request, env); if (a.error) return a.error;
   const body = await readJson(request);
+  if (body && body.query != null && !body.barcode) return handleFoodSearch(body);
   const code = String((body && body.barcode) || '').replace(/\D/g, '');
   if (code.length < 8 || code.length > 14) return json({ error: 'bad-barcode', message: 'That does not look like a barcode number. It has 8 to 14 digits.' }, 400);
   let res;
   try {
-    res = await fetch('https://world.openfoodfacts.org/api/v2/product/' + code + '.json?fields=' + OFF_FIELDS, {
-      headers: { 'User-Agent': 'MyMedicalDaybook/1.0 (support@mymedicaldaybook.co.uk)', Accept: 'application/json' },
-      cf: { cacheTtl: 86400, cacheEverything: true }
-    });
+    res = await fetch('https://world.openfoodfacts.org/api/v2/product/' + code + '.json?fields=' + OFF_FIELDS, { headers: OFF_HEADERS, cf: { cacheTtl: 86400, cacheEverything: true } });
   } catch (e) { console.error('open food facts', e && e.message); return json({ error: 'lookup-failed', message: 'Could not reach the food database just now. Try again, or type the food in.' }, 502); }
   if (res.status === 404) return json({ found: false, code });
   if (!res.ok) { console.error('open food facts status', res.status); return json({ error: 'lookup-failed', message: 'The food database is busy just now. Try again in a moment, or type the food in.' }, 502); }
