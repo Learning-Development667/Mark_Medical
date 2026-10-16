@@ -10,3 +10,7 @@ worker/.wrangler/
 firestore-debug.log
 ui-debug.log
 .firebase/
+
+# Research notes and reports (Mark: never in git)
+research_notes/
+reports/
