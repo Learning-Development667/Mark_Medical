@@ -1753,3 +1753,7 @@ button.sidefx-inner { cursor: pointer; }
 .cyc-preview { margin: var(--s-3) 0; padding: var(--s-3); border-radius: var(--r-sm); background: var(--surface-sunken); color: var(--text-primary); }
 .cycle-views { margin-bottom: var(--s-2); }
 .fx-row .taps-label { margin-bottom: var(--s-1); }
+
+/* How many each time (v191): the line saying what each dose is logged as */
+.med-dose-preview { margin: -6px 0 var(--s-4); font-weight: 600; color: var(--teal); overflow-wrap: anywhere; }
+.med-dose-preview:empty { display: none; }
