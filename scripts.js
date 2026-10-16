@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '198';
+const APP_VERSION = '199';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -792,21 +792,36 @@ $('signin-form').addEventListener('submit', async (ev) => {
 /* ---- Create an account, invites and the no-household screen (since v78) ----
    A sign-in is made by Firebase Auth from the app; the household records that decide access are
    made only by the bridge (/household, /join), which checks the ID token and the invite. */
-const relationChips = (holder, initial) => {
-  let value = initial || '';
-  const draw = () => holder.replaceChildren(...[['patient', 'The patient'], ['carer', 'A carer'], ['', 'Family or friend']].map(([v, label]) =>
-    h('button', { class: 'preset' + (value === v ? ' is-active' : ''), type: 'button', 'aria-pressed': value === v ? 'true' : 'false', onclick: () => { value = v; draw(); } }, label)));
+/* Who Daybook is for (v199): a new care circle is set up by the patient ("Me") or by a carer for someone else, who names
+   them and confirms they have their agreement, or are acting for someone who cannot decide for themselves. Family and
+   friends come in by invite only. The getter returns what the bridge's /household needs. */
+const relationChips = (holder, prefix) => {
+  let value = 'patient';
+  const forField = $(prefix + '-for-field'), agreeField = $(prefix + '-agree-field');
+  const draw = () => {
+    holder.replaceChildren(...[['patient', 'Me'], ['carer', 'Someone I care for']].map(([v, label]) =>
+      h('button', { class: 'preset' + (value === v ? ' is-active' : ''), type: 'button', 'aria-pressed': value === v ? 'true' : 'false', onclick: () => { value = v; draw(); } }, label)));
+    if (forField) forField.hidden = value !== 'carer';
+    if (agreeField) agreeField.hidden = value !== 'carer';
+  };
   draw();
-  return () => value;
+  return () => ({ relation: value, forName: value === 'carer' ? $(prefix + '-for').value.trim() : '', carerAgreed: value === 'carer' ? $(prefix + '-agree').checked : true });
 };
-const signupRelation = relationChips($('signup-relation'), 'patient');
-const nohouseholdRelation = relationChips($('nohousehold-relation'), 'patient');
+const signupRelation = relationChips($('signup-relation'), 'signup');
+const nohouseholdRelation = relationChips($('nohousehold-relation'), 'nohousehold');
+/* Refuses a carer's set-up without the agreement tick or a name, in the app's own words before the bridge is asked */
+function circleSetupError(r) {
+  if (r.relation !== 'carer') return '';
+  if (!r.forName) return 'Their first name, please: the circle is theirs.';
+  if (!r.carerAgreed) return 'Please tick the box: they have agreed, or cannot decide this for themselves and you are acting for them.';
+  return '';
+}
 function showSignup() {
   $('signin').hidden = true; $('nohousehold').hidden = true;
   $('signup').hidden = false;
   $('signup-error').hidden = true;
   $('signup-code').value = state.pendingInvite || '';
-  $('signup-intro').textContent = state.pendingInvite ? 'Create a sign-in to join the household you were invited to.' : 'Your own Daybook, for you and the people you invite.';
+  $('signup-intro').textContent = state.pendingInvite ? 'Create a sign-in to join the care circle you were invited to.' : 'Your own Daybook, for you and the people you choose: your care circle.';
   /* The Beta code and "who told you" (v152): only while the app is in Beta, and not when joining a circle with an invite */
   if (state.pendingBeta && !$('signup-beta').value) $('signup-beta').value = state.pendingBeta;
   $('signup-beta-field').hidden = !APP_STAGE || !!state.pendingInvite;
@@ -825,8 +840,10 @@ $('signup-form').addEventListener('submit', async (ev) => {
     await setPersistence(auth, browserLocalPersistence);
     const cred = await createUserWithEmailAndPassword(auth, $('signup-email').value.trim(), $('signup-password').value);
     /* the sign-in exists now; the household is made by the bridge, and a failure there lands on the no-household screen, not in limbo */
+    const who = signupRelation();
+    if (!code && circleSetupError(who)) throw Object.assign(new Error(circleSetupError(who)), { code: 'auth/circle' });
     if (code) await bridgeCall('/join', { code, name });
-    else await bridgeCall('/household', { name, relation: signupRelation(), ...betaPayload('signup-beta', 'signup-heard') });
+    else await bridgeCall('/household', { name, ...who, ...betaPayload('signup-beta', 'signup-heard') });
     state.pendingInvite = null; state.pendingBeta = null;
     state.setupPending = code ? 'phone' : 'full';
     $('signup').hidden = true;
@@ -849,7 +866,7 @@ $('forgot-button').addEventListener('click', async () => {
 function showNoHousehold(user, message) {
   $('app').hidden = true; $('signin').hidden = true; $('signup').hidden = true;
   $('nohousehold').hidden = false;
-  $('nohousehold-who').textContent = (user && user.email ? user.email + ' is signed in, but' : 'This sign-in is') + ' not in a Daybook household yet. Create your own, or paste the invite code someone sent you.';
+  $('nohousehold-who').textContent = (user && user.email ? user.email + ' is signed in, but' : 'This sign-in is') + ' not in a care circle yet. Set up your own, or paste the invite code someone sent you.';
   if (!$('nohousehold-name').value) $('nohousehold-name').value = (user && user.displayName) || $('signup-name').value || '';
   $('nohousehold-code').value = state.pendingInvite || $('signup-code').value || '';
   if (!$('nohousehold-beta').value) $('nohousehold-beta').value = $('signup-beta').value || state.pendingBeta || '';
@@ -857,7 +874,7 @@ function showNoHousehold(user, message) {
   $('nohousehold-beta-field').hidden = !APP_STAGE; $('nohousehold-heard-field').hidden = !APP_STAGE;
   const err = $('nohousehold-error');
   if (message) { err.textContent = message; err.hidden = false; } else err.hidden = true;
-  if (!BRIDGE) { err.textContent = 'Daybook cannot set up households at the moment. Ask the person who runs it.'; err.hidden = false; }
+  if (!BRIDGE) { err.textContent = 'Daybook cannot set up a care circle at the moment. Ask the person who runs it.'; err.hidden = false; }
 }
 $('nohousehold-code').addEventListener('input', () => { $('nohousehold-submit').textContent = $('nohousehold-code').value.trim() ? 'Join with this invite' : 'Create my own Daybook'; });
 $('nohousehold-form').addEventListener('submit', async (ev) => {
@@ -866,8 +883,10 @@ $('nohousehold-form').addEventListener('submit', async (ev) => {
   err.hidden = true; btn.disabled = true;
   const name = $('nohousehold-name').value.trim(), code = $('nohousehold-code').value.trim();
   try {
+    const who = nohouseholdRelation();
+    if (!code && circleSetupError(who)) throw new Error(circleSetupError(who));
     if (code) await bridgeCall('/join', { code, name });
-    else await bridgeCall('/household', { name, relation: nohouseholdRelation(), ...betaPayload('nohousehold-beta', 'nohousehold-heard') });
+    else await bridgeCall('/household', { name, ...who, ...betaPayload('nohousehold-beta', 'nohousehold-heard') });
     state.pendingInvite = null; state.pendingBeta = null;
     state.setupPending = code ? 'phone' : 'full';
     $('nohousehold').hidden = true;
@@ -933,16 +952,26 @@ document.addEventListener('click', (ev) => {
   state.pendingInvite = code;
   history.replaceState(null, '', location.pathname + location.hash);
   const banner = $('invite-banner');
-  banner.textContent = 'You have been invited to join a Daybook. Create an account, or sign in if you already have one.';
+  banner.textContent = 'You have been invited to join a care circle. Create an account, or sign in if you already have one.';
   banner.hidden = false;
   try {
     const r = await fetch(BRIDGE.url.replace(/\/$/, '') + '/invite-info?code=' + encodeURIComponent(code));
     const info = await r.json();
-    if (info.valid) banner.textContent = `${info.from ? info.from + ' has' : 'You have been'} invited ${info.name ? info.name + ' ' : ''}to join ${info.householdName ? info.householdName + '\'s' : 'a'} Daybook${info.role === 'family' ? '' : info.role === 'viewer' ? ' (medicines and treatment only)' : ' (read only)'}. Create an account, or sign in if you already have one.`;
+    if (info.valid) banner.textContent = inviteWords(info) + ' Create an account, or sign in if you already have one.';
     else { banner.textContent = info.message || 'That invite link is not right.'; state.pendingInvite = null; }
   } catch (e) { /* the banner already says enough */ }
 })();
 
+/* "Mark has invited you to join his care circle" from the patient, "Shelley has invited you to Mark's care circle" from a carer (v199) */
+function inviteWords(info, you) {
+  const access = info.role === 'family' ? '' : info.role === 'viewer' ? ' (medicines and treatment only)' : ' (read only)';
+  const whom = you || (info.name ? info.name + ' ' : '');
+  const patient = info.patientName || info.householdName || '';
+  if (info.fromRelation === 'patient' || (patient && info.from && patient.toLowerCase() === String(info.from).toLowerCase())) {
+    return `${info.from || patient || 'The patient'} has invited ${whom ? whom : 'you '}to join their care circle${access}.`;
+  }
+  return `${info.from ? info.from + ' has' : 'You have been'} invited ${whom}to ${patient ? patient + '\'s' : 'a'} care circle${access}.`;
+}
 function friendlyAuthError(e) {
   const code = (e && e.code) || '';
   if (code.includes('invalid-credential') || code.includes('wrong-password') || code.includes('user-not-found')) return 'Email or password not recognised.';
@@ -952,6 +981,7 @@ function friendlyAuthError(e) {
   if (code.includes('weak-password')) return 'Choose a longer password, at least 8 characters.';
   if (code.includes('invalid-email')) return 'That email address does not look right.';
   if (code.includes('operation-not-allowed')) return 'Creating accounts is switched off at the moment.';
+  if (code === 'auth/circle') return e.message;
   return 'Could not sign in. ' + (e && e.message ? e.message : '');
 }
 
@@ -1005,6 +1035,7 @@ async function enterApp(user) {
     await startData();
     syncReminders();
     setTimeout(offerDraft, 1500);
+    setTimeout(offerCircle, 2500);
     if (state.setupPending && !state.readOnly && !state.viewer) { const kind = state.setupPending; state.setupPending = null; setTimeout(() => openSetup(kind), 700); }
   } else if (!state.demo) {
     stopData();
@@ -1172,6 +1203,20 @@ $('signout').addEventListener('click', async () => {
 /* Data                                                                 */
 /* ------------------------------------------------------------------ */
 
+/* A patient whose circle a carer set up is offered it once per phone (v199): one tap and they run it; the carer keeps full access */
+async function offerCircle() {
+  if (!BRIDGE || !state.household || state.demo || state.demoLive || !state.user || !state.account || state.account.relation !== 'patient') return;
+  const key = 'daybook.circle.offered.' + state.user.uid;
+  try { if (localStorage.getItem(key)) return; } catch (e) { /* no storage */ }
+  try {
+    const house = await getDoc(doc(db, 'households', state.household));
+    if (!house.exists() || house.data().owner === state.user.uid) return;
+    toast('This is your care circle. Take charge of it?', { label: 'Yes', onClick: async () => {
+      try { await bridgeCall('/owner-transfer', { uid: state.user.uid }); toast('This is your circle now. Only you invite and remove people.'); syncHouseholdCard(); } catch (e) { toast(e.message); }
+    } });
+    localStorage.setItem(key, '1');
+  } catch (e) { /* nothing to offer */ }
+}
 async function startData() {
   watchMedicines();
   watchRecent();
@@ -1607,8 +1652,8 @@ function openSetup(kind) {
     { key: 'welcome', title: full ? "Let's set Daybook up" : 'Welcome to Daybook', next: 'Start', noSkip: true,
       body: () => full
         ? [para('A few short steps, about two minutes. Each one can be changed later under More, then Settings.'), para('Daybook keeps the readings, notes and questions from every day in between, and turns them into reports your team can read in a minute.')]
-        : [para('You have joined this household\'s Daybook. Two short steps so it works well on this phone, then you are in.')] },
-    { key: 'packs', only: full, title: 'What is Daybook for?', hint: 'Tick what applies; more than one is fine. Each brings its own questions and its own limits on the reports. Shared by everyone in the household.', noSkip: true,
+        : [para((patientFullName() ? 'You have joined ' + patientFullName().split(/\s+/)[0] + '\'s care circle.' : 'You have joined the care circle.') + ' Two short steps so it works well on this phone, then you are in.')] },
+    { key: 'packs', only: full, title: 'What is Daybook for?', hint: 'Tick what applies; more than one is fine. Each brings its own questions and its own limits on the reports. Shared by everyone in the circle.', noSkip: true,
       body: () => PACKS.map((pk) => h('div', { class: 'pack-row' },
         h('label', { class: 'check settings-toggle' },
           h('input', { type: 'checkbox', id: 'setup-pack-' + pk.key, disabled: !!pk.later, checked: Boolean(draft.packs[pk.key]) && !pk.later, onchange: (ev) => { draft.packs[pk.key] = ev.target.checked; } }),
@@ -1727,7 +1772,13 @@ $('settings-stretch-nudge').addEventListener('change', async (ev) => {
   catch (e) { console.error(e); ev.target.checked = !on; toast('Could not change this setting'); }
 });
 
-/* Household card (since v78): who is in, invite someone, and for the owner, remove someone */
+/* Your care circle (since v78 as the Household card; v199): who is in, and for the patient or the owner, Invite someone and
+   Remove; for the owner with a patient who is not them, Hand this circle to them; for a patient whose circle a carer set
+   up, Take charge. Everyone else sees the members only. */
+function runsCircle(owner) {
+  const me = state.user ? state.user.uid : '';
+  return !!me && (owner === me || (state.account && state.account.relation === 'patient'));
+}
 async function syncHouseholdCard() {
   const card = $('settings-household');
   if (!card) return;
@@ -1738,15 +1789,37 @@ async function syncHouseholdCard() {
   try {
     const house = await getDoc(doc(db, 'households', state.household));
     const owner = house.exists() ? house.data().owner : '';
-    $('settings-household-name').textContent = (house.exists() && house.data().name) || 'Household';
     const snap = await getDocs(hcol('members'));
     const me = state.user ? state.user.uid : '';
     const roleWord = { family: 'family', readonly: 'read only', viewer: 'medicines and treatment only' };
-    const rows = snap.docs.map((d) => ({ uid: d.id, ...d.data() })).sort((a, b) => (a.uid === owner ? -1 : b.uid === owner ? 1 : 0) || String(a.name).localeCompare(String(b.name)));
+    const rows = snap.docs.map((d) => ({ uid: d.id, ...d.data() })).sort((a, b) => (a.relation === 'patient' ? -1 : b.relation === 'patient' ? 1 : 0) || (a.uid === owner ? -1 : b.uid === owner ? 1 : 0) || String(a.name).localeCompare(String(b.name)));
+    const patient = rows.find((m) => m.relation === 'patient');
+    const patientName = (patient && patient.name) || (house.exists() && (house.data().patientName || house.data().name)) || '';
+    if (patientName && !state.patientName) state.patientName = patientName;
+    $('settings-household-name').textContent = patientName ? patientName + '\'s care circle' : 'Your care circle';
+    const canRun = runsCircle(owner);
+    $('settings-invite').hidden = !canRun;
+    $('settings-invite-hint').textContent = canRun
+      ? 'An invite is a link that works once and expires in a week. Family can add and change everything; read only sees everything and changes nothing; medicines and treatment only sees just that. Only the patient, and whoever set the circle up, can invite or remove people.'
+      : 'Only ' + (patientName || 'the patient') + ', and whoever set the circle up, can invite or remove people.';
+    const hand = $('settings-handover');
+    hand.replaceChildren();
+    if (owner === me && patient && patient.uid !== me && patient.role === 'family') {
+      hand.append(h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => confirmSheet('Hand over the circle', patient.name + ' would then invite and remove people. You keep full access to everything.', 'Hand it to ' + patient.name).then(async (ok) => {
+        if (!ok) return;
+        try { await bridgeCall('/owner-transfer', { uid: patient.uid }); toast('This is ' + patient.name + '\'s circle now'); } catch (e) { toast(e.message); }
+        syncHouseholdCard();
+      }) }, 'Hand this circle to ' + patient.name), h('p', { class: 'hint', text: 'You set this circle up for ' + patient.name + '. Hand it to them when they are ready to run it themselves.' }));
+    } else if (patient && patient.uid === me && owner !== me) {
+      hand.append(h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
+        try { await bridgeCall('/owner-transfer', { uid: me }); toast('This is your circle now'); } catch (e) { toast(e.message); }
+        syncHouseholdCard();
+      } }, 'Take charge of your circle'), h('p', { class: 'hint', text: 'Someone set this circle up for you. Take charge and only you decide who is in it; they keep full access.' }));
+    }
     list.replaceChildren(...rows.map((m) => {
-      const sub = [roleWord[m.role] || m.role, m.relation, m.uid === owner ? 'owner' : '', m.uid === me ? 'you' : ''].filter(Boolean).join(', ');
+      const sub = [roleWord[m.role] || m.role, m.relation === 'patient' ? 'the patient' : m.relation, m.uid === owner ? (m.relation === 'patient' ? 'runs the circle' : 'set it up') : '', m.uid === me ? 'you' : ''].filter(Boolean).join(', ');
       const row = h('li', { class: 'member' }, h('div', { class: 'member-main' }, h('div', { class: 'member-name', text: m.name || 'Member' }), h('div', { class: 'member-sub', text: sub })));
-      if (owner === me && m.uid !== me) {
+      if (canRun && m.uid !== me && m.uid !== owner && !(m.relation === 'patient' && state.account.relation !== 'patient')) {
         const del = h('button', { class: 'btn btn-link btn-small', type: 'button', 'aria-label': 'Remove ' + (m.name || 'this member') }, 'Remove');
         del.addEventListener('click', () => {
           const yes = h('button', { class: 'btn btn-danger btn-small', type: 'button', onclick: async () => { yes.disabled = true; try { await bridgeCall('/member-remove', { uid: m.uid }); toast((m.name || 'They') + ' no longer has access'); } catch (e) { toast(e.message); } syncHouseholdCard(); } }, 'Yes, remove');
@@ -1767,7 +1840,7 @@ function openInviteSheet() {
   const relRow = h('div', { class: 'chips', role: 'group', 'aria-label': 'Who they are' });
   const chip = (label, on, onclick) => h('button', { class: 'preset' + (on ? ' is-active' : ''), type: 'button', 'aria-pressed': on ? 'true' : 'false', onclick }, label);
   const roleHint = h('p', { class: 'hint' });
-  const ROLE_HINTS = { family: 'Can add, change and delete everything, and invite others.', readonly: 'Sees everything, changes nothing.', viewer: 'Sees only medicines, the treatment plan and the trend charts.' };
+  const ROLE_HINTS = { family: 'Can add, change and delete everything.', readonly: 'Sees everything, changes nothing.', viewer: 'Sees only medicines, the treatment plan and the trend charts.' };
   const drawRole = () => { roleRow.replaceChildren(chip('Family', role === 'family', () => { role = 'family'; drawRole(); }), chip('Read only', role === 'readonly', () => { role = 'readonly'; drawRole(); }), chip('Medicines and treatment only', role === 'viewer', () => { role = 'viewer'; drawRole(); })); roleHint.textContent = ROLE_HINTS[role]; };
   const drawRel = () => relRow.replaceChildren(chip('A carer', relation === 'carer', () => { relation = 'carer'; drawRel(); }), chip('Family or friend', relation === '', () => { relation = ''; drawRel(); }), chip('The patient', relation === 'patient', () => { relation = 'patient'; drawRel(); }));
   drawRole(); drawRel();
@@ -1779,7 +1852,7 @@ function openInviteSheet() {
       const inv = await bridgeCall('/invite', { name: name.value.trim(), role, relation });
       const link = h('p', { class: 'mono keybox', text: inv.url });
       const share = h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
-        const text = `${state.name} has invited you to join ${inv.householdName || 'their'} Daybook. Open this link, then create an account or sign in: ${inv.url}`;
+        const text = inviteWords({ from: state.name, fromRelation: inv.fromRelation, patientName: inv.patientName, role }, 'you ') + ` Open this link, then create an account or sign in: ${inv.url}`;
         if (navigator.share) { try { await navigator.share({ title: 'Daybook invite', text }); return; } catch (e) { if (e && e.name === 'AbortError') return; } }
         try { await navigator.clipboard.writeText(text); toast('Invite copied. Paste it into a message.'); } catch (e) { toast('Press and hold the link to copy it'); }
       } }, 'Share the invite');
@@ -1821,7 +1894,7 @@ $('settings-health-key').addEventListener('click', async () => {
     box.textContent = key || 'No inbox key yet. Make one with the Household admin workflow (new-key) on the Actions tab.';
     box.hidden = false;
     hint.hidden = false;
-    hint.textContent = key ? 'Press and hold to copy it into the automation\'s X-Care-Log-Key header. Anyone with this key can send readings into this household, so keep it to the phone that needs it.' : '';
+    hint.textContent = key ? 'Press and hold to copy it into the automation\'s X-Care-Log-Key header. Anyone with this key can send readings into this circle, so keep it to the phone that needs it.' : '';
     btn.textContent = 'Hide the inbox key';
   } catch (e) { console.error(e); toast('Could not read the inbox key'); }
   btn.disabled = false;
@@ -6721,8 +6794,10 @@ async function loadPatientName() {
   try {
     const snap = await getDocs(hcol('members'));
     const p = snap.docs.map((d) => d.data()).find((m) => m.relation === 'patient');
-    if (p && p.name) state.patientName = p.name;
-  } catch (e) { /* read-only members cannot list the household; the signed-in name stands in */ }
+    if (p && p.name) { state.patientName = p.name; return; }
+    const house = await getDoc(doc(db, 'households', state.household));
+    if (house.exists() && house.data().patientName) state.patientName = house.data().patientName; // a carer named them at set-up (v199)
+  } catch (e) { /* read-only members cannot list the circle; the signed-in name stands in */ }
 }
 
 /* One question on a report screen (Notes for the team, or the Food diary for the dietitian's): the label, the words, who and when, then the answer and Mark as answered buttons */

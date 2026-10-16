@@ -34,6 +34,7 @@ export default {
       if (url.pathname === '/invite-info' && request.method === 'GET') return withCors(request, await handleInviteInfo(url, env));
       if (url.pathname === '/join' && request.method === 'POST') return withCors(request, await handleJoin(request, env));
       if (url.pathname === '/member-remove' && request.method === 'POST') return withCors(request, await handleRemoveMember(request, env));
+      if (url.pathname === '/owner-transfer' && request.method === 'POST') return withCors(request, await handleOwnerTransfer(request, env));
       /* Diagnostic: what the phone last sent and what was written, for checking the field names.
          Opened in a browser with ?key=<the household's inbox key>. Health data only, no secrets. */
       if (url.pathname === '/last' && request.method === 'GET') {
@@ -617,8 +618,19 @@ async function memberOf(fs, uid) {
   const hid = rec && f(rec.fields, 'household');
   if (!hid) return { hid: null };
   const mem = await fs.get(hp(hid, 'members/' + uid));
-  return { hid, role: mem ? f(mem.fields, 'role') : null, name: mem ? f(mem.fields, 'name') : null };
+  return { hid, role: mem ? f(mem.fields, 'role') : null, name: mem ? f(mem.fields, 'name') : null, relation: mem ? (f(mem.fields, 'relation') || '') : '' };
 }
+/* The care circle (v199): a household is the patient's circle. The patient (the member whose relation is patient) and
+   the owner (whoever set it up, until they hand it over) are the only two who invite and remove; everyone else logs. */
+async function circleOf(fs, hid) {
+  const house = await fs.get('households/' + hid);
+  const members = await fs.list(hp(hid, 'members'));
+  const patient = members.find((m) => f(m.fields, 'relation') === 'patient');
+  const owner = house ? f(house.fields, 'owner') : '';
+  return { house, owner, members, patientUid: patient ? patient.path.split('/').pop() : null,
+    patientName: (patient && f(patient.fields, 'name')) || (house && (f(house.fields, 'patientName') || f(house.fields, 'name'))) || '' };
+}
+const runsCircle = (circle, uid, me) => circle.owner === uid || me.relation === 'patient';
 
 /* Beta codes (since v152): while BETA_CODES_REQUIRED is set in wrangler.toml, a new household needs a code from
    betaCodes/{CODE} { label, active, uses, createdAt, lastUsedAt } (made with the Household admin workflow,
@@ -786,7 +798,9 @@ async function handleSendReport(request, env) {
   return json({ ok: true, id: (data && data.id) || null, to, copyTo: who.email, at: new Date().toISOString(), kind });
 }
 
-/* POST /household { name, relation, householdName?, betaCode?, heardFrom? }: a sign-in with no household makes its own and becomes its family owner */
+/* POST /household { name, relation, forName?, carerAgreed?, betaCode?, heardFrom? }: a sign-in with no circle makes its own and becomes its
+   owner. Since v199 a carer setting one up for someone else names them (forName) and confirms they have that person's agreement, or
+   are acting for someone who cannot decide for themselves; the confirmation is kept on the circle (consent) with the time. */
 async function handleCreateHousehold(request, env) {
   const a = await whoIs(request, env); if (a.error) return a.error;
   if (a.demo) return json({ error: 'demo', message: 'The demo has one shared household.' }, 403);
@@ -795,7 +809,10 @@ async function handleCreateHousehold(request, env) {
   const name = clean(body.name, 40);
   if (!name) return json({ error: 'bad-request', message: 'A first name is needed.' }, 400);
   const current = await memberOf(fs, who.uid);
-  if (current.hid) return json({ error: 'already', message: 'This sign-in is already in a household.', household: current.hid }, 409);
+  if (current.hid) return json({ error: 'already', message: 'This sign-in is already in a care circle.', household: current.hid }, 409);
+  const relation = relationOf(body.relation) === 'carer' ? 'carer' : 'patient';
+  const forName = clean(body.forName, 40);
+  if (relation === 'carer' && body.carerAgreed !== true) return json({ error: 'bad-request', message: 'Please confirm that the person you care for has agreed, or cannot decide this for themselves and you are acting for them.' }, 400);
   const betaCode = normaliseBetaCode(body.betaCode);
   let beta = null;
   if (env.BETA_CODES_REQUIRED) {
@@ -806,35 +823,42 @@ async function handleCreateHousehold(request, env) {
   const day = londonNow().day;
   const g = await fs.get('bridge/global');
   const made = g && f(g.fields, 'day') === day ? Number(f(g.fields, 'households') || 0) : 0;
-  if (made >= HOUSEHOLDS_A_DAY) return json({ error: 'limit', message: 'Daybook cannot take more new households today. Try again tomorrow.' }, 429);
+  if (made >= HOUSEHOLDS_A_DAY) return json({ error: 'limit', message: 'Daybook cannot take more new care circles today. Try again tomorrow.' }, 429);
   await fs.set('bridge/global', { day: strVal(day), households: intVal(made + 1), updatedAt: nowTs() });
   const hid = randomCode().slice(0, 20);
-  const house = { name: strVal(clean(body.householdName, 60) || name), owner: strVal(who.uid), createdAt: nowTs() };
+  const house = { name: strVal(relation === 'carer' && forName ? forName : name), owner: strVal(who.uid), createdAt: nowTs() };
+  if (relation === 'carer') {
+    if (forName) house.patientName = strVal(forName);
+    house.consent = { mapValue: { fields: { by: strVal(who.uid), byName: strVal(name), at: nowTs(), kind: strVal('carer') } } };
+  }
   if (beta) house.betaCode = strVal(beta.code);
   if (heardFrom) house.heardFrom = strVal(heardFrom);
   await fs.set('households/' + hid, house);
-  await fs.set(hp(hid, 'members/' + who.uid), { name: strVal(name), role: strVal('family'), relation: strVal(relationOf(body.relation)), addedBy: strVal('sign-up'), addedAt: nowTs() });
+  await fs.set(hp(hid, 'members/' + who.uid), { name: strVal(name), role: strVal('family'), relation: strVal(relation), addedBy: strVal('sign-up'), addedAt: nowTs() });
   await fs.merge('users/' + who.uid, { household: strVal(hid), name: strVal(name) });
   if (beta) await fs.merge('betaCodes/' + beta.code, { uses: intVal(beta.uses + 1), lastUsedAt: nowTs() });
   return json({ ok: true, household: hid });
 }
 
-/* POST /invite { name, role, relation }: a family member makes a one-use link that expires in a week */
+/* POST /invite { name, role, relation }: the patient, or the owner, makes a one-use link that expires in a week (v199: family members who are neither cannot) */
 async function handleInvite(request, env) {
   const a = await whoIs(request, env); if (a.error) return a.error;
   if (a.demo) return json({ error: 'demo', message: 'Invites are not available in the demo.' }, 403);
   const { who, fs } = a;
   const me = await memberOf(fs, who.uid);
-  if (!me.hid || me.role !== 'family') return json({ error: 'unauthorised', message: 'Only family members can invite someone.' }, 403);
+  if (!me.hid || me.role !== 'family') return json({ error: 'unauthorised', message: 'Only the patient, or whoever set the circle up, can invite someone.' }, 403);
+  const circle = await circleOf(fs, me.hid);
+  if (!runsCircle(circle, who.uid, me)) return json({ error: 'unauthorised', message: 'Only the patient, or whoever set the circle up, can invite someone.' }, 403);
   const body = await readJson(request); if (!body) return json({ error: 'bad-request', message: 'Could not read what was sent.' }, 400);
   const role = ROLES.includes(body.role) ? body.role : 'readonly';
   const name = clean(body.name, 40);
+  const relation = relationOf(body.relation);
+  if (relation === 'patient' && circle.patientUid) return json({ error: 'bad-request', message: 'This circle already has its patient.' }, 400);
   const code = randomCode();
   const expiresAt = new Date(Date.now() + INVITE_DAYS * 86400000).toISOString();
-  const house = await fs.get('households/' + me.hid);
-  await fs.set(hp(me.hid, 'invites/' + code), { name: strVal(name), role: strVal(role), relation: strVal(relationOf(body.relation)), createdBy: strVal(who.uid), createdByName: strVal(me.name || ''), createdAt: nowTs(), expiresAt: { timestampValue: expiresAt }, used: { booleanValue: false } });
+  await fs.set(hp(me.hid, 'invites/' + code), { name: strVal(name), role: strVal(role), relation: strVal(relation), createdBy: strVal(who.uid), createdByName: strVal(me.name || ''), createdByRelation: strVal(me.relation || ''), createdAt: nowTs(), expiresAt: { timestampValue: expiresAt }, used: { booleanValue: false } });
   await fs.set('inviteCodes/' + code, { household: strVal(me.hid), expiresAt: { timestampValue: expiresAt } });
-  return json({ ok: true, code, url: appUrl() + '?invite=' + code, expiresAt, householdName: house ? f(house.fields, 'name') : '' });
+  return json({ ok: true, code, url: appUrl() + '?invite=' + code, expiresAt, householdName: circle.patientName, patientName: circle.patientName, fromRelation: me.relation || '' });
 }
 
 /* GET /invite-info?code=: what an invite link is for, shown before anyone signs up (the code itself is the secret) */
@@ -844,7 +868,7 @@ async function handleInviteInfo(url, env) {
   const fs = await firestore(env);
   const inv = await loadInvite(fs, code);
   if (!inv.ok) return json({ valid: false, message: inv.message });
-  return json({ valid: true, householdName: inv.householdName, name: f(inv.fields, 'name'), role: f(inv.fields, 'role'), from: f(inv.fields, 'createdByName') });
+  return json({ valid: true, householdName: inv.householdName, patientName: inv.householdName, name: f(inv.fields, 'name'), role: f(inv.fields, 'role'), relation: f(inv.fields, 'relation') || '', from: f(inv.fields, 'createdByName'), fromRelation: f(inv.fields, 'createdByRelation') || '' });
 }
 async function loadInvite(fs, code) {
   const idx = await fs.get('inviteCodes/' + code);
@@ -854,8 +878,8 @@ async function loadInvite(fs, code) {
   if (!inv) return { ok: false, message: 'That invite link is not right.' };
   if (f(inv.fields, 'used') === true) return { ok: false, message: 'That invite link has already been used.' };
   if (new Date(f(inv.fields, 'expiresAt')).getTime() < Date.now()) return { ok: false, message: 'That invite link has expired. Ask for a new one.' };
-  const house = await fs.get('households/' + hid);
-  return { ok: true, hid, fields: inv.fields, householdName: house ? f(house.fields, 'name') : '' };
+  const circle = await circleOf(fs, hid);
+  return { ok: true, hid, fields: inv.fields, householdName: circle.patientName };
 }
 
 /* POST /join { code, name? }: a sign-in with no household joins the one the invite is for */
@@ -866,7 +890,7 @@ async function handleJoin(request, env) {
   const body = await readJson(request); if (!body) return json({ error: 'bad-request', message: 'Could not read what was sent.' }, 400);
   const code = clean(body.code, 40);
   const current = await memberOf(fs, who.uid);
-  if (current.hid) return json({ error: 'already', message: 'This sign-in is already in a household. Sign out and create a new sign-in to join another.' }, 409);
+  if (current.hid) return json({ error: 'already', message: 'This sign-in is already in a care circle. Sign out and create a new sign-in to join another.' }, 409);
   const inv = await loadInvite(fs, code);
   if (!inv.ok) return json({ error: 'invite', message: inv.message }, 400);
   const name = clean(body.name, 40) || f(inv.fields, 'name') || 'Member';
@@ -874,23 +898,47 @@ async function handleJoin(request, env) {
   await fs.merge('users/' + who.uid, { household: strVal(inv.hid), name: strVal(name) });
   await fs.merge(hp(inv.hid, 'invites/' + code), { used: { booleanValue: true }, usedBy: strVal(who.uid), usedAt: nowTs() });
   await fs.remove('inviteCodes/' + code);
-  return json({ ok: true, household: inv.hid, householdName: inv.householdName, name, role: f(inv.fields, 'role') });
+  return json({ ok: true, household: inv.hid, householdName: inv.householdName, patientName: inv.householdName, name, role: f(inv.fields, 'role') });
 }
 
-/* POST /member-remove { uid }: the household's owner takes someone out (never themselves) */
+/* POST /owner-transfer { uid } (v199): the owner hands the circle to another family member (the patient, in the app), or the
+   patient takes charge of a circle a carer set up for them (uid is their own; refused while the owner is the patient). */
+async function handleOwnerTransfer(request, env) {
+  const a = await whoIs(request, env); if (a.error) return a.error;
+  if (a.demo) return json({ error: 'demo', message: 'Not available in the demo.' }, 403);
+  const { who, fs } = a;
+  const me = await memberOf(fs, who.uid);
+  if (!me.hid) return json({ error: 'unauthorised', message: 'This sign-in is not in a care circle.' }, 403);
+  const body = await readJson(request); if (!body) return json({ error: 'bad-request', message: 'Could not read what was sent.' }, 400);
+  const uid = clean(body.uid, 60);
+  const circle = await circleOf(fs, me.hid);
+  if (!circle.house) return json({ error: 'bad-request', message: 'The circle could not be read.' }, 400);
+  const target = circle.members.find((m) => m.path.split('/').pop() === uid);
+  if (!target || f(target.fields, 'role') !== 'family') return json({ error: 'bad-request', message: 'That person is not a family member of this circle.' }, 400);
+  const ownerIsPatient = circle.owner === circle.patientUid;
+  const claiming = uid === who.uid && me.relation === 'patient' && !ownerIsPatient;
+  if (circle.owner !== who.uid && !claiming) return json({ error: 'unauthorised', message: 'Only whoever set the circle up can hand it over.' }, 403);
+  if (uid === circle.owner) return json({ ok: true, owner: uid });
+  await fs.merge('households/' + me.hid, { owner: strVal(uid), ownerChangedAt: nowTs(), ownerChangedBy: strVal(who.uid) });
+  return json({ ok: true, owner: uid });
+}
+
+/* POST /member-remove { uid }: the owner, or the patient, takes someone out (never themselves, and only the patient can remove the patient) */
 async function handleRemoveMember(request, env) {
   const a = await whoIs(request, env); if (a.error) return a.error;
   if (a.demo) return json({ error: 'demo', message: 'Not available in the demo.' }, 403);
   const { who, fs } = a;
   const me = await memberOf(fs, who.uid);
-  if (!me.hid) return json({ error: 'unauthorised', message: 'This sign-in is not in a household.' }, 403);
-  const house = await fs.get('households/' + me.hid);
-  if (!house || f(house.fields, 'owner') !== who.uid) return json({ error: 'unauthorised', message: 'Only the household owner can remove someone.' }, 403);
+  if (!me.hid) return json({ error: 'unauthorised', message: 'This sign-in is not in a care circle.' }, 403);
+  const circle = await circleOf(fs, me.hid);
+  if (!circle.house || !runsCircle(circle, who.uid, me)) return json({ error: 'unauthorised', message: 'Only the patient, or whoever set the circle up, can remove someone.' }, 403);
   const body = await readJson(request); if (!body) return json({ error: 'bad-request', message: 'Could not read what was sent.' }, 400);
   const uid = clean(body.uid, 60);
-  if (!uid || uid === who.uid) return json({ error: 'bad-request', message: 'The owner cannot be removed.' }, 400);
+  if (!uid || uid === who.uid) return json({ error: 'bad-request', message: 'You cannot remove yourself.' }, 400);
+  if (uid === circle.owner) return json({ error: 'bad-request', message: 'Whoever set the circle up cannot be removed.' }, 400);
+  if (uid === circle.patientUid && me.relation !== 'patient') return json({ error: 'bad-request', message: 'The patient cannot be removed from their own circle.' }, 400);
   const target = await fs.get(hp(me.hid, 'members/' + uid));
-  if (!target) return json({ error: 'bad-request', message: 'That person is not in this household.' }, 400);
+  if (!target) return json({ error: 'bad-request', message: 'That person is not in this circle.' }, 400);
   await fs.remove(hp(me.hid, 'members/' + uid));
   await fs.remove('users/' + uid);
   const subs = await fs.list(hp(me.hid, 'pushSubs'));
