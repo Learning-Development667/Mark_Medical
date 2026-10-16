@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=198">
+  <link rel="stylesheet" href="styles.css?v=199">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -85,7 +85,7 @@
       <h1 class="brand"><span class="brand-pre">My Medical</span>Daybook</h1>
       <span class="pill pill-stage" data-stage>Beta</span>
       <p class="strapline">Your companion between appointments.</p>
-      <p class="muted">Each household's records are seen only by its own members.</p>
+      <p class="muted">Only the people you choose see your records: your care circle.</p>
       <form id="signin-form" autocomplete="on">
         <label class="field">
           <span>Email</span>
@@ -107,7 +107,7 @@
     </div>
   </section>
 
-  <!-- Create an account (since v78): a sign-in plus its own household, or a place in the household an invite is for -->
+  <!-- Create an account (since v78): a sign-in plus its own care circle, or a place in the circle an invite is for -->
   <section id="signup" class="signin" hidden>
     <div class="signin-card">
       <h1 class="brand"><span class="brand-pre">My Medical</span>Daybook</h1>
@@ -119,7 +119,16 @@
           <span>Your first name</span>
           <input id="signup-name" type="text" autocomplete="given-name" maxlength="40" required>
         </label>
-        <div class="chips" id="signup-relation" role="group" aria-label="I am"></div>
+        <p class="fieldlabel">Who is Daybook for?</p>
+        <div class="chips" id="signup-relation" role="group" aria-label="Who is Daybook for?"></div>
+        <label class="field" id="signup-for-field" hidden>
+          <span>Their first name (the circle is theirs)</span>
+          <input id="signup-for" type="text" autocomplete="off" maxlength="40">
+        </label>
+        <label class="check" id="signup-agree-field" hidden>
+          <input id="signup-agree" type="checkbox">
+          <span>They have agreed to me keeping their records in Daybook, or cannot decide this for themselves and I am acting for them.</span>
+        </label>
         <label class="field">
           <span>Email</span>
           <input id="signup-email" type="email" inputmode="email" autocomplete="username" required>
@@ -148,18 +157,27 @@
     </div>
   </section>
 
-  <!-- Signed in, but in no household yet (since v78) -->
+  <!-- Signed in, but in no care circle yet (since v78) -->
   <section id="nohousehold" class="signin" hidden>
     <div class="signin-card">
       <h1 class="brand"><span class="brand-pre">My Medical</span>Daybook</h1>
       <span class="pill pill-stage" data-stage>Beta</span>
-      <p class="muted" id="nohousehold-who">This sign-in is not in a Daybook household yet.</p>
+      <p class="muted" id="nohousehold-who">This sign-in is not in a care circle yet.</p>
       <form id="nohousehold-form">
         <label class="field">
           <span>Your first name</span>
           <input id="nohousehold-name" type="text" autocomplete="given-name" maxlength="40" required>
         </label>
-        <div class="chips" id="nohousehold-relation" role="group" aria-label="I am"></div>
+        <p class="fieldlabel">Who is Daybook for?</p>
+        <div class="chips" id="nohousehold-relation" role="group" aria-label="Who is Daybook for?"></div>
+        <label class="field" id="nohousehold-for-field" hidden>
+          <span>Their first name (the circle is theirs)</span>
+          <input id="nohousehold-for" type="text" autocomplete="off" maxlength="40">
+        </label>
+        <label class="check" id="nohousehold-agree-field" hidden>
+          <input id="nohousehold-agree" type="checkbox">
+          <span>They have agreed to me keeping their records in Daybook, or cannot decide this for themselves and I am acting for them.</span>
+        </label>
         <label class="field" id="nohousehold-beta-field">
           <span>Beta code (from whoever told you about Daybook)</span>
           <input id="nohousehold-beta" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="24">
@@ -185,7 +203,7 @@
       <h1 class="brand"><span class="brand-pre">My Medical</span>Daybook</h1>
       <span class="pill pill-stage" data-stage>Beta</span>
       <p><strong>config.js is missing.</strong></p>
-      <p class="muted">Copy <code>config.example.js</code> to <code>config.js</code>, paste in the Firebase web config, then commit it. Accounts and households are made from the app itself.</p>
+      <p class="muted">Copy <code>config.example.js</code> to <code>config.js</code>, paste in the Firebase web config, then commit it. Accounts and care circles are made from the app itself.</p>
     </div>
   </section>
 
@@ -805,7 +823,7 @@
         <p class="hint settings-setup-hint">Everything the set-up asked for lives here, and can be changed any time. <button id="settings-setup" class="btn-inline" type="button">Run the set-up again</button></p>
         <h2 class="section-title">What Daybook is for</h2>
         <div id="settings-packs" class="card settings-group">
-          <p class="hint">Tick what applies; more than one is fine. Each brings its own questions and its own limits on the reports. Shared by everyone in the household.</p>
+          <p class="hint">Tick what applies; more than one is fine. Each brings its own questions and its own limits on the reports. Shared by everyone in the circle.</p>
           <div id="settings-packs-list"></div>
           <div id="settings-ibd" class="ibd-setup" hidden></div>
         </div>
@@ -828,7 +846,7 @@
             <span>Name on the report</span>
             <input id="settings-report-name" type="text" autocomplete="name" maxlength="60">
           </label>
-          <p class="hint">Your full name, as the hospital has it. It goes at the top of every report and in the subject and sign-off of the covering email, so the team can file them against your records. Left empty, the reports use the first name of the household's patient and the email is signed with your first name.</p>
+          <p class="hint">Your full name, as the hospital has it. It goes at the top of every report and in the subject and sign-off of the covering email, so the team can file them against your records. Left empty, the reports use the first name of the circle's patient and the email is signed with your first name.</p>
         </div>
         <h2 class="section-title">Reminders</h2>
         <div id="settings-reminders-group" class="card settings-group">
@@ -848,21 +866,23 @@
             <input id="settings-stretch-nudge" type="checkbox">
             <span>Gentle nudge at 10:00 if nothing is logged on the Exercise tab</span>
           </label>
-          <p class="hint">One notification, no pressure. Needs reminders on for at least one phone in the household.</p>
+          <p class="hint">One notification, no pressure. Needs reminders on for at least one phone in the circle.</p>
         </div>
         <div id="settings-household" hidden>
-          <h2 class="section-title">Household</h2>
+          <h2 class="section-title">Your care circle</h2>
           <div class="card settings-group">
             <p id="settings-household-name" class="big"></p>
+            <p class="hint">The people you have chosen to see these records. Nobody else can.</p>
             <ul id="settings-members" class="members"></ul>
             <button id="settings-invite" class="btn btn-primary btn-block" type="button">Invite someone</button>
-            <p class="hint">An invite is a link that works once and expires in a week. Family can add and change everything; read only sees everything and changes nothing; medicines and treatment only sees just that.</p>
+            <p class="hint" id="settings-invite-hint">An invite is a link that works once and expires in a week.</p>
+            <div id="settings-handover"></div>
           </div>
         </div>
         <div id="settings-health" hidden>
           <h2 class="section-title">Apple Health</h2>
           <div class="card settings-group">
-            <p class="hint">Optional. Steps, sleep, workouts, weight and BMI, and food totals can arrive automatically through the Health Auto Export app (iPhone only; the automatic sending needs its paid version, a one-off purchase). Everything can be typed in instead, so Daybook works in full without it. Its automation posts to the address below with this household's inbox key in the X-Care-Log-Key header (Care Log was Daybook's first name). The key is this household's alone.</p>
+            <p class="hint">Optional. Steps, sleep, workouts, weight and BMI, and food totals can arrive automatically through the Health Auto Export app (iPhone only; the automatic sending needs its paid version, a one-off purchase). Everything can be typed in instead, so Daybook works in full without it. Its automation posts to the address below with this circle's inbox key in the X-Care-Log-Key header (Care Log was Daybook's first name). The key is this circle's alone.</p>
             <p class="mono keybox" id="settings-health-url"></p>
             <button id="settings-health-key" class="btn btn-secondary btn-block" type="button">Show the inbox key</button>
             <p class="mono keybox" id="settings-health-keytext" hidden></p>
@@ -908,53 +928,57 @@
   <!-- Privacy, terms and About (since v90): plain English, opened in the sheet from the Settings App card,
        the sign-in and sign-up screens, or ?page=privacy|terms|about in the address (openLegal()). -->
   <template id="tpl-privacy">
-    <p class="legal-date mono">Last updated 15 October 2026</p>
-    <p>My Medical Daybook (Daybook for short) is made and run by Mark 1 Apps Ltd, a company registered in England and Wales (company number 17510025), which is responsible for the information the app holds (the "data controller" in UK law). <span data-contact></span></p>
+    <p class="legal-date mono">Last updated 16 October 2026</p>
+    <p>My Medical Daybook (Daybook for short) is made and run by Mark 1 Apps Ltd, a company registered in England and Wales (company number 17510025), which is responsible for the information the app holds (the "data controller" in UK law). Mark 1 Apps Ltd is registered with the Information Commissioner's Office. <span data-contact></span></p>
     <h3>The short version</h3>
     <ul>
-      <li>What you record in Daybook is yours. It is kept in a separate folder for your household. Only the people you invite can see it, apart from the operator and the companies listed under "Who can see it", and anything you choose to send to an AI service.</li>
+      <li>What you record in Daybook is yours. It lives in your care circle's own locked space. Only the people you choose see it, and you can take anyone out.</li>
+      <li>Mark 1 Apps Ltd never looks at your records in running Daybook. The only exceptions are if you ask us for help and agree to us looking, or where the law requires it.</li>
+      <li>No circle can see another circle's records. The database enforces this, not just the app.</li>
       <li>Nothing is sold, nothing is used for advertising, and nothing is used to train AI.</li>
-      <li>Your health information leaves your household's folder only when you use a feature that sends it (listed below, each one started by a tap), or through the medicine reminders if you switch them on.</li>
+      <li>Your health information leaves your circle's space only when you use a feature that sends it (listed below, each one started by a tap), or through the medicine reminders if you switch them on.</li>
       <li>You can delete any entry, document or recording yourself, and you can ask for everything to be exported or erased.</li>
       <li>No cookies, no tracking, no analytics.</li>
     </ul>
+    <h3>Your care circle</h3>
+    <p>A care circle is one patient's records and the people they have let in. It is set up by the patient, or by a carer for someone they look after. A carer setting it up names the patient and confirms that the patient has agreed, or cannot decide this for themselves and the carer is acting for them; that confirmation is kept with the circle, with the date. The records are the patient's, whoever typed them in: the patient's rights below come first, and the patient can take charge of the circle at any time. Only the patient, and the person who set the circle up until they hand it over, can invite someone in or remove them. Everyone else in the circle has exactly the access they were given and nothing more.</p>
     <h3>What Daybook stores</h3>
-    <p><b>Your sign-in:</b> your email address and password (held by Google's Firebase Authentication; Daybook never sees the password), your first name, your role in the household (family, read only, or medicines and treatment only), whether you are the patient or a carer, and which household you belong to.</p>
-    <p><b>What your household records:</b> check-ins (pain, mood, sleep, sickness, appetite, energy, how much you felt low, worried or enjoyed something each evening, a weekly check whose questions follow the conditions Daybook is set up for, a carer's own weekly check on how the patient seemed, with Crohn's or colitis a weekly question about joints, eyes, skin and mouth, and what you write), readings (temperature, heart rate, blood pressure, oxygen, weight and BMI), food and drink, notes, questions for the care team and their answers, including any voice recordings you choose to make, medicines, doses and reminder times, letters and documents you photograph or paste in and the explanations saved with them, bowel movements (the type, any blood, urgency and accidents, and with Crohn's or colitis your usual number a day and whether you have a stoma), symptoms between check-ins, which conditions Daybook is set up for, treatment sessions and the calendar, exercise ticks, steps, sleep, workouts and food totals if you connect Apple Health, saved meals, who to contact (names, roles, phone numbers, any extension or menu option, and email addresses), and your settings.</p>
-    <p><b>On your phone:</b> a copy of your account record and of the records you have opened, so the app works on a weak signal, and a few settings (which charts you view as tables, the exercise filter, the weight unit, the opener). Words typed into a note or a question are kept on the phone until you save or close that screen, so they are not lost if the phone closes the app; they are cleared when you save, cancel or clear them, and after 7 days at most. A check-in you have started is kept whole (the scores, the words and the step you were on) on the phone and in your household's folder until it is saved or closed, so it comes back as you left it on either phone. Your browser holds these and they go when you clear its data.</p>
-    <p><b>If you turn on reminders:</b> each phone's push address and browser type, so the reminder reaches it. <b>For Daybook Assistant:</b> a daily count per household of how many requests were made and how many words they used, for the cost.</p>
+    <p><b>Your sign-in:</b> your email address and password (held by Google's Firebase Authentication; Daybook never sees the password), your first name, your role in the circle (family, read only, or medicines and treatment only), whether you are the patient or a carer, and which circle you belong to.</p>
+    <p><b>What your circle records:</b> check-ins (pain, mood, sleep, sickness, appetite, energy, how much you felt low, worried or enjoyed something each evening, a weekly check whose questions follow the conditions Daybook is set up for, a carer's own weekly check on how the patient seemed, with Crohn's or colitis a weekly question about joints, eyes, skin and mouth, and what you write), readings (temperature, heart rate, blood pressure, oxygen, weight and BMI), food and drink, notes, questions for the care team and their answers, including any voice recordings you choose to make, medicines, doses and reminder times, letters and documents you photograph or paste in and the explanations saved with them, bowel movements (the type, any blood, urgency and accidents, and with Crohn's or colitis your usual number a day and whether you have a stoma), symptoms between check-ins, which conditions Daybook is set up for, treatment sessions and the calendar, exercise ticks, steps, sleep, workouts and food totals if you connect Apple Health, saved meals, who to contact (names, roles, phone numbers, any extension or menu option, and email addresses), and your settings.</p>
+    <p><b>On your phone:</b> a copy of your account record and of the records you have opened, so the app works on a weak signal, and a few settings (which charts you view as tables, the exercise filter, the weight unit, the opener). Words typed into a note or a question are kept on the phone until you save or close that screen, so they are not lost if the phone closes the app; they are cleared when you save, cancel or clear them, and after 7 days at most. A check-in you have started is kept whole (the scores, the words and the step you were on) on the phone and in your circle's space until it is saved or closed, so it comes back as you left it on either phone. Your browser holds these and they go when you clear its data.</p>
+    <p><b>If you turn on reminders:</b> each phone's push address and browser type, so the reminder reaches it. <b>For Daybook Assistant:</b> a daily count per circle of how many requests were made and how many words they used, for the cost.</p>
     <h3>Where it is kept</h3>
     <p>In Google Cloud's Firestore database in London (the europe-west2 region), through Google's Firebase service and under Google's security measures. Everything travels encrypted (HTTPS), and Google encrypts it when stored. It is not end-to-end encrypted, so Google's systems and the operator can technically reach it. Anything you send with an AI button goes to Anthropic in the United States. The app itself is served from GitHub Pages.</p>
     <h3>Who can see it</h3>
     <ul>
-      <li><b>The members of your household,</b> according to the access they were given. Family members can add, change and delete. A read-only member sees everything and changes nothing. A "medicines and treatment only" member sees medicines, the treatment calendar (with the mood marks) and the readings, sleep and drinks charts, and nothing else. The database itself enforces these rules, not just the app.</li>
-      <li><b>Mark 1 Apps Ltd,</b> as the operator, has administrative access to the database in order to run it. That access is used only to fix a problem you have reported or to keep the service running, not to read anyone's records.</li>
+      <li><b>The members of your care circle,</b> the people the patient, or whoever set the circle up, chose, according to the access they were given. Family members can add, change and delete. A read-only member sees everything and changes nothing. A "medicines and treatment only" member sees medicines, the treatment calendar (with the mood marks) and the readings, sleep and drinks charts, and nothing else. The database itself enforces these rules, not just the app.</li>
+      <li><b>Mark 1 Apps Ltd,</b> as the operator, has administrative access to the database in order to run it. Faults are in the code, not in anyone's circle, so running Daybook never involves reading your records. The only times anyone at Mark 1 Apps Ltd would open a circle's records are if you ask for help with something only your own records can explain and agree to it first, or where the law requires it. Both would be rare, and you would know.</li>
       <li><b>Google,</b> as the company hosting the database, under its own data processing terms.</li>
       <li><b>Cloudflare,</b> which runs Daybook's bridge, <b>Resend,</b> only for a report you email from Daybook, and <b>Anthropic,</b> only for what you send with an AI button, as described below.</li>
       <li>Nobody else, unless the law requires it.</li>
     </ul>
-    <h3>What leaves your household's folder, and when</h3>
+    <h3>What leaves your circle's space, and when</h3>
     <ul>
-      <li><b>Send to the team and Send by email, only when you tap Send.</b> The report PDF, your message and the contact's address go through Daybook's bridge to Resend, the email service that sends it, from reporting@mymedicaldaybook.co.uk in your name. Your own sign-in email address is the reply address and gets a copy, so the clinic's reply comes straight to you, never to Mark 1 Apps Ltd. Resend keeps the email in its sending records for a limited time under its own terms; the bridge keeps only a daily count, and your household keeps a note of what was sent to whom and when, which you can delete. Where Daybook cannot send (the demo, or before it is switched on) the email goes through your own Mail app instead and nothing passes through the bridge.</li>
-      <li><b>Scan a barcode, only when you tap it.</b> The camera looks for a barcode on your phone and no picture is kept or sent. Only the barcode number goes, through Daybook's bridge, to Open Food Facts, a free and open food database, to ask what the product is; nothing about you goes with it. If the product is found, its name and label figures are saved in your household's My foods, so they can be used again. The camera is used only while the scanner is open.</li>
-      <li><b>Daybook Assistant, only when you tap.</b> Daybook Assistant is Daybook's name for its AI helper, which is Claude, an AI model made by Anthropic, a US company. Seven features send something through Daybook's bridge to Anthropic for it: <b>Explain with Daybook Assistant</b> (a letter's text or page photos), <b>Suggest questions to ask</b> and <b>Summarise with Daybook Assistant</b> (the Notes for the team text), <b>Write the brief with Daybook Assistant</b> on two reports (the scores and notes behind the Mood and wellbeing report; the scores, words and doses behind the Pain and pain relief report), <b>Read it from a photo</b> (a photo of a medicine) and <b>Add from a photo or PDF of the plan</b> (an exercise or physio plan). So that information goes to the United States. Anthropic does not use what is sent through its API to train its models and handles it under its own terms. The bridge keeps nothing of what was sent or returned, only a count of words used, for the cost. An explanation of a letter is saved with the letter, and you can change or delete it; the other replies are shown for you to check, and only what you then save is kept. There is a daily limit per household.</li>
+      <li><b>Send to the team and Send by email, only when you tap Send.</b> The report PDF, your message and the contact's address go through Daybook's bridge to Resend, the email service that sends it, from reporting@mymedicaldaybook.co.uk in your name. Your own sign-in email address is the reply address and gets a copy, so the clinic's reply comes straight to you, never to Mark 1 Apps Ltd. Resend keeps the email in its sending records for a limited time under its own terms; the bridge keeps only a daily count, and your circle keeps a note of what was sent to whom and when, which you can delete. Where Daybook cannot send (the demo, or before it is switched on) the email goes through your own Mail app instead and nothing passes through the bridge.</li>
+      <li><b>Scan a barcode, only when you tap it.</b> The camera looks for a barcode on your phone and no picture is kept or sent. Only the barcode number goes, through Daybook's bridge, to Open Food Facts, a free and open food database, to ask what the product is; nothing about you goes with it. If the product is found, its name and label figures are saved in your circle's My foods, so they can be used again. The camera is used only while the scanner is open.</li>
+      <li><b>Daybook Assistant, only when you tap.</b> Daybook Assistant is Daybook's name for its AI helper, which is Claude, an AI model made by Anthropic, a US company. Seven features send something through Daybook's bridge to Anthropic for it: <b>Explain with Daybook Assistant</b> (a letter's text or page photos), <b>Suggest questions to ask</b> and <b>Summarise with Daybook Assistant</b> (the Notes for the team text), <b>Write the brief with Daybook Assistant</b> on two reports (the scores and notes behind the Mood and wellbeing report; the scores, words and doses behind the Pain and pain relief report), <b>Read it from a photo</b> (a photo of a medicine) and <b>Add from a photo or PDF of the plan</b> (an exercise or physio plan). So that information goes to the United States. Anthropic does not use what is sent through its API to train its models and handles it under its own terms. The bridge keeps nothing of what was sent or returned, only a count of words used, for the cost. An explanation of a letter is saved with the letter, and you can change or delete it; the other replies are shown for you to check, and only what you then save is kept. There is a daily limit per circle.</li>
       <li><b>Your own AI app.</b> "Send to my AI app" and "Copy for my AI app" put the text on your phone's share sheet or clipboard. Where it goes from there is between you and the app you choose.</li>
       <li><b>Save as PDF, Print, Share and Copy</b> make a copy for you to give to the clinic or someone else. Once it has left the app, it is in your hands.</li>
       <li><b>Tap to speak</b> uses your phone's own speech recognition (Apple's on an iPhone, Google's in Chrome). Depending on the phone, the audio may be processed on the phone or on that company's servers under their terms. Daybook receives only the words.</li>
-      <li><b>Provide feedback</b> (while Daybook is in Beta) sends what you type, any picture you add, which screen you were on, the app version and the kind of phone to Mark 1 Apps Ltd through the bridge, so the app can be put right. It is kept only until the Beta is over, is never part of your household's records and is read by Mark alone. Never put health details in it unless the problem needs them.</li>
-      <li><b>Apple Health.</b> Nothing goes to Apple from Daybook. If you set up the Health Auto Export app to send steps, sleep, workouts, weight and BMI, and food totals, that data comes from your phone to Daybook's bridge and into your household's folder. The bridge keeps the last message it received, trimmed, so a problem with the feed can be checked.</li>
+      <li><b>Provide feedback</b> (while Daybook is in Beta) sends what you type, any picture you add, which screen you were on, the app version and the kind of phone to Mark 1 Apps Ltd through the bridge, so the app can be put right. It is kept only until the Beta is over, is never part of your circle's records and is read by Mark alone. Never put health details in it unless the problem needs them.</li>
+      <li><b>Apple Health.</b> Nothing goes to Apple from Daybook. If you set up the Health Auto Export app to send steps, sleep, workouts, weight and BMI, and food totals, that data comes from your phone to Daybook's bridge and into your circle's space. The bridge keeps the last message it received, trimmed, so a problem with the feed can be checked.</li>
       <li><b>Reminders.</b> If you turn on medicine reminders, each notification goes through your browser's push service (Apple, Google or Mozilla). The message is encrypted so that service cannot read it, and unless you switch it off it names no medicine ("A medicine is due"), so no medicine name shows on your lock screen.</li>
       <li><b>Fonts and chart code.</b> The app loads its fonts from Google Fonts and some code libraries from Cloudflare's cdnjs. Those servers see your phone's internet address when the app loads, as with any website. None of your entries go to them.</li>
-      <li><b>Daybook's bridge.</b> A small service on Cloudflare that handles sign-up, invites, the Apple Health feed, reminders, the emailed reports and Daybook Assistant's requests. It checks your sign-in, or for the Apple Health feed your household's inbox key, and writes only your household's records and your own sign-up record. Cloudflare keeps standard request logs for a short time.</li>
+      <li><b>Daybook's bridge.</b> A small service on Cloudflare that handles sign-up, invites, the Apple Health feed, reminders, the emailed reports and Daybook Assistant's requests. It checks your sign-in, or for the Apple Health feed your circle's inbox key, and writes only your circle's records and your own sign-up record. Cloudflare keeps standard request logs for a short time.</li>
     </ul>
     <h3>Why it is held</h3>
     <p>To provide the service you have asked for, with your explicit consent for the health information you choose to record. UK data protection law calls health information "special category data", which is why it is handled with the care above. You can withdraw consent at any time by deleting what you recorded or asking for it to be erased.</p>
     <h3>How long</h3>
-    <p>Until you delete it. Deleting an entry, document or recording removes it from the database straight away. Removing a member removes their access and their reminders. The last Apple Health message held by the bridge is overwritten by the next one. Export and household deletion with one tap are planned; until they arrive, ask using the contact details at the top and it will be done within 30 days. Google keeps standard server logs for a limited period.</p>
+    <p>Until you delete it. Deleting an entry, document or recording removes it from the database straight away. Removing a member removes their access and their reminders. The last Apple Health message held by the bridge is overwritten by the next one. Export and deleting a whole circle with one tap are planned; until they arrive, ask using the contact details at the top and it will be done within 30 days. Google keeps standard server logs for a limited period.</p>
     <h3>Your rights</h3>
     <p>Under UK data protection law you can ask to see the information held about you, have it corrected, have it erased, have a copy to take elsewhere, and object to how it is used. Ask using the contact details at the top. You can also complain to the Information Commissioner's Office at ico.org.uk.</p>
     <h3>Children</h3>
-    <p>A sign-in holder must be 18 or over. A parent or carer may record on behalf of someone they look after, including a child, with that person's agreement where they are able to give it.</p>
+    <p>A sign-in holder must be 18 or over. A parent or carer may set up a circle and record on behalf of someone they look after, including a child, with that person's agreement where they are able to give it, and otherwise acting in their interests.</p>
     <h3>The demo</h3>
     <p>The Guest button opens a shared demo. Everything in it is made up, anyone can see what is added, and it is wiped every night. Put no real details in it.</p>
     <h3>Changes</h3>
@@ -962,16 +986,16 @@
   </template>
 
   <template id="tpl-terms">
-    <p class="legal-date mono">Last updated 13 October 2026</p>
+    <p class="legal-date mono">Last updated 16 October 2026</p>
     <h3>1. What Daybook is</h3>
     <p>My Medical Daybook (Daybook for short) is a personal record-keeping tool for a patient and the people looking after them, made and run by Mark 1 Apps Ltd, a company registered in England and Wales (company number 17510025). <span data-contact></span></p>
     <p>It is not a medical device, it gives no medical advice, and it does not replace your doctors, nurses or pharmacist. Everything it shows, including the summary lines, the flags, the food estimates and the AI explanations, is there to help you talk to your care team, not to decide anything for you. If you are worried about a symptom, contact your care team or NHS 111. In an emergency call 999.</p>
     <h3>2. Your account</h3>
-    <p>One sign-in per person. Keep your password private; you are responsible for what is done with your sign-in. The household owner decides who is invited and with what access, and can remove them. By inviting someone you confirm that the patient agrees to them seeing the records.</p>
+    <p>One sign-in per person. Keep your password private; you are responsible for what is done with your sign-in. A care circle is the patient's. The patient, and whoever set the circle up until they hand it over, decide who is invited and with what access, and can remove them. By inviting someone you confirm that the patient agrees to them seeing the records. Setting up a circle for someone else means you have their agreement, or they cannot decide for themselves and you are acting in their interests.</p>
     <h3>3. Your records</h3>
-    <p>They remain yours. You give Mark 1 Apps Ltd permission only to store them and show them to your household, as the privacy policy describes. You are responsible for what you enter and for checking it is right, especially medicine doses and times.</p>
+    <p>They remain yours. You give Mark 1 Apps Ltd permission only to store them and show them to your care circle, as the privacy policy describes. You are responsible for what you enter and for checking it is right, especially medicine doses and times.</p>
     <h3>4. Using it fairly</h3>
-    <p>Daybook is for personal, non-commercial use. Do not try to get into another household's data, probe or overload the service, or use it for anything unlawful. Do not enter anyone's information without their agreement.</p>
+    <p>Daybook is for personal, non-commercial use. Do not try to get into another circle's records, probe or overload the service, or use it for anything unlawful. Do not enter anyone's information without their agreement.</p>
     <h3>5. Recordings</h3>
     <p>"Record the answer" and "Record the appointment" record people speaking. Ask them first, every time; the app asks you to confirm that you have. You are responsible for any recording you make and for what you do with it.</p>
     <h3>6. Daybook Assistant (the AI features)</h3>
@@ -983,7 +1007,7 @@
     <h3>9. The code and the name</h3>
     <p>Copyright 2026 Mark 1 Apps Ltd. All rights reserved. The code is published so that it can be read, not reused: see the licence in the repository. The names My Medical Daybook and Daybook, the strapline, the artwork and the Mark 1 Apps name and mark belong to Mark 1 Apps Ltd. Third-party parts keep their own licences.</p>
     <h3>10. Ending</h3>
-    <p>You can stop at any time by signing out, and you can ask for your household to be erased. Mark 1 Apps Ltd may close a sign-in used in breach of these terms.</p>
+    <p>You can stop at any time by signing out, and you can ask for your circle to be erased. Mark 1 Apps Ltd may close a sign-in used in breach of these terms.</p>
     <h3>11. Law</h3>
     <p>These terms are governed by the law of England and Wales.</p>
     <h3>12. Changes</h3>
@@ -1043,6 +1067,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=198"></script>
+  <script type="module" src="scripts.js?v=199"></script>
 </body>
 </html>
