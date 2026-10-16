@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '185';
+const APP_VERSION = '186';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -2279,7 +2279,7 @@ function renderEntry(e) {
 }
 
 /* Types openAdd() can pre-fill and update in place, given the original entry */
-const EDITABLE_ENTRY_TYPES = ['food', 'drink', 'weight', 'note', 'question', 'bowel', 'symptom'];
+const EDITABLE_ENTRY_TYPES = ['food', 'drink', 'weight', 'note', 'question', 'bowel', 'symptom', 'pain'];
 
 function entryOptions(e) {
   const d = entryDate(e);
@@ -3602,7 +3602,7 @@ function openAdd(type, editEntry, preset) {
   if (editId) save.textContent = 'Save changes';
   body.dataset.draft = editId || 'new';
   if (!editId && (type === 'note' || type === 'question')) body.dataset.reopen = type;
-  openSheet(editId && type === 'vitals' ? (editEntry.type === 'temp' ? 'Edit temperature' : 'Edit vitals') : titles[type], body);
+  openSheet(editId && type === 'vitals' ? (editEntry.type === 'temp' ? 'Edit temperature' : 'Edit vitals') : editId && type === 'pain' ? 'Edit pain' : titles[type], body);
 }
 
 /* The weight already logged for a day (the latest, typed or from Apple Health), or null: the Vitals sheet asks once a day */
