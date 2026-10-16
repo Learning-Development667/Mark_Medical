@@ -1764,3 +1764,7 @@ button.sidefx-inner { cursor: pointer; }
 .wordcard .fixwords { margin-top: 0; }
 .fix-where { font-weight: 600; margin: 0 0 var(--s-1); }
 button.weekmore { min-height: 44px; padding-left: 0; }
+
+/* How many this time (v195) */
+.askcount .presets { margin: var(--s-2) 0 var(--s-3); }
+.askcount .presets .preset { min-width: 56px; min-height: 48px; }

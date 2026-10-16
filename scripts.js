@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '194';
+const APP_VERSION = '195';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -8469,11 +8469,11 @@ function needsDoseForm(m) {
 function askDoseForm(m) {
   return new Promise((resolve) => {
     let result = null; // closing any other way counts as Cancel: nothing saved, nothing logged
-    const c = doseControls({ form: 'tablet', count: 1, strength: (m.dose || '').trim() }, { id: 'ask-strength' });
+    const c = doseControls({ form: 'tablet', count: 1, strength: (m.dose || '').trim() }, { id: 'ask-strength', ask: m.kind === 'prn' });
     const body = h('div', { class: 'askdose' },
-      h('p', { class: 'wiz-hint', text: `Asked once. Saved as "${m.dose}" so far. How do you take it, and how many each time? Every dose from now on is logged with this, with nothing asked.` }),
+      h('p', { class: 'wiz-hint', text: `Asked once. Saved as "${m.dose}" so far. How do you take it, and how many this time? Saved on the medicine, so this is not asked again. Tick Ask how many each time if the number changes.` }),
       h('p', { class: 'fieldlabel', text: 'How is it taken?' }), c.formChips,
-      c.countField, c.doseField, c.dosePreview,
+      c.countField, c.doseField, c.dosePreview, c.askField,
       h('p', { class: 'hint', text: 'Change it any time in Manage medicines, Edit. A different amount one day: use Other time, or change the dose afterwards from its "..." menu.' }),
       h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
         const data = c.result();
@@ -8491,8 +8491,47 @@ function askDoseForm(m) {
   });
 }
 
+/* How many this time (v195, Mark: paracetamol logged 1,000 mg when he took one tablet; macrogol is one, two or three
+   sachets). A counted medicine can ask the number every time it is logged: medicines/{id}.askCount, the tick "Ask how
+   many each time I log it" in Edit medicine and in the first-dose question. A when-needed medicine with no answer yet
+   asks (the number varies most there); a regular one does not. Log now, the Medicine tile and the meal prompt then open
+   one small sheet: the usual number already in, 1, 2 and 3 a tap away, the dose it will log, and Log. */
+function asksEachTime(m) {
+  if (!m || m.hospital || !doseFormOf(splitDose(m).form)) return false;
+  if (m.askCount === true || m.askCount === false) return m.askCount;
+  return m.kind === 'prn';
+}
+function askCountNow(m) {
+  return new Promise((resolve) => {
+    let result = null; // any other close is Cancel: nothing logged
+    const parts = splitDose(m), form = doseFormOf(parts.form);
+    const line = h('p', { class: 'med-dose-preview', role: 'status' });
+    const doseNow = () => composeDose(st.value(), parts.form, parts.strength);
+    const sync = () => {
+      st.unitEl.textContent = st.value() > 1 || form.key === 'ml' ? form.many : form.one;
+      line.textContent = 'Logged as ' + doseNow() + '.';
+      quick.querySelectorAll('.preset').forEach((b) => b.classList.toggle('is-active', Number(b.dataset.n) === st.value()));
+      go.textContent = 'Log ' + doseNow();
+    };
+    const st = stepper(parts.count || 1, 0.5, form.key === 'ml' ? 2.5 : 1, form.key === 'ml' ? 'How many ml this time' : 'How many this time', () => sync(), 'each');
+    const quick = h('div', { class: 'presets', role: 'group', 'aria-label': 'Quick numbers' },
+      ...(form.key === 'ml' ? [2.5, 5, 10] : [1, 2, 3]).map((n) => h('button', { class: 'preset', type: 'button', dataset: { n: String(n) }, onclick: () => st.set(n) }, fmtDoseCount(n) + (form.key === 'ml' ? ' ml' : ''))));
+    const go = h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => {
+      if (!(st.value() > 0)) { toast('How many was it?'); return; }
+      result = doseNow(); closeSheet();
+    } }, 'Log');
+    sync();
+    openSheet(m.name, h('div', { class: 'askcount' },
+      h('div', { class: 'field med-count' }, h('span', { class: 'fieldlabel', text: form.key === 'ml' ? 'How many ml this time?' : 'How many this time?' }), st.el),
+      quick, line, go,
+      h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Cancel'),
+      h('p', { class: 'hint', text: 'Asked every time for this medicine. To stop asking, untick "Ask how many each time" in Manage medicines, Edit.' })), () => resolve(result));
+  });
+}
+
 async function logMed(m, at, note, doseText) {
-  if (needsDoseForm(m)) { const set = await askDoseForm(m); if (!set) return; m = set; }
+  if (needsDoseForm(m)) { const set = await askDoseForm(m); if (!set) return; m = set; if (!doseText) doseText = set.dose; }
+  if (!doseText && asksEachTime(m)) { doseText = await askCountNow(m); if (!doseText) return; }
   if (m.kind === 'prn' && !at) {
     const s = prnStatus(m);
     if (s.block) {
@@ -8908,9 +8947,14 @@ function doseControls(parts, opts = {}) {
   const doseLabel = h('span', { text: 'Dose' });
   const doseField = h('label', { class: 'field' }, doseLabel, dose);
   const dosePreview = h('p', { class: 'med-dose-preview', role: 'status' });
+  const askBox = h('input', { type: 'checkbox' });
+  askBox.checked = opts.ask != null ? !!opts.ask : false;
+  const askField = h('div', null, h('label', { class: 'check' }, askBox, h('span', { text: 'Ask how many each time I log it' })),
+    h('p', { class: 'hint', text: 'For a medicine where the number changes: one, two or three. The number above is filled in, ready to change.' }));
   const syncDose = () => {
     const f = doseFormOf(formIn.value);
     countField.hidden = !f;
+    askField.hidden = !f;
     count.unitEl.textContent = unitWord();
     countField.querySelector('.fieldlabel').textContent = f && f.key === 'ml' ? 'How many ml each time' : 'How many each time';
     doseLabel.textContent = !f ? 'Dose' : f.key === 'ml' ? 'Strength (optional, as on the bottle)' : `Strength of one ${f.one} (optional, as on the box)`;
@@ -8922,8 +8966,8 @@ function doseControls(parts, opts = {}) {
   dose.addEventListener('input', syncDose);
   syncDose();
   const result = () => ({ dose: composeDose(count.value(), formIn.value, dose.value), doseForm: formIn.value || 'none',
-    doseCount: doseFormOf(formIn.value) ? count.value() || 1 : null, strength: dose.value.trim() });
-  return { formIn, formChips, count, countField, dose, doseField, dosePreview, syncDose, result };
+    doseCount: doseFormOf(formIn.value) ? count.value() || 1 : null, strength: dose.value.trim(), askCount: doseFormOf(formIn.value) ? askBox.checked : false });
+  return { formIn, formChips, count, countField, dose, doseField, dosePreview, askField, askBox, syncDose, result };
 }
 
 function openEditMed(m, prefill) {
@@ -8934,7 +8978,7 @@ function openEditMed(m, prefill) {
     hospital: pf.hospital === true || pf.route === 'drip', route: pf.route || null };
   const name = h('input', { type: 'text', value: m.name, required: true });
   /* the dose: how it is taken, how many each time, the strength of one (v191) */
-  const { formIn, formChips, count, countField, dose, doseField, dosePreview } = doseControls(splitDose(m));
+  const { formIn, formChips, count, countField, dose, doseField, dosePreview, askField, askBox } = doseControls(splitDose(m), { ask: asksEachTime({ ...m, doseForm: m.doseForm || splitDose(m).form }) });
   const how = h('input', { type: 'text', value: m.how || '' });
   const purpose = h('input', { type: 'text', value: m.purpose || '' });
   const kind = h('select', null, h('option', { value: 'scheduled', text: 'Scheduled (regular doses)' }), h('option', { value: 'prn', text: 'When needed' }));
@@ -8988,7 +9032,7 @@ function openEditMed(m, prefill) {
     isNew && explainAvailable() ? h('p', { class: 'hint', text: "A photo of the box or the pharmacy label. Daybook Assistant (AI from Anthropic, in the US) reads it, and the details fill in below. It can misread a label, so check the name and dose before adding." }) : null,
     field('Name', name),
     h('p', { class: 'fieldlabel', text: 'How is it taken?' }), formChips,
-    countField, doseField, dosePreview,
+    countField, doseField, dosePreview, askField,
     isNew ? null : h('p', { class: 'hint med-dose-hint', text: 'Changing the dose? Change it here and save. It stays the same medicine: the doses already logged keep the amount they were taken at, and the change is noted in its history. There is no need to add it again or end this one.' }),
     field('How and when', how), field('What it is for', purpose),
     h('label', { class: 'check' }, hospital, h('span', { text: 'Given by the hospital (hospital monitored)' })),
@@ -9001,6 +9045,7 @@ function openEditMed(m, prefill) {
       const data = {
         name: name.value.trim(), dose: composeDose(count.value(), formIn.value, dose.value), how: how.value.trim(), purpose: purpose.value.trim(),
         doseForm: formIn.value || 'none', doseCount: doseFormOf(formIn.value) ? count.value() || 1 : null, strength: dose.value.trim(),
+        askCount: doseFormOf(formIn.value) ? askBox.checked : false,
         kind: kind.value, active: active.checked,
         hospital: hospital.checked, route: hospital.checked ? routeIn.value : null,
         order: m.order || (Math.max(0, ...state.medicines.map((x) => x.order || 0)) + 1)
