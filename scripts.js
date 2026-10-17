@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '203';
+const APP_VERSION = '204';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -2938,9 +2938,10 @@ function causeSelect(current) {
   const sel = h('select', { id: 'side-cause' });
   sel.append(h('option', { value: '', text: 'No, or not sure' }));
   const known = new Set(['']);
-  if (packOn('cancer')) {
+  const kinds = treatmentsFor().filter((t) => t.key !== 'other');
+  if (kinds.length) {
     const g = h('optgroup', { label: 'Treatment' });
-    TREATMENTS.filter((t) => t.key !== 'other').forEach((t) => { g.append(h('option', { value: 'tx:' + t.key, text: t.label })); known.add('tx:' + t.key); });
+    kinds.forEach((t) => { g.append(h('option', { value: 'tx:' + t.key, text: t.label })); known.add('tx:' + t.key); });
     sel.append(g);
   }
   const meds = (state.medicines || []).filter((m) => m.active !== false).sort((a, b) => String(a.name).localeCompare(String(b.name)));
@@ -7049,6 +7050,13 @@ function outsideText(v) {
    above None is also written as a side effect of that session (entries/{day}_{slot}_fx_{n}, type symptom, grade, value
    3, 6 or 9), so it shows on the Treatment tab's card, the timeline, Notes for the team and the reports like any other. */
 const SIDEFX_ITEMS = ['Sickness', 'Tiredness', 'Poor appetite', 'Mouth', 'Diarrhoea', 'Constipation', 'Tingling', 'Taste changes'];
+/* After an injection or infusion (v204) the usual ones are different: the site or the drip reaction, and the signs of an infection the IBD team asks about */
+const SIDEFX_IBD = ['Injection site reaction', 'Infusion reaction', 'Headache', 'Nausea', 'Tiredness', 'Rash', 'Sore throat or cough', 'Fever or chills', 'Joint pain'];
+const SIDEFX_ALL = [...SIDEFX_ITEMS, ...SIDEFX_IBD.filter((x) => !SIDEFX_ITEMS.includes(x))];
+function sidefxItems(type) {
+  if (!type || !isRepeat(type)) return SIDEFX_ITEMS;
+  return SIDEFX_IBD.filter((x) => (type.key === 'inject' ? x !== 'Infusion reaction' : x !== 'Injection site reaction'));
+}
 const FX_WORDS = ['None', 'Mild', 'Moderate', 'Severe'];
 const FX_VALUE = [0, 3, 6, 9];
 const FX_DAYS = 3;
@@ -7062,11 +7070,12 @@ function sessionBefore(day) {
 function fxQuestion(ses, day) {
   if (!ses) return 'Any side effects since treatment?';
   const n = dayGap(ses.day, day);
-  return 'Since ' + ses.type.label.toLowerCase() + ' on ' + parseDay(ses.day).toLocaleDateString('en-GB', { weekday: 'long' }) + ' (day ' + n + ' after it), any side effects?';
+  const info = state.days[ses.day] || {};
+  return 'Since ' + (isRepeat(ses.type) ? 'your ' + sessionLabel({ ...info, treatment: ses.type.key }) : ses.type.label.toLowerCase()) + ' on ' + parseDay(ses.day).toLocaleDateString('en-GB', { weekday: 'long' }) + ' (day ' + n + ' after it), any side effects?';
 }
 function fxText(v) {
   if (!v || !v.grades) return 'Skipped';
-  const bits = SIDEFX_ITEMS.filter((k) => v.grades[k] > 0).map((k) => k + ': ' + FX_WORDS[v.grades[k]].toLowerCase());
+  const bits = SIDEFX_ALL.filter((k) => v.grades[k] > 0).map((k) => k + ': ' + FX_WORDS[v.grades[k]].toLowerCase());
   if (bits.length) return bits.join(' \u00b7 ');
   return Object.values(v.grades).some((g) => g === 0) ? 'None of these' : 'Skipped';
 }
@@ -7079,11 +7088,12 @@ function fxEntryId(day, slot, i) { return day + '_' + slot + '_fx_' + i; }
 /* Write the check-in's side effects as entries, and take away any put back to None */
 async function syncFxEntries(slot, day, v, at, addedBy) {
   const ses = v && v.session ? { day: v.session, type: TREATMENTS.find((t) => t.key === v.treatment) || TREATMENTS[0] } : null;
-  const rows = SIDEFX_ITEMS.map((name, i) => {
+  const causeName = ses && isRepeat(ses.type) ? sessionLabel({ ...(state.days[ses.day] || {}), treatment: ses.type.key }).replace(/^./, (c) => c.toUpperCase()) : ses ? ses.type.label : '';
+  const rows = SIDEFX_ALL.map((name, i) => {
     const g = v && v.grades ? v.grades[name] : null;
     if (!ses || !(g > 0)) return [fxEntryId(day, slot, i), null];
     return [fxEntryId(day, slot, i), { type: 'symptom', what: name, value: FX_VALUE[g], grade: g, note: '', day, addedBy,
-      causeKind: 'treatment', causeId: ses.type.key, causeName: ses.type.label, sessionDay: ses.day, fromCheckin: slot }];
+      causeKind: 'treatment', causeId: ses.type.key, causeName, sessionDay: ses.day, fromCheckin: slot }];
   });
   if (state.demo) {
     const ids = new Set(rows.map(([id]) => id));
@@ -7375,7 +7385,7 @@ function openCheckin(slot, initialDay) {
       } else if (q.kind === 'sidefx') {
         /* how bad each usual side effect is, four words each (v189); a row left alone is not counted */
         const cur = { ...((answers.sidefx && answers.sidefx.grades) || {}) };
-        const rows = SIDEFX_ITEMS.map((name) => {
+        const rows = sidefxItems(fxSes && fxSes.type).map((name) => {
           const chips = h('div', { class: 'chips taps-chips', role: 'group', 'aria-label': name });
           FX_WORDS.forEach((w, i) => chips.append(h('button', { class: 'preset' + (cur[name] === i ? ' is-active' : ''), type: 'button', 'aria-pressed': cur[name] === i ? 'true' : 'false', onclick: () => {
             cur[name] = cur[name] === i ? null : i;
@@ -7386,7 +7396,7 @@ function openCheckin(slot, initialDay) {
         wrap.append(h('p', { class: 'wiz-hint', text: 'Asked on the three days after a session. Tap how bad each one is, or None. Leave a row if you are not sure. Anything else: Log a side effect on the Treatment tab.' }), ...rows);
         getVal = () => {
           const grades = {};
-          SIDEFX_ITEMS.forEach((k) => { if (cur[k] != null) grades[k] = cur[k]; });
+          sidefxItems(fxSes && fxSes.type).forEach((k) => { if (cur[k] != null) grades[k] = cur[k]; });
           return Object.keys(grades).length && fxSes ? { session: fxSes.day, treatment: fxSes.type.key, grades } : null;
         };
       } else if (q.kind === 'taps') {
@@ -9153,6 +9163,11 @@ function openEditMed(m, prefill) {
   kind.value = m.kind || 'scheduled';
   const perDay = h('input', { type: 'number', inputmode: 'numeric', min: '1', max: '12', value: m.perDay || 1 });
   const courseEnd = h('input', { type: 'date', value: m.courseEnd || '' });
+  /* a course with a start as well as an end, and whether it is a steroid course (v204): the calendar shades the days
+     and the Treatment tab counts steroid courses in the last 12 months, which IBD teams ask about */
+  const courseStart = h('input', { type: 'date', value: m.courseStart || '' });
+  const steroid = h('input', { type: 'checkbox' });
+  steroid.checked = m.steroid === true;
   const minGap = h('input', { type: 'number', inputmode: 'decimal', min: '0', step: '0.5', value: m.minGapHours || '' , placeholder: 'none' });
   const maxPerDay = h('input', { type: 'number', inputmode: 'numeric', min: '0', value: m.maxPerDay || '', placeholder: 'none' });
   const active = h('input', { type: 'checkbox' });
@@ -9176,7 +9191,9 @@ function openEditMed(m, prefill) {
   const addTime = h('button', { class: 'btn btn-secondary btn-small', type: 'button', onclick: () => { const v = timeInputEl.value; if (!v) return; if (!times.includes(v)) times.push(v); times.sort(); timeInputEl.value = ''; drawTimes(); } }, 'Add time');
   const withMeals = h('input', { type: 'checkbox' });
   withMeals.checked = medWithMeals(m);
-  const schedFields = h('div', null, field('Doses per day', perDay), field('Course ends (optional)', courseEnd),
+  const schedFields = h('div', null, field('Doses per day', perDay), h('div', { class: 'field-row' }, field('Course starts (optional)', courseStart), field('Course ends (optional)', courseEnd)),
+    h('label', { class: 'check' }, steroid, h('span', { text: 'A steroid course (prednisolone, budesonide, dexamethasone)' })),
+    h('p', { class: 'hint', text: 'With its dates, the course is shaded on the Treatment calendar and counted there as a steroid course in the last 12 months.' }),
     h('p', { class: 'fieldlabel', text: 'Reminder times (optional)' }), timeChips,
     h('div', { class: 'field-row timeadd' }, timeInputEl, addTime),
     h('p', { class: 'hint', text: 'A notification on each phone that has reminders on (More > Settings). Nothing is sent if the dose is already logged.' }),
@@ -9184,7 +9201,7 @@ function openEditMed(m, prefill) {
     h('p', { class: 'hint', text: 'After food is logged, Daybook asks whether this was taken with it.' }));
   const prnFields = h('div', null, field('Minimum hours between doses', minGap), field('Maximum doses per day', maxPerDay));
   /* reminder times and the after-meal prompt do not apply to a medicine the nurses give */
-  const remindBits = [...schedFields.children].slice(2);
+  const remindBits = [...schedFields.children].slice(4);
   const sync = () => {
     schedFields.hidden = kind.value !== 'scheduled'; prnFields.hidden = kind.value !== 'prn';
     hospFields.hidden = !hospital.checked;
@@ -9227,13 +9244,15 @@ function openEditMed(m, prefill) {
       if (kind.value === 'scheduled') {
         data.perDay = hospital.checked ? null : Math.max(1, parseInt(perDay.value, 10) || 1);
         data.courseEnd = courseEnd.value || null;
+        data.courseStart = courseStart.value || null;
+        data.steroid = steroid.checked;
         data.minGapHours = null; data.maxPerDay = null;
         data.times = hospital.checked ? [] : times.slice();
         data.withMeals = hospital.checked ? false : withMeals.checked;
       } else {
         data.minGapHours = parseFloat(minGap.value) || null;
         data.maxPerDay = parseInt(maxPerDay.value, 10) || null;
-        data.perDay = null; data.courseEnd = null;
+        data.perDay = null; data.courseEnd = null; data.courseStart = null; data.steroid = false;
         data.times = []; data.withMeals = false;
       }
       closeSheet();
@@ -10722,12 +10741,35 @@ function renderChemo() {
    immunotherapy sessions start a cycle; radiotherapy is usually daily for weeks, so a run of
    consecutive radiotherapy days counts from its first day; Other (surgery, a scan) never starts one. ---- */
 const TREATMENTS = [
-  { key: 'chemo', label: 'Chemo', letter: 'C', cycle: 'each' },
-  { key: 'radio', label: 'Radiotherapy', letter: 'R', cycle: 'run' },
-  { key: 'immuno', label: 'Immunotherapy', letter: 'I', cycle: 'each' },
+  { key: 'chemo', label: 'Chemo', letter: 'C', cycle: 'each', pack: 'cancer' },
+  { key: 'radio', label: 'Radiotherapy', letter: 'R', cycle: 'run', pack: 'cancer' },
+  { key: 'immuno', label: 'Immunotherapy', letter: 'I', cycle: 'each', pack: 'cancer' },
+  /* Crohn's or colitis (v204): an injection at home every week or two, an infusion at the hospital every few weeks.
+     They repeat rather than run in cycles: the tile says when the next one is due, never "cycle 12". */
+  { key: 'inject', label: 'Injection', letter: 'Inj', cycle: 'repeat', pack: 'ibd', home: true, every: 14 },
+  { key: 'infuse', label: 'Infusion', letter: 'Inf', cycle: 'repeat', pack: 'ibd', every: 56 },
   { key: 'other', label: 'Other', letter: 'O', cycle: 'never' }
 ];
 function treatmentOf(info) { return TREATMENTS.find((t) => t.key === (info && info.treatment)) || TREATMENTS[0]; }
+/* The kinds the packs that are on offer (Other always), plus any kind already marked on the calendar */
+function treatmentsFor() {
+  const used = new Set(Object.keys(state.days || {}).filter((k) => state.days[k] && state.days[k].chemo).map((k) => treatmentOf(state.days[k]).key));
+  return TREATMENTS.filter((t) => !t.pack || packOn(t.pack) || used.has(t.key));
+}
+const isRepeat = (t) => Boolean(t && t.cycle === 'repeat');
+/* "adalimumab injection", "chemo": what a session is called in a sentence */
+function sessionLabel(info) { const t = treatmentOf(info); const n = info && info.treatName ? String(info.treatName).trim() : ''; return (n ? n + ' ' : '') + t.label.toLowerCase(); }
+/* The repeating treatment (an injection or infusion) around today: the last one and the next one */
+function repeatInfo(today = todayStr()) {
+  const days = chemoDays().filter((k) => isRepeat(treatmentOf(state.days[k])));
+  if (!days.length) return null;
+  const last = days.filter((k) => k <= today).pop() || null;
+  const next = days.find((k) => k > today) || null;
+  return { last, next, lastInfo: last ? state.days[last] : null, nextInfo: next ? state.days[next] : null };
+}
+/* Steroid courses (v204): a medicine ticked as a steroid course with its start and end dates shades the calendar */
+function steroidCourses() { return (state.medicines || []).filter((m) => m.steroid && m.courseStart).sort((a, b) => a.courseStart.localeCompare(b.courseStart)); }
+function steroidOn(day) { return steroidCourses().filter((m) => m.courseStart <= day && (!m.courseEnd || m.courseEnd >= day)); }
 function chemoDays() { return Object.keys(state.days).filter((k) => state.days[k].chemo).sort(); }
 /* ---- Cycles (v189). A cycle is the run of sessions up to the next one that starts a cycle: for Mark, three weekly
    chemo sessions and a rest week. A session can say so itself (days/{day}.cycleStart true or false, from the day sheet's
@@ -10794,7 +10836,9 @@ function latestTreatmentKey() {
   const days = Object.keys(state.days || {}).filter((d) => state.days[d] && state.days[d].chemo && d <= todayStr()).sort();
   const last = days.length ? state.days[days[days.length - 1]] : null;
   const t = treatmentOf(last);
-  return t.key === 'other' ? 'chemo' : t.key;
+  if (t.key !== 'other') return t.key;
+  const first = treatmentsFor().find((x) => x.key !== 'other');
+  return first ? first.key : 'chemo';
 }
 function renderSideEffects() {
   const list = $('sidefx-list'), empty = $('sidefx-empty'), add = $('sidefx-add');
@@ -10805,12 +10849,33 @@ function renderSideEffects() {
   const key = latestTreatmentKey();
   const t = TREATMENTS.find((x) => x.key === key);
   add.dataset.key = key; add.textContent = 'Log a side effect';
-  add.onclick = () => logSideEffect(packOn('cancer') && t ? { kind: 'treatment', id: t.key, name: t.label } : null);
+  add.onclick = () => logSideEffect(t && t.key !== 'other' && treatmentsFor().includes(t) ? { kind: 'treatment', id: t.key, name: t.label } : null);
 }
 function renderCycleTile() {
   const val = $('cycle-value'), sub = $('cycle-sub');
   if (!val) return;
-  const today = todayStr(), c = cycleInfo(today);
+  const today = todayStr(), c0 = cycleInfo(today);
+  const c = c0 && isRepeat(c0.type) ? null : c0;
+  const tileLabel = document.querySelector('#cycle-tile .tile-label');
+  renderSteroidLine();
+  /* a repeating treatment (an injection or infusion): when the next one is due, and when the last one was */
+  const rep = repeatInfo(today);
+  if (rep && !c) {
+    if (tileLabel) tileLabel.textContent = 'Next treatment';
+    const nextInfo = rep.nextInfo || rep.lastInfo;
+    const what = sessionLabel(nextInfo);
+    if (rep.next) {
+      const g = dayGap(today, rep.next);
+      val.textContent = g === 0 ? 'Today' : g === 1 ? 'Tomorrow' : 'In ' + g + ' days';
+      sub.textContent = 'Next ' + what + ' ' + fmtDayShort(rep.next) + '.' + (rep.last ? ' Last one ' + fmtDayShort(rep.last) + (rep.lastInfo.chemoDone ? ', done.' : ', not ticked done.') : '');
+    } else {
+      const g = dayGap(rep.last, today);
+      val.textContent = g === 0 ? 'Today' : 'Day ' + (g + 1);
+      sub.textContent = (g === 0 ? sessionLabel(rep.lastInfo) + ' today.' : 'Last ' + what + ' ' + fmtDayShort(rep.last) + ', ' + g + (g === 1 ? ' day' : ' days') + ' ago.') + ' No next one marked yet: tap a day, or Add sessions.';
+    }
+    return;
+  }
+  if (tileLabel) tileLabel.textContent = 'Treatment cycle';
   const next = chemoDays().find((k) => k > today);
   const nextText = next ? 'Next session ' + fmtDayShort(next) + ', ' + (dayGap(today, next) === 1 ? 'tomorrow' : 'in ' + dayGap(today, next) + ' days') + '.' : '';
   const nextStart = cycleStarts().find((x) => x.day > today);
@@ -10832,6 +10897,17 @@ function renderCycleTile() {
   sub.textContent = 'Cycle ' + c.index + ' (' + name + '), day ' + c.dayNo + of + '.' + (nextText ? ' ' + nextText : '');
 }
 
+/* Steroid courses in the last 12 months, under the tile (v204): the figure IBD teams ask for, with each course named */
+function renderSteroidLine() {
+  const el = $('ibd-courses');
+  if (!el) return;
+  const since = addDays(todayStr(), -365);
+  const list = steroidCourses().filter((m) => m.courseStart >= since || (!m.courseEnd || m.courseEnd >= since));
+  if (!list.length) { el.hidden = true; return; }
+  const words = list.map((m) => m.name + ', ' + fmtDayShort(m.courseStart) + (m.courseEnd ? ' to ' + fmtDayShort(m.courseEnd) : ' onwards'));
+  el.textContent = 'Steroid courses in the last 12 months: ' + list.length + ' (' + words.join('; ') + ').';
+  el.hidden = false;
+}
 /* The carer's row: today's carer's view, like the check-in rows on Today (the flow itself offers Yesterday) */
 function renderCarerRow() {
   const row = $('checkin-carer'), sub = $('checkin-carer-sub');
@@ -10996,7 +11072,7 @@ function renderChemoProgress() {
     const next = upcoming[0];
     const gap = Math.round((parseDay(next) - parseDay(today)) / 864e5);
     const ci = cycleInfo(next);
-    const what = treatmentOf(state.days[next]).label.toLowerCase() + (ci && ci.session ? ' (cycle ' + ci.index + ', session ' + ci.session + ')' : '');
+    const what = sessionLabel(state.days[next]) + (ci && ci.session && !isRepeat(ci.type) ? ' (cycle ' + ci.index + ', session ' + ci.session + ')' : '');
     text = next === today ? `Next session: ${what}, today.` : `Next session: ${what} on ${fmtDayLong(next)}, ${gap === 1 ? 'tomorrow' : 'in ' + gap + ' days'}.`;
   } else text = done === planned ? 'Every session done. That is a proper milestone.' : 'No upcoming sessions marked.';
   $('chemo-next').textContent = text;
@@ -11031,26 +11107,38 @@ function renderCalendar() {
     if (info.chemoDone) cls.push('is-done');
     if (key === nextSession) cls.push('is-next');
     const type = treatmentOf(info);
-    const ci = cycleInfo(key);
+    const ci0 = cycleInfo(key);
+    const ci = ci0 && isRepeat(ci0.type) ? null : ci0; // injections and infusions repeat, they do not run in cycles
     if (!info.chemo && ci && ci.rest) cls.push('is-rest');
-    const label = [fmtDayLong(key), info.chemo ? type.label.toLowerCase() + (info.chemoDone ? ' session done' : key === nextSession ? ' session, the next one' : ' session') : null,
+    const steroids = steroidOn(key);
+    if (steroids.length) cls.push('is-steroid');
+    const label = [fmtDayLong(key), info.chemo ? sessionLabel(info) + (info.chemoDone ? ' session done' : key === nextSession ? ' session, the next one' : ' session') : null,
       info.chemo && ci && ci.session ? cycleWords(ci).toLowerCase() : null, !info.chemo && ci && ci.rest ? 'rest week of cycle ' + ci.index : null,
+      steroids.length ? 'on a steroid course (' + steroids.map((m) => m.name).join(', ') + ')' : null,
       info.mood ? 'mood ' + MOODS[info.mood - 1].label : null].filter(Boolean).join(', ');
     cells.push(h('button', { class: cls.join(' '), type: 'button', 'aria-label': label, style: info.chemo ? '--laser-delay:-' + (Math.random() * 1.8).toFixed(2) + 's' : null, disabled: state.viewer, onclick: () => openDaySheet(key) },
-      info.chemo ? h('span', { class: 'cal-type', 'aria-hidden': 'true', text: type.letter }) : null,
+      info.chemo ? h('span', { class: 'cal-type' + (type.letter.length > 1 ? ' is-long' : ''), 'aria-hidden': 'true', text: type.letter }) : null,
       h('span', { class: 'cal-num', text: String(d) }),
       info.mood ? moodMark(info.mood) : null
     ));
   }
   $('cal-grid').replaceChildren(...cells);
   renderCycleLines(`${y}-${pad2(m)}`);
+  renderCalKey();
+}
+/* The key's letters follow the kinds on offer, and the steroid swatch shows once a course exists */
+function renderCalKey() {
+  const el = $('cal-key-letters');
+  if (el) el.textContent = treatmentsFor().map((t) => t.letter + ' ' + t.label.toLowerCase()).join(' \u00b7 ');
+  const st = $('cal-key-steroid');
+  if (st) st.hidden = !steroidCourses().length;
 }
 /* Under the calendar, one line per cycle that touches the month on screen: "Cycle 2, chemo: 11, 18 and 25 Nov. Rest week from 2 Dec." */
 function renderCycleLines(ym) {
   const box = $('cal-cycles');
   if (!box) return;
   const first = ym + '-01', last = ym + '-31';
-  const lines = cycleStarts().map((s) => cycleInfo(s.day)).filter((c) => c && c.start <= last && (c.end ? c.end > first : c.sessions[c.sessions.length - 1] >= first || (c.restFrom && c.restFrom <= last))).map((c) => {
+  const lines = cycleStarts().filter((s) => !isRepeat(s.type)).map((s) => cycleInfo(s.day)).filter((c) => c && c.start <= last && (c.end ? c.end > first : c.sessions[c.sessions.length - 1] >= first || (c.restFrom && c.restFrom <= last))).map((c) => {
     const days = c.sessions.map((d) => fmtDayShort(d));
     return h('li', null, h('strong', { text: 'Cycle ' + c.index }), ', ' + c.type.label.toLowerCase() + ': ' + joinAnd(days) + '.' + (c.restFrom ? ' Rest week from ' + fmtDayShort(c.restFrom) + '.' : '') + (c.length ? ' ' + c.length + ' days.' : ''));
   });
@@ -11080,7 +11168,11 @@ function openDaySheet(key) {
   const doneRow = h('label', { class: 'check' }, cbDone, h('span', { text: 'Session done' }));
   let treatment = treatmentOf(info).key;
   const typeRow = h('div', { class: 'wiz-day treat-chips', role: 'group', 'aria-label': 'Kind of treatment' });
-  const drawTypes = () => typeRow.replaceChildren(...TREATMENTS.map((t) => h('button', { class: 'preset' + (t.key === treatment ? ' is-active' : ''), type: 'button', 'aria-pressed': t.key === treatment ? 'true' : 'false', onclick: () => { treatment = t.key; drawTypes(); } }, t.label)));
+  /* an injection or infusion names its medicine (v204), offered from the medicines list */
+  const nameIn = h('input', { type: 'text', class: 'input', value: info.treatName || '', list: 'treat-names', placeholder: 'e.g. adalimumab, infliximab', autocomplete: 'off' });
+  const nameList = h('datalist', { id: 'treat-names' }, ...(state.medicines || []).filter((m) => m.active !== false).map((m) => h('option', { value: m.name })));
+  const nameRow = h('div', null, field('Which medicine?', nameIn), nameList);
+  const drawTypes = () => typeRow.replaceChildren(...treatmentsFor().map((t) => h('button', { class: 'preset' + (t.key === treatment ? ' is-active' : ''), type: 'button', 'aria-pressed': t.key === treatment ? 'true' : 'false', onclick: () => { treatment = t.key; drawTypes(); } }, t.label)));
   drawTypes();
   /* Starts a new cycle (v189): ticked as the app would guess, or as saved; never offered for an Other day */
   const others = sessionDays().filter((d) => d !== key);
@@ -11092,10 +11184,16 @@ function openDaySheet(key) {
   const cycleRow = h('div', null, h('label', { class: 'check' }, cbCycle, h('span', { text: 'Starts a new cycle' })),
     h('p', { class: 'hint', text: isFirst ? 'The first session marked always starts cycle 1.' : 'Tick it for session 1 of a cycle, the first after a rest week. Daybook guesses from the gap, so change it if the guess is wrong.' }));
   const ci = info.chemo ? cycleInfo(key) : null;
-  const where = ci && ci.session ? h('p', { class: 'cyc-where', text: cycleWords(ci) + (ci.length ? ', a ' + ci.length + '-day cycle' : '') + '.' }) : null;
+  let where = ci && ci.session && !isRepeat(ci.type) ? h('p', { class: 'cyc-where', text: cycleWords(ci) + (ci.length ? ', a ' + ci.length + '-day cycle' : '') + '.' }) : null;
+  if (info.chemo && isRepeat(treatmentOf(info))) {
+    const before = chemoDays().filter((d) => d < key && isRepeat(treatmentOf(state.days[d]))).pop();
+    where = h('p', { class: 'cyc-where', text: sessionLabel(info).replace(/^./, (ch) => ch.toUpperCase()) + (before ? '. The one before was ' + fmtDayShort(before) + ', ' + dayGap(before, key) + ' days earlier.' : '. The first one marked.') });
+  }
+  const repeatNow = () => isRepeat(TREATMENTS.find((t) => t.key === treatment));
   const syncDone = () => {
     doneRow.hidden = !cbChemo.checked; typeRow.hidden = !cbChemo.checked; if (!cbChemo.checked) cbDone.checked = false;
-    cycleRow.hidden = !cbChemo.checked || treatment === 'other';
+    cycleRow.hidden = !cbChemo.checked || treatment === 'other' || repeatNow();
+    nameRow.hidden = !cbChemo.checked || !repeatNow();
   };
   cbChemo.addEventListener('change', syncDone);
   typeRow.addEventListener('click', () => setTimeout(syncDone));
@@ -11120,25 +11218,26 @@ function openDaySheet(key) {
     where,
     h('label', { class: 'check' }, cbChemo, h('span', { text: 'Treatment session this day' })),
     typeRow,
+    nameRow,
     cycleRow,
     doneRow,
     h('p', { class: 'hint', text: (moodInfo ? moodInfo + ' ' : '') + 'Mood and one good thing come from the daily check-ins on Today.' }),
     h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
       const wasDone = !!info.chemoDone;
       const data = { chemo: cbChemo.checked, chemoDone: cbChemo.checked && cbDone.checked, treatment, updatedBy: state.name, updatedAt: serverTimestamp() };
-      if (cbChemo.checked && treatment !== 'other') data.cycleStart = cbCycle.checked;
+      if (cbChemo.checked && treatment !== 'other' && !repeatNow()) data.cycleStart = cbCycle.checked;
+      if (cbChemo.checked && repeatNow()) { data.cycleStart = true; data.treatName = nameIn.value.trim(); }
       closeSheet();
+      const after = () => { if (data.chemoDone && !wasDone) { confetti(); toast('One more session done. Well done.'); if (repeatNow()) logRepeatDose(key, data.treatName); } else toast('Saved'); };
       if (state.demo) {
         state.days[key] = { ...state.days[key], ...data };
         renderChemo();
-        if (data.chemoDone && !wasDone) { confetti(); toast('One more session done. Well done.'); }
-        else toast('Saved');
+        after();
         return;
       }
       try {
         await setDoc(hdoc('days', key), data, { merge: true });
-        if (data.chemoDone && !wasDone) { confetti(); toast('One more session done. Well done.'); }
-        else toast('Saved');
+        after();
       } catch (e) { console.error(e); toast('Could not save'); }
     } }, 'Save'),
     info.chemo ? moveBtn : null,
@@ -11154,22 +11253,34 @@ function openDaySheet(key) {
   openSheet(fmtDayLong(key), body);
 }
 
+/* An injection or infusion ticked done is logged as a dose of the matching medicine on the list, if there is one and none is logged that day (v204) */
+function logRepeatDose(day, treatName) {
+  const want = String(treatName || '').trim().toLowerCase();
+  if (!want) return;
+  const med = (state.medicines || []).find((m) => m.active !== false && [m.name, want].every(Boolean) && (String(m.name).toLowerCase().includes(want) || want.includes(String(m.name).toLowerCase())));
+  if (!med) return;
+  const already = (state.recentEntries || []).some((e) => e.type === 'med' && e.medId === med.id && e.day === day);
+  if (already) return;
+  const at = day === todayStr() ? new Date() : new Date(parseDay(day).getTime() + 12 * 3600000);
+  logMed(med, at).catch((e) => console.error(e));
+}
 /* Move a session (v189): the new day takes its type, done tick and cycle start; the old day keeps any mood but loses the session */
 async function moveSession(from, to) {
   const info = state.days[from] || {};
   const data = { chemo: true, chemoDone: !!info.chemoDone, treatment: treatmentOf(info).key, updatedBy: state.name };
+  if (info.treatName) data.treatName = info.treatName;
   if (info.cycleStart === true || info.cycleStart === false) data.cycleStart = info.cycleStart;
   const words = 'Moved to ' + fmtDayLong(to);
   if (state.demo) {
     state.days[to] = { ...(state.days[to] || {}), ...data };
-    const old = { ...(state.days[from] || {}), chemo: false, chemoDone: false }; delete old.cycleStart; delete old.treatment;
+    const old = { ...(state.days[from] || {}), chemo: false, chemoDone: false }; delete old.cycleStart; delete old.treatment; delete old.treatName;
     state.days[from] = old;
     renderChemo(); toast(words); return;
   }
   try {
     const batch = writeBatch(db);
     batch.set(hdoc('days', to), { ...data, updatedAt: serverTimestamp() }, { merge: true });
-    batch.set(hdoc('days', from), { chemo: false, chemoDone: false, cycleStart: deleteField(), treatment: deleteField(), updatedBy: state.name, updatedAt: serverTimestamp() }, { merge: true });
+    batch.set(hdoc('days', from), { chemo: false, chemoDone: false, cycleStart: deleteField(), treatment: deleteField(), treatName: deleteField(), updatedBy: state.name, updatedAt: serverTimestamp() }, { merge: true });
     await batch.commit();
     toast(words);
   } catch (e) { console.error(e); toast('Could not move the session'); }
@@ -11178,23 +11289,28 @@ async function moveSession(from, to) {
 /* Add sessions (v189): a run of sessions in one go, from the first date, how many and how often, weekdays only.
    The first can start a new cycle; the rest carry cycleStart false so the weekly ones stay in it. A day that already
    has a session is left as it is. */
-const RUN_EVERY = [['weekday', 'Every weekday'], [7, 'Weekly'], [14, 'Every 2 weeks'], [21, 'Every 3 weeks'], [28, 'Every 4 weeks']];
-function runDays(first, count, every) {
+const RUN_EVERY = [['weekday', 'Every weekday'], [7, 'Weekly'], [14, 'Every 2 weeks'], [21, 'Every 3 weeks'], [28, 'Every 4 weeks'], [42, 'Every 6 weeks'], [56, 'Every 8 weeks']];
+function runDays(first, count, every, atHome) {
   const out = [];
   let d = first;
   const weekend = (k) => { const w = parseDay(k).getDay(); return w === 0 || w === 6; };
   while (out.length < count) {
     if (every === 'weekday') { if (!weekend(d)) out.push(d); d = addDays(d, 1); continue; }
     let k = d;
-    while (weekend(k)) k = addDays(k, 1); // a session that would fall at the weekend moves to the Monday
+    while (!atHome && weekend(k)) k = addDays(k, 1); // a hospital session that would fall at the weekend moves to the Monday; an injection at home stays put
     out.push(k);
     d = addDays(d, every);
   }
   return out;
 }
 function openAddSessions() {
-  let treatment = latestTreatmentKey() === 'radio' ? 'radio' : 'chemo';
-  let every = treatment === 'radio' ? 'weekday' : 7;
+  const offered = treatmentsFor().filter((t) => t.key !== 'other');
+  let treatment = offered.some((t) => t.key === latestTreatmentKey()) ? latestTreatmentKey() : (offered[0] || TREATMENTS[0]).key;
+  const tOf = () => TREATMENTS.find((t) => t.key === treatment) || TREATMENTS[0];
+  let every = treatment === 'radio' ? 'weekday' : tOf().every || 7;
+  const nameIn = h('input', { type: 'text', class: 'input', list: 'run-names', placeholder: 'e.g. adalimumab, infliximab', autocomplete: 'off' });
+  const nameRow = h('div', null, field('Which medicine?', nameIn), h('datalist', { id: 'run-names' }, ...(state.medicines || []).filter((m) => m.active !== false).map((m) => h('option', { value: m.name }))));
+  const cycleLabel = h('label', { class: 'check' });
   const typeRow = h('div', { class: 'wiz-day treat-chips', role: 'group', 'aria-label': 'Kind of treatment' });
   const everyRow = h('div', { class: 'wiz-day treat-chips', role: 'group', 'aria-label': 'How often' });
   const firstIn = h('input', { type: 'date', class: 'input', value: todayStr() });
@@ -11204,11 +11320,12 @@ function openAddSessions() {
   const chips = (row, list, cur, set) => row.replaceChildren(...list.map(([k, label]) => h('button', { class: 'preset' + (k === cur() ? ' is-active' : ''), type: 'button', 'aria-pressed': k === cur() ? 'true' : 'false', onclick: () => { set(k); draw(); } }, label)));
   const count = () => { const n = parseInt(countIn.value, 10); return isNaN(n) ? 0 : n; };
   function draw() {
-    chips(typeRow, TREATMENTS.filter((t) => t.key !== 'other').map((t) => [t.key, t.label]), () => treatment, (k) => { treatment = k; });
+    chips(typeRow, offered.map((t) => [t.key, t.label]), () => treatment, (k) => { treatment = k; every = k === 'radio' ? 'weekday' : (TREATMENTS.find((t) => t.key === k) || {}).every || (every === 'weekday' ? 7 : every); });
     chips(everyRow, RUN_EVERY, () => every, (k) => { every = k; });
+    nameRow.hidden = !isRepeat(tOf()); cycleLabel.hidden = isRepeat(tOf());
     const n = count();
     if (!firstIn.value || n < 1 || n > 60) { preview.textContent = 'Choose the first day and how many, 1 to 60.'; return; }
-    const days = runDays(firstIn.value, n, every);
+    const days = runDays(firstIn.value, n, every, tOf().home);
     const taken = days.filter((d) => state.days[d] && state.days[d].chemo);
     preview.textContent = (days.length > 8 ? days.length + ' sessions, ' + fmtDayShort(days[0]) + ' to ' + fmtDayShort(days[days.length - 1]) : joinAnd(days.map(fmtDayShort))) + '.' + (taken.length ? ' ' + joinAnd(taken.map(fmtDayShort)) + ' already ' + (taken.length === 1 ? 'has' : 'have') + ' a session and will be left as ' + (taken.length === 1 ? 'it is' : 'they are') + '.' : '');
   }
@@ -11216,20 +11333,22 @@ function openAddSessions() {
   countIn.addEventListener('input', draw);
   draw();
   const body = h('div', null,
-    h('p', { class: 'hint', text: 'Put in a run of sessions in one go, for example three weekly chemo sessions. Weekends are skipped. Any one can be moved or removed later by tapping its day.' }),
+    h('p', { class: 'hint', text: 'Put in a run of sessions in one go: three weekly chemo sessions, or the next six injections. Hospital sessions skip weekends; an injection at home keeps its day. Any one can be moved or removed later by tapping its day.' }),
     h('p', { class: 'field-label', text: 'What is it?' }), typeRow,
+    nameRow,
     field('First session', firstIn),
-    field('How many sessions', countIn), h('p', { class: 'hint', id: 'run-count-hint', text: 'Just this run, for example 3 for a cycle of three. Add the next cycle when its dates are confirmed.' }),
+    field('How many sessions', countIn), h('p', { class: 'hint', id: 'run-count-hint', text: 'Just this run, for example 3 for a cycle of three, or 6 for the next three months of fortnightly injections. Add more when the dates are confirmed.' }),
     h('p', { class: 'field-label', text: 'How often?' }), everyRow,
-    h('label', { class: 'check' }, cbNew, h('span', { text: 'The first one starts a new cycle' })),
+    (cycleLabel.append(cbNew, h('span', { text: 'The first one starts a new cycle' })), cycleLabel),
     preview,
     h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
       const n = count();
       if (!firstIn.value || n < 1 || n > 60) { toast('Choose the first day and how many, 1 to 60'); countIn.focus(); return; }
-      const days = runDays(firstIn.value, n, every).filter((d) => !(state.days[d] && state.days[d].chemo));
+      const days = runDays(firstIn.value, n, every, tOf().home).filter((d) => !(state.days[d] && state.days[d].chemo));
       if (!days.length) { toast('Those days already have sessions'); return; }
       closeSheet();
-      const rows = days.map((d, i) => [d, { chemo: true, chemoDone: false, treatment, cycleStart: i === 0 ? cbNew.checked : false, updatedBy: state.name }]);
+      const rep = isRepeat(tOf());
+      const rows = days.map((d, i) => [d, { chemo: true, chemoDone: false, treatment, cycleStart: rep ? true : i === 0 ? cbNew.checked : false, ...(rep ? { treatName: nameIn.value.trim() } : {}), updatedBy: state.name }]);
       const words = plural(days.length, 'session') + ' added, ' + fmtDayShort(days[0]) + (days.length > 1 ? ' to ' + fmtDayShort(days[days.length - 1]) : '');
       if (state.demo) { rows.forEach(([d, data]) => { state.days[d] = { ...(state.days[d] || {}), ...data }; }); state.chemoMonth = days[0].slice(0, 7); renderChemo(); toast(words); return; }
       try {
