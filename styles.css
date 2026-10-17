@@ -1793,3 +1793,10 @@ button.weekmore { min-height: 44px; padding-left: 0; }
 .key-flare { background: var(--warm-light); border: 1px solid var(--warm); }
 .entry.type-call { --cat: var(--teal); }
 @media (prefers-color-scheme: dark) { .checkin-row.is-flare .checkin-icon, .cal-cell.is-flare .cal-num { color: var(--warm); } }
+
+/* ---------- The condition previews (v206) ---------- */
+.preview-packs { margin-top: var(--s-3); text-align: center; }
+.preview-packs .hint { margin-bottom: var(--s-2); }
+.preview-packs .btnrow { justify-content: center; flex-wrap: wrap; gap: var(--s-2); }
+.preview-packs .btn-small { min-height: 44px; }
+.preview-packs .hint-small { margin-top: var(--s-2); }
