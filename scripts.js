@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '206';
+const APP_VERSION = '207';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -5518,8 +5518,8 @@ const SEND_KINDS = {
     blob: () => notesReportBlob(),
     subject: (range) => `Notes before our appointment, ${range}`,
     named: (who, range) => `Notes before our appointment: ${who}, ${range}`,
-    words: (range) => `Ahead of our next appointment, here are my notes from Daybook for ${range}: two pages, with a summary and my questions first, then charts of the readings and the notes week by week.`,
-    attached: (range) => `Attached: Notes for the team, ${range}, two pages.`,
+    words: (range) => `Ahead of our next appointment, here are my notes from Daybook for ${range}: a summary and my questions first, then charts of the readings and the notes week by week.`,
+    attached: (range) => `Attached: Notes for the team, ${range}.`,
     check: ' Use Preview on the Notes screen to look at it first.'
   },
   food: {
@@ -6092,7 +6092,7 @@ function buildTwoPage(n) {
     subtitle: `A patient summary for the nursing and medical team. ${word} to ${t.getDate()} ${MON_LONG[t.getMonth()]} ${t.getFullYear()}.`,
     patient, period, prepared: rDay(today) + ' ' + parseDay(today).getFullYear(),
     latest, tiles, meds, hospital, steady, sideFx: twoPageSideFx(entries),
-    questions: qs.slice(0, 7), more: Math.max(0, qs.length - 7), lines: 3,
+    questions: qs, more: 0, older: report.older.length, olderFrom: rDay(from), extraQ: [], weeksPage3: false, lines: 3,
     charts, days: labels, weeks,
     weeksNote: ai ? 'Summarised from the daily notes by Daybook Assistant, an AI helper. Every note is in Daybook.' : 'The most telling note of each day. Every note is in Daybook.',
     foot: 'Notes for the team'
@@ -6151,7 +6151,7 @@ function fittedReport() {
     if (!reportModule) reportModule = await import('./report.js?v=' + APP_VERSION);
     const R = buildTwoPage(n);
     const res = await reportModule.fitReport(reportFrame('notes'), R);
-    if (!res.ok) { toast(`The report would run past two pages at: ${res.over.join(', ')}. Shorten that part and try again.`); return null; }
+    if (!res.ok) { toast(`The report would not fit at: ${res.over.join(', ')}. Shorten that part and try again.`); return null; }
     return res;
   });
 }
@@ -7032,7 +7032,11 @@ function buildNotesReport(entries, questionsAll, from, to, rangeLabel) {
   const glance = summaryRows(entries, from, to);
   /* Open questions by team (v133): the oncologist's first, then gastro, general and not sure; dietitian ones go to the Food diary report and are only counted here */
   const open = sortQuestions(questionsAll.filter((q) => !q.answered && !isDietitianQ(q) && !isWellbeingQ(q) && !isPainQ(q)));
-  const questions = open.map((q) => ({ id: q.id, team: teamOf(q), teamLabel: teamLabel(teamOf(q)), text: q.note, who: q.addedBy || 'unknown', day: q.day }));
+  const shape = (q) => ({ id: q.id, team: teamOf(q), teamLabel: teamLabel(teamOf(q)), text: q.note, who: q.addedBy || 'unknown', day: q.day });
+  /* Only questions added in the report's period are printed (v207, Mark: an older list that was dealt with in clinic
+     but never marked as answered kept printing). Older open ones are counted, and listed on the screen to be tidied. */
+  const questions = open.filter((q) => q.day >= from && q.day <= to).map(shape);
+  const older = open.filter((q) => q.day < from).map(shape);
   const dietitian = questionsAll.filter((q) => !q.answered && isDietitianQ(q)).length;
   const wellbeing = questionsAll.filter((q) => !q.answered && isWellbeingQ(q)).length;
   const painQ = questionsAll.filter((q) => !q.answered && isPainQ(q)).length;
@@ -7066,7 +7070,8 @@ function buildNotesReport(entries, questionsAll, from, to, rangeLabel) {
   /* The range is the first line, so whoever reads it (an AI app included) knows the period before anything else */
   const lines = [`Daybook notes from ${fmtDayNum(from)} to ${fmtDayNum(to)}.`, '', NOTES_PROMPT, '', 'Questions for the team:'];
   if (questions.length) questions.forEach((q) => lines.push(`- ${q.teamLabel}: ${q.text} (${q.who}, ${fmtDayShort(q.day)})`));
-  else lines.push('- No open questions.');
+  else lines.push('- No new questions in this period.');
+  if (older.length) lines.push(`- ${plural(older.length, 'older question')} still open in the app, asked before ${fmtDayShort(from)}.`);
   if (dietitian) lines.push(`- ${plural(dietitian, 'question')} for the dietitian ${dietitian === 1 ? 'is' : 'are'} on the Food diary report.`);
   if (wellbeing) lines.push(`- ${plural(wellbeing, 'question')} for the therapist ${wellbeing === 1 ? 'is' : 'are'} on the Mood and wellbeing report.`);
   if (painQ) lines.push(`- ${plural(painQ, 'question')} for the pain team ${painQ === 1 ? 'is' : 'are'} on the Pain report.`);
@@ -7079,7 +7084,7 @@ function buildNotesReport(entries, questionsAll, from, to, rangeLabel) {
     d.notes.forEach((n) => lines.push(`- ${n.who}, ${n.time}${n.context ? ' (' + n.context + ')' : ''}: ${n.text}`));
   });
   else lines.push('- No written notes in this period.');
-  return { questions, dietitian, wellbeing, painQ, answers, answered, glance, days, weeks: notesByWeek(days, from, to), rangeLabel, text: lines.join('\n') };
+  return { questions, older, dietitian, wellbeing, painQ, answers, answered, glance, days, weeks: notesByWeek(days, from, to), rangeLabel, text: lines.join('\n') };
 }
 
 /* The name on the report: Settings' "Name on the report" if set, else the member whose relation is the patient */
@@ -7139,7 +7144,15 @@ async function renderNotesReport() {
   loadPatientName();
 
   $('notes-questions').replaceChildren(...report.questions.map((q) => questionCard(q, renderNotesReport)));
-  if (!report.questions.length) $('notes-questions').append(h('p', { class: 'muted', text: 'No open questions. Add one from Today with "Question for the team".' }));
+  if (!report.questions.length) $('notes-questions').append(h('p', { class: 'muted', text: 'No new questions in this period. Add one from Today with "Question for the team".' }));
+  if (report.older.length) {
+    const olderList = h('div', { class: 'older-questions', hidden: !state.notesOlderOpen });
+    olderList.append(...report.older.map((q) => questionCard(q, renderNotesReport)));
+    const toggle = h('button', { class: 'btn btn-link btn-small', type: 'button', 'aria-expanded': state.notesOlderOpen ? 'true' : 'false', onclick: () => { state.notesOlderOpen = !state.notesOlderOpen; olderList.hidden = !state.notesOlderOpen; toggle.setAttribute('aria-expanded', state.notesOlderOpen ? 'true' : 'false'); toggle.textContent = state.notesOlderOpen ? 'Hide them' : 'Show them'; } }, state.notesOlderOpen ? 'Hide them' : 'Show them');
+    $('notes-questions').append(h('div', { class: 'answered-line' },
+      h('p', { class: 'muted', text: `${plural(report.older.length, 'older question')} still open, asked before ${fmtDayShort(from)}. Not printed on this report: mark ${report.older.length === 1 ? 'it' : 'them'} as answered if the team has dealt with ${report.older.length === 1 ? 'it' : 'them'}, or add ${report.older.length === 1 ? 'it' : 'one'} again to ask this time.` }),
+      toggle), olderList);
+  }
   if (report.dietitian) $('notes-questions').append(h('p', { class: 'muted', text: `${plural(report.dietitian, 'question')} for the dietitian ${report.dietitian === 1 ? 'is' : 'are'} on the Food diary, with its report.` }));
   if (report.wellbeing) $('notes-questions').append(h('p', { class: 'muted', text: `${plural(report.wellbeing, 'question')} for the therapist ${report.wellbeing === 1 ? 'is' : 'are'} on the Mood and wellbeing report.` }));
   if (report.painQ) $('notes-questions').append(h('p', { class: 'muted', text: `${plural(report.painQ, 'question')} for the pain team ${report.painQ === 1 ? 'is' : 'are'} on the Pain report.` }));
