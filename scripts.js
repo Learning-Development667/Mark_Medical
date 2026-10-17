@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '207';
+const APP_VERSION = '208';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -2608,7 +2608,8 @@ function entryOptions(e) {
     rows.length ? h('dl', { class: 'readings' }, ...rows.flatMap(([k, v, lvl]) => [h('dt', { text: k }), h('dd', { class: lvl ? 'lvl-' + lvl : null, text: v })])) : null,
     h('p', { class: 'muted', text: `${fmtDayLong(e.day)} at ${fmtTime(d)}. ${entrySub(e)}` }),
     canEdit && !state.readOnly ? h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => (e.type === 'med' ? (e.hospital ? openHospitalDose(e) : openDoseEdit(e)) : openAdd(reading ? 'vitals' : e.type, e)) }, e.type === 'med' && !e.hospital ? 'Change the time or note' : 'Edit') : null,
-    e.type === 'checkin' ? h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => { closeSheet(); openCheckin(e.slot, e.day); } }, 'Edit this check-in') : null,
+    e.type === 'checkin' && ownsCheckin(e) ? h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => { closeSheet(); openCheckin(e.slot, e.day); } }, 'Edit this check-in') : null,
+    e.type === 'checkin' && !ownsCheckin(e) ? h('p', { class: 'hint', text: checkinOwnerWords(e) }) : null,
     e.type === 'question' && !state.readOnly ? h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => { closeSheet(); openAnswerSheet(e); } }, 'Record or write the answer') : null,
     e.type === 'question' ? h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: async () => {
       closeSheet();
@@ -2616,7 +2617,7 @@ function entryOptions(e) {
       toast(e.answered ? 'Question reopened' : 'Marked as answered');
       if (!$('view-notes').hidden) renderNotesReport();
     } }, e.answered ? 'Reopen this question' : 'Mark as answered') : null,
-    h('button', { class: 'btn btn-danger btn-block', type: 'button', onclick: async () => {
+    e.type === 'checkin' && !ownsCheckin(e) ? null : h('button', { class: 'btn btn-danger btn-block', type: 'button', onclick: async () => {
       closeSheet();
       await deleteEntry(e.id);
       toast('Entry deleted');
@@ -7420,7 +7421,8 @@ function checkinCard(c, inEntry) {
     c.editedBy || c.editedAt ? h('span', { text: 'Edited by ' + (c.editedBy || 'someone') + ' at ' + whenText(tsDate(c.editedAt)) }) : null);
   const body = h('div', { class: 'cc-body', id: bodyId, hidden: !open },
     h('dl', { class: 'cc-list' }, ...rows), meta,
-    state.readOnly ? null : h('button', { class: 'btn btn-secondary cc-edit', type: 'button', onclick: () => openCheckin(c.slot, c.day) }, 'Edit'));
+    state.readOnly ? null : ownsCheckin(c) ? h('button', { class: 'btn btn-secondary cc-edit', type: 'button', onclick: () => openCheckin(c.slot, c.day) }, 'Edit')
+      : h('p', { class: 'hint hint-small cc-locked', text: checkinOwnerWords(c) }));
   const head = h('button', { class: 'cc-head', type: 'button', 'aria-expanded': open ? 'true' : 'false', 'aria-controls': bodyId },
     h('span', { class: 'cc-check' }, icon('check')),
     h('span', { class: 'cc-line', text: checkinLine(c) }),
@@ -7515,9 +7517,14 @@ function checkinSteps(slot, day, existing) {
     return true;
   });
 }
+/* A saved check-in belongs to whoever filled it in (v208, Mark: a carer's view should be locked for him, and his
+   for the carer). The other person reads it; only its author changes or deletes it. The preview is open to all. */
+function ownsCheckin(c) { return Boolean(c) && (state.demo || !c.addedBy || c.addedBy === state.name); }
+function checkinOwnerWords(c) { return (c && c.addedBy ? c.addedBy + "'s check-in. " : 'This check-in. ') + 'Only the person who filled it in can change it.'; }
 function openCheckin(slot, initialDay) {
   if (isWeekSlot(slot)) { openWeekCheck(initialDay, slot); return; }
   const today = todayStr();
+  { const saved = findCheckin(initialDay > today ? today : initialDay, slot); if (saved && !ownsCheckin(saved)) { toast(checkinOwnerWords(saved)); return; } }
   let day = initialDay > today ? today : initialDay;
   const qs = checkinSteps(slot, day, findCheckin(day, slot));
   let answers = {}, existing = null, step = 0, dir = 1, sleepFrom = null, restored = null, restoredNote = false;
