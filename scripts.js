@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '205';
+const APP_VERSION = '206';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -50,6 +50,18 @@ const SEED_MEDICINES = [
   { id: 'menthol-cream', name: 'Menthol 2% cream', dose: 'Apply to skin', how: 'Three times a day', purpose: 'Itching', kind: 'scheduled', perDay: 3 },
   { id: 'macrogol', name: 'Macrogol sachets', dose: '2 sachets, each in 125 ml water', how: 'Twice a day', purpose: 'Constipation', kind: 'scheduled', perDay: 2 },
   { id: 'senna', name: 'Senna', dose: '15 mg', how: 'At night', purpose: 'Constipation', kind: 'scheduled', perDay: 1 }
+];
+
+/* The Crohn's preview's medicines (v206): a made-up person on adalimumab, with a steroid course for a flare.
+   The course dates are set when the preview starts (`startDemoData('ibd')`), so they always sit around today. */
+const IBD_MEDICINES = [
+  { id: 'adalimumab', name: 'Adalimumab (Humira)', dose: '40 mg', how: 'Injection every 2 weeks, at home', purpose: "Crohn's", kind: 'prn', doseForm: 'none' },
+  { id: 'azathioprine', name: 'Azathioprine', dose: '2 tablets (100 mg)', how: 'Once a day, in the morning', purpose: "Crohn's, keeps it settled", kind: 'scheduled', perDay: 1, doseForm: 'tablet', doseCount: 2, strength: '50 mg' },
+  { id: 'pentasa', name: 'Mesalazine (Pentasa)', dose: '2 tablets (1 g)', how: 'Twice a day, morning and evening', purpose: "Crohn's", kind: 'scheduled', perDay: 2, doseForm: 'tablet', doseCount: 2, strength: '500 mg' },
+  { id: 'prednisolone', name: 'Prednisolone', dose: '8 tablets (40 mg)', how: 'Once a day with breakfast, reducing as the team said', purpose: 'The flare', kind: 'scheduled', perDay: 1, steroid: true, doseForm: 'tablet', doseCount: 8, strength: '5 mg' },
+  { id: 'adcal', name: 'Adcal-D3', dose: '1 tablet', how: 'Twice a day, with the steroid course', purpose: 'Bones, while on steroids', kind: 'scheduled', perDay: 2, doseForm: 'tablet', doseCount: 1 },
+  { id: 'loperamide', name: 'Loperamide', dose: '1 capsule (2 mg)', how: 'When needed, at most 8 a day, not when there is blood', purpose: 'Diarrhoea', kind: 'prn', maxPerDay: 8, doseForm: 'capsule', doseCount: 1, strength: '2 mg' },
+  { id: 'paracetamol', name: 'Paracetamol', dose: '2 tablets (1,000 mg)', how: 'Up to 4 times a day when needed, at least 4 hours apart', purpose: 'Pain', kind: 'prn', minGapHours: 4, maxPerDay: 4, doseForm: 'tablet', doseCount: 2, strength: '500 mg' }
 ];
 
 const CLAUDE_INTRO = 'Please explain this medical document in plain English for a patient and their family. ' +
@@ -1069,6 +1081,8 @@ async function enterApp(user) {
     setReadOnlyMode(false);
     $('app').hidden = true;
     $('signin').hidden = false;
+    /* a `?preview=` link opens its preview straight away, once, for whoever is not signed in */
+    if (state.previewLink) { const pk = state.previewLink; state.previewLink = null; enterPreview(pk); }
   }
 }
 
@@ -1092,7 +1106,7 @@ function setReadOnlyMode(on) {
 
 /* Guest preview: no Firebase account, no Firestore access, ever. Everything
    this shows is made-up (see buildDemoFixture); nothing typed here is saved. */
-function enterPreview() {
+function enterPreview(pack) {
   state.demo = true;
   state.name = 'Guest';
   state.viewer = false;
@@ -1105,9 +1119,21 @@ function enterPreview() {
   $('user-chip').textContent = 'Guest';
   $('more-user').textContent = 'Guest (preview, nothing saved)';
   $('guest-pill').hidden = false;
-  startDemoData();
+  $('guest-pill').textContent = pack === 'ibd' ? "Preview, Crohn's" : 'Preview';
+  startDemoData(pack);
   syncReminders();
 }
+/* The condition previews (v206): the in-memory preview with a made-up person for each pack, from the links under
+   Guest and from `?preview=ibd` in the address (a link to send round), whatever the Guest button itself does. */
+document.querySelectorAll('[data-preview]').forEach((b) => b.addEventListener('click', () => enterPreview(b.dataset.preview)));
+(function readPreviewLink() {
+  const u = new URL(location.href);
+  const want = u.searchParams.get('preview');
+  if (!want) return;
+  u.searchParams.delete('preview');
+  history.replaceState(null, '', u.pathname + (u.searchParams.toString() ? '?' + u.searchParams : '') + u.hash);
+  if (want === 'ibd' || want === 'cancer') state.previewLink = want;
+})();
 $('guest-button').addEventListener('click', () => (DEMO ? enterLiveDemo() : enterPreview()));
 if (DEMO) $('guest-hint').textContent = 'Try the app for real on a shared demo with example data. No sign-in needed. Anything you add can be seen by other visitors and is wiped every night, so no real details please.';
 
@@ -1467,11 +1493,206 @@ function buildDemoFixture() {
   return { entries, documents, days, exercise, profile, meals };
 }
 
-function startDemoData() {
+/* The Crohn's preview (v206): Jo, with Crohn's disease on fortnightly adalimumab, and Alex who looks after them.
+   A flare a week ago (four marked days, blood and urgency, a steroid course started by the advice line), now
+   settling. Made up, and never saved anywhere. */
+function buildIbdFixture() {
+  const day = (offset) => addDays(todayStr(), offset);
+  const at = (offset, hhmm) => { const [hh, mm] = hhmm.split(':').map(Number); const d = parseDay(day(offset)); d.setHours(hh, mm, 0, 0); return d; };
+  const e = (offset, hhmm, who, fields) => ({ id: fakeId('entry'), day: day(offset), at: demoTs(at(offset, hhmm)), addedBy: who, createdAt: demoTs(at(offset, hhmm)), note: '', ...fields });
+  const ci = (offset, slot, fields) => {
+    const when = at(offset, slot === 'morning' ? '08:15' : slot === 'carer' ? '20:30' : slot === 'week' ? '18:00' : slot === 'weekcarer' ? '18:30' : '21:00');
+    return { id: day(offset) + '_' + slot, type: 'checkin', slot, day: day(offset), at: demoTs(when), addedBy: 'Jo', createdAt: demoTs(when), updatedAt: demoTs(when), ...fields };
+  };
+  const bowel = (offset, hhmm, fields) => e(offset, hhmm, 'Jo', { type: 'bowel', none: false, bristol: 4, types: [4], bloodGrade: 0, blood: false, urgency: 0, urgent: false, accident: false, night: false, ...fields });
+  const entries = [];
+  /* Bowels, day by day over four weeks: settled at about two a day, the flare from day -8 to -4 (five or six a day,
+     loose, blood mixed in, urgency, one accident, nights), then easing on the steroids. */
+  const plan = { // [count, bristol, bloodGrade, urgency, night, accident]
+    '-27': [2, 4, 0, 0], '-26': [2, 4, 0, 0], '-25': [1, 3, 0, 0], '-24': [2, 4, 0, 0], '-23': [2, 5, 0, 0], '-22': [2, 4, 0, 0], '-21': [1, 4, 0, 0],
+    '-20': [2, 4, 0, 0], '-19': [2, 5, 0, 0], '-18': [2, 4, 0, 0], '-17': [3, 5, 0, 0], '-16': [2, 4, 0, 0], '-15': [2, 4, 0, 0], '-14': [2, 5, 0, 0],
+    '-13': [3, 5, 0, 1], '-12': [3, 6, 1, 1], '-11': [3, 5, 0, 1], '-10': [4, 6, 1, 1], '-9': [4, 6, 1, 2, 1],
+    '-8': [5, 6, 2, 2, 1], '-7': [6, 7, 2, 2, 1, 1], '-6': [6, 7, 2, 2, 1], '-5': [5, 6, 2, 2, 1], '-4': [4, 6, 1, 1, 1],
+    '-3': [3, 6, 1, 1], '-2': [3, 5, 0, 1], '-1': [2, 5, 0, 0], '0': [2, 4, 0, 0]
+  };
+  const times = ['06:40', '09:10', '12:30', '15:20', '18:45', '22:10', '02:30'];
+  Object.keys(plan).forEach((k) => {
+    const [n, type, grade, urg, night, acc] = plan[k];
+    for (let i = 0; i < n; i++) {
+      const t = night && i === n - 1 ? '02:30' : times[i];
+      const loose = type >= 6 && i % 2 === 0 ? type : Math.max(3, type - 1);
+      entries.push(bowel(Number(k), t, { bristol: loose, types: [loose], bloodGrade: i === 0 ? grade : Math.max(0, grade - 1), blood: (i === 0 ? grade : grade - 1) > 0, urgency: i < 2 ? urg : Math.max(0, urg - 1), urgent: urg === 2 && i < 2, accident: Boolean(acc && i === 2), night: Boolean(night && i === n - 1), note: k === '-7' && i === 2 ? 'Did not make it in time, in the car' : '' }));
+    }
+  });
+  /* Daily readings: a temperature and heart rate climbing through the flare, weight down 2 kg and steadying */
+  const temp = [36.7, 36.8, 36.7, 36.6, 36.8, 36.7, 36.8, 36.7, 36.9, 36.8, 36.7, 36.9, 36.8, 37.0, 37.1, 37.3, 37.2, 37.4, 37.6, 37.9, 38.1, 37.8, 37.5, 37.2, 37.0, 36.9, 36.8, 36.8];
+  const hr = [68, 70, 69, 72, 70, 71, 69, 70, 72, 71, 73, 72, 74, 76, 78, 80, 82, 86, 92, 98, 104, 96, 90, 84, 80, 76, 74, 72];
+  const kg = [64.2, 64.1, 64.2, 64.0, 64.1, 64.0, 63.9, 64.0, 63.9, 63.8, 63.8, 63.7, 63.6, 63.4, 63.3, 63.1, 62.9, 62.6, 62.4, 62.1, 61.9, 61.8, 61.8, 61.9, 62.0, 62.1, 62.2, 62.2];
+  for (let i = 0; i < 28; i++) {
+    const o = i - 27, who = i % 3 === 2 ? 'Alex' : 'Jo';
+    entries.push(e(o, '07:50', who, { type: 'temp', value: temp[i] }));
+    entries.push(e(o, '07:52', who, { type: 'vitals', heartRate: hr[i] }));
+    entries.push(e(o, '07:30', who, { type: 'weight', value: kg[i] }));
+    entries.push(e(o, '07:40', 'Jo', { type: 'sleep', value: o >= -8 && o <= -4 ? 300 + (i % 3) * 20 : 400 + (i % 4) * 15 }));
+    entries.push(e(o, '08:05', 'Jo', { type: 'med', medId: 'azathioprine', medName: 'Azathioprine', dose: '2 tablets (100 mg)' }));
+    entries.push(e(o, '08:06', 'Jo', { type: 'med', medId: 'pentasa', medName: 'Mesalazine (Pentasa)', dose: '2 tablets (1 g)' }));
+    if (o < 0 || new Date().getHours() >= 19) entries.push(e(o, '19:05', 'Jo', { type: 'med', medId: 'pentasa', medName: 'Mesalazine (Pentasa)', dose: '2 tablets (1 g)' }));
+    if (o >= -6) { entries.push(e(o, '08:10', 'Jo', { type: 'med', medId: 'prednisolone', medName: 'Prednisolone', dose: '8 tablets (40 mg)' })); entries.push(e(o, '08:11', 'Jo', { type: 'med', medId: 'adcal', medName: 'Adcal-D3', dose: '1 tablet' })); }
+    entries.push(e(o, '10:30', who, { type: 'drink', value: 250, note: 'Water' }));
+    entries.push(e(o, '16:00', who, { type: 'drink', value: 200, note: 'Tea' }));
+  }
+  entries.push(
+    /* the two injections done, and a dose each time (as ticking the session logs one) */
+    e(-22, '09:00', 'Jo', { type: 'med', medId: 'adalimumab', medName: 'Adalimumab (Humira)', dose: '40 mg', note: 'Left thigh' }),
+    e(-8, '09:00', 'Jo', { type: 'med', medId: 'adalimumab', medName: 'Adalimumab (Humira)', dose: '40 mg', note: 'Right thigh, stung more than usual' }),
+    /* loperamide and paracetamol through the flare */
+    e(-9, '13:00', 'Jo', { type: 'med', medId: 'loperamide', medName: 'Loperamide', dose: '1 capsule (2 mg)' }),
+    e(-9, '21:00', 'Jo', { type: 'med', medId: 'loperamide', medName: 'Loperamide', dose: '1 capsule (2 mg)' }),
+    e(-7, '14:30', 'Jo', { type: 'med', medId: 'paracetamol', medName: 'Paracetamol', dose: '2 tablets (1,000 mg)', note: 'Cramping, low down on the right' }),
+    e(-6, '22:00', 'Jo', { type: 'med', medId: 'paracetamol', medName: 'Paracetamol', dose: '2 tablets (1,000 mg)' }),
+    e(-5, '15:00', 'Alex', { type: 'med', medId: 'paracetamol', medName: 'Paracetamol', dose: '2 tablets (1,000 mg)', note: 'Headache, Alex thinks from the steroids' }),
+    /* pain readings and symptoms */
+    e(-7, '14:20', 'Jo', { type: 'pain', value: 7, note: 'Cramping low on the right, comes in waves, worse after eating' }),
+    e(-6, '11:00', 'Jo', { type: 'pain', value: 6, note: 'Same place, a little less' }),
+    e(-3, '12:00', 'Jo', { type: 'pain', value: 3, note: 'A dull ache, nothing like last week' }),
+    e(-12, '17:00', 'Jo', { type: 'symptom', what: 'Tiredness', value: 6, note: 'Slept after work and still tired' }),
+    e(-7, '09:30', 'Jo', { type: 'symptom', what: 'Tiredness', value: 8, note: 'Could not get up the stairs without a rest' }),
+    e(-10, '20:00', 'Jo', { type: 'symptom', what: 'Mouth', value: 4, note: 'Two ulcers inside the lip' }),
+    e(-6, '08:30', 'Jo', { type: 'symptom', what: 'Joint pain', value: 5, note: 'Both knees, stiff first thing' }),
+    /* side effects after the last injection, from the evening check-in on day 2 after it */
+    { id: day(-6) + '_evening_fx_0', type: 'symptom', what: 'Injection site reaction', grade: 1, value: 3, day: day(-6), at: demoTs(at(-6, '21:00')), addedBy: 'Jo', createdAt: demoTs(at(-6, '21:00')), causeKind: 'treatment', causeId: 'inject', causeName: 'Adalimumab (Humira) injection', sessionDay: day(-8), fromCheckin: true, note: '' },
+    { id: day(-6) + '_evening_fx_2', type: 'symptom', what: 'Headache', grade: 2, value: 6, day: day(-6), at: demoTs(at(-6, '21:00')), addedBy: 'Jo', createdAt: demoTs(at(-6, '21:00')), causeKind: 'treatment', causeId: 'inject', causeName: 'Adalimumab (Humira) injection', sessionDay: day(-8), fromCheckin: true, note: '' },
+    /* food, thinner through the flare */
+    e(-13, '08:00', 'Jo', { type: 'food', note: 'Porridge', detail: 'banana', amount: 'All of it' }),
+    e(-13, '12:30', 'Jo', { type: 'food', note: 'Jacket potato', detail: 'tuna, no skin', amount: 'All of it' }),
+    e(-12, '18:30', 'Alex', { type: 'food', note: 'Chicken and rice', detail: 'plain, no sauce', amount: 'Most of it' }),
+    e(-9, '08:00', 'Jo', { type: 'food', note: 'White toast', amount: 'About half' }),
+    e(-8, '12:30', 'Jo', { type: 'food', note: 'Soup', detail: 'carrot, smooth', amount: 'About half' }),
+    e(-7, '18:00', 'Alex', { type: 'food', note: 'Mashed potato', amount: 'A few mouthfuls' }),
+    e(-6, '12:00', 'Alex', { type: 'food', note: 'Scrambled egg on toast', detail: 'white toast', amount: 'About half' }),
+    e(-5, '18:30', 'Alex', { type: 'food', note: 'Chicken and rice', detail: 'plain', amount: 'Most of it' }),
+    e(-4, '08:00', 'Jo', { type: 'food', note: 'Porridge', detail: 'banana', amount: 'All of it' }),
+    e(-3, '12:30', 'Jo', { type: 'food', note: 'Omelette', detail: 'cheese', amount: 'All of it' }),
+    e(-2, '18:30', 'Jo', { type: 'food', note: 'Fish pie', amount: 'All of it' }),
+    e(-1, '08:00', 'Jo', { type: 'food', note: 'Porridge', detail: 'banana', amount: 'All of it' }),
+    e(-1, '18:30', 'Alex', { type: 'food', note: 'Chicken and rice', detail: 'with a little sauce this time', amount: 'All of it' }),
+    e(0, '08:00', 'Jo', { type: 'food', note: 'Porridge', detail: 'banana and honey', amount: 'All of it' }),
+    /* calls to the advice line, and a note */
+    e(-6, '09:40', 'Jo', { type: 'call', who: 'IBD advice line, Priya', note: 'Start prednisolone 40 mg a day with breakfast and the Adcal. Stool sample for calprotectin and bloods at the GP this week. Ring back in five days if it is not settling, sooner with a temperature over 38.' }),
+    e(-1, '11:15', 'Alex', { type: 'call', who: 'IBD advice line, Priya', note: 'Bloods back: CRP down from 48 to 12. Keep the prednisolone at 40 for another week, then reduce by 5 mg a week. Clinic appointment being brought forward.' }),
+    e(-7, '20:00', 'Alex', { type: 'note', note: 'Jo has hardly left the sofa today. Six times to the loo before lunch and the accident in the car upset them more than they let on.' }),
+    e(-2, '19:30', 'Jo', { type: 'note', note: 'First day I have felt like me since the flare started. Walked to the shop.' }),
+    /* questions for the team */
+    e(-5, '10:00', 'Jo', { type: 'question', note: 'If the steroids work this time, does that mean the adalimumab is wearing off? Should the dose or the gap change?', team: 'gastro', answered: false }),
+    e(-3, '17:30', 'Alex', { type: 'question', note: 'What should Jo be eating while on the steroids and reducing them? Anything to avoid?', team: 'dietitian', answered: false }),
+    e(-12, '09:00', 'Jo', { type: 'question', note: 'The mouth ulcers keep coming back. Is that the Crohn’s or the azathioprine?', team: 'gastro', answered: true, answerText: 'Most likely the Crohn’s being a little active. Use the Difflam mouthwash and tell us if they last more than two weeks.', answeredAt: demoTs(at(-10, '14:00')) }),
+    /* weekly checks: the week before the flare, and the flare week, with Alex's own */
+    ci(-15, 'week', { wkTired: 1, wkGutOut: 0, wkToilet: 1, helped: 'Getting out on the bike at the weekend.', hardest: 'The mouth ulcers, and being tired by four every day.', sentence: 'A normal week, mostly.' }),
+    ci(-8, 'week', { wkTired: 3, wkGutOut: 3, wkToilet: 3, helped: 'Alex. The advice line answering first time.', hardest: 'The accident on Wednesday. Not trusting my own body.', sentence: 'The worst week in a year.' }),
+    ci(-8, 'weekcarer', { addedBy: 'Alex', wkcTired: 3, wkcLow: 2, wkcSymptoms: 3, wkcHelp: 3, helped: 'Getting the steroids started quickly.', hardest: 'Watching Jo count the trips to the loo and go quiet.', sentence: 'Frightening, but the plan worked.' }),
+    /* the check-ins: settled, the flare, the recovery */
+    ci(-13, 'morning', { sleep: 7, sleepHours: 7, pain: 1, mood: 7, symptoms: '', lookingForward: 'Work from home, then the bike' }),
+    ci(-13, 'evening', { pain: 2, mood: 7, worstPain: 2, sickness: 1, appetite: 7, energy: 6, symptoms: '', settled: '', goodThing: 'A proper ride', wb: { low: 0, worried: 1, enjoyed: 3 }, journal: '', outside: [] }),
+    ci(-12, 'evening', { pain: 2, mood: 6, worstPain: 3, sickness: 1, appetite: 6, energy: 4, symptoms: '', settled: '', goodThing: 'Chicken and rice, Alex cooked', wb: { low: 1, worried: 1, enjoyed: 2 }, journal: 'Tired by four again. Two ulcers inside my lip.' }),
+    ci(-10, 'morning', { sleep: 5, sleepHours: 6, pain: 3, painNote: 'Low down on the right, a niggle', mood: 5, symptoms: 'Three times before nine, looser than usual', lookingForward: '' }),
+    ci(-10, 'evening', { pain: 3, mood: 5, worstPain: 4, sickness: 2, appetite: 5, energy: 4, symptoms: 'Four times today, a streak of blood once', settled: '', goodThing: 'Film with Alex', wb: { low: 1, worried: 2, enjoyed: 2 }, journal: 'Something is not right. Four times today and a streak of blood. Trying not to think the word flare.' }),
+    ci(-9, 'morning', { sleep: 4, sleepHours: 5, pain: 4, painNote: 'Cramping on the right, before each trip', mood: 4, symptoms: 'Up at half two, urgent', lookingForward: '' }),
+    ci(-9, 'evening', { pain: 5, mood: 4, worstPain: 6, sickness: 3, appetite: 3, energy: 3, symptoms: 'Four, two of them urgent. Blood mixed in once', settled: '', goodThing: 'Alex came home early', wb: { low: 2, worried: 3, enjoyed: 1 }, journal: 'It is a flare. I know the pattern. Injection tomorrow and I am hoping that turns it.' }),
+    ci(-8, 'morning', { sleep: 4, sleepHours: 5, pain: 5, mood: 4, symptoms: 'Five before lunch. Blood each time', lookingForward: 'The injection, if it helps' }),
+    ci(-8, 'evening', { pain: 5, mood: 3, worstPain: 7, sickness: 3, appetite: 2, energy: 2, symptoms: 'Blood every time, mixed in. Urgent', settled: '', goodThing: 'Nothing today', wb: { low: 3, worried: 3, enjoyed: 0 }, journal: 'Did the injection. Stung. Five trips, blood every time. Ringing the advice line in the morning if it is the same.', painNote: 'Low on the right, cramping in waves', worstPainNote: 'After the injection, 7, a wave that lasted twenty minutes' }),
+    ci(-8, 'carer', { addedBy: 'Alex', energy: 2, sickness: 3, appetite: 2, pain: 5, mood: 3, noticed: 'Pale, quiet, counting trips. Did not eat the dinner I made.' }),
+    ci(-7, 'morning', { sleep: 3, sleepHours: 4.5, pain: 6, painNote: 'Right side, constant now, worse after anything to eat', mood: 3, symptoms: 'Six times, blood, could not wait', lookingForward: '' }),
+    ci(-7, 'evening', { pain: 6, mood: 3, worstPain: 7, sickness: 4, appetite: 2, energy: 2, symptoms: 'The accident in the car. Temperature 37.9', settled: '', goodThing: 'Alex', wb: { low: 3, worried: 3, enjoyed: 0 }, journal: 'The worst day. Did not make it to the loo in the car on the way to the GP. Alex was brilliant. Temperature creeping up.', painNote: 'Constant, right side, 6 all day', sidefx: { session: day(-8), treatment: 'inject', grades: { 'Injection site reaction': 1, Headache: 1 } } }),
+    ci(-7, 'carer', { addedBy: 'Alex', energy: 1, sickness: 4, appetite: 1, pain: 6, mood: 2, noticed: 'The accident shook them. Temperature 37.9 at bedtime. Ringing the line first thing.' }),
+    ci(-6, 'morning', { sleep: 3, sleepHours: 4, pain: 6, mood: 3, symptoms: 'Temperature 38.1 at eight. Six times yesterday, blood', lookingForward: 'Ringing the advice line' }),
+    ci(-6, 'evening', { pain: 5, mood: 4, worstPain: 6, sickness: 3, appetite: 3, energy: 2, symptoms: 'Started the steroids. Knees stiff', settled: '', goodThing: 'Priya on the advice line, first time', wb: { low: 2, worried: 2, enjoyed: 1 }, journal: 'Priya answered first time. Steroids started, sample dropped at the GP. Knees stiff and the injection site is red and itchy.', sidefx: { session: day(-8), treatment: 'inject', grades: { 'Injection site reaction': 1, Headache: 2, 'Joint pain': 2 } }, outside: ['joints', 'mouth'] }),
+    ci(-6, 'carer', { addedBy: 'Alex', energy: 2, sickness: 3, appetite: 3, pain: 5, mood: 4, noticed: 'Calmer once the plan was in place. Ate half the eggs.' }),
+    ci(-5, 'morning', { sleep: 4, sleepHours: 5, pain: 5, mood: 4, symptoms: 'Five times, blood still there', lookingForward: '' }),
+    ci(-5, 'evening', { pain: 4, mood: 4, worstPain: 5, sickness: 2, appetite: 4, energy: 3, symptoms: 'Headache, Alex thinks the steroids', settled: 'Fewer trips, four or five', goodThing: 'Ate most of dinner', wb: { low: 2, worried: 2, enjoyed: 1 }, journal: '', sidefx: { session: day(-8), treatment: 'inject', grades: { 'Injection site reaction': 1, Headache: 2 } } }),
+    ci(-4, 'morning', { sleep: 5, sleepHours: 6, pain: 4, mood: 5, symptoms: 'Four times, less blood', lookingForward: 'A shower without rushing' }),
+    ci(-4, 'evening', { pain: 3, mood: 5, worstPain: 4, sickness: 1, appetite: 5, energy: 4, symptoms: '', settled: 'The urgency is easing, blood only once', goodThing: 'Porridge for breakfast and it stayed down', wb: { low: 1, worried: 2, enjoyed: 2 }, journal: 'Turning. Four trips, blood once, and I managed porridge. The steroids are doing their thing and I am wide awake at 3 am, which is the price.' }),
+    ci(-4, 'carer', { addedBy: 'Alex', energy: 4, sickness: 1, appetite: 5, pain: 3, mood: 5, noticed: 'Colour back. Awake half the night though.' }),
+    ci(-3, 'morning', { sleep: 5, sleepHours: 5.5, sleepNote: 'Awake from three, the steroids', pain: 3, mood: 6, symptoms: '', lookingForward: 'A walk' }),
+    ci(-3, 'evening', { pain: 3, mood: 6, worstPain: 3, sickness: 1, appetite: 6, energy: 5, symptoms: '', settled: 'Three trips, no urgency', goodThing: 'The omelette', wb: { low: 1, worried: 1, enjoyed: 2 }, journal: '' }),
+    ci(-2, 'morning', { sleep: 6, sleepHours: 6, pain: 2, mood: 7, symptoms: '', lookingForward: 'Work, a bit' }),
+    ci(-2, 'evening', { pain: 2, mood: 7, worstPain: 3, sickness: 1, appetite: 7, energy: 5, symptoms: '', settled: 'No blood today', goodThing: 'Walked to the shop', wb: { low: 0, worried: 1, enjoyed: 3 }, journal: 'First day I have felt like me since the flare started. No blood. Walked to the shop and back and did not think about the loo once.' }),
+    ci(-1, 'morning', { sleep: 6, sleepHours: 6.5, pain: 2, mood: 7, symptoms: '', lookingForward: 'The call about the bloods' }),
+    ci(-1, 'evening', { pain: 2, mood: 7, worstPain: 2, sickness: 1, appetite: 7, energy: 6, symptoms: '', settled: 'Two trips, formed', goodThing: 'CRP down to 12', wb: { low: 0, worried: 1, enjoyed: 3 }, journal: 'Priya rang: CRP down from 48 to 12. Reducing the steroids from next week. Relief, mostly, and a bit of dread about the taper.', moodNote: 'Relieved' }),
+    ci(-1, 'carer', { addedBy: 'Alex', energy: 6, sickness: 1, appetite: 7, pain: 2, mood: 7, noticed: 'Back to teasing me. Ate everything.' }),
+    ci(0, 'morning', { sleep: 7, sleepHours: 7, pain: 1, mood: 7, symptoms: '', lookingForward: 'A quiet day, and the clinic letter' })
+  );
+
+  const documents = [{
+    id: fakeId('doc'), category: 'general', kind: 'text',
+    title: 'Gastroenterology clinic letter (example)', docDate: day(-20),
+    text: 'Dear Dr Example,\n\nDiagnosis: Crohn’s disease, ileocolonic, diagnosed 2019.\nCurrent treatment: adalimumab 40 mg every 2 weeks, azathioprine 100 mg daily, mesalazine 1 g twice daily.\n\nI reviewed this patient in clinic today. They report two to three formed stools a day with no blood, some fatigue and recurrent mouth ulcers. Weight is stable at 64 kg. Faecal calprotectin in August was 180. Bloods today: CRP 6, haemoglobin 128, ferritin 22.\n\nPlan: continue current treatment. Repeat calprotectin in three months. Check adalimumab trough level and antibodies at the next visit. Iron studies suggest low stores; start oral iron if tolerated. Review in four months, or sooner if symptoms change. The IBD advice line details have been given.\n\nKind regards,\nDr Example, Consultant Gastroenterologist',
+    explanation: 'This is a sample explanation, showing what a reply from an AI app might look like.\n\nIn plain English: the Crohn’s was fairly quiet at this visit. Two to three formed stools a day with no blood is a good sign, and the blood test for inflammation (CRP 6) is low. The stool test (calprotectin 180) is a little above the settled range, so they want to repeat it in three months. Iron stores are on the low side, which may be behind the tiredness, so iron tablets are suggested. They also want to check the level of adalimumab in the blood next time, to see whether the dose is still right.\n\nWorth asking the team: if the trough level comes back low, what are the options?',
+    addedBy: 'Jo', addedAt: demoTs(at(-20, '15:00')), updatedAt: demoTs(at(-20, '15:30'))
+  }];
+
+  const days = {};
+  const inj = (offset, done, note) => { days[day(offset)] = { chemo: true, treatment: 'inject', treatName: 'Adalimumab (Humira)', chemoDone: done, cycleStart: true, updatedBy: 'Jo', updatedAt: demoTs(at(Math.min(offset, 0), '09:00')), ...(note || {}) }; };
+  inj(-22, true, { mood: 4, good: 'Done without fuss' });
+  inj(-8, true, { mood: 2, good: 'Nothing today' });
+  inj(6, false);
+  [-7, -6, -5, -4].forEach((o) => { days[day(o)] = { ...(days[day(o)] || {}), flare: true, updatedBy: 'Jo', updatedAt: demoTs(at(o, '09:00')) }; });
+  [[-13, 4, 'A proper ride'], [-10, 3, 'Film with Alex'], [-9, 2, 'Alex came home early'], [-7, 2, 'Alex'], [-6, 2, 'Priya on the advice line, first time'], [-5, 2, 'Ate most of dinner'], [-4, 3, 'Porridge for breakfast and it stayed down'], [-3, 3, 'The omelette'], [-2, 4, 'Walked to the shop'], [-1, 4, 'CRP down to 12']].forEach(([o, mood, good]) => { days[day(o)] = { ...(days[day(o)] || {}), mood, good }; });
+
+  const exercise = {};
+  exercise[day(-13)] = { day: day(-13), steps: 6800, done: { walk: true }, workouts: [{ name: 'Outdoor Cycle', minutes: 48, km: 14.2, kcal: 420, start: '16:10' }] };
+  exercise[day(-12)] = { day: day(-12), steps: 4100, done: { walk: true } };
+  exercise[day(-9)] = { day: day(-9), steps: 1900, done: {} };
+  exercise[day(-7)] = { day: day(-7), steps: 600, done: {} };
+  exercise[day(-4)] = { day: day(-4), steps: 1400, done: {} };
+  exercise[day(-2)] = { day: day(-2), steps: 3200, done: { walk: true }, workouts: [{ name: 'Outdoor Walk', minutes: 22, km: 1.4, kcal: 80, start: '18:40' }] };
+  exercise[day(-1)] = { day: day(-1), steps: 4400, done: { walk: true } };
+  exercise[day(0)] = { day: day(0), steps: 900, done: {} };
+
+  const profile = {
+    packs: { ibd: true },
+    ibd: { kind: 'crohns', stoma: '', usual: 2 },
+    reportName: 'Jo Example',
+    setupDone: true,
+    calls: [
+      { label: 'IBD advice line (example)', role: 'IBD nurses, Priya and Tom', number: '01234 567800', ext: 'option 2', email: 'ibd.nurses@example.org' },
+      { label: 'Gastro secretary (example)', role: 'Dr Example’s secretary', number: '01234 567801' },
+      { label: 'GP surgery (example)', number: '01234 567802' }
+    ],
+    flarePlan: {
+      from: 'IBD nurse, Priya (example)', given: day(-40),
+      steps: 'Count how many times a day and note any blood. Do not take loperamide if there is blood. Keep drinking: small amounts, often. Ring the advice line on the second day of six or more a day, or the first day of blood mixed in. Keep taking the adalimumab, azathioprine and mesalazine unless we say otherwise.',
+      when: 'Six or more a day with blood, a temperature over 38, pain that does not settle with paracetamol, or being sick so that nothing stays down.',
+      wait: 'Out of hours ring 111. If you cannot keep fluids down or the pain is severe, go to A&E and say you have Crohn’s on adalimumab.',
+      contact: 'IBD advice line (example)'
+    },
+    programme: { items: [
+      { id: 'walk', name: 'Walk', section: 'exercise', kind: 'minutes', amount: 20, match: 'walk', note: 'Round the park, when the gut allows' },
+      { id: 'cycle', name: 'Bike', section: 'exercise', kind: 'distance', amount: 10, dunit: 'km', days: [0, 6], match: 'cycle', note: 'Weekends' }
+    ] }
+  };
+  const meals = [
+    { id: fakeId('meal'), name: 'Porridge', parts: 'banana', addedBy: 'Jo' },
+    { id: fakeId('meal'), name: 'Chicken and rice', parts: 'plain, no sauce', addedBy: 'Alex' },
+    { id: fakeId('meal'), name: 'Jacket potato', parts: 'tuna, no skin', addedBy: 'Jo' },
+    { id: fakeId('meal'), name: 'Omelette', parts: 'cheese', addedBy: 'Jo' }
+  ];
+  return { entries, documents, days, exercise, profile, meals };
+}
+
+function startDemoData(pack) {
   /* a hook for the Playwright harness, preview only: nothing here can reach Firestore */
   window.daybookPreview = { state, addEntry, renderExercise, exerciseLogFor };
-  const fixture = buildDemoFixture();
-  state.medicines = SEED_MEDICINES.map((m, i) => ({ ...m, active: true, order: i + 1 }));
+  state.previewPack = pack === 'ibd' ? 'ibd' : 'cancer';
+  const fixture = state.previewPack === 'ibd' ? buildIbdFixture() : buildDemoFixture();
+  const seed = state.previewPack === 'ibd' ? IBD_MEDICINES : SEED_MEDICINES;
+  state.medicines = seed.map((m, i) => ({ ...m, active: true, order: i + 1 }));
+  if (state.previewPack === 'ibd') {
+    /* the steroid course sits around today: started with the flare, four weeks in all */
+    const pred = state.medicines.find((m) => m.id === 'prednisolone');
+    if (pred) { pred.courseStart = addDays(todayStr(), -6); pred.courseEnd = addDays(todayStr(), 22); }
+    const adcal = state.medicines.find((m) => m.id === 'adcal');
+    if (adcal) { adcal.courseStart = addDays(todayStr(), -6); adcal.courseEnd = addDays(todayStr(), 22); }
+  }
   state.recentFrom = addDays(todayStr(), -40);
   state.recentEntries = fixture.entries;
   sortEntries(state.recentEntries);
@@ -1490,7 +1711,7 @@ function startDemoData() {
   renderDocsList();
   renderChemo();
   renderExercise();
-  toast('Preview mode: made-up example data, nothing you do here is saved.');
+  toast(state.previewPack === 'ibd' ? "Preview: Jo, who has Crohn's, and Alex. Made-up example data, nothing you do here is saved." : 'Preview mode: made-up example data, nothing you do here is saved.');
   setTimeout(offerDraft, 4200); // after the welcome line has had its four seconds
   renderCalls();
   syncSettings();
