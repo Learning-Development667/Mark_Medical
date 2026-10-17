@@ -1768,3 +1768,10 @@ button.weekmore { min-height: 44px; padding-left: 0; }
 /* How many this time (v195) */
 .askcount .presets { margin: var(--s-2) 0 var(--s-3); }
 .askcount .presets .preset { min-width: 56px; min-height: 48px; }
+
+/* ---------- Crohn's or colitis on the Treatment tab (v204) ---------- */
+.cal-type.is-long { font-size: 8px; letter-spacing: 0; right: 3px; }
+.cal-cell.is-chemo .cal-type.is-long { font-size: 8.5px; }
+.cal-cell.is-steroid { box-shadow: inset 0 -4px 0 var(--warning-fill); }
+.key-steroid { background: var(--surface); box-shadow: inset 0 -4px 0 var(--warning-fill); border: 1px solid var(--border-subtle); }
+.ibd-courses { margin: var(--s-2) var(--s-1) 0; }

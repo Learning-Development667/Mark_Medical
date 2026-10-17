@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=203">
+  <link rel="stylesheet" href="styles.css?v=204">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -441,7 +441,7 @@
           <div class="cal-dow"><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span></div>
           <div class="cal-grid" id="cal-grid"></div>
           <ul class="cal-cycles" id="cal-cycles" hidden></ul>
-          <p class="cal-key"><span class="key-dot key-chemo"></span> Session <span class="key-dot key-gold"></span> Done  <span class="key-dot key-next"></span> Planned <span class="key-dot key-rest"></span> Rest week <span class="key-letters">C chemo · R radiotherapy · I immunotherapy · O other</span> <span class="key-mood"><svg class="cal-face mood-5" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="5" class="mood-fill"/></svg><svg class="cal-face mood-3" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="5" class="mood-fill"/></svg><svg class="cal-face mood-1" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="4" class="mood-ring"/></svg> Mood, good to rough</span></p>
+          <p class="cal-key"><span class="key-dot key-chemo"></span> Session <span class="key-dot key-gold"></span> Done  <span class="key-dot key-next"></span> Planned <span class="key-dot key-rest"></span> Rest week <span id="cal-key-steroid" hidden><span class="key-dot key-steroid"></span> Steroid course</span><span class="key-letters" id="cal-key-letters">C chemo · R radiotherapy · I immunotherapy · O other</span> <span class="key-mood"><svg class="cal-face mood-5" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="5" class="mood-fill"/></svg><svg class="cal-face mood-3" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="5" class="mood-fill"/></svg><svg class="cal-face mood-1" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="4" class="mood-ring"/></svg> Mood, good to rough</span></p>
         </div>
 
         <div id="chemo-cycle-section">
@@ -455,6 +455,7 @@
               </div>
             </div>
           </div>
+          <p class="muted ibd-courses" id="ibd-courses" hidden></p>
           <div class="checkins" id="carer-card">
             <button class="checkin-row" id="checkin-carer" type="button" data-slot="carer">
               <svg class="icon checkin-icon" aria-hidden="true"><use href="#i-eye"/></svg>
@@ -1067,6 +1068,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=203"></script>
+  <script type="module" src="scripts.js?v=204"></script>
 </body>
 </html>
