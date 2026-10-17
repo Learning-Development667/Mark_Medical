@@ -75,6 +75,7 @@ h2.sec small{font-family:Inter,sans-serif;font-weight:400;font-size:7.6pt;color:
 .q.extra .no{background:var(--teal)}
 .q.extra .lines i{border-top-color:rgba(30,127,134,.35)}
 .more{font-size:7.2pt;color:var(--slate);margin-top:1.6mm}
+.qwrap .none{font-size:9pt;color:var(--slate);margin:0 0 2.4mm}
 .cgrid{display:grid;grid-template-columns:1fr 1fr;gap:2.6mm}
 .c{border:1px solid var(--line);border-radius:2.2mm;padding:1.8mm 3mm 1.2mm;position:relative}
 .c .h{display:flex;justify-content:space-between;align-items:baseline;gap:2mm}
@@ -196,10 +197,21 @@ export function reportHtml(R) {
   const other = questionHtml({ text: 'Other points from today', by: R.otherBy || 'For anything raised in the appointment', lines: R.lines }, true);
   /* An odd number of questions leaves the Other points card the empty half; otherwise it takes the full width */
   const otherCard = R.questions.length % 2 ? other : other.replace('class="q extra"', 'class="q extra wide"');
+  /* A third page (v207) when the questions or the weeks need it: never cut before then. Questions moved there
+     keep their numbers on from page 1. */
+  const extraQ = (R.extraQ || []).map((q, i) => questionHtml({ ...q, i: R.questions.length + i + 1, lines: R.lines }, false).replace(/data-sec="Question /, 'data-sec="More question '));
+  const page3 = extraQ.length || R.weeksPage3;
+  const total = page3 ? 3 : 2;
+  const olderLine = R.older ? `<p class="more">${esc(R.older === 1 ? '1 older question is' : R.older + ' older questions are')} still open in the app, asked before ${esc(R.olderFrom || 'this period')}.</p>` : '';
+  const noneLine = R.questions.length ? '' : '<p class="none" data-sec="No questions">No new questions this time.</p>';
   const charts = R.charts.map((c) => `<div class="c" data-sec="${esc(c.title)}"><div class="h"><h3>${esc(c.title)}</h3><span class="stat ${esc(c.tone || '')}">${esc(c.stat)}</span></div>${renderChart(c, R.days)}</div>`).join('');
   const key = `<div class="c key"><b>Key</b><span><i class="sw" style="background:rgba(224,160,48,.45)"></i>Amber: worth mentioning</span><span><i class="sw" style="background:rgba(200,69,59,.45)"></i>Red: raise promptly</span><span><i class="sw" style="background:${C.ink}"></i><i class="sw" style="background:${C.teal}"></i>Blood pressure: dark systolic, teal diastolic</span><span>Sleep bars under 5 h are amber.</span></div>`;
   const weeks = R.weeks.length ? R.weeks.map((w) => weekHtml(w, R.weeks.length === 1)).join('')
     : weekHtml({ title: 'Notes', range: R.period, theme: '', entries: [] }, true).replace('No written notes this week.', 'No written notes in this period.');
+  const weeksHtml = `<div class="wwrap" data-sec="Week by week">
+    <h2 class="sec" style="margin-bottom:2.4mm">Week by week <small>${esc(R.weeksNote || 'Each week summarised from the daily notes.')}</small></h2>
+    <div class="weeks">${weeks}</div>
+  </div>`;
   const bar = R.bar ? `<div class="bar"><span>${esc(R.bar)}</span><button type="button" onclick="window.print()">Print or save as PDF</button></div>` : '';
   return `<!DOCTYPE html>
 <html lang="en-GB">
@@ -227,20 +239,25 @@ ${bar}
   <div class="strip${strip.length === 1 ? ' one' : ''}">${strip.join('')}</div>
   <div class="qwrap" data-sec="Questions">
     <h2 class="sec" style="margin-bottom:2.4mm">Questions for the team <small>Space is left under each one to write the reply.</small></h2>
-    <div class="qgrid">${qs.join('')}${otherCard}</div>
+    ${noneLine}<div class="qgrid">${qs.join('')}${otherCard}</div>
+    ${extraQ.length ? `<p class="more">${esc(extraQ.length === 1 ? 'One more question' : extraQ.length + ' more questions')} on page 3.</p>` : ''}
     ${R.more ? `<p class="more">Plus ${esc(R.more)} more ${R.more === 1 ? 'question' : 'questions'} in the app.</p>` : ''}
+    ${olderLine}
   </div>
-  <div class="foot"><span>${esc(R.foot)}</span>${madeBy(1)}</div>
+  <div class="foot"><span>${esc(R.foot)}</span>${madeBy(1, total)}</div>
 </section>
 <section class="page" id="page2">
-  <div class="runner"><h2>Readings and weekly notes</h2><span>${esc(R.patient)} · ${esc(R.period)}</span></div>
+  <div class="runner"><h2>${R.weeksPage3 ? 'Readings' : 'Readings and weekly notes'}</h2><span>${esc(R.patient)} · ${esc(R.period)}</span></div>
   <div class="cgrid" data-sec="Charts">${charts}${key}</div>
-  <div class="wwrap" data-sec="Week by week">
-    <h2 class="sec" style="margin-bottom:2.4mm">Week by week <small>${esc(R.weeksNote || 'Each week summarised from the daily notes.')}</small></h2>
-    <div class="weeks">${weeks}</div>
-  </div>
-  <div class="foot"><span>${esc(R.foot)}</span>${madeBy(2)}</div>
+  ${R.weeksPage3 ? '' : weeksHtml}
+  <div class="foot"><span>${esc(R.foot)}</span>${madeBy(2, total)}</div>
 </section>
+${page3 ? `<section class="page" id="page3">
+  <div class="runner"><h2>${extraQ.length && R.weeksPage3 ? 'More questions, and the weekly notes' : extraQ.length ? 'More questions for the team' : 'Weekly notes'}</h2><span>${esc(R.patient)} · ${esc(R.period)}</span></div>
+  ${extraQ.length ? `<div class="qwrap" data-sec="More questions"><div class="qgrid">${extraQ.join('')}</div></div>` : ''}
+  ${R.weeksPage3 ? weeksHtml : ''}
+  <div class="foot"><span>${esc(R.foot)}</span>${madeBy(3, total)}</div>
+</section>` : ''}
 </body>
 </html>`;
 }
@@ -261,7 +278,7 @@ export function overflowOf(doc) {
       const r = el.getBoundingClientRect();
       if (r.bottom > limit || el.scrollHeight > el.clientHeight + 1) out.push(el.dataset.sec);
     });
-    if (page.scrollHeight > page.clientHeight + 1 && !out.length) out.push(page.id === 'page1' ? 'Page 1' : 'Page 2');
+    if (page.scrollHeight > page.clientHeight + 1 && !out.length) out.push('Page ' + page.id.replace('page', ''));
   });
   return [...new Set(out)];
 }
@@ -275,8 +292,12 @@ function shorten(text) {
 }
 /* One step of shortening for the sections that ran over; false when nothing more can give */
 export function shrink(R, over) {
-  const weekOver = R.weeks.filter((w) => over.includes(w.title) || over.includes('Week by week') || over.includes('Page 2'));
+  /* Since v207 nothing is cut while a third page can take it: the weeks move to page 3 whole, and questions
+     that page 1 cannot hold go there too. Only a page 3 that still overflows is shortened. */
+  const weeksPage = R.weeksPage3 ? 'Page 3' : 'Page 2';
+  const weekOver = R.weeks.filter((w) => over.includes(w.title) || over.includes('Week by week') || over.includes(weeksPage));
   if (weekOver.length) {
+    if (!R.weeksPage3) { R.weeksPage3 = true; return true; }
     let changed = false;
     weekOver.forEach((w) => {
       const long = w.entries.slice().sort((a, b) => b.text.length - a.text.length)[0];
@@ -287,10 +308,13 @@ export function shrink(R, over) {
     });
     if (changed) return true;
   }
-  const page1 = over.some((s) => /^Question|^Other points|^Questions|^Page 1|^Medicines|^Steady|^Latest/.test(s));
+  const page3 = over.some((s) => /^More question|^More questions|^Page 3/.test(s));
+  if (page3 && R.extraQ && R.extraQ.length) { R.extraQ.pop(); R.more = (R.more || 0) + 1; return true; }
+  const page1 = over.some((s) => /^Question|^Other points|^Questions|^No questions|^Page 1|^Medicines|^Steady|^Latest/.test(s));
   if (page1) {
+    if (R.lines > 2) { R.lines -= 1; return true; }
+    if (R.questions.length > 1) { R.extraQ = R.extraQ || []; R.extraQ.unshift(R.questions.pop()); return true; }
     if (R.lines > 1) { R.lines -= 1; return true; }
-    if (R.questions.length > 1) { R.questions.pop(); R.more = (R.more || 0) + 1; return true; }
     if (R.latest && R.latest.text.length > 90) { R.latest.text = shorten(R.latest.text); return true; }
   }
   return false;
