@@ -1775,3 +1775,21 @@ button.weekmore { min-height: 44px; padding-left: 0; }
 .cal-cell.is-steroid { box-shadow: inset 0 -4px 0 var(--warning-fill); }
 .key-steroid { background: var(--surface); box-shadow: inset 0 -4px 0 var(--warning-fill); border: 1px solid var(--border-subtle); }
 .ibd-courses { margin: var(--s-2) var(--s-1) 0; }
+
+/* ---------- I think I'm flaring (v205) ---------- */
+.checkin-row.is-flare { background: var(--warm-light); border: 1.5px solid var(--warm); }
+.checkin-row.is-flare .checkin-icon { color: var(--warm-dark); }
+.flare-sheet .fieldlabel { margin-top: var(--s-5); }
+.flare-plan, .flare-line, .flare-summary, .flare-calls { margin-top: var(--s-3); }
+.flare-steps { white-space: pre-wrap; background: var(--surface-sunken); border-radius: var(--r-md); padding: var(--s-3); box-shadow: var(--elev-sunken); }
+.flare-when { margin: var(--s-2) 0 0; }
+.flare-sumline { margin: 0 0 var(--s-2); }
+.flare-summary { background: var(--surface-sunken); border-radius: var(--r-md); padding: var(--s-3); box-shadow: var(--elev-sunken); }
+.flare-summary .fieldlabel { margin-top: 0; }
+.flare-calllist { list-style: none; padding: 0; margin: var(--s-3) 0 0; }
+.flare-calllist li { padding: var(--s-2) 0; border-top: 1px solid var(--border-subtle); }
+.cal-cell.is-flare { background: var(--warm-light); }
+.cal-cell.is-flare .cal-num { color: var(--warm-dark); font-weight: 700; }
+.key-flare { background: var(--warm-light); border: 1px solid var(--warm); }
+.entry.type-call { --cat: var(--teal); }
+@media (prefers-color-scheme: dark) { .checkin-row.is-flare .checkin-icon, .cal-cell.is-flare .cal-num { color: var(--warm); } }

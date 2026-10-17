@@ -559,6 +559,10 @@ const EXPLAIN_SYSTEM = {
     'Reply with JSON only, no prose and no code fence, in exactly this shape: {"from": string or null, "given": "YYYY-MM-DD" or null, "physio": true or false, "notes": string, "items": [{"name": string, "kind": "reps" or "seconds" or "minutes" or "sets" or "lengths" or "distance" or "do", "amount": number, "sets": number or null, "pool": number or null, "unit": "km" or "m" or null, "time": number or null, "days": [numbers 0 to 6, 0 = Sunday] or null, "note": string}]}. ' +
     '"from" is who gave the plan (a physiotherapist, a service), "given" the date on it, "physio" true when it is a physiotherapy plan, "notes" the general instructions on the sheet in one or two plain UK English sentences, or an empty string. ' +
     'One item per exercise, in the order on the sheet. "sets" means sets of repetitions and amount is then the reps per set. "lengths" is swimming lengths: amount is the number of lengths and pool the pool length in metres (25 if not stated). "distance" is a distance to cover: amount in the unit given by "unit". "time" is a target time in minutes for a lengths or distance item, or null. Use "do" with amount 1 for an exercise with no count. days is null when it is every day. Put frequency such as "twice a day" and any holds or cautions in the item note. Leave out anything that is not an exercise. No em dashes.',
+  flare: 'You read a flare plan, self-management plan or clinic letter from an inflammatory bowel disease (Crohn\'s or colitis) team, from photos or pasted text, for a patient recording it in an app. ' +
+    'Reply with JSON only, no prose and no code fence, in exactly this shape: {"from": string or null, "given": "YYYY-MM-DD" or null, "steps": string, "when": string, "wait": string}. ' +
+    '"from" is who gave the plan (a nurse, a team, a hospital), "given" its date, "steps" what the team told the patient to do when symptoms flare, in their own words tidied into plain UK English sentences, "when" the signs they said should prompt a call (stools a day, blood, temperature, pain, weight), "wait" what to do if it does not settle or out of hours (ring again after so many hours, 111, A&E). ' +
+    'Copy only what the document says, never add advice, thresholds or reassurance of your own; an empty string where the document says nothing. No em dashes.',
   medicine: 'You read a photo of a medicine for a patient recording it in an app: a hospital drip bag, a box, a bottle, a blister pack or a pharmacy dispensing label. ' +
     'Reply with JSON only, no prose and no code fence, in exactly this shape: {"name": string, "amount": string or null, "route": "drip" or "injection" or "mouth" or "skin" or "inhaled" or "other" or null, "how": string or null, "purpose": string or null, "whenNeeded": true or false, "perDay": number or null, "maxPerDay": number or null, "minGapHours": number or null}. ' +
     '"name" is the medicine as a patient would say it, with its strength when that is part of the name ("Sodium chloride 0.9%", "Paracetamol 500 mg"). "amount" is the amount in one dose or in the container ("1000 ml", "2 tablets"). "route" is how it is given: drip for an intravenous infusion bag. ' +
@@ -994,7 +998,7 @@ async function handleExplain(request, env) {
 
   let body;
   try { body = await request.json(); } catch (e) { return json({ error: 'bad-request', message: 'Could not read what was sent. Try again.' }, 400); }
-  const kind = ['notes', 'programme', 'medicine', 'weekly', 'report', 'mood', 'pain'].includes(body.kind) ? body.kind : 'document';
+  const kind = ['notes', 'programme', 'medicine', 'weekly', 'report', 'mood', 'pain', 'flare'].includes(body.kind) ? body.kind : 'document';
   const text = String(body.text || '').slice(0, EXPLAIN_MAX_TEXT_CHARS);
   const pages = Array.isArray(body.pages) ? body.pages.slice(0, EXPLAIN_MAX_PAGES).filter((p) => typeof p === 'string' && p.length > 100 && p.length <= EXPLAIN_MAX_PAGE_CHARS) : [];
   if (!text.trim() && !pages.length) return json({ error: 'bad-request', message: 'Nothing to explain.' }, 400);
@@ -1014,6 +1018,7 @@ async function handleExplain(request, env) {
     ? 'Document: ' + String(body.title || 'Untitled').slice(0, 200) + (body.date ? ' (dated ' + String(body.date).slice(0, 40) + ').' : '.')
     : kind === 'programme' ? 'The exercise or physiotherapy plan follows, as page photos or as text.'
     : kind === 'medicine' ? 'A photo of a medicine follows.'
+    : kind === 'flare' ? 'The flare plan or letter follows, as page photos or as text.'
     : kind === 'weekly' ? 'Care notes from Daybook, grouped by week.'
     : kind === 'report' ? 'Care notes and open questions from Daybook, for the two-page report.'
     : kind === 'mood' ? 'Scores and notes from Daybook, day by day, for the Mood and wellbeing report.'
