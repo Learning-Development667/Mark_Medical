@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '202';
+const APP_VERSION = '203';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -412,6 +412,10 @@ document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && docume
 const DRAFTS_KEY = 'daybook.drafts';
 let draftRestoring = false;
 const DRAFT_DAYS = 7;
+/* Every box you type into (v203, Mark, 17 October: half his vitals typed, the phone closed, the readings gone): text boxes and
+   the typed inputs (readings, names, amounts), never a date, time, slider, tick, chooser or a stepper's own number */
+const DRAFT_INPUTS = 'input:not([type=date]):not([type=time]):not([type=range]):not([type=checkbox]):not([type=radio]):not([type=file]):not([type=button]):not([type=hidden]):not([type=password])';
+const draftable = (el) => el instanceof HTMLTextAreaElement || (el instanceof HTMLInputElement && el.matches(DRAFT_INPUTS) && !el.closest('.stepper'));
 function readDrafts() {
   try {
     const all = JSON.parse(localStorage.getItem(DRAFTS_KEY) || '{}') || {};
@@ -436,25 +440,39 @@ function draftPrefix() {
 }
 function restoreDraftsIn(root) {
   const all = readDrafts();
-  for (const el of root.querySelectorAll ? root.querySelectorAll('textarea') : []) {
-    if (el.readOnly || el.disabled || el.dataset.draftChecked) continue;
+  const whenWords = (d) => `${fmtTime(new Date(d.at))}${dayStr(new Date(d.at)) === todayStr() ? '' : ' on ' + fmtDayShort(dayStr(new Date(d.at)))}`;
+  const put = (el, text) => { el.value = text; draftRestoring = true; el.dispatchEvent(new Event('input', { bubbles: true })); draftRestoring = false; };
+  const inputs = []; // the typed inputs put back, for one shared line
+  for (const el of root.querySelectorAll ? root.querySelectorAll('textarea, ' + DRAFT_INPUTS) : []) {
+    if (!draftable(el) || el.readOnly || el.disabled || el.dataset.draftChecked) continue;
     el.dataset.draftChecked = '1';
+    if (el.closest('[hidden]')) continue; // a box not on show (the weight under "Done for the day") is never filled behind the person's back
     const d = all[draftKey(el)];
     if (!d || !d.text.trim() || d.text === el.value) continue;
     const was = el.value;
-    el.value = d.text;
-    draftRestoring = true; el.dispatchEvent(new Event('input', { bubbles: true })); draftRestoring = false;
+    put(el, d.text);
+    if (el instanceof HTMLInputElement) { inputs.push({ el, was, d }); continue; }
     const note = h('div', { class: 'draftnote', role: 'status' },
-      h('span', { text: `Your unsaved words from ${fmtTime(new Date(d.at))}${dayStr(new Date(d.at)) === todayStr() ? '' : ' on ' + fmtDayShort(dayStr(new Date(d.at)))} are back.` }),
-      h('button', { class: 'btn-inline', type: 'button', onclick: () => { el.value = was; draftRestoring = true; el.dispatchEvent(new Event('input', { bubbles: true })); draftRestoring = false; const a = readDrafts(); delete a[draftKey(el)]; writeDrafts(a); note.remove(); el.focus(); } }, 'Clear them'));
+      h('span', { text: `Your unsaved words from ${whenWords(d)} are back.` }),
+      h('button', { class: 'btn-inline', type: 'button', onclick: () => { put(el, was); const a = readDrafts(); delete a[draftKey(el)]; writeDrafts(a); note.remove(); el.focus(); } }, 'Clear them'));
     el.before(note);
+  }
+  if (inputs.length) {
+    const first = inputs[0].el;
+    const newest = inputs.reduce((m, x) => (x.d.at > m.at ? x.d : m), inputs[0].d);
+    const note = h('div', { class: 'draftnote', role: 'status' },
+      h('span', { text: `What you had typed at ${whenWords(newest)} is back, as you left it. Check it, then save.` }),
+      h('button', { class: 'btn-inline', type: 'button', onclick: () => { const a = readDrafts(); for (const x of inputs) { put(x.el, x.was); delete a[draftKey(x.el)]; } writeDrafts(a); note.remove(); first.focus(); } }, 'Clear them'));
+    const anchor = first.closest('.field-row') || first.closest('.field, .bigvalue') || first;
+    const block = anchor.previousElementSibling && anchor.previousElementSibling.classList.contains('fieldlabel') ? anchor.previousElementSibling : anchor; // above the label of a labelled value
+    block.before(note);
   }
 }
 (function keepDrafts() {
   const body = $('sheet-body');
   body.addEventListener('input', (ev) => {
     const el = ev.target;
-    if (!(el instanceof HTMLTextAreaElement) || el.readOnly || draftRestoring) return; // Tap to speak's words count; only our own put-back is skipped
+    if (!draftable(el) || el.readOnly || draftRestoring) return; // Tap to speak's words count; only our own put-back is skipped
     const all = readDrafts();
     const key = draftKey(el);
     if (el.value.trim()) {
@@ -464,7 +482,7 @@ function restoreDraftsIn(root) {
     writeDrafts(all);
   });
   new MutationObserver((list) => {
-    for (const m of list) for (const n of m.addedNodes) if (n.nodeType === 1) { const root = n.matches && n.matches('textarea') ? n.parentNode : n; restoreDraftsIn(root); enhanceTextareas(root); }
+    for (const m of list) for (const n of m.addedNodes) if (n.nodeType === 1) { const root = n.matches && n.matches('textarea, input') ? n.parentNode : n; restoreDraftsIn(root); enhanceTextareas(root); }
   }).observe(body, { childList: true, subtree: true });
 })();
 /* Bigger writing boxes (v184): every text box in a sheet starts taller and grows as you type, and has an "Open full screen"
@@ -536,9 +554,10 @@ function offerDraft() {
   list.sort((a, b) => b.at - a.at);
   const d = list[0];
   if (!d) return;
-  const what = d.reopen === 'note' ? 'note' : d.reopen === 'question' ? 'question for the team' : /^checkin:/.test(d.reopen) ? (d.title || 'check-in').toLowerCase() : 'words';
-  toast(`Your unfinished ${what} was kept${/^checkin:/.test(d.reopen) ? ', as you left it' : ' on this phone'}.`, { label: 'Open it', onClick: () => {
-    if (d.reopen === 'note' || d.reopen === 'question') openAdd(d.reopen);
+  const what = d.reopen === 'note' ? 'note' : d.reopen === 'question' ? 'question for the team' : d.reopen === 'vitals' ? 'vitals' : /^checkin:/.test(d.reopen) ? (d.title || 'check-in').toLowerCase() : 'words';
+  const were = d.reopen === 'vitals' ? 'were' : 'was';
+  toast(`Your unfinished ${what} ${were} kept${/^checkin:/.test(d.reopen) ? ', as you left it' : ' on this phone'}.`, { label: 'Open it', onClick: () => {
+    if (d.reopen === 'note' || d.reopen === 'question' || d.reopen === 'vitals') openAdd(d.reopen);
     else if (/^checkin:/.test(d.reopen)) { const [, slot, day] = d.reopen.split(':'); openCheckin(slot, day || todayStr()); }
   } });
 }
@@ -3726,7 +3745,7 @@ function openAdd(type, editEntry, preset) {
   body.append(save, h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Cancel'));
   if (editId) save.textContent = 'Save changes';
   body.dataset.draft = editId || 'new';
-  if (!editId && (type === 'note' || type === 'question')) body.dataset.reopen = type;
+  if (!editId && (type === 'note' || type === 'question' || type === 'vitals')) body.dataset.reopen = type;
   openSheet(editId && type === 'vitals' ? (editEntry.type === 'temp' ? 'Edit temperature' : 'Edit vitals') : editId && type === 'pain' ? 'Edit pain' : titles[type], body);
 }
 
