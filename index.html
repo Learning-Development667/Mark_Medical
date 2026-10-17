@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=204">
+  <link rel="stylesheet" href="styles.css?v=205">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -280,6 +280,11 @@
               <span class="checkin-main"><span class="checkin-title" id="week-check-title">Your week</span><span class="checkin-sub" id="week-check-sub"></span></span>
               <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
             </button>
+            <button class="checkin-row" id="flare-row" type="button" hidden>
+              <svg class="icon checkin-icon" aria-hidden="true"><use href="#i-warning"/></svg>
+              <span class="checkin-main"><span class="checkin-title">I think I'm flaring</span><span class="checkin-sub" id="flare-row-sub"></span></span>
+              <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
+            </button>
           </div>
 
           <div class="quickadd">
@@ -425,6 +430,16 @@
 
       <!-- TREATMENT PLAN (ids keep the older "chemo" names) -->
       <section id="view-chemo" class="view" data-view="chemo" hidden>
+        <div class="card" id="flare-card" hidden>
+          <h2 class="section-title">Your flare plan</h2>
+          <p id="flare-card-text"></p>
+          <p class="hint hint-small" id="flare-card-sub"></p>
+          <div class="btnrow">
+            <button id="flare-card-go" class="btn btn-primary" type="button">I think I'm flaring</button>
+            <button id="flare-card-edit" class="btn btn-secondary" type="button">Edit the flare plan</button>
+          </div>
+        </div>
+
         <div class="card" id="chemo-progress">
           <div class="progress-head"><span class="tile-label">Sessions</span><span class="mono" id="chemo-count">0 of 0 done</span></div>
           <div class="progress-bar"><div id="chemo-bar"></div></div>
@@ -441,7 +456,7 @@
           <div class="cal-dow"><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span></div>
           <div class="cal-grid" id="cal-grid"></div>
           <ul class="cal-cycles" id="cal-cycles" hidden></ul>
-          <p class="cal-key"><span class="key-dot key-chemo"></span> Session <span class="key-dot key-gold"></span> Done  <span class="key-dot key-next"></span> Planned <span class="key-dot key-rest"></span> Rest week <span id="cal-key-steroid" hidden><span class="key-dot key-steroid"></span> Steroid course</span><span class="key-letters" id="cal-key-letters">C chemo · R radiotherapy · I immunotherapy · O other</span> <span class="key-mood"><svg class="cal-face mood-5" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="5" class="mood-fill"/></svg><svg class="cal-face mood-3" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="5" class="mood-fill"/></svg><svg class="cal-face mood-1" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="4" class="mood-ring"/></svg> Mood, good to rough</span></p>
+          <p class="cal-key"><span class="key-dot key-chemo"></span> Session <span class="key-dot key-gold"></span> Done  <span class="key-dot key-next"></span> Planned <span class="key-dot key-rest"></span> Rest week <span id="cal-key-flare" hidden><span class="key-dot key-flare"></span> Flare day</span><span id="cal-key-steroid" hidden><span class="key-dot key-steroid"></span> Steroid course</span><span class="key-letters" id="cal-key-letters">C chemo · R radiotherapy · I immunotherapy · O other</span> <span class="key-mood"><svg class="cal-face mood-5" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="5" class="mood-fill"/></svg><svg class="cal-face mood-3" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="5" class="mood-fill"/></svg><svg class="cal-face mood-1" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="4" class="mood-ring"/></svg> Mood, good to rough</span></p>
         </div>
 
         <div id="chemo-cycle-section">
@@ -929,7 +944,7 @@
   <!-- Privacy, terms and About (since v90): plain English, opened in the sheet from the Settings App card,
        the sign-in and sign-up screens, or ?page=privacy|terms|about in the address (openLegal()). -->
   <template id="tpl-privacy">
-    <p class="legal-date mono">Last updated 16 October 2026</p>
+    <p class="legal-date mono">Last updated 17 October 2026</p>
     <p>My Medical Daybook (Daybook for short) is made and run by Mark 1 Apps Ltd, a company registered in England and Wales (company number 17510025), which is responsible for the information the app holds (the "data controller" in UK law). Mark 1 Apps Ltd is registered with the Information Commissioner's Office, registration number ZC275185. <span data-contact></span></p>
     <h3>The short version</h3>
     <ul>
@@ -945,7 +960,7 @@
     <p>A care circle is one patient's records and the people they have let in. It is set up by the patient, or by a carer for someone they look after. A carer setting it up names the patient and confirms that the patient has agreed, or cannot decide this for themselves and the carer is acting for them; that confirmation is kept with the circle, with the date. The records are the patient's, whoever typed them in: the patient's rights below come first, and the patient can take charge of the circle at any time. Only the patient, and the person who set the circle up until they hand it over, can invite someone in or remove them. Everyone else in the circle has exactly the access they were given and nothing more.</p>
     <h3>What Daybook stores</h3>
     <p><b>Your sign-in:</b> your email address and password (held by Google's Firebase Authentication; Daybook never sees the password), your first name, your role in the circle (family, read only, or medicines and treatment only), whether you are the patient or a carer, and which circle you belong to.</p>
-    <p><b>What your circle records:</b> check-ins (pain, mood, sleep, sickness, appetite, energy, how much you felt low, worried or enjoyed something each evening, a weekly check whose questions follow the conditions Daybook is set up for, a carer's own weekly check on how the patient seemed, with Crohn's or colitis a weekly question about joints, eyes, skin and mouth, and what you write), readings (temperature, heart rate, blood pressure, oxygen, weight and BMI), food and drink, notes, questions for the care team and their answers, including any voice recordings you choose to make, medicines, doses and reminder times, letters and documents you photograph or paste in and the explanations saved with them, bowel movements (the type, any blood, urgency and accidents, and with Crohn's or colitis your usual number a day and whether you have a stoma), symptoms between check-ins, which conditions Daybook is set up for, treatment sessions and the calendar, exercise ticks, steps, sleep, workouts and food totals if you connect Apple Health, saved meals, who to contact (names, roles, phone numbers, any extension or menu option, and email addresses), and your settings.</p>
+    <p><b>What your circle records:</b> check-ins (pain, mood, sleep, sickness, appetite, energy, how much you felt low, worried or enjoyed something each evening, a weekly check whose questions follow the conditions Daybook is set up for, a carer's own weekly check on how the patient seemed, with Crohn's or colitis a weekly question about joints, eyes, skin and mouth, and what you write), readings (temperature, heart rate, blood pressure, oxygen, weight and BMI), food and drink, notes, questions for the care team and their answers, including any voice recordings you choose to make, medicines, doses and reminder times, letters and documents you photograph or paste in and the explanations saved with them, bowel movements (the type, any blood, urgency and accidents, and with Crohn's or colitis your usual number a day and whether you have a stoma), with Crohn's or colitis the flare plan your team gave you, which days you mark as flare days and the calls you log to the advice line, symptoms between check-ins, which conditions Daybook is set up for, treatment sessions and the calendar, exercise ticks, steps, sleep, workouts and food totals if you connect Apple Health, saved meals, who to contact (names, roles, phone numbers, any extension or menu option, and email addresses), and your settings.</p>
     <p><b>On your phone:</b> a copy of your account record and of the records you have opened, so the app works on a weak signal, and a few settings (which charts you view as tables, the exercise filter, the weight unit, the opener). Words typed into a note or a question are kept on the phone until you save or close that screen, so they are not lost if the phone closes the app; they are cleared when you save, cancel or clear them, and after 7 days at most. A check-in you have started is kept whole (the scores, the words and the step you were on) on the phone and in your circle's space until it is saved or closed, so it comes back as you left it on either phone. Your browser holds these and they go when you clear its data.</p>
     <p><b>If you turn on reminders:</b> each phone's push address and browser type, so the reminder reaches it. <b>For Daybook Assistant:</b> a daily count per circle of how many requests were made and how many words they used, for the cost.</p>
     <h3>Where it is kept</h3>
@@ -1068,6 +1083,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=204"></script>
+  <script type="module" src="scripts.js?v=205"></script>
 </body>
 </html>

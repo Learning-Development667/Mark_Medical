@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '204';
+const APP_VERSION = '205';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -2301,6 +2301,7 @@ function entryTitle(e) {
     }
     case 'question': return [h('span', { text: e.note || 'Question' })];
     case 'sent': return [h('span', { text: (e.report || 'Report') + ' sent to ' + (e.toName || e.to || 'the team') })];
+    case 'call': return [h('span', { text: 'Call: ' + (e.who || 'the advice line') })];
     case 'exercise': return [h('span', { text: e.note || 'Exercise' })];
     case 'weight': return [h('span', { class: 'val', text: fmtKg(e.value) })];
     case 'vitals': {
@@ -2337,6 +2338,7 @@ function entrySub(e) {
   if (e.type === 'bowel') { const ts = bowelTypes(e); if (ts.length > 1) bits.push(ts.map((t) => bristolName(t)).join(', ')); const f = bowelFlagWords(e); if (f) bits.push(f); if (e.note) bits.push(e.note); }
   if (e.type === 'question') bits.push((isDietitianQ(e) ? 'Question for the dietitian' : isWellbeingQ(e) ? 'Question for the therapist' : isPainQ(e) ? 'Question for the pain team' : 'Question for the team') + (e.answered ? ', answered' : '') + (isDietitianQ(e) || isWellbeingQ(e) || isPainQ(e) ? '' : ' · ' + teamLabel(teamOf(e))));
   if (e.type === 'sent') bits.push('By email to ' + (e.to || '') + (e.copyTo ? ', with a copy to ' + e.copyTo : ''));
+  if (e.type === 'call') { bits.push(e.note ? 'They said: ' + e.note : 'Logged from I think I\'m flaring'); }
   if (e.type === 'question' && e.answerText) bits.push('Answer: ' + excerpt(e.answerText, 90));
   if (e.type === 'question' && e.recordings) bits.push(plural(e.recordings, 'recording'));
   if (e.type === 'weight' && Number(e.bmi) > 0) bits.push('BMI ' + Number(e.bmi).toFixed(1));
@@ -2404,7 +2406,7 @@ function entryOptions(e) {
   );
   openSheet(ENTRY_SHEET_TITLES[e.type] || 'Entry', body);
 }
-const ENTRY_SHEET_TITLES = { temp: 'Temperature', vitals: 'Vitals', weight: 'Weight', med: 'Medicine', drink: 'Drink', food: 'Food', note: 'Note', sleep: 'Sleep', pain: 'Pain', bowel: 'Bowels', symptom: 'Symptom', question: 'Question for the team' };
+const ENTRY_SHEET_TITLES = { call: 'Call', temp: 'Temperature', vitals: 'Vitals', weight: 'Weight', med: 'Medicine', drink: 'Drink', food: 'Food', note: 'Note', sleep: 'Sleep', pain: 'Pain', bowel: 'Bowels', symptom: 'Symptom', question: 'Question for the team' };
 /* One line per reading for the entry view, coloured with the same levels as Trends' tables */
 function readingRows(e) {
   if (e.type === 'temp') return [['Temperature', fmtTemp(e.value), tempClass(e.value) === 'is-red' ? 'red' : tempClass(e.value) === 'is-amber' ? 'amber' : null]];
@@ -7227,6 +7229,7 @@ function renderCheckins() {
   });
   renderQuestionRow();
   renderWeekRow();
+  renderFlareRow();
 }
 /* Open questions for the team: a live list, so the Today row can say how many are waiting */
 function watchQuestions() {
@@ -7633,6 +7636,219 @@ function openWeekCheck(initialDay, slot = weekSlot()) {
 }
 /* The row on Today (v166): from Friday to Sunday for the week on screen (Mark: the week ends Sunday and the option comes up
    on the Friday); Monday to Thursday only when last week's was started and not finished. A started one says so. */
+/* ---- I think I'm flaring (v205, Crohn's build 2). A flare day is days/{day}.flare; the flare plan is the team's own
+   words in profile/main.flarePlan { from, given, steps, when, wait, contact }; a call to the advice line is an
+   entries document { type "call", who, note }. Daybook states the facts of the last 7 days and shows what the team
+   said to do. It never judges whether it is a flare, and never tells anyone to ring: that is the plan's job. ---- */
+function flarePlan() { return (state.profile && state.profile.flarePlan) || {}; }
+function isFlareDay(d) { const x = state.days && state.days[d]; return Boolean(x && x.flare); }
+function flareStart(day) { let d = day; while (isFlareDay(addDays(d, -1))) d = addDays(d, -1); return d; }
+function flareContact() { const want = flarePlan().contact; if (!want) return null; return ((state.profile && state.profile.calls) || []).find((c) => c.label === want) || null; }
+function renderFlareRow() {
+  const row = $('flare-row'), sub = $('flare-row-sub');
+  if (!row) return;
+  row.hidden = !packOn('ibd');
+  if (row.hidden) return;
+  const day = state.selectedDay;
+  row.disabled = state.readOnly;
+  row.classList.toggle('is-flare', isFlareDay(day));
+  row.dataset.day = day;
+  if (isFlareDay(day)) {
+    const start = flareStart(day), n = dayGap(start, day) + 1;
+    sub.textContent = (n === 1 ? 'Flare day. ' : 'Flaring since ' + fmtDayShort(start) + ', day ' + n + '. ') + 'Tap for the 7-day summary, the plan and your calls.';
+  } else sub.textContent = 'Tap if things are flaring: a 7-day summary to read out or send, what the team told you to do, and a log of your calls.';
+}
+$('flare-row').addEventListener('click', () => openFlareSheet($('flare-row').dataset.day || state.selectedDay));
+async function setFlareDay(day, on) {
+  const data = { flare: on, updatedBy: state.name };
+  if (state.demo) { state.days[day] = { ...(state.days[day] || {}), flare: on }; renderCheckins(); if (!$('view-chemo').hidden) renderChemo(); return true; }
+  try { await setDoc(hdoc('days', day), { ...data, updatedAt: serverTimestamp() }, { merge: true }); return true; }
+  catch (e) { console.error(e); toast('Could not save'); return false; }
+}
+/* The facts of the seven days ending on `day`, one line each, in words to read out on the phone or send */
+function flareSummaryLines(day) {
+  const from = addDays(day, -6);
+  const inRange = (e) => e.day >= from && e.day <= day;
+  const es = (state.recentEntries || []).filter(inRange);
+  const lines = [];
+  const who = patientFullName() || state.name || '';
+  lines.push('Last 7 days, ' + fmtDayShort(from) + ' to ' + fmtDayShort(day) + (who ? ', for ' + who : '') + '.');
+  if (isFlareDay(day)) { const st = flareStart(day); lines.push('Marked as flaring since ' + fmtDayShort(st) + ' (day ' + (dayGap(st, day) + 1) + ').'); }
+  const stoma = ibdStoma();
+  const bowels = es.filter((e) => e.type === 'bowel');
+  const real = bowels.filter((e) => !e.none);
+  const byDay = {}; real.forEach((e) => { byDay[e.day] = (byDay[e.day] || 0) + 1; });
+  const days = Object.keys(byDay);
+  const usual = ibdUsual();
+  if (bowels.length) {
+    const counts = days.map((d) => byDay[d]);
+    const avg = counts.length ? counts.reduce((a, b) => a + b, 0) / counts.length : 0;
+    const most = counts.length ? Math.max(...counts) : 0;
+    const noneDays = bowels.filter((e) => e.none).map((e) => e.day).filter((d) => !byDay[d]);
+    let line = (stoma ? 'Bag emptied' : 'Bowels') + ' about ' + (Math.round(avg * 10) / 10) + ' times a day on the ' + plural(days.length, 'day') + ' logged' + (usual ? ' (usual ' + usual + ')' : '') + (most ? ', most ' + most : '') + '.';
+    if (noneDays.length) line += ' None on ' + joinAnd(noneDays.map(fmtDayShort)) + '.';
+    lines.push(line);
+    const blood = real.filter((e) => bloodGradeOf(e) > 0);
+    if (blood.length) { const worst = Math.max(...blood.map(bloodGradeOf)); const w = ['', 'streaks', 'mixed in', 'mostly blood'][worst]; lines.push('Blood on ' + plural(new Set(blood.map((e) => e.day)).size, 'day') + ', worst ' + w + '.'); }
+    else lines.push('No blood logged.');
+    const loose = real.filter(isLoose).length, urgent = real.filter((e) => Number(e.urgency) === 2 || e.urgent).length, acc = real.filter((e) => e.accident).length, night = real.filter((e) => e.night).length, black = real.filter((e) => e.black).length, watery = real.filter((e) => e.stoma && e.output === 'watery').length;
+    const bits = [];
+    if (stoma) { if (watery) bits.push(plural(watery, 'watery output')); } else if (loose) bits.push(plural(loose, 'loose stool') + ' (type 6 or 7)');
+    if (urgent) bits.push('had to go straight away ' + plural(urgent, 'time'));
+    if (acc) bits.push(plural(acc, 'accident or leak'));
+    if (night) bits.push(plural(night, 'time') + ' at night');
+    if (black) bits.push(plural(black, 'black stool'));
+    if (bits.length) lines.push(bits.map((b, i) => (i === 0 ? b.charAt(0).toUpperCase() + b.slice(1) : b)).join(', ') + '.');
+  } else lines.push('No bowel movements logged.');
+  const temps = es.filter((e) => e.type === 'temp' && e.value != null);
+  if (temps.length) { const hi = temps.reduce((m, e) => (Number(e.value) > Number(m.value) ? e : m)); lines.push('Temperature highest ' + fmtTemp(hi.value) + ' on ' + fmtDayShort(hi.day) + '.'); }
+  const hr = es.filter((e) => e.type === 'vitals' && e.heartRate);
+  if (hr.length) lines.push('Heart rate highest ' + Math.max(...hr.map((e) => Number(e.heartRate))) + ' bpm.');
+  const ws = es.filter((e) => e.type === 'weight' && e.value != null).sort((a, b) => a.day.localeCompare(b.day) || entryDate(a) - entryDate(b));
+  if (ws.length) { const a = Number(ws[0].value), b = Number(ws[ws.length - 1].value); lines.push('Weight ' + fmtKg(b) + (ws.length > 1 && Math.abs(b - a) >= 0.1 ? ' (' + (b < a ? 'down ' : 'up ') + (Math.round(Math.abs(b - a) * 10) / 10) + ' kg over the week)' : '') + '.'); }
+  const pains = [];
+  es.forEach((e) => { if (e.type === 'pain' && e.value != null) pains.push(Number(e.value)); if (e.type === 'checkin' && isPatientCheckin(e)) { if (e.pain != null) pains.push(Number(e.pain)); if (e.worstPain != null) pains.push(Number(e.worstPain)); } });
+  if (pains.length) lines.push('Pain up to ' + Math.max(...pains) + '/10.');
+  const syms = es.filter((e) => e.type === 'symptom' && e.value != null);
+  if (syms.length) { const worst = {}; syms.forEach((e) => { worst[e.what] = Math.max(worst[e.what] || 0, Number(e.value)); }); lines.push('Symptoms: ' + Object.keys(worst).map((k) => k.toLowerCase() + ' up to ' + worst[k] + '/10').join(', ') + '.'); }
+  const outside = es.filter((e) => e.type === 'checkin' && e.slot === 'evening' && Array.isArray(e.outside)).sort((a, b) => b.day.localeCompare(a.day))[0];
+  if (outside) lines.push('Outside the gut: ' + (outside.outside.length ? outsideText(outside.outside).toLowerCase() : 'none of the usual') + ' (' + fmtDayShort(outside.day) + ').');
+  const eating = es.filter((e) => e.type === 'food').length;
+  lines.push(eating ? eating + (eating === 1 ? ' meal or snack' : ' meals or snacks') + ' logged.' : 'No food logged.');
+  const meds = (state.medicines || []).filter((m) => m.active !== false && !(m.courseEnd && m.courseEnd < day));
+  if (meds.length) lines.push('Medicines: ' + meds.map((m) => m.name + (m.dose ? ' ' + m.dose : '')).join('; ') + '.');
+  const ster = steroidOn(day);
+  if (ster.length) lines.push('On a steroid course: ' + ster.map((m) => m.name + ' since ' + fmtDayShort(m.courseStart)).join(', ') + '.');
+  const rep = repeatInfo(day);
+  if (rep && rep.last) lines.push('Last ' + sessionLabel(rep.lastInfo) + ' ' + fmtDayShort(rep.last) + (rep.next ? ', next ' + fmtDayShort(rep.next) : '') + '.');
+  return lines;
+}
+function openFlareSheet(day) {
+  const today = todayStr();
+  const flare = isFlareDay(day);
+  const tick = h('input', { type: 'checkbox', checked: flare });
+  tick.addEventListener('change', async () => { const ok = await setFlareDay(day, tick.checked); if (ok) { toast(tick.checked ? (day === today ? 'Today marked as a flare day' : fmtDayShort(day) + ' marked as a flare day') : 'Flare day cleared'); openFlareSheet(day); } else tick.checked = !tick.checked; });
+  const plan = flarePlan();
+  const contact = flareContact();
+  const planBox = h('div', { class: 'flare-plan' },
+    h('p', { class: 'fieldlabel', text: 'What the team told you to do' }),
+    plan.steps ? h('p', { class: 'flare-steps', text: plan.steps }) : h('p', { class: 'hint', text: 'No flare plan written in yet. Put in what your IBD team said to do when things flare, in their words.' }),
+    plan.when ? h('p', { class: 'flare-when' }, h('b', { text: 'When to ring: ' }), plan.when) : null,
+    plan.wait ? h('p', { class: 'flare-when' }, h('b', { text: 'If it does not settle: ' }), plan.wait) : null,
+    plan.from ? h('p', { class: 'hint hint-small', text: 'From ' + plan.from + (plan.given ? ', ' + fmtDayShort(plan.given) : '') + '.' }) : null,
+    state.readOnly ? null : h('button', { class: 'btn btn-secondary btn-small', type: 'button', onclick: () => openFlarePlanSheet(() => openFlareSheet(day)) }, plan.steps ? 'Edit the flare plan' : 'Write in the flare plan'));
+  const lineBox = h('div', { class: 'flare-line' },
+    h('p', { class: 'fieldlabel', text: 'The advice line' }),
+    contact ? h('div', { class: 'call-info' }, h('b', { text: contact.label }), contact.role ? h('span', { text: ' · ' + contact.role }) : null, contact.number ? h('span', { class: 'mono', text: ' · ' + contact.number }) : null, contact.ext ? h('span', { text: ' · ' + extWords(contact.ext) }) : null) : h('p', { class: 'hint', text: 'Choose who the advice line is in the flare plan, from Who to contact.' }),
+    contact ? h('div', { class: 'btnrow' },
+      contact.number ? h('a', { class: 'btn btn-primary', href: telHref(contact.number), 'aria-label': 'Call ' + contact.label + (contact.ext ? ', ' + extWords(contact.ext).toLowerCase() : '') }, 'Call') : null,
+      contact.email ? h('a', { class: 'btn btn-secondary', href: 'mailto:' + contact.email }, 'Email') : null) : null);
+  const lines = flareSummaryLines(day);
+  const text = lines.join('\n');
+  const sumBox = h('div', { class: 'flare-summary', role: 'region', 'aria-label': 'The last 7 days' },
+    h('p', { class: 'fieldlabel', text: 'The last 7 days, to read out or send' }),
+    ...lines.map((l) => h('p', { class: 'flare-sumline', text: l })),
+    h('p', { class: 'hint hint-small', text: 'Facts as logged in Daybook. Whether it is a flare, and what to do, is for you and the team.' }),
+    h('div', { class: 'btnrow' },
+      h('button', { class: 'btn btn-secondary', type: 'button', onclick: async () => { try { await navigator.clipboard.writeText(text); toast('Copied, ready to paste'); } catch (e) { toast('Could not copy'); } } }, 'Copy'),
+      h('button', { class: 'btn btn-primary', type: 'button', onclick: async () => {
+        const subject = 'Flare summary, last 7 days' + (patientFullName() ? ': ' + patientFullName() : '');
+        if (navigator.share) { try { await navigator.share({ title: subject, text: subject + '\n\n' + text }); return; } catch (e) { if (e && e.name === 'AbortError') return; } }
+        const to = contact && contact.email ? contact.email : '';
+        window.location.href = 'mailto:' + to + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(text);
+      } }, 'Share or send')));
+  const calls = (state.recentEntries || []).filter((e) => e.type === 'call').sort((a, b) => entryDate(b) - entryDate(a)).slice(0, 10);
+  const callBox = h('div', { class: 'flare-calls' },
+    h('p', { class: 'fieldlabel', text: 'Your calls' }),
+    state.readOnly ? null : h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => openCallLogSheet(day, () => openFlareSheet(day)) }, 'Log a call'),
+    calls.length ? h('ul', { class: 'flare-calllist' }, ...calls.map((c) => h('li', null, h('b', { text: fmtDayShort(c.day) + ' ' + fmtTime(entryDate(c)) + (c.who ? ', ' + c.who : '') }), c.note ? h('span', { text: ' ' + c.note }) : null))) : h('p', { class: 'hint hint-small', text: 'No calls logged yet. Each one goes on the timeline too.' }));
+  const body = h('div', { class: 'flare-sheet' },
+    h('label', { class: 'check' }, tick, h('span', { text: (day === today ? 'Today' : fmtDayShort(day)) + ' is a flare day' })),
+    h('p', { class: 'hint', text: 'Flare days are marked on the Treatment calendar and counted on the report. Untick it when it settles.' }),
+    planBox, lineBox, sumBox, callBox,
+    h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Close'));
+  if (state.readOnly) tick.disabled = true;
+  openSheet("I think I'm flaring", body);
+}
+function openFlarePlanSheet(back) {
+  const plan = flarePlan();
+  const from = h('input', { type: 'text', placeholder: 'e.g. IBD nurse, Sam', value: plan.from || '', maxlength: '80' });
+  const given = h('input', { type: 'date', value: plan.given || '' });
+  const steps = h('textarea', { rows: '4', placeholder: "e.g. Start the mesalazine enemas, keep a note of how many times a day and any blood, ring us if it is not settling in three days.", maxlength: '1200' });
+  steps.value = plan.steps || '';
+  const when = h('textarea', { rows: '2', placeholder: 'e.g. Six or more a day with blood, a temperature over 38, or pain that does not settle.', maxlength: '600' });
+  when.value = plan.when || '';
+  const wait = h('input', { type: 'text', placeholder: 'e.g. ring again after 48 hours, or 111 out of hours', value: plan.wait || '', maxlength: '200' });
+  const calls = (state.profile && state.profile.calls) || [];
+  const contact = h('select', null, h('option', { value: '', text: 'Not chosen yet' }), ...calls.map((c) => h('option', { value: c.label, text: c.label + (c.role ? ' (' + c.role + ')' : '') })));
+  contact.value = calls.some((c) => c.label === plan.contact) ? plan.contact : '';
+  const save = async () => {
+    const data = { from: from.value.trim(), given: given.value || '', steps: steps.value.trim(), when: when.value.trim(), wait: wait.value.trim(), contact: contact.value || '' };
+    if (await saveProfilePatch({ flarePlan: data }, 'Flare plan saved')) { if (back) back(); else closeSheet(); }
+  };
+  const body = h('div', null,
+    explainAvailable() ? h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => readFlarePlanPhoto((d) => openFlarePlanSheet(back, d), () => openFlarePlanSheet(back)) }, 'Read it from a photo') : null,
+    explainAvailable() ? h('p', { class: 'hint', text: 'A photo of the flare plan or letter from your IBD team. Daybook Assistant (AI from Anthropic, in the US) reads it and the boxes fill in below for checking. It can misread, so check every line.' }) : null,
+    h('p', { class: 'hint', text: "In the team's own words. Daybook shows this back to you when you think you are flaring; it never adds advice of its own." }),
+    field('Who gave it', from), field('When', given),
+    field('What they told you to do', steps), speakButton(steps) || '',
+    field('When they said to ring', when), speakButton(when) || '',
+    field('If it does not settle, or out of hours', wait),
+    field('The advice line (from Who to contact)', contact),
+    calls.length ? null : h('p', { class: 'hint hint-small', text: 'Add the IBD advice line under More, Who to contact, and it can be chosen here.' }),
+    h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: save }, 'Save the flare plan'),
+    h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => (back ? back() : closeSheet()) }, 'Back'));
+  const pf = arguments[1];
+  if (pf) { if (pf.from) from.value = pf.from; if (pf.given) given.value = pf.given; if (pf.steps) steps.value = pf.steps; if (pf.when) when.value = pf.when; if (pf.wait) wait.value = pf.wait; }
+  openSheet('Flare plan', body);
+}
+function readFlarePlanPhoto(onRead, onCancel) {
+  const input = h('input', { type: 'file', accept: 'image/*,application/pdf,.pdf', multiple: true, style: 'display:none' });
+  document.body.append(input);
+  input.addEventListener('change', async () => {
+    const files = Array.from(input.files || []);
+    input.remove();
+    if (!files.length) return;
+    const status = h('p', { class: 'hint', role: 'status', text: 'Reading the plan, about half a minute' });
+    openSheet('Reading the plan', h('div', null, status, h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => { closeSheet(); onCancel(); } }, 'Cancel')));
+    try {
+      const read = await processFiles(files.slice(0, 4), (label) => { status.textContent = label; });
+      status.textContent = 'Reading the plan, about half a minute';
+      const reply = await bridgeExplain(read.pages.length ? { kind: 'flare', pages: read.pages.slice(0, 4).map((pg) => pg.data) } : { kind: 'flare', text: read.text || '' });
+      let t = String(reply.text || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+      const a = t.indexOf('{'), b = t.lastIndexOf('}'); if (a >= 0 && b > a) t = t.slice(a, b + 1);
+      let d = {}; try { d = JSON.parse(t); } catch (e) { d = {}; }
+      const str = (v, n) => (v == null ? '' : String(v).trim().slice(0, n));
+      const out = { from: str(d.from, 80), given: /^\d{4}-\d{2}-\d{2}$/.test(str(d.given, 10)) ? str(d.given, 10) : '', steps: str(d.steps, 1200), when: str(d.when, 600), wait: str(d.wait, 200) };
+      if (!out.steps && !out.when) { toast('Could not read a plan in that. Type it in instead.'); onCancel(); return; }
+      onRead(out);
+    } catch (e) { console.warn(e); toast(e.message || 'Could not read the plan'); onCancel(); }
+  });
+  input.click();
+}
+function openCallLogSheet(day, back) {
+  const date = h('input', { type: 'date', value: day > todayStr() ? todayStr() : day, max: todayStr() });
+  const time = timeInput(day);
+  const contact = flareContact();
+  const who = h('input', { type: 'text', placeholder: 'e.g. IBD nurse, Sam', value: contact ? contact.label : '', maxlength: '80' });
+  const note = h('textarea', { rows: '4', placeholder: 'What they said to do, and anything they asked you to watch for', maxlength: '1200' });
+  const body = h('div', null,
+    h('div', { class: 'field-row' }, field('Date', date), field('Time', time)),
+    field('Who you spoke to', who),
+    field('What they said', note), speakButton(note) || '',
+    h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
+      if (!who.value.trim() && !note.value.trim()) { toast('Say who you spoke to, or what they said'); who.focus(); return; }
+      const d = date.value || day;
+      const [hh, mm] = (time.value || '12:00').split(':').map(Number);
+      const at = parseDay(d); at.setHours(hh || 0, mm || 0, 0, 0);
+      if (at > new Date()) { toast('That time is still to come'); time.focus(); return; }
+      await addEntry({ type: 'call', who: who.value.trim(), note: note.value.trim(), day: d, at });
+      toast('Call logged');
+      if (back) back(); else closeSheet();
+    } }, 'Save the call'),
+    h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => (back ? back() : closeSheet()) }, 'Back'));
+  openSheet('Log a call', body);
+}
 function renderWeekRow() {
   const row = $('week-check'), sub = $('week-check-sub'), title = $('week-check-title');
   if (!row) return;
@@ -10726,7 +10942,21 @@ $('doc-delete').addEventListener('click', async () => {
 /* Chemo plan: calendar, mood, the cycle and the carer's view              */
 /* ------------------------------------------------------------------ */
 
+function renderFlareCard() {
+  const card = $('flare-card');
+  if (!card) return;
+  card.hidden = !packOn('ibd');
+  if (card.hidden) return;
+  const plan = flarePlan(), c = flareContact();
+  $('flare-card-text').textContent = plan.steps ? excerpt(plan.steps, 160) : 'No flare plan written in yet. Put in what your IBD team said to do when things flare, in their words, and who the advice line is.';
+  $('flare-card-sub').textContent = [plan.from ? 'From ' + plan.from + (plan.given ? ', ' + fmtDayShort(plan.given) : '') : '', c ? 'Advice line: ' + c.label : ''].filter(Boolean).join(' · ');
+  $('flare-card-edit').textContent = plan.steps ? 'Edit the flare plan' : 'Write in the flare plan';
+  $('flare-card-edit').hidden = state.readOnly || state.viewer;
+}
+$('flare-card-edit').addEventListener('click', () => openFlarePlanSheet(() => { closeSheet(); renderFlareCard(); }));
+$('flare-card-go').addEventListener('click', () => openFlareSheet(todayStr()));
 function renderChemo() {
+  renderFlareCard();
   renderChemoProgress();
   renderCalendar();
   renderCycleTile();
@@ -11112,9 +11342,11 @@ function renderCalendar() {
     if (!info.chemo && ci && ci.rest) cls.push('is-rest');
     const steroids = steroidOn(key);
     if (steroids.length) cls.push('is-steroid');
+    if (info.flare) cls.push('is-flare');
     const label = [fmtDayLong(key), info.chemo ? sessionLabel(info) + (info.chemoDone ? ' session done' : key === nextSession ? ' session, the next one' : ' session') : null,
       info.chemo && ci && ci.session ? cycleWords(ci).toLowerCase() : null, !info.chemo && ci && ci.rest ? 'rest week of cycle ' + ci.index : null,
       steroids.length ? 'on a steroid course (' + steroids.map((m) => m.name).join(', ') + ')' : null,
+      info.flare ? 'flare day' : null,
       info.mood ? 'mood ' + MOODS[info.mood - 1].label : null].filter(Boolean).join(', ');
     cells.push(h('button', { class: cls.join(' '), type: 'button', 'aria-label': label, style: info.chemo ? '--laser-delay:-' + (Math.random() * 1.8).toFixed(2) + 's' : null, disabled: state.viewer, onclick: () => openDaySheet(key) },
       info.chemo ? h('span', { class: 'cal-type' + (type.letter.length > 1 ? ' is-long' : ''), 'aria-hidden': 'true', text: type.letter }) : null,
@@ -11132,6 +11364,8 @@ function renderCalKey() {
   if (el) el.textContent = treatmentsFor().map((t) => t.letter + ' ' + t.label.toLowerCase()).join(' \u00b7 ');
   const st = $('cal-key-steroid');
   if (st) st.hidden = !steroidCourses().length;
+  const fl = $('cal-key-flare');
+  if (fl) fl.hidden = !Object.keys(state.days || {}).some((k) => state.days[k] && state.days[k].flare);
 }
 /* Under the calendar, one line per cycle that touches the month on screen: "Cycle 2, chemo: 11, 18 and 25 Nov. Rest week from 2 Dec." */
 function renderCycleLines(ym) {
@@ -11213,6 +11447,8 @@ function openDaySheet(key) {
   const moveBtn = h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => { moveBtn.hidden = true; moveBox.hidden = false; moveDate.focus(); } }, 'Move to another day');
 
   const moodInfo = info.mood ? 'Mood that day: ' + MOODS[info.mood - 1].label.toLowerCase() + (info.good ? '. ' + info.good : '') : '';
+  const cbFlare = h('input', { type: 'checkbox', checked: !!info.flare });
+  const flareRow = packOn('ibd') || info.flare ? h('label', { class: 'check' }, cbFlare, h('span', { text: 'A flare day' })) : null;
 
   const body = h('div', null,
     where,
@@ -11221,10 +11457,12 @@ function openDaySheet(key) {
     nameRow,
     cycleRow,
     doneRow,
+    flareRow,
     h('p', { class: 'hint', text: (moodInfo ? moodInfo + ' ' : '') + 'Mood and one good thing come from the daily check-ins on Today.' }),
     h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
       const wasDone = !!info.chemoDone;
       const data = { chemo: cbChemo.checked, chemoDone: cbChemo.checked && cbDone.checked, treatment, updatedBy: state.name, updatedAt: serverTimestamp() };
+      if (flareRow) data.flare = cbFlare.checked;
       if (cbChemo.checked && treatment !== 'other' && !repeatNow()) data.cycleStart = cbCycle.checked;
       if (cbChemo.checked && repeatNow()) { data.cycleStart = true; data.treatName = nameIn.value.trim(); }
       closeSheet();
