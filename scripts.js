@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '201';
+const APP_VERSION = '202';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -351,6 +351,7 @@ function openSheet(title, body, onClose) {
   else $('sheet-title').focus({ preventScroll: true });
 }
 function closeSheet() {
+  stopSpeech();
   closeBigEdit();
   clearSheetDrafts();
   state.checkinProgress = null; /* an unfinished check-in is kept whatever closed the sheet; only Save or Start again clears it (v184) */
@@ -483,7 +484,7 @@ function enhanceTextareas(root) {
 function closeBigEdit() {
   const o = document.querySelector('.bigedit');
   if (!o) return;
-  const lis = o.querySelector('.speakbtn.is-listening'); if (lis) lis.click();
+  if (o.querySelector('.speakbtn.is-listening')) stopSpeech();
   if (o._win) window.removeEventListener('resize', o._win);
   if (o._vv && window.visualViewport) { window.visualViewport.removeEventListener('resize', o._vv); window.visualViewport.removeEventListener('scroll', o._vv); }
   o.remove();
@@ -492,6 +493,7 @@ function closeBigEdit() {
 }
 function openBigEdit(el) {
   closeBigEdit();
+  stopSpeech(); // the small box's listening would write where the writing space cannot see it; its own Tap to speak is at the top
   const label = (el.closest('.field') && el.closest('.field').firstElementChild && el.closest('.field').firstElementChild !== el ? el.closest('.field').firstElementChild.textContent.trim() : '') || (document.querySelector('#sheet-body .wiz-q') && document.querySelector('#sheet-body .wiz-q').textContent.trim()) || 'Writing space';
   const big = h('textarea', { class: 'bigedit-text', 'aria-label': label, placeholder: el.placeholder || '' });
   big.value = el.value;
@@ -2734,6 +2736,15 @@ function speakHintFor(btn) {
    several dead starts in a row really stop it. */
 const SPEAK_RESTART_MS = 400;
 const SPEAK_DEAD_MAX = 4;
+/* One recogniser for the whole app (v202). A phone has one speech recogniser: starting a second aborts the
+   first. Until v202 a button that was listening when its screen was replaced (Next, Skip or Back in a
+   check-in, the sheet closing) kept running unseen with `want` still set, so the next button's start aborted
+   it, it restarted and aborted the new one, and the two fought until one gave up: "(aborted)" on the button
+   beside "Listening stopped" in a toast, and after the sheet closed a microphone that never went off.
+   `speechLive` is the one button listening now; a new tap stops it first, and anything that takes a box off
+   the screen calls stopSpeech(). */
+let speechLive = null;
+function stopSpeech() { if (speechLive) speechLive(); }
 function speakButton(target) {
   if (!SpeechRec) return null;
   const label = h('span', { class: 'speakbtn-label', text: 'Tap to speak' });
@@ -2755,9 +2766,16 @@ function speakButton(target) {
   const finish = (focus) => {
     want = false; rec = null; letGo(); clearTimeout(quietTimer); setState(false);
     document.removeEventListener('visibilitychange', onHide);
-    if (focus) target.focus();
+    if (speechLive === quietStop) speechLive = null;
+    if (focus && target.isConnected) target.focus();
   };
-  const onHide = () => { if (document.hidden && want) { want = false; try { if (rec) rec.stop(); } catch (e) { /* ignore */ } } };
+  /* Stopped by the app, not the person: no toast, no focus, nothing more heard from this session */
+  const quietStop = () => {
+    const was = rec; rec = null;
+    finish(false);
+    try { if (was) was.abort(); } catch (e) { /* ignore */ }
+  };
+  const onHide = () => { if (document.hidden && want) quietStop(); };
   const begin = () => {
     const base = target.value.trim();
     const join = (t) => (base ? base + ' ' : '') + t.trim();
@@ -2768,8 +2786,10 @@ function speakButton(target) {
     r.lang = 'en-GB';
     r.interimResults = true;
     r.continuous = true;
+    r.onstart = () => { if (rec !== r) return; lastErr = ''; setState(true); }; // a reason shown on the button is cleared once a session really starts
     r.onresult = (ev) => {
       if (rec !== r) return;
+      if (!target.isConnected) { quietStop(); return; }
       let text = '';
       for (let i = 0; i < ev.results.length; i++) text += ev.results[i][0].transcript + (ev.results[i].isFinal ? ' ' : '');
       if (text.trim()) { heard = true; dead = 0; everHeard = true; lastErr = ''; setState(true); }
@@ -2791,6 +2811,7 @@ function speakButton(target) {
       rec = null;
       setTimeout(() => {
         if (!want) { finish(true); return; }
+        if (!target.isConnected) { quietStop(); return; } // the box has left the screen: nothing to carry on into
         try { begin(); } catch (e) { finish(true); toast('Listening stopped. Tap to speak again.'); }
       }, SPEAK_RESTART_MS);
     };
@@ -2803,6 +2824,8 @@ function speakButton(target) {
       if (was) { try { was.stop(); } catch (e) { finish(true); } } else finish(true);
       return;
     }
+    stopSpeech(); // whatever else is listening (another box, another sheet) gives way
+    speechLive = quietStop;
     want = true; dead = 0; everHeard = false; lastErr = '';
     try { begin(); setState(true); clearTimeout(quietTimer); quietTimer = setTimeout(() => { if (want && !everHeard) { setState(true); toast('Not hearing anything yet. Check Settings, Siri, Dictation is on, or use the keyboard microphone.'); } }, 6000); document.addEventListener('visibilitychange', onHide); }
     catch (e) { finish(false); toast('Speech is not available here. The keyboard microphone still works.'); }
@@ -7296,6 +7319,7 @@ function openCheckin(slot, initialDay) {
   let fromReview = false;
 
   function render() {
+    stopSpeech(); // the words are already in the answer; the step's box is about to go
     const wrap = h('div', { class: 'wiz-step' + (dir < 0 ? ' is-back' : '') });
     if (step < qs.length) {
       const q = qs[step];

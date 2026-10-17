@@ -85,6 +85,7 @@ One at a time, each a few days with its sources checked, on the profile mechanis
 - An "AI used this month: about 12p" line under Settings, from the bridge's own token tally. Offered 4 October; build if wanted.
 
 ## Done
+- v202 Tap to speak made reliable: one recogniser at a time, stopped quietly whenever its box leaves the screen (Next, Back, the sheet closing, the writing space), so the orphaned session that fought the next one ("(aborted)" beside "Listening stopped", a microphone that never went off, a first tap that did nothing) is gone. Reproduced and tested with a stand-in iPhone recogniser (`t/t9.mjs`).
 - v169 Changing one answer of a check-in from the review comes straight back to the review (Done, back to the review), and Cancel asks before throwing away a changed answer. Mark's edit of a morning answer had not been saved because the screen walked on to the next question instead of back to the one button that saves.
 - v170 Tap to speak no longer stops half way through: it restarts itself when the phone ends a session, keeps the screen awake while listening (Wake Lock) and stops only on a tap, a refused microphone or the app going to the background. Tested in `pw/v170.js`.
 - v171 Food search finds what was meant: "pain au chocolat" offers Croissants (not chocolate milk), multi-word and half-typed names work, unknown words are said aloud as not recognised, and about forty everyday names were added (coffees, curries, bakery, plain yoghurt, toastie). Tested in `pw/v171.js`.
