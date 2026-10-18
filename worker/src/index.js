@@ -280,7 +280,7 @@ async function firestore(env) {
   const headers = { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' };
   return {
     /* The full resource name of a document, for referenceValue filters (v211) */
-    docName(path) { return base + path; },
+    docName(path) { return `projects/${sa.project_id}/databases/(default)/documents/` + path; },
     async get(path) {
       const r = await fetch(base + path, { headers });
       if (r.status === 404) return null;
