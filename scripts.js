@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '218';
+const APP_VERSION = '219';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -1587,6 +1587,15 @@ function buildIbdFixture() {
     e(0, '08:00', 'Jo', { type: 'food', note: 'Porridge', detail: 'banana and honey', amount: 'All of it' }),
     /* calls to the advice line, and a note */
     e(-6, '09:40', 'Jo', { type: 'call', who: 'IBD advice line, Priya', note: 'Start prednisolone 40 mg a day with breakfast and the Adcal. Stool sample for calprotectin and bloods at the GP this week. Ring back in five days if it is not settling, sooner with a temperature over 38.' }),
+    /* results, as the team gave them: calprotectin and bloods over six months, the flare showing in the latest */
+    ...[['calprotectin', -150, 85, '0 to 50', 'GP'], ['calprotectin', -95, 60, '0 to 50', 'GP'], ['calprotectin', -3, 410, '0 to 50', 'GP'],
+      ['crp', -150, 3, '0 to 5', 'GP'], ['crp', -95, 4, '0 to 5', 'GP'], ['crp', -6, 48, '0 to 5', 'Hospital'], ['crp', -1, 12, '0 to 5', 'GP'],
+      ['hb', -150, 131, '120 to 150', 'GP'], ['hb', -95, 128, '120 to 150', 'GP'], ['hb', -6, 118, '120 to 150', 'Hospital'], ['hb', -1, 121, '120 to 150', 'GP'],
+      ['ferritin', -95, 22, '15 to 200', 'GP'], ['ferritin', -1, 14, '15 to 200', 'GP'],
+      ['albumin', -6, 33, '35 to 50', 'Hospital'], ['albumin', -1, 36, '35 to 50', 'GP']].map(([test, o, value, range, source]) => {
+      const t = RESULT_TESTS.find((x) => x.key === test);
+      return e(o, '12:00', 'Jo', { type: 'result', test, name: t.name, unit: t.unit, value, below: false, range, ...parseRange(range), source, note: o === -1 ? 'Priya rang with these, see the call' : '' });
+    }),
     e(-1, '11:15', 'Alex', { type: 'call', who: 'IBD advice line, Priya', note: 'Bloods back: CRP down from 48 to 12. Keep the prednisolone at 40 for another week, then reduce by 5 mg a week. Clinic appointment being brought forward.' }),
     e(-7, '20:00', 'Alex', { type: 'note', note: 'Jo has hardly left the sofa today. Six times to the loo before lunch and the accident in the car upset them more than they let on.' }),
     e(-2, '19:30', 'Jo', { type: 'note', note: 'First day I have felt like me since the flare started. Walked to the shop.' }),
@@ -2285,7 +2294,7 @@ document.querySelectorAll('.tab').forEach((btn) => {
 
 /* The topbar carries the page name ("Care Log: Food diary"), so the report
    pages and the Chemo tab no longer need a heading of their own */
-const PAGE_TITLES = { today: 'Today', meds: 'Medicines', vitals: 'Reports', chemo: 'Treatment plan', exercise: 'Exercise', more: 'More', food: 'Food diary', notes: 'Notes for the team', mood: 'Mood and wellbeing', pain: 'Pain and pain relief', docs: 'Documents', settings: 'Settings', guide: 'Guide', usage: 'Usage' };
+const PAGE_TITLES = { today: 'Today', meds: 'Medicines', vitals: 'Reports', chemo: 'Treatment plan', exercise: 'Exercise', more: 'More', food: 'Food diary', notes: 'Notes for the team', mood: 'Mood and wellbeing', pain: 'Pain and pain relief', docs: 'Documents', settings: 'Settings', guide: 'Guide', usage: 'Usage', results: 'Results' };
 function setBrand(page) {
   $('brand').replaceChildren('Daybook', page ? h('span', { class: 'brand-page', text: ': ' + page }) : null);
   document.title = page ? 'Daybook: ' + page : 'My Medical Daybook';
@@ -2296,7 +2305,7 @@ function showTab(name) {
   let highlight = name;
   if (name === 'docs') highlight = state.docsReturn || 'more';
   if (name === 'settings' || name === 'guide' || name === 'usage') highlight = 'more';
-  if (highlight === 'food' || highlight === 'notes' || highlight === 'mood' || highlight === 'pain') highlight = state.reportReturn || 'vitals';
+  if (highlight === 'food' || highlight === 'notes' || highlight === 'mood' || highlight === 'pain' || highlight === 'results') highlight = state.reportReturn || 'vitals';
   document.querySelectorAll('.tab').forEach((b) => { const on = b.dataset.tab === highlight; b.classList.toggle('is-active', on); if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
   document.querySelectorAll('.view').forEach((v) => { v.hidden = v.dataset.view !== name; });
   setBrand(PAGE_TITLES[name] || '');
@@ -2309,6 +2318,7 @@ function showTab(name) {
   if (name === 'notes') renderNotesReport();
   if (name === 'mood') renderMoodReport();
   if (name === 'pain') renderPainReport();
+  if (name === 'results') renderResults();
   if (name === 'chemo') renderChemo();
   if (name === 'exercise') renderExercise();
   if (name === 'docs') showDocsList();
@@ -2530,6 +2540,7 @@ function entryTitle(e) {
     case 'question': return [h('span', { text: e.note || 'Question' })];
     case 'sent': return [h('span', { text: (e.report || 'Report') + ' sent to ' + (e.toName || e.to || 'the team') })];
     case 'call': return [h('span', { text: 'Call: ' + (e.who || 'the advice line') })];
+    case 'result': return [h('span', { text: resultName(e) + ' ' }), h('span', { class: 'val', text: fmtResultFull(e) })];
     case 'exercise': return [h('span', { text: e.note || 'Exercise' })];
     case 'weight': return [h('span', { class: 'val', text: fmtKg(e.value) })];
     case 'vitals': {
@@ -2567,6 +2578,7 @@ function entrySub(e) {
   if (e.type === 'question') bits.push((isDietitianQ(e) ? 'Question for the dietitian' : isWellbeingQ(e) ? 'Question for the therapist' : isPainQ(e) ? 'Question for the pain team' : 'Question for the team') + (e.answered ? ', answered' : '') + (isDietitianQ(e) || isWellbeingQ(e) || isPainQ(e) ? '' : ' · ' + teamLabel(teamOf(e))));
   if (e.type === 'sent') bits.push('By email to ' + (e.to || '') + (e.copyTo ? ', with a copy to ' + e.copyTo : ''));
   if (e.type === 'call') { bits.push(e.note ? 'They said: ' + e.note : 'Logged from I think I\'m flaring'); }
+  if (e.type === 'result') { bits.push('Result' + (e.source ? ' from ' + e.source : '') + ', as given'); if (e.range) bits.push('range ' + e.range); if (e.note) bits.push(e.note); }
   if (e.type === 'question' && e.answerText) bits.push('Answer: ' + excerpt(e.answerText, 90));
   if (e.type === 'question' && e.recordings) bits.push(plural(e.recordings, 'recording'));
   if (e.type === 'weight' && Number(e.bmi) > 0) bits.push('BMI ' + Number(e.bmi).toFixed(1));
@@ -2603,7 +2615,7 @@ function renderEntry(e) {
 }
 
 /* Types openAdd() can pre-fill and update in place, given the original entry */
-const EDITABLE_ENTRY_TYPES = ['food', 'drink', 'weight', 'note', 'question', 'bowel', 'symptom', 'pain'];
+const EDITABLE_ENTRY_TYPES = ['food', 'drink', 'weight', 'note', 'question', 'bowel', 'symptom', 'pain', 'result'];
 
 function entryOptions(e) {
   const d = entryDate(e);
@@ -2635,7 +2647,7 @@ function entryOptions(e) {
   );
   openSheet(ENTRY_SHEET_TITLES[e.type] || 'Entry', body);
 }
-const ENTRY_SHEET_TITLES = { call: 'Call', temp: 'Temperature', vitals: 'Vitals', weight: 'Weight', med: 'Medicine', drink: 'Drink', food: 'Food', note: 'Note', sleep: 'Sleep', pain: 'Pain', bowel: 'Bowels', symptom: 'Symptom', question: 'Question for the team' };
+const ENTRY_SHEET_TITLES = { call: 'Call', result: 'Result', temp: 'Temperature', vitals: 'Vitals', weight: 'Weight', med: 'Medicine', drink: 'Drink', food: 'Food', note: 'Note', sleep: 'Sleep', pain: 'Pain', bowel: 'Bowels', symptom: 'Symptom', question: 'Question for the team' };
 /* One line per reading for the entry view, coloured with the same levels as Trends' tables */
 function readingRows(e) {
   if (e.type === 'temp') return [['Temperature', fmtTemp(e.value), tempClass(e.value) === 'is-red' ? 'red' : tempClass(e.value) === 'is-amber' ? 'amber' : null]];
@@ -3193,6 +3205,7 @@ function causeSelect(current) {
 }
 
 function openAdd(type, editEntry, preset) {
+  if (type === 'result') return openResultsSheet({ edit: editEntry });
   const day = editEntry ? editEntry.day : state.selectedDay;
   const time = timeInput(day);
   if (editEntry) time.value = fmtTime(entryDate(editEntry));
@@ -4348,6 +4361,8 @@ $('rep-notes').addEventListener('click', () => openReport('notes', 'vitals'));
 $('rep-docs').addEventListener('click', () => openDocs('vitals'));
 $('rep-mood').addEventListener('click', () => openReport('mood', 'vitals'));
 $('rep-pain').addEventListener('click', () => openReport('pain', 'vitals'));
+$('rep-results').addEventListener('click', () => openReport('results', 'vitals'));
+$('results-back').addEventListener('click', () => showTab(state.reportReturn || 'vitals'));
 $('pain-back').addEventListener('click', () => showTab(state.reportReturn || 'vitals'));
 $('pain-print').addEventListener('click', () => openReportViewer('pain', true));
 $('mood-back').addEventListener('click', () => showTab(state.reportReturn || 'vitals'));
@@ -6194,7 +6209,7 @@ function buildTwoPage(n) {
     title: 'Notes for the team',
     subtitle: `A patient summary for the nursing and medical team. ${word} to ${t.getDate()} ${MON_LONG[t.getMonth()]} ${t.getFullYear()}.`,
     patient, period, prepared: rDay(today) + ' ' + parseDay(today).getFullYear(),
-    latest, tiles, meds, hospital, steady, sideFx: twoPageSideFx(entries),
+    latest, tiles, meds, hospital, steady, sideFx: twoPageSideFx(entries), results: twoPageResults(entries),
     questions: qs, more: 0, older: report.older.length, olderFrom: rDay(from), extraQ: [], weeksPage3: false, lines: 3,
     charts, days: labels, weeks,
     weeksNote: ai ? 'Summarised from the daily notes by Daybook Assistant, an AI helper. Every note is in Daybook.' : 'The most telling note of each day. Every note is in Daybook.',
@@ -7036,6 +7051,8 @@ function summaryRows(entries, from, to) {
   });
   if (prn.length) push(hitAny ? 'amber' : 'teal', 'When-needed medicines', `When-needed medicines: ${prn.join('; ')}.`, null, 'When-needed medicines: ' + prnShort.join(', '));
 
+  const resultsLine = twoPageResults(entries);
+  if (resultsLine) push('teal', 'Results', 'Results recorded, as the team gave them: ' + resultsLine, null, 'Results recorded: ' + latestResultsText(entries.filter((e) => e.type === 'result' && e.value != null)));
   const hosp = entries.filter((e) => e.type === 'med' && e.hospital).sort((a, b) => entryDate(a) - entryDate(b));
   if (hosp.length) {
     const groups = new Map();
@@ -8059,6 +8076,8 @@ function flareSummaryLines(day) {
   const eating = es.filter((e) => e.type === 'food').length;
   lines.push(eating ? eating + (eating === 1 ? ' meal or snack' : ' meals or snacks') + ' logged.' : 'No food logged.');
   const meds = (state.medicines || []).filter((m) => m.active !== false && !(m.courseEnd && m.courseEnd < day));
+  const latestRes = latestResultsText((state.recentEntries || []).filter((e) => e.type === 'result'));
+  if (latestRes) lines.push('Latest results, as given: ' + latestRes + '.');
   if (meds.length) lines.push('Medicines: ' + meds.map((m) => m.name + (m.dose ? ' ' + m.dose : '')).join('; ') + '.');
   const ster = steroidOn(day);
   if (ster.length) lines.push('On a steroid course: ' + ster.map((m) => m.name + ' since ' + fmtDayShort(m.courseStart)).join(', ') + '.');
@@ -8191,6 +8210,273 @@ function openCallLogSheet(day, back) {
     } }, 'Save the call'),
     h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => (back ? back() : closeSheet()) }, 'Back'));
   openSheet('Log a call', body);
+}
+/* ------------------------------------------------------------------ */
+/* Results, recorded not interpreted (v219): blood tests and calprotectin as the team gives them. */
+/* Each result is an entry { type "result", test, name, value, unit, range, low, high, below?, source, note }. */
+/* Daybook keeps the number, the unit and the lab's own range when it was printed, and charts them. It never */
+/* colours or flags a result: that is the team's call, and a judged result is what would make it a medical device. */
+/* ------------------------------------------------------------------ */
+const RESULT_TESTS = [
+  { key: 'calprotectin', name: 'Faecal calprotectin', unit: 'µg/g', packs: ['ibd'], match: /calprotectin/i },
+  { key: 'crp', name: 'CRP', unit: 'mg/L', match: /\bcrp\b|c[- ]?reactive/i },
+  { key: 'esr', name: 'ESR', unit: 'mm/hr', match: /\besr\b|sedimentation/i },
+  { key: 'hb', name: 'Haemoglobin', unit: 'g/L', match: /ha?emoglobin|\bhgb?\b/i },
+  { key: 'neut', name: 'Neutrophils', unit: '10⁹/L', match: /neutrophil/i },
+  { key: 'wcc', name: 'White cells', unit: '10⁹/L', match: /white (blood )?cell|\bwbc\b|\bwcc\b|leu[ck]ocyte/i },
+  { key: 'plt', name: 'Platelets', unit: '10⁹/L', match: /platelet|\bplt\b/i },
+  { key: 'ferritin', name: 'Ferritin', unit: 'µg/L', match: /ferritin/i },
+  { key: 'b12', name: 'Vitamin B12', unit: 'ng/L', match: /b ?12|cobalamin/i },
+  { key: 'folate', name: 'Folate', unit: 'µg/L', match: /folate|folic/i },
+  { key: 'vitd', name: 'Vitamin D', unit: 'nmol/L', match: /vitamin d|25[- ]?oh|hydroxy/i },
+  { key: 'albumin', name: 'Albumin', unit: 'g/L', match: /albumin/i },
+  { key: 'alt', name: 'ALT', unit: 'U/L', match: /\balt\b|alanine/i },
+  { key: 'bili', name: 'Bilirubin', unit: 'µmol/L', match: /bilirubin/i },
+  { key: 'creat', name: 'Creatinine', unit: 'µmol/L', match: /creatinine/i },
+  { key: 'egfr', name: 'eGFR', unit: 'mL/min', match: /egfr|filtration/i },
+  { key: 'k', name: 'Potassium', unit: 'mmol/L', match: /potassium|^k\+?$/i },
+  { key: 'na', name: 'Sodium', unit: 'mmol/L', match: /sodium|^na\+?$/i },
+  { key: 'mg', name: 'Magnesium', unit: 'mmol/L', match: /magnesium/i },
+  { key: 'druglevel', name: 'Drug level', unit: 'mg/L', packs: ['ibd'], hint: 'Adalimumab or infliximab trough level', match: /trough|(adalimumab|infliximab|humira|remicade|vedolizumab|ustekinumab) ?level|drug level/i }
+];
+/* The tests offered: a pack's own tests only while that pack is on (or once one has been recorded); the pack's usual ones first */
+function resultTests(existing) {
+  const have = new Set((existing || []).map((e) => e.test));
+  const list = RESULT_TESTS.filter((t) => !t.packs || t.packs.some(packOn) || have.has(t.key));
+  const first = packOn('ibd') ? ['calprotectin', 'crp', 'hb', 'ferritin', 'albumin'] : ['neut', 'hb', 'wcc', 'plt', 'crp'];
+  return [...first.map((k) => list.find((t) => t.key === k)).filter(Boolean), ...list.filter((t) => !first.includes(t.key))];
+}
+function resultTestFor(e) { return RESULT_TESTS.find((t) => t.key === e.test) || { key: 'other', name: e.name || 'Result', unit: e.unit || '' }; }
+function resultName(e) { return e.name || resultTestFor(e).name; }
+function resultKey(e) { return e.test && e.test !== 'other' ? e.test : 'other:' + String(e.name || '').trim().toLowerCase(); }
+/* "0 to 50", "0-50", "<50", "under 50", "over 35", "35+" as the lab prints it; anything else keeps the words with no band */
+function parseRange(text) {
+  const t = String(text || '').trim().replace(/,/g, '').replace(/[\u2013\u2014]/g, '-').replace(/≤/g, '<=').replace(/≥/g, '>=');
+  if (!t) return { low: null, high: null };
+  const num = '(\\d+(?:\\.\\d+)?)';
+  let m = t.match(new RegExp('^' + num + '\\s*(?:-|to)\\s*' + num + '$', 'i'));
+  if (m) return { low: parseFloat(m[1]), high: parseFloat(m[2]) };
+  m = t.match(new RegExp('^(?:<=?|under|below|less than|up to|not above)\\s*' + num + '$', 'i'));
+  if (m) return { low: null, high: parseFloat(m[1]) };
+  m = t.match(new RegExp('^(?:>=?|over|above|more than|at least)\\s*' + num + '$', 'i'));
+  if (m) return { low: parseFloat(m[1]), high: null };
+  m = t.match(new RegExp('^' + num + '\\s*(?:and (?:over|above)|or more|\\+)$', 'i'));
+  if (m) return { low: parseFloat(m[1]), high: null };
+  return { low: null, high: null };
+}
+/* A typed result: "48", "0,8", "<5" (the lab's way of saying below what it measures, kept as below) */
+function readResultValue(el) {
+  const raw = String(el.value || '').trim();
+  if (!raw) return { empty: true };
+  const below = /^<\s*=?\s*/.test(raw);
+  const n = readNum({ value: raw.replace(/^[<>]\s*=?\s*/, '') });
+  return { empty: false, value: n.value, below };
+}
+function fmtResultNum(v) { const n = Number(v); return Number.isFinite(n) ? String(Math.round(n * 100) / 100) : ''; }
+function fmtResultValue(e) { return (e.below ? '<' : '') + fmtResultNum(e.value); }
+function fmtResultFull(e) { return fmtResultValue(e) + (e.unit ? ' ' + e.unit : ''); }
+function resDay(day) { const d = parseDay(day); return d.getFullYear() === new Date().getFullYear() ? fmtDayShort(day) : fmtDayShort(day) + ' ' + d.getFullYear(); }
+function sortResults(list) { return list.slice().sort((a, b) => a.day.localeCompare(b.day) || entryDate(a) - entryDate(b)); }
+/* Every result the circle has recorded, oldest first; the preview reads its own list */
+async function loadResults() {
+  if (state.demo) return sortResults((state.recentEntries || []).filter((e) => e.type === 'result'));
+  const snap = await getDocs(query(hcol('entries'), where('type', '==', 'result')));
+  return sortResults(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+}
+function resultsByTest(list) {
+  const groups = new Map();
+  sortResults(list).forEach((e) => { const k = resultKey(e); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(e); });
+  const order = resultTests(list).map((t) => t.key);
+  return [...groups.entries()].sort((a, b) => {
+    const ia = order.indexOf(a[0]), ib = order.indexOf(b[0]);
+    if (ia >= 0 && ib >= 0) return ia - ib; if (ia >= 0) return -1; if (ib >= 0) return 1;
+    return resultName(a[1][0]).localeCompare(resultName(b[1][0]));
+  });
+}
+/* The latest of each test in a list, as one line: "calprotectin 410 µg/g (6 Oct), CRP 12 mg/L (12 Oct)" */
+function latestResultsText(list, withRange) {
+  const latest = resultsByTest(list.filter((e) => e.type === 'result' && e.value != null)).map(([, l]) => l[l.length - 1]);
+  return latest.map((e) => resultName(e) + ' ' + fmtResultFull(e) + (withRange && e.range ? ', range as given ' + e.range : '') + ' (' + resDay(e.day) + ')').join('; ');
+}
+function twoPageResults(entries) {
+  const list = entries.filter((e) => e.type === 'result' && e.value != null);
+  if (!list.length) return null;
+  const t = latestResultsText(list, true);
+  return t ? t + '.' : null;
+}
+/* The chart: one dot a result, joined in time order, the lab's range as a soft band. CSS colours it, so it follows dark mode. */
+function resultSvg(t, list) {
+  const W = 320, H = 150, L = 42, R = 12, T = 14, B = 26;
+  const pts = list.map((e) => ({ x: parseDay(e.day).getTime(), y: Number(e.value), e }));
+  const rng = list.slice().reverse().find((e) => e.low != null || e.high != null) || {};
+  let lo = Math.min(...pts.map((p) => p.y)), hi = Math.max(...pts.map((p) => p.y));
+  if (rng.low != null) lo = Math.min(lo, rng.low);
+  if (rng.high != null) hi = Math.max(hi, rng.high);
+  if (hi === lo) { hi += 1; lo = Math.max(0, lo - 1); }
+  /* the axis on rounded numbers: a step of 1, 2, 2.5 or 5 times a power of ten, the ends on a step */
+  const nice = (v) => { const p = 10 ** Math.floor(Math.log10(v)); const m = v / p; return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 2.5 ? 2.5 : m <= 5 ? 5 : 10) * p; };
+  const step = nice((hi - lo) / 5);
+  lo = Math.max(0, Math.floor((lo - (hi - lo) * 0.08) / step) * step); hi = Math.ceil((hi + (hi - lo) * 0.08) / step) * step;
+  const x0 = pts[0].x, x1 = pts[pts.length - 1].x, span = x1 - x0;
+  const X = (x) => (span <= 0 ? L + (W - L - R) / 2 : L + ((x - x0) / span) * (W - L - R));
+  const Y = (y) => T + (1 - (y - lo) / (hi - lo)) * (H - T - B);
+  const prec = step < 0.1 ? 2 : step < 1 ? 1 : 0;
+  const ns = 'http://www.w3.org/2000/svg';
+  const el = (tag, attrs, text) => { const n = document.createElementNS(ns, tag); Object.entries(attrs).forEach(([k, v]) => n.setAttribute(k, String(v))); if (text != null) n.textContent = text; return n; };
+  const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, class: 'res-svg', role: 'img', 'aria-label': `${t.name}: ${plural(list.length, 'result')} from ${resDay(list[0].day)} to ${resDay(list[list.length - 1].day)}, latest ${fmtResultFull(list[list.length - 1])}` + (rng.range ? `. The lab's range as given: ${rng.range}.` : '.') });
+  if (rng.low != null || rng.high != null) {
+    const top = rng.high != null ? Y(Math.min(rng.high, hi)) : T, bottom = rng.low != null ? Y(Math.max(rng.low, lo)) : H - B;
+    svg.append(el('rect', { class: 'res-band', x: L, y: top, width: W - L - R, height: Math.max(2, bottom - top) }));
+    svg.append(el('text', { class: 'res-bandlabel', x: W - R - 3, y: Math.min(bottom - 4, Math.max(top + 10, top + (bottom - top) / 2 + 3)), 'text-anchor': 'end' }, 'range as given'));
+  }
+  [lo, (lo + hi) / 2, hi].forEach((v) => {
+    svg.append(el('line', { class: 'res-grid', x1: L, x2: W - R, y1: Y(v), y2: Y(v) }));
+    svg.append(el('text', { class: 'res-tick', x: L - 5, y: Y(v) + 3.5, 'text-anchor': 'end' }, v.toFixed(prec)));
+  });
+  svg.append(el('polyline', { class: 'res-line', points: pts.map((p) => `${X(p.x).toFixed(1)},${Y(p.y).toFixed(1)}`).join(' ') }));
+  pts.forEach((p, i) => svg.append(el('circle', { class: 'res-dot' + (i === pts.length - 1 ? ' is-last' : ''), cx: X(p.x).toFixed(1), cy: Y(p.y).toFixed(1), r: 4 })));
+  const labels = [[pts[0], 'start']];
+  const mid = pts[Math.floor(pts.length / 2)];
+  if (pts.length > 2 && X(mid.x) - X(x0) > 70 && X(x1) - X(mid.x) > 70) labels.push([mid, 'middle']);
+  if (span > 0) labels.push([pts[pts.length - 1], 'end']);
+  labels.forEach(([p, anchor]) => svg.append(el('text', { class: 'res-tick', x: X(p.x).toFixed(1), y: H - 8, 'text-anchor': anchor }, resDay(p.e.day))));
+  return svg;
+}
+function resultCard(key, list) {
+  const t = { ...resultTestFor(list[0]), name: resultName(list[0]), unit: list[0].unit || resultTestFor(list[0]).unit };
+  const last = list[list.length - 1];
+  const rows = list.slice().reverse().map((e) => {
+    const bits = [fmtResultFull(e), e.range ? 'range ' + e.range : '', e.source ? 'from ' + e.source : '', e.note || ''].filter(Boolean);
+    const inner = [h('span', { class: 'res-rowday', text: resDay(e.day) }), h('span', { class: 'res-rowtext', text: bits.join(' · ') })];
+    return h('li', null, state.readOnly || state.viewer ? h('div', { class: 'res-row' }, ...inner)
+      : h('button', { class: 'res-row', type: 'button', 'aria-label': t.name + ' ' + fmtResultFull(e) + ' on ' + resDay(e.day) + ', tap to change or delete', onclick: () => entryOptions(e) }, ...inner));
+  });
+  const more = h('details', { class: 'res-details' }, h('summary', { text: 'Every result (' + list.length + ')' }), h('ul', { class: 'res-list' }, ...rows));
+  return h('div', { class: 'card rescard', 'data-test': key },
+    h('h3', { class: 'card-title', text: t.name }),
+    h('div', { class: 'res-latest' },
+      h('span', { class: 'tile-value', text: fmtResultValue(last) }, h('small', { text: t.unit })),
+      h('span', { class: 'res-when', text: resDay(last.day) + (last.source ? ', from ' + last.source : '') + (last.range ? '. Range as given: ' + last.range + '.' : '. No range given.') })),
+    list.length > 1 ? h('div', { class: 'res-chart' }, resultSvg(t, list)) : h('p', { class: 'hint', text: 'One result so far. A chart appears with the next.' }),
+    t.hint ? h('p', { class: 'hint', text: t.hint }) : null,
+    more);
+}
+async function renderResults() {
+  const body = $('results-body');
+  if (!body) return;
+  body.replaceChildren(h('p', { class: 'hint', role: 'status', text: 'Fetching your results' }));
+  let list;
+  try { list = await loadResults(); } catch (e) { console.error(e); body.replaceChildren(h('p', { class: 'hint', text: 'Could not fetch the results. Try again when you have signal.' })); return; }
+  state.results = list;
+  if ($('view-results').hidden) return;
+  const canAdd = !state.readOnly && !state.viewer;
+  const actions = canAdd ? h('div', { class: 'btnrow results-actions' },
+    h('button', { class: 'btn btn-primary', type: 'button', id: 'results-add', onclick: () => openResultsSheet() }, 'Add results'),
+    explainAvailable() ? h('button', { class: 'btn btn-secondary', type: 'button', id: 'results-photo', onclick: () => readResultsPhoto((pre) => openResultsSheet({ prefill: pre }), () => {}) }, 'Read from a photo') : null) : null;
+  const groups = resultsByTest(list);
+  body.replaceChildren(
+    actions,
+    groups.length ? h('div', { class: 'res-cards' }, ...groups.map(([k, l]) => resultCard(k, l)))
+      : h('p', { class: 'empty', 'data-art': 'doc', text: canAdd ? 'No results recorded yet. Add them as the team gives them: from a letter, the NHS App or a photo of the results sheet.' : 'No results recorded yet.' }));
+}
+/* Add results (several from one sample) or change one. `prefill` comes from a photo: { day, source, rows: [{ key, name, unit, value, range }] } */
+function openResultsSheet(opts = {}) {
+  const edit = opts.edit || null, pre = opts.prefill || null;
+  const today = todayStr();
+  const date = h('input', { type: 'date', value: edit ? edit.day : (pre && pre.day) || (state.selectedDay > today ? today : state.selectedDay), max: today });
+  const source = h('input', { type: 'text', maxlength: '60', placeholder: 'e.g. GP, IBD team, hospital', value: edit ? edit.source || '' : (pre && pre.source) || '' });
+  const srcPresets = presets(['GP', 'Hospital', 'Clinic'], source, source.value);
+  const note = h('textarea', { rows: '2', placeholder: 'What the team said about them (optional)', maxlength: '600' });
+  if (edit && edit.note) note.value = edit.note;
+  const rowsEl = h('div', { class: 'res-rows' });
+  const rows = new Map();
+  const tests = resultTests(state.results || []);
+  const chipFor = new Map();
+  let otherSeq = 0;
+  const addRow = (t, vals) => {
+    const id = t.key === 'other' ? 'other-' + (++otherSeq) : t.key;
+    if (rows.has(id)) { rows.get(id).value.focus(); return; }
+    const value = h('input', { type: 'text', inputmode: 'decimal', class: 'input res-value', placeholder: 'e.g. 48', 'aria-label': (t.name || 'Result') + ' value', value: vals && vals.value != null ? String(vals.value) : '' });
+    const range = h('input', { type: 'text', class: 'input', placeholder: 'e.g. 0 to 50, or under 50', maxlength: '40', 'aria-label': (t.name || 'Result') + ', the range as given', value: (vals && vals.range) || '' });
+    const nameIn = t.key === 'other' ? h('input', { type: 'text', class: 'input', placeholder: 'e.g. Zinc', maxlength: '40', 'aria-label': 'Name of the test', value: (vals && vals.name) || '' }) : null;
+    const unitIn = t.key === 'other' ? h('input', { type: 'text', class: 'input', placeholder: 'e.g. µmol/L', maxlength: '16', 'aria-label': 'Unit', value: (vals && vals.unit) || '' }) : null;
+    const el = h('div', { class: 'resrow', 'data-row': id },
+      h('div', { class: 'resrow-head' }, h('span', { class: 'resrow-name', text: t.key === 'other' ? 'Something else' : t.name }),
+        edit ? null : h('button', { class: 'btn btn-link btn-small', type: 'button', 'aria-label': 'Remove ' + (t.name || 'this test'), onclick: () => { rows.delete(id); el.remove(); const c = chipFor.get(t.key); if (c && t.key !== 'other') c.setAttribute('aria-pressed', 'false'); } }, 'Remove')),
+      nameIn ? h('div', { class: 'field-row' }, field('Name of the test', nameIn), field('Unit', unitIn)) : null,
+      h('div', { class: 'field-row' }, field('Result' + (t.unit ? ' (' + t.unit + ')' : ''), value), field('Range as given (optional)', range)));
+    rows.set(id, { t, value, range, nameIn, unitIn });
+    rowsEl.append(el);
+    const c = chipFor.get(t.key); if (c && t.key !== 'other') c.setAttribute('aria-pressed', 'true');
+    if (!vals) value.focus();
+  };
+  const chips = edit ? null : h('div', { class: 'chips', role: 'group', 'aria-label': 'Which tests' },
+    ...tests.map((t) => { const b = h('button', { class: 'preset', type: 'button', 'aria-pressed': 'false', text: t.name, onclick: () => { if (rows.has(t.key)) { rows.get(t.key).value.focus(); return; } addRow(t); } }); chipFor.set(t.key, b); return b; }),
+    h('button', { class: 'preset', type: 'button', text: 'Something else', onclick: () => addRow({ key: 'other', name: '', unit: '' }) }));
+  if (edit) addRow({ ...resultTestFor(edit), name: resultName(edit), unit: edit.unit || resultTestFor(edit).unit }, { value: fmtResultValue(edit), range: edit.range, name: edit.name, unit: edit.unit });
+  if (pre) pre.rows.forEach((r) => addRow(r.key === 'other' ? { key: 'other', name: '', unit: '' } : RESULT_TESTS.find((t) => t.key === r.key), r));
+  const save = async () => {
+    const d = date.value;
+    if (!d || d > today) { toast('Pick the date the sample was taken'); date.focus(); return; }
+    const out = [];
+    for (const r of rows.values()) {
+      const name = r.nameIn ? r.nameIn.value.trim() : r.t.name;
+      const unit = (r.unitIn ? r.unitIn.value.trim() : r.t.unit) || '';
+      const n = readResultValue(r.value);
+      if (n.empty) continue;
+      if (n.value == null) { toast('Could not read the ' + (name || 'result') + ' "' + r.value.value + '". Type just the number.'); r.value.focus(); return; }
+      if (!name) { toast('Give the test a name'); r.nameIn.focus(); return; }
+      const range = r.range.value.trim().slice(0, 40);
+      const { low, high } = parseRange(range);
+      out.push({ type: 'result', test: r.t.key, name, unit, value: n.value, below: n.below, range, low, high, source: source.value.trim().slice(0, 60), note: note.value.trim() });
+    }
+    if (!out.length) { toast('Type at least one result, or leave the others blank'); return; }
+    const at = parseDay(d); at.setHours(12, 0, 0, 0);
+    if (edit) { await updateEntry(edit.id, { ...out[0], day: d, at }); toast(out[0].name + ' changed'); }
+    else { for (const o of out) await addEntry({ ...o, day: d, at }); toast(plural(out.length, 'result') + ' saved for ' + resDay(d)); }
+    closeSheet();
+    if (!$('view-results').hidden) renderResults();
+    if (!$('view-notes').hidden) renderNotesReport();
+  };
+  const body = h('div', null,
+    h('p', { class: 'hint', text: edit ? 'Change it to what the sheet says. Daybook records results, it does not judge them.' : pre ? 'Read from the photo. Check every number against the sheet before saving: it can misread a digit.' : 'Type them exactly as the team gave them, with the lab\'s range where it is printed. Leave blank any you do not have.' }),
+    h('div', { class: 'field-row' }, field('Date of the sample', date), field('Who gave them', source)), srcPresets,
+    chips, rowsEl,
+    field('Note', note), speakButton(note) || '',
+    h('button', { class: 'btn btn-primary btn-block', type: 'button', id: 'results-save', onclick: save }, edit ? 'Save changes' : 'Save the results'),
+    h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Cancel'));
+  openSheet(edit ? 'Edit result' : 'Add results', body);
+}
+/* A results sheet, a letter or an app screenshot read by Daybook Assistant into the boxes, for checking; nothing is saved without Save */
+function readResultsPhoto(onRead, onCancel) {
+  const input = h('input', { type: 'file', accept: 'image/*,application/pdf,.pdf', multiple: true, style: 'display:none' });
+  document.body.append(input);
+  input.addEventListener('change', async () => {
+    const files = Array.from(input.files || []);
+    input.remove();
+    if (!files.length) return;
+    const status = h('p', { class: 'hint', role: 'status', text: 'Reading the results, about half a minute' });
+    openSheet('Reading the results', h('div', null, status, h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => { closeSheet(); onCancel(); } }, 'Cancel')));
+    try {
+      const read = await processFiles(files.slice(0, 4), (label) => { status.textContent = label; });
+      status.textContent = 'Reading the results, about half a minute';
+      const reply = await bridgeExplain(read.pages.length ? { kind: 'results', pages: read.pages.slice(0, 4).map((pg) => pg.data) } : { kind: 'results', text: read.text || '' });
+      let t = String(reply.text || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+      const a = t.indexOf('{'), b = t.lastIndexOf('}'); if (a >= 0 && b > a) t = t.slice(a, b + 1);
+      let d = {}; try { d = JSON.parse(t); } catch (e) { d = {}; }
+      const str = (v, n) => (v == null ? '' : String(v).trim().slice(0, n));
+      const rows = (Array.isArray(d.results) ? d.results : []).map((r) => {
+        const name = str(r.test, 40);
+        const t2 = RESULT_TESTS.find((x) => x.match.test(name));
+        const v = readResultValue({ value: str(r.value, 20) });
+        if (v.empty || v.value == null) return null;
+        return { key: t2 ? t2.key : 'other', name: t2 ? t2.name : name, unit: t2 ? t2.unit : str(r.unit, 16), value: (v.below ? '<' : '') + fmtResultNum(v.value), range: str(r.range, 40) };
+      }).filter(Boolean).slice(0, 20);
+      if (!rows.length) { toast('Could not read any results in that. Type them in instead.'); onCancel(); return; }
+      onRead({ day: /^\d{4}-\d{2}-\d{2}$/.test(str(d.day, 10)) && str(d.day, 10) <= todayStr() ? str(d.day, 10) : '', source: str(d.source, 60), rows });
+    } catch (e) { console.warn(e); toast(e.message || 'Could not read the results'); onCancel(); }
+  });
+  input.click();
 }
 function renderWeekRow() {
   const row = $('week-check'), sub = $('week-check-sub'), title = $('week-check-title');

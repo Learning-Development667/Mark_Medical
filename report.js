@@ -192,6 +192,7 @@ export function reportHtml(R) {
   const medsHtml = `<div data-sec="Medicines"><b>When-needed medicines.</b> ${esc(R.meds)}${R.hospital ? `<br><b>${esc(R.hospital.label)}</b> ${esc(R.hospital.text)}` : ''}</div>`;
   strip.push(medsHtml);
   if (R.sideFx) strip.push(`<div data-sec="Side effects"><b>Side effects logged.</b> ${esc(R.sideFx)}</div>`);
+  if (R.results) strip.push(`<div data-sec="Results"><b>Results, as the team gave them.</b> ${esc(R.results)}</div>`);
   if (R.steady) strip.push(`<div class="steady" data-sec="Steady"><b>Steady.</b> ${esc(R.steady)}</div>`);
   const qs = R.questions.map((q, i) => questionHtml({ ...q, i: i + 1, lines: R.lines }, false));
   const other = questionHtml({ text: 'Other points from today', by: R.otherBy || 'For anything raised in the appointment', lines: R.lines }, true);

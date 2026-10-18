@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=218">
+  <link rel="stylesheet" href="styles.css?v=219">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -53,6 +53,7 @@
     <symbol id="i-expand" viewBox="0 0 24 24"><path d="M14 4h6v6"/><path d="M20 4l-7 7"/><path d="M10 20H4v-6"/><path d="M4 20l7-7"/></symbol>
     <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/></symbol><symbol id="i-shrink" viewBox="0 0 24 24"><path d="M20 10h-6V4"/><path d="M14 10l7-7"/><path d="M4 14h6v6"/><path d="M10 14l-7 7"/></symbol>
     <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2.5L5 13.5h6l-1 8 8-11h-6z"/></symbol>
+    <symbol id="i-lab" viewBox="0 0 24 24"><path d="M8 3h8"/><path d="M10 3v7.2l-5.2 8.6A2 2 0 0 0 6.5 22h11a2 2 0 0 0 1.7-3.2L14 10.2V3"/><path d="M8 15.5h8"/></symbol>
     <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
     <symbol id="i-image" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="M20.5 15.5l-4.5-4.5-7 7"/></symbol>
     <symbol id="i-barcode" viewBox="0 0 24 24"><path d="M4 6v12M7 6v12M11 6v12M14 6v12M17 6v12M20 6v12" /><path d="M3 4h2M3 20h2M19 4h2M19 20h2" /></symbol>
@@ -361,7 +362,8 @@
           </div>
           <h3 class="reports-group">Your own records</h3>
           <div class="reports reports-2">
-            <button id="rep-docs" class="report tint-plum" type="button"><svg class="icon report-icon" aria-hidden="true"><use href="#i-doc"/></svg><span class="report-name">Documents</span><span class="report-sub">Letters and results</span></button>
+            <button id="rep-docs" class="report tint-plum" type="button"><svg class="icon report-icon" aria-hidden="true"><use href="#i-doc"/></svg><span class="report-name">Documents</span><span class="report-sub">Letters and paperwork</span></button>
+            <button id="rep-results" class="report tint-blue" type="button"><svg class="icon report-icon" aria-hidden="true"><use href="#i-lab"/></svg><span class="report-name">Results</span><span class="report-sub">Blood tests and calprotectin, as given</span></button>
           </div>
         </div>
         <h2 class="section-title">Trends</h2>
@@ -813,6 +815,15 @@
       </section>
 
       <!-- USAGE (v211, reached from More, the operator's circle only) -->
+      <!-- RESULTS, recorded not interpreted (reached from the Reports tab) -->
+      <section id="view-results" class="view" data-view="results" hidden>
+        <div class="diary-head">
+          <button id="results-back" class="btn btn-link" type="button">&#8249; Back</button>
+        </div>
+        <p class="hint">As the team gave them: the number, the unit and the lab's own range where it was printed. Daybook keeps them and charts them. It never says whether a result is good or bad: that is the team's call, so ask them what each one means for you.</p>
+        <div id="results-body"></div>
+      </section>
+
       <section id="view-usage" class="view" data-view="usage" hidden>
         <div class="diary-head">
           <button id="usage-back" class="btn btn-link" type="button">&#8249; Back</button>
@@ -977,7 +988,7 @@
     <p>A care circle is one patient's records and the people they have let in. It is set up by the patient, or by a carer for someone they look after. A carer setting it up names the patient and confirms that the patient has agreed, or cannot decide this for themselves and the carer is acting for them; that confirmation is kept with the circle, with the date. The records are the patient's, whoever typed them in: the patient's rights below come first, and the patient can take charge of the circle at any time. Only the patient, and the person who set the circle up until they hand it over, can invite someone in or remove them. Everyone else in the circle has exactly the access they were given and nothing more.</p>
     <h3>What Daybook stores</h3>
     <p><b>Your sign-in:</b> your email address and password (held by Google's Firebase Authentication; Daybook never sees the password), your first name, your role in the circle (family, read only, or medicines and treatment only), whether you are the patient or a carer, and which circle you belong to.</p>
-    <p><b>What your circle records:</b> check-ins (pain, mood, sleep, sickness, appetite, energy, how much you felt low, worried or enjoyed something each evening, a weekly check whose questions follow the conditions Daybook is set up for, a carer's own weekly check on how the patient seemed, with Crohn's or colitis a weekly question about joints, eyes, skin and mouth, and what you write), readings (temperature, heart rate, blood pressure, oxygen, weight and BMI), food and drink, notes, questions for the care team and their answers, including any voice recordings you choose to make, medicines, doses and reminder times, letters and documents you photograph or paste in and the explanations saved with them, bowel movements (the type, any blood, urgency and accidents, and with Crohn's or colitis your usual number a day and whether you have a stoma), with Crohn's or colitis the flare plan your team gave you, which days you mark as flare days and the calls you log to the advice line, symptoms between check-ins, which conditions Daybook is set up for, treatment sessions and the calendar, exercise ticks, steps, sleep, workouts and food totals if you connect Apple Health, saved meals, who to contact (names, roles, phone numbers, any extension or menu option, and email addresses), and your settings.</p>
+    <p><b>What your circle records:</b> check-ins (pain, mood, sleep, sickness, appetite, energy, how much you felt low, worried or enjoyed something each evening, a weekly check whose questions follow the conditions Daybook is set up for, a carer's own weekly check on how the patient seemed, with Crohn's or colitis a weekly question about joints, eyes, skin and mouth, and what you write), readings (temperature, heart rate, blood pressure, oxygen, weight and BMI), food and drink, notes, questions for the care team and their answers, including any voice recordings you choose to make, medicines, doses and reminder times, letters and documents you photograph or paste in and the explanations saved with them, bowel movements (the type, any blood, urgency and accidents, and with Crohn's or colitis your usual number a day and whether you have a stoma), blood test and calprotectin results you type in or read from a photo, as the team gave them, with Crohn's or colitis the flare plan your team gave you, which days you mark as flare days and the calls you log to the advice line, symptoms between check-ins, which conditions Daybook is set up for, treatment sessions and the calendar, exercise ticks, steps, sleep, workouts and food totals if you connect Apple Health, saved meals, who to contact (names, roles, phone numbers, any extension or menu option, and email addresses), and your settings.</p>
     <p><b>On your phone:</b> a copy of your account record and of the records you have opened, so the app works on a weak signal, and a few settings (which charts you view as tables, the exercise filter, the weight unit, the opener). Words typed into a note or a question are kept on the phone until you save or close that screen, so they are not lost if the phone closes the app; they are cleared when you save, cancel or clear them, and after 7 days at most. A check-in you have started is kept whole (the scores, the words and the step you were on) on the phone and in your circle's space until it is saved or closed, so it comes back as you left it on either phone. Your browser holds these and they go when you clear its data.</p>
     <p><b>If you turn on reminders:</b> each phone's push address and browser type, so the reminder reaches it. <b>For Daybook Assistant:</b> a daily count per circle of how many requests were made and how many words they used, for the cost.</p>
     <h3>Where it is kept</h3>
@@ -1101,6 +1112,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=218"></script>
+  <script type="module" src="scripts.js?v=219"></script>
 </body>
 </html>
