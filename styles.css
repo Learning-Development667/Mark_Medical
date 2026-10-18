@@ -1892,3 +1892,4 @@ button.res-row:active { transform: translateY(1px); }
 .briefcard p:last-child { margin-bottom: 0; }
 .stripcard p { margin: 0; }
 .stripcard .card-title { margin-bottom: var(--s-1); }
+.scale-chips { margin-top: var(--s-3); }

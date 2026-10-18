@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '220';
+const APP_VERSION = '221';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -1694,6 +1694,12 @@ function buildIbdFixture() {
     { id: fakeId('meal'), name: 'Jacket potato', parts: 'tuna, no skin', addedBy: 'Jo' },
     { id: fakeId('meal'), name: 'Omelette', parts: 'cheese', addedBy: 'Jo' }
   ];
+  /* the Crohn's check-in questions (v221): tummy pain and the gut in the way each evening, nights up for the toilet each morning; sickness is chemo's */
+  entries.forEach((e) => {
+    if (e.type !== 'checkin') return;
+    if (e.slot === 'evening') { delete e.sickness; const p = e.worstPain != null ? Number(e.worstPain) : e.pain != null ? Number(e.pain) : null; if (p != null) { e.gutPain = p; e.gutStop = p >= 6 ? 3 : p >= 4 ? 2 : p >= 2 ? 1 : 0; } }
+    if (e.slot === 'morning') { const prev = addDays(e.day, -1); const n = entries.filter((b) => b.type === 'bowel' && b.day === prev && b.night).length; e.nightToilet = n >= 2 ? 2 : n; }
+  });
   return { entries, documents, days, exercise, profile, meals };
 }
 
@@ -1900,10 +1906,19 @@ function renderSetupRow() {
   sub.textContent = done ? 'What Daybook is for, your name on reports, who to contact, the Home Screen. Run it again any time.' : 'Not done yet. What Daybook is for, your name on reports, who to contact, the Home Screen.';
 }
 function isStandalone() { return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true; }
+/* The usual Crohn's and colitis medicines, offered by the set-up (v221); any name can be typed */
+const IBD_SETUP_MEDS = ['Adalimumab (Humira)', 'Adalimumab (Amgevita)', 'Adalimumab (Yuflyma)', 'Infliximab (Remicade)', 'Infliximab (Remsima)', 'Vedolizumab (Entyvio)', 'Ustekinumab (Stelara)', 'Risankizumab (Skyrizi)', 'Mirikizumab (Omvoh)', 'Golimumab (Simponi)', 'Upadacitinib (Rinvoq)', 'Tofacitinib (Xeljanz)', 'Filgotinib (Jyseleca)', 'Azathioprine', 'Mercaptopurine', 'Methotrexate', 'Mesalazine (Pentasa)', 'Mesalazine (Octasa)', 'Mesalazine (Asacol)', 'Budesonide', 'Prednisolone'];
+/* A medicine from its name alone (the set-up): the dose, times and how come later from Edit medicine on the Meds tab */
+async function addMedicineByName(name, purpose) {
+  if ((state.medicines || []).some((m) => m.name.toLowerCase() === name.toLowerCase())) return;
+  const data = { name, dose: '', how: '', purpose: purpose || '', doseForm: 'none', doseCount: null, strength: '', askCount: false, kind: 'scheduled', perDay: 1, active: true, hospital: false, route: null, times: [], withMeals: false, order: Math.max(0, ...(state.medicines || []).map((x) => x.order || 0)) + 1 };
+  if (state.demo) { state.medicines.push({ id: fakeId('med'), ...data }); renderMeds(); return; }
+  try { await setDoc(doc(hcol('medicines')), data, { merge: true }); touchReminderPlan(); } catch (e) { console.error(e); toast('Could not save the medicine'); }
+}
 function openSetup(kind) {
   const full = kind !== 'phone';
   const p = state.profile || {};
-  const draft = { packs: p.packs && typeof p.packs === 'object' ? { ...p.packs } : {}, ibd: { ...ibdInfo() }, reportName: p.reportName || '', contact: { label: '', role: '', number: '', email: '' } };
+  const draft = { packs: p.packs && typeof p.packs === 'object' ? { ...p.packs } : {}, ibd: { ...ibdInfo() }, reportName: p.reportName || '', contact: { label: '', role: '', number: '', email: '' }, advice: { label: '', number: '' }, ibdMed: '' };
   const chipRow = (name, options, current, pick) => h('div', { class: 'presets', role: 'group', 'aria-label': name },
     ...options.map(([v, label]) => h('button', { class: 'preset' + (v === current ? ' is-active' : ''), type: 'button', text: label, 'aria-pressed': v === current ? 'true' : 'false', onclick: () => pick(v) })));
   const para = (text) => h('p', { class: 'setup-p', text });
@@ -1927,8 +1942,16 @@ function openSetup(kind) {
         const redraw = () => box.replaceChildren(
           h('p', { class: 'fieldlabel', text: 'Which is it?' }), chipRow('Which is it', IBD_KINDS, draft.ibd.kind || '', (v) => { draft.ibd.kind = v; redraw(); }),
           h('p', { class: 'fieldlabel', text: 'Do you have a stoma?' }), chipRow('Do you have a stoma', STOMA_KINDS, draft.ibd.stoma || '', (v) => { draft.ibd.stoma = v || null; redraw(); }),
-          field(draft.ibd.stoma ? 'On a usual settled day, how many times do you empty your bag?' : 'On a usual settled day, how many times do you open your bowels?', usual));
+          field(draft.ibd.stoma ? 'On a usual settled day, how many times do you empty your bag?' : 'On a usual settled day, how many times do you open your bowels?', usual),
+          h('p', { class: 'fieldlabel', text: 'The IBD advice line' }), h('p', { class: 'hint', text: 'The number on your flare plan or clinic letter. It goes under Who to contact and on I think I\'m flaring, so it is one tap away on a bad day. Optional.' }),
+          h('div', { class: 'field-row' }, field('Name', adviceName), field('Phone', advicePhone)),
+          h('p', { class: 'fieldlabel', text: 'Your regular medicine' }), h('p', { class: 'hint', text: 'The biologic, immunosuppressant or mesalazine you take. It goes on the Meds tab with Edit to add the dose and times. Optional.' }),
+          field('Medicine', medIn), medList);
         const usual = h('input', { id: 'setup-ibd-usual', type: 'text', inputmode: 'numeric', autocomplete: 'off', maxlength: '3', value: draft.ibd.usual ? String(draft.ibd.usual) : '' });
+        const adviceName = h('input', { id: 'setup-ibd-advice', type: 'text', placeholder: 'e.g. IBD advice line', autocomplete: 'off', maxlength: '60', value: draft.advice.label });
+        const advicePhone = h('input', { id: 'setup-ibd-phone', type: 'tel', placeholder: '01234 567890', autocomplete: 'off', value: draft.advice.number });
+        const medIn = h('input', { id: 'setup-ibd-med', type: 'text', list: 'setup-ibd-meds', placeholder: 'e.g. Adalimumab (Humira)', autocomplete: 'off', maxlength: '60', value: draft.ibdMed });
+        const medList = h('datalist', { id: 'setup-ibd-meds' }, ...IBD_SETUP_MEDS.map((m) => h('option', { value: m })));
         const box = h('div', { class: 'ibd-setup' });
         redraw();
         return [box];
@@ -1938,7 +1961,22 @@ function openSetup(kind) {
         let usual = null;
         if (t) { const n = Number(t.replace(',', '.')); if (!(n >= 0 && n <= 30)) { toast('Type a number from 0 to 30, like on a settled day'); return false; } usual = Math.round(n * 2) / 2; }
         draft.ibd.usual = usual;
-        return saveProfilePatch({ ibd: { kind: draft.ibd.kind || null, stoma: draft.ibd.stoma || null, usual } });
+        const patch = { ibd: { kind: draft.ibd.kind || null, stoma: draft.ibd.stoma || null, usual } };
+        /* the advice line (v221): a contact under Who to contact, and the flare plan's contact, so I think I'm flaring shows it */
+        const a = { label: ($('setup-ibd-advice') || { value: '' }).value.trim(), number: ($('setup-ibd-phone') || { value: '' }).value.trim() };
+        draft.advice = { ...a };
+        if (a.number && !a.label) a.label = 'IBD advice line';
+        if (a.label && !a.number) { toast('Add the advice line\'s phone number, or leave both blank'); $('setup-ibd-phone').focus(); return false; }
+        if (a.label) {
+          const calls = [...((state.profile && state.profile.calls) || [])];
+          const c = { label: a.label, role: 'IBD advice line', number: a.number, ext: '', email: '' };
+          if (draft.adviceAt != null && calls[draft.adviceAt]) calls[draft.adviceAt] = c; else { draft.adviceAt = calls.length; calls.push(c); }
+          patch.calls = calls;
+          patch.flarePlan = { ...flarePlan(), contact: a.label };
+        }
+        const medName = ($('setup-ibd-med') || { value: '' }).value.trim();
+        if (medName && medName !== draft.ibdMed) { await addMedicineByName(medName, "Crohn's or colitis"); draft.ibdMed = medName; }
+        return saveProfilePatch(patch);
       } },
     { key: 'name', only: full, title: 'Your name on the reports', hint: 'Your full name, as the hospital has it. It goes at the top of every report and in the subject of the covering email, so the team can file them against your records.',
       body: () => [field('Name on the report', h('input', { id: 'setup-report-name', type: 'text', autocomplete: 'name', maxlength: '60', value: draft.reportName }))],
@@ -6849,6 +6887,20 @@ function summaryRows(entries, from, to) {
     else fine.push(`${topic.toLowerCase()} (about ${one(mean)}/10)`);
   };
   scale('sickness', 'Sickness', 6, false, { bad: 'Sickness 6 or more', short: 'Sickness 6 or more', worse: 'getting worse' });
+  scale('gutPain', 'Tummy pain', 5, false, { bad: 'Tummy pain or cramps 5 or more', short: 'Tummy pain 5 or more', worse: 'getting worse' });
+  /* the two one-tap Crohn's or colitis questions (v221): counted, with a level only when it was most evenings or nights */
+  {
+    const gs = evenings.filter((e) => e.gutStop != null), gsBad = gs.filter((e) => Number(e.gutStop) >= 2);
+    const mornings = checkins.filter((e) => e.slot === 'morning' && e.nightToilet != null), up = mornings.filter((e) => Number(e.nightToilet) >= 1), twice = mornings.filter((e) => Number(e.nightToilet) >= 2);
+    const parts = [], shorts = [];
+    if (gs.length) { parts.push(gsBad.length ? `the gut stopped ${patientWord()} doing something, quite a bit or a lot, on ${gsBad.length} of ${plural(gs.length, 'evening')}` : `the gut did not get in the way much on the ${plural(gs.length, 'evening')} asked`); if (gsBad.length) shorts.push(`gut in the way on ${plural(gsBad.length, 'evening')}`); }
+    if (mornings.length) { parts.push(up.length ? `up in the night for the toilet on ${up.length} of ${plural(mornings.length, 'morning')}${twice.length ? ', twice or more on ' + twice.length : ''}` : `no nights up for the toilet in the ${plural(mornings.length, 'morning')} asked`); if (up.length) shorts.push(`up at night on ${plural(up.length, 'morning')}`); }
+    if (parts.length) {
+      const level = gsBad.length * 2 > gs.length || twice.length * 2 >= Math.max(1, mornings.length) ? 'amber' : gsBad.length || up.length ? 'teal' : 'green';
+      const text = 'Gut and nights: ' + parts.join('; ') + '.';
+      if (level === 'green') fine.push('the gut in the way (not much)'); else push(level, 'Gut and nights', text, null, 'Gut and nights: ' + shorts.join(', '));
+    }
+  }
   scale('appetite', 'Appetite', 3, true, { bad: 'Little appetite (3 or under)', short: 'Little appetite', worse: 'has dropped' });
   scale('energy', 'Energy', 3, true, { bad: 'Energy very low (3 or under)', short: 'Very low energy', worse: 'has dropped' });
 
@@ -7330,6 +7382,8 @@ const CHECKIN_QUESTIONS = {
     /* the night, then right now, then the day ahead (v146): symptoms overnight sit beside sleep, mood is the last score */
     { key: 'sleep', kind: 'sleep', q: 'How did you sleep?', low: '1 terribly', high: '10 brilliantly', note: 'sleepNote', noteQ: 'How rested do you feel? Optional.', notePh: 'e.g. slept for ages but still not rested, or a bad night but woke with some energy' },
     { key: 'symptoms', kind: 'text', q: 'Any new or worse symptoms overnight?', ph: 'e.g. more sick than usual, a new ache' },
+    /* with Crohn's or colitis (v221): one tap, counted as nights on the report beside the bowel log */
+    { key: 'nightToilet', kind: 'scale', pack: 'ibd', q: 'Up in the night for the toilet?', words: ['No', 'Once', 'Twice or more'], hint: 'One tap. Counts as a night on the Crohn\'s and colitis report.' },
     /* only on the three days after a treatment session (v189): how bad each usual side effect is */
     { key: 'sidefx', kind: 'sidefx', q: 'Any side effects since treatment?' },
     { key: 'pain', kind: 'pain', q: 'Pain right now', low: '1 none', high: '10 worst', note: 'painNote' },
@@ -7340,9 +7394,12 @@ const CHECKIN_QUESTIONS = {
     /* the body first, then the words, then mood as the last score beside one good thing (v147, as the morning in v146) */
     { key: 'pain', kind: 'pain', q: 'Pain right now', low: '1 none', high: '10 worst', note: 'painNote' },
     { key: 'worstPain', kind: 'pain', q: 'Worst pain today', low: '1 none', high: '10 worst', note: 'worstPainNote' },
-    { key: 'sickness', kind: 'pain', q: 'Sickness today', low: '1 none', high: '10 severe' },
+    /* sickness belongs to chemo: with Crohn's or colitis alone it gives way to tummy pain (v221); with both packs both are asked */
+    { key: 'sickness', kind: 'pain', q: 'Sickness today', low: '1 none', high: '10 severe', when: () => packOn('cancer') || !packOn('ibd') },
+    { key: 'gutPain', kind: 'pain', pack: 'ibd', q: 'Tummy pain or cramps today', low: '1 none', high: '10 worst' },
     { key: 'appetite', kind: 'slider', q: 'Appetite today', low: '1 nothing', high: '10 normal' },
     { key: 'energy', kind: 'slider', q: 'Energy today', low: '1 wiped out', high: '10 plenty' },
+    { key: 'gutStop', kind: 'scale', pack: 'ibd', q: 'Did your gut stop you doing anything today?', hint: 'Going out, eating, work, sleep. One tap.' },
     /* with Crohn's or colitis, once a week (v145): the problems outside the gut that affect up to a third of people */
     { key: 'outside', kind: 'ticks', pack: 'ibd', weekly: true, q: 'Over the last week, have you had any of these?' },
     { key: 'symptoms', kind: 'text', q: 'Any new or worse symptoms today?', ph: 'e.g. felt sick after lunch, back worse' },
@@ -7395,6 +7452,9 @@ const CHECKIN_QUESTIONS = {
 /* The four answers to a wellbeing question (v156), stored as 0 to 3; "quite a bit or a lot" is 2 or more */
 const WB_WORDS = ['Not at all', 'A little', 'Quite a bit', 'A lot'];
 const WB_ROWS = [['low', 'Feel low?', 'Felt low'], ['worried', 'Feel worried or on edge?', 'Worried or on edge'], ['enjoyed', 'Enjoy something?', 'Enjoyed something']];
+/* A one-tap scale question in the daily check-ins (v221): four wellbeing words unless the question brings its own */
+function scaleWords(q) { return Array.isArray(q.words) ? q.words : WB_WORDS; }
+function scaleText(q, v) { return v == null ? 'Skipped' : (scaleWords(q)[Number(v)] || String(v)); }
 function wbText(v) {
   if (!v || typeof v !== 'object') return 'Skipped';
   const bits = WB_ROWS.filter(([k]) => v[k] != null).map(([k, , label]) => label + ': ' + WB_WORDS[v[k]].toLowerCase());
@@ -7485,7 +7545,7 @@ const CHECKIN_LABELS = {
   sleep: 'Sleep', sleepHours: 'Hours slept', pain: 'Pain now', mood: 'Mood', symptoms: 'New or worse symptoms',
   lookingForward: 'Looking forward to', worstPain: 'Worst pain', sickness: 'Sickness', appetite: 'Appetite',
   energy: 'Energy', settled: 'Settled since yesterday', goodThing: 'One good thing', noticed: 'What you noticed', outside: 'Outside the gut, last week',
-  wb: 'How much', journal: 'How was today', wkResults: 'Worried about results or scans', wkCutOff: 'Felt cut off from people', wkTired: 'Tiredness got in the way',
+  wb: 'How much', journal: 'How was today', gutPain: 'Tummy pain or cramps', gutStop: 'Gut got in the way', nightToilet: 'Up in the night for the toilet', wkResults: 'Worried about results or scans', wkCutOff: 'Felt cut off from people', wkTired: 'Tiredness got in the way',
   wkGutOut: 'Gut stopped me going out', wkToilet: 'Worried about getting to a toilet', wkSwings: 'Mood swings or irritability', wkAnxious: 'Anxious or panicky',
   wkFog: 'Brain fog or memory', wkSweats: 'Sleep broken by sweats', helped: 'What helped', hardest: 'What was hardest', sentence: 'The week in a sentence',
   wkcTired: 'Tiredness got in the way', wkcLow: 'Seemed low or withdrawn', wkcSymptoms: 'Pain or symptoms got in the way', wkcHelp: 'Needed more help than usual'
@@ -7494,6 +7554,7 @@ const CHECKIN_LABELS = {
 function isWeekSlot(slot) { return slot === 'week' || slot === 'weekcarer'; }
 function weekSlot() { return isCarerUser() ? 'weekcarer' : 'week'; }
 /* A patient check-in, as opposed to the carer's view */
+function patientWord() { const n = patientFullName() || ''; return n ? n.split(/\s+/)[0] : 'them'; }
 function isPatientCheckin(e) { return e.type === 'checkin' && e.slot !== 'carer' && e.slot !== 'weekcarer'; }
 function checkinTitle(slot, e) {
   if (slot === 'weekcarer') return e && e.addedBy ? 'The week as ' + e.addedBy + ' saw it' : 'Your week, as you see it';
@@ -7515,6 +7576,7 @@ function checkinSummary(e) {
   if (e.mood != null) bits.push('Mood ' + e.mood);
   if (e.worstPain != null) bits.push('Worst pain ' + e.worstPain);
   if (e.sickness != null) bits.push('Sickness ' + e.sickness);
+  if (e.gutPain != null) bits.push('Tummy pain ' + e.gutPain);
   if (e.appetite != null) bits.push('Appetite ' + e.appetite);
   if (e.energy != null) bits.push('Energy ' + e.energy);
   return bits.join(' · ');
@@ -7542,7 +7604,7 @@ function checkinCard(c, inEntry) {
     if (q.kind === 'ticks') node = h('dd', { class: 'cc-v' + (v == null ? ' is-empty' : ''), text: v == null ? 'Skipped' : outsideText(v) });
     else if (q.kind === 'taps') node = h('dd', { class: 'cc-v' + (v == null ? ' is-empty' : ''), text: wbText(v) });
     else if (q.kind === 'sidefx') node = h('dd', { class: 'cc-v' + (v == null ? ' is-empty' : ''), text: fxText(v) });
-    else if (q.kind === 'scale') node = h('dd', { class: 'cc-v' + (v == null ? ' is-empty' : ''), text: v == null ? 'Skipped' : WB_WORDS[v] });
+    else if (q.kind === 'scale') node = h('dd', { class: 'cc-v' + (v == null ? ' is-empty' : ''), text: scaleText(q, v) });
     else if (q.kind === 'text') node = h('dd', { class: 'cc-v' + (v ? '' : ' is-empty'), text: v ? v : 'Nothing added' });
     else {
       const empty = v == null;
@@ -7645,6 +7707,7 @@ function checkinSteps(slot, day, existing) {
   return CHECKIN_QUESTIONS[slot].filter((q) => {
     if (existing && existing[q.key] !== undefined) return true;
     if (q.pack && !(Array.isArray(q.pack) ? q.pack.some(packOn) : packOn(q.pack))) return false;
+    if (q.when && !q.when()) return false;
     if (q.kind === 'sidefx') return Boolean(sessionBefore(day));
     if (q.weekly) {
       const from = addDays(day, -6);
@@ -7792,6 +7855,17 @@ function openCheckin(slot, initialDay) {
         });
         wrap.append(h('p', { class: 'wiz-hint', text: q.hint }), ...rows);
         getVal = () => (WB_ROWS.some(([k]) => cur[k] != null) ? { low: cur.low ?? null, worried: cur.worried ?? null, enjoyed: cur.enjoyed ?? null } : null);
+      } else if (q.kind === 'scale') {
+        /* one tap (v221): the words in a row, tap again to clear */
+        let cur = answers[q.key] == null ? null : Number(answers[q.key]);
+        const words = scaleWords(q);
+        const chips = h('div', { class: 'chips taps-chips scale-chips', role: 'group', 'aria-label': q.q });
+        words.forEach((w, i) => chips.append(h('button', { class: 'preset' + (cur === i ? ' is-active' : ''), type: 'button', 'aria-pressed': cur === i ? 'true' : 'false', onclick: () => {
+          cur = cur === i ? null : i;
+          [...chips.children].forEach((b, j) => { b.classList.toggle('is-active', cur === j); b.setAttribute('aria-pressed', cur === j ? 'true' : 'false'); });
+        } }, w)));
+        wrap.append(h('p', { class: 'wiz-hint', text: q.hint || 'One tap.' }), chips);
+        getVal = () => cur;
       } else if (q.kind === 'text') {
         const ta = h('textarea', { rows: '3', placeholder: q.ph || '' });
         ta.value = answers[q.key] || '';
@@ -7833,11 +7907,11 @@ function openCheckin(slot, initialDay) {
       qs.forEach((q, i) => {
         const v = answers[q.key];
         let skipped = q.kind === 'text' ? !v : v == null;
-        let shown = skipped ? 'Skipped' : (q.kind === 'ticks' ? outsideText(v) : q.kind === 'taps' ? wbText(v) : q.kind === 'sidefx' ? fxText(v) : q.kind === 'text' ? v : String(v) + (q.kind === 'sleep' && answers.sleepHours != null ? ' · ' + answers.sleepHours + ' h' : ''));
+        let shown = skipped ? 'Skipped' : (q.kind === 'ticks' ? outsideText(v) : q.kind === 'taps' ? wbText(v) : q.kind === 'scale' ? scaleText(q, v) : q.kind === 'sidefx' ? fxText(v) : q.kind === 'text' ? v : String(v) + (q.kind === 'sleep' && answers.sleepHours != null ? ' · ' + answers.sleepHours + ' h' : ''));
         const words = q.note && answers[q.note] ? h('span', { class: 'vnote', text: answers[q.note] }) : null;
         list.append(h('li', null, h('button', { type: 'button', onclick: () => { dir = -1; step = i; fromReview = true; render(); } },
           h('span', { class: 'k', text: CHECKIN_LABELS[q.key] }),
-          h('span', { class: 'v' + (skipped ? ' is-skipped' : (q.kind === 'text' || q.kind === 'ticks' || q.kind === 'taps' || q.kind === 'sidefx' ? '' : ' is-num')) }, shown, words))));
+          h('span', { class: 'v' + (skipped ? ' is-skipped' : (q.kind === 'text' || q.kind === 'ticks' || q.kind === 'taps' || q.kind === 'scale' || q.kind === 'sidefx' ? '' : ' is-num')) }, shown, words))));
       });
       wrap.append(list);
       if (slot === 'morning' && !state.readOnly) wrap.append(h('p', { class: 'wiz-signpost', text: 'Gentle exercises and stretches are on the Exercise tab, for when you are up and ready. Optional.' }));
@@ -9403,6 +9477,9 @@ function buildIbdReport(n) {
   const ci = entries.filter((e) => isPatientCheckin(e) && e.slot !== 'week');
   const pains = []; entries.forEach((e) => { if (e.type === 'pain' && e.value != null) pains.push(Number(e.value)); if (isPatientCheckin(e)) { if (e.pain != null && e.pain !== '') pains.push(Number(e.pain)); if (e.worstPain != null && e.worstPain !== '') pains.push(Number(e.worstPain)); } });
   const energy = ci.filter((e) => e.slot === 'evening' && e.energy != null && e.energy !== '').map((e) => Number(e.energy));
+  const gutPains = ci.filter((e) => e.slot === 'evening' && e.gutPain != null && e.gutPain !== '').map((e) => Number(e.gutPain));
+  const gutStops = ci.filter((e) => e.slot === 'evening' && e.gutStop != null), gutStopBad = gutStops.filter((e) => Number(e.gutStop) >= 2);
+  const nightAsked = ci.filter((e) => e.slot === 'morning' && e.nightToilet != null), nightUp = nightAsked.filter((e) => Number(e.nightToilet) >= 1), nightTwice = nightAsked.filter((e) => Number(e.nightToilet) >= 2);
   const outside = ci.filter((e) => e.slot === 'evening' && Array.isArray(e.outside)).sort((a, b) => a.day.localeCompare(b.day));
   /* treatment: injections or infusions, steroid courses, the IBD medicines */
   const sessions = Object.keys(state.days || {}).filter((d) => state.days[d].chemo && isRepeat(treatmentOf(state.days[d]))).sort();
@@ -9464,7 +9541,7 @@ function buildIbdReport(n) {
   brief.push({ head: what, text: logged.length ? `About ${one(mean)} a day on the ${plural(logged.length, 'day')} logged${usual ? `, against ${patient}'s usual ${usual}` : ' (no usual number set in Settings)'}; most ${most} on ${rDay(mostDay)}.` + (looseN ? ` Loose (type 6 or 7) ${plural(looseN, 'time')}.` : '') + (noneDays.size ? ` None on ${plural(noneDays.size, 'day')}.` : '') : 'No bowel movements were logged in this period.' });
   brief.push({ head: 'Blood and urgency', text: logged.length ? [bloodDays.length ? `Blood on ${plural(bloodDays.length, 'day')}, ${bloodWord(worstBlood)} at worst` : 'No blood logged', blackDays.length ? `black or tarry on ${plural(blackDays.length, 'day')}` : '', rush ? `had to go straight away ${plural(rush, 'time')} on ${plural(rushDays.length, 'day')}` : 'never had to go straight away', accidents ? plural(accidents, stoma ? 'bag leak' : 'accident or leak') : '', nightN ? `up at night ${plural(nightN, 'time')}` : ''].filter(Boolean).join('; ') + '.' + (twDays.length ? ` Six or more with blood on ${twDays.map(rDay).join(', ')}.` : '') : 'Nothing logged.' });
   brief.push({ head: 'Flares and treatment', text: (flareDays.length ? `Marked as flaring on ${plural(flareDays.length, 'day')}${runs.length === 1 ? ` (${rDay(runs[0].from)}${runs[0].to !== runs[0].from ? ' to ' + rDay(runs[0].to) : ''})` : ''}.` : 'No flare days marked.') + (calls.length ? ` ${plural(calls.length, 'call')} to the advice line, listed below.` : '') + (steroids.length ? ` On ${steroids.map((m) => m.name).join(' and ')} in this period.` : '') + (sessLine ? ' ' + sessLine.charAt(0).toUpperCase() + sessLine.slice(1) : '') });
-  brief.push({ head: 'Body', text: [ws.length ? `Weight ${fmtKg(wLast.value)} on ${rDay(wLast.day)}` + (wChange != null && Math.abs(wChange) >= 0.1 ? `, ${wChange < 0 ? 'down' : 'up'} ${Math.abs(wChange)} kg since ${rDay(wFirst.day)}` : '') : 'No weight logged', temps.length ? `temperature highest ${Number(tempHi.value).toFixed(1)} °C on ${rDay(tempHi.day)}` : '', pains.length ? `pain up to ${Math.max(...pains)}/10` : '', energy.length ? `energy averaged ${avg(energy)}/10 in the evening check-ins` : '', outside.length ? `outside the gut: ${outside.map((e) => (e.outside.length ? outsideText(e.outside).toLowerCase() : 'none of the usual') + ' (week to ' + rDay(e.day) + ')').join('; ')}` : ''].filter(Boolean).join('; ') + '.' });
+  brief.push({ head: 'Body', text: [ws.length ? `Weight ${fmtKg(wLast.value)} on ${rDay(wLast.day)}` + (wChange != null && Math.abs(wChange) >= 0.1 ? `, ${wChange < 0 ? 'down' : 'up'} ${Math.abs(wChange)} kg since ${rDay(wFirst.day)}` : '') : 'No weight logged', temps.length ? `temperature highest ${Number(tempHi.value).toFixed(1)} °C on ${rDay(tempHi.day)}` : '', gutPains.length ? `tummy pain or cramps averaged ${avg(gutPains)}/10, up to ${Math.max(...gutPains)}` : '', pains.length ? `pain up to ${Math.max(...pains)}/10` : '', gutStops.length ? `the gut stopped ${patient.split(/\s+/)[0]} doing something quite a bit or a lot on ${gutStopBad.length} of ${plural(gutStops.length, 'evening')}` : '', nightAsked.length ? `up in the night for the toilet on ${nightUp.length} of ${plural(nightAsked.length, 'morning')}${nightTwice.length ? ', twice or more on ' + nightTwice.length : ''}` : '', energy.length ? `energy averaged ${avg(energy)}/10 in the evening check-ins` : '', outside.length ? `outside the gut: ${outside.map((e) => (e.outside.length ? outsideText(e.outside).toLowerCase() : 'none of the usual') + ' (week to ' + rDay(e.day) + ')').join('; ')}` : ''].filter(Boolean).join('; ') + '.' });
   /* week by week */
   const weeks = reportWeeks(from, to).map((w) => {
     const wd = days.filter((d) => d >= w.from && d <= w.to);
