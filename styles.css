@@ -443,6 +443,9 @@ textarea { line-height: 1.5; resize: vertical; }
   border-bottom: 1px solid var(--border-subtle);
 }
 .topbar-right { display: flex; align-items: center; gap: var(--s-2); }
+/* Leave demo (v226): the pill that said Preview or Demo is the way out, a real button at the 44px floor without making the bar taller */
+.pill.pill-leave { min-height: 44px; margin-block: -4px; padding: 0 16px; border: 1.5px solid var(--teal); background: var(--surface); color: var(--teal); font-size: 15px; font-family: inherit; cursor: pointer; white-space: nowrap; }
+.pill.pill-leave:active { background: var(--teal-light); }
 .chip {
   display: inline-flex; align-items: center;
   min-height: 36px; padding: var(--s-1) 14px;

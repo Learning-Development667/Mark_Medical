@@ -88,6 +88,7 @@ One at a time, each a few days with its sources checked, on the profile mechanis
 - An "AI used this month: about 12p" line under Settings, from the bridge's own token tally. Offered 4 October; build if wanted.
 
 ## Done
+- v227 The topbar pill in a demo is a Leave demo button that asks first; the Guest chip beside it is hidden while a demo runs. Tested in `t/t33.mjs`.
 - v226 One Demo button on the sign-in screen that opens a choice of the cancer or the Crohn's demo; the shared live demo stays as a quiet third option. Tested in `t/t32.mjs`.
 - v225 The Beta pill sits clear of the name on the cover screens, and the icon addresses carry a version so a phone fetches the new picture. Tested in `t/t31.mjs`.
 - v224 The Home Screen icon is Mark's watercolour of two books and a sunrise, in every size, with Android-padded versions; the sign-in card shows it too. Tested in `t/t30.mjs`.

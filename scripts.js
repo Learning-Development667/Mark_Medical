@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '226';
+const APP_VERSION = '227';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -1133,7 +1133,9 @@ function enterPreview(pack) {
   $('user-chip').textContent = 'Guest';
   $('more-user').textContent = 'Guest (preview, nothing saved)';
   $('guest-pill').hidden = false;
-  $('guest-pill').textContent = pack === 'ibd' ? "Preview, Crohn's" : 'Preview';
+  $('guest-pill').textContent = 'Leave demo';
+  $('guest-pill').setAttribute('aria-label', pack === 'ibd' ? "Leave demo, the Crohn's or colitis preview" : 'Leave demo, the cancer treatment preview');
+  $('user-chip').hidden = true; // the pill is the way out; the Guest chip beside it only used up the room
   startDemoData(pack);
   syncReminders();
 }
@@ -1164,6 +1166,7 @@ function exitPreview() {
   stopData();
   state.demo = false;
   $('guest-pill').hidden = true;
+  $('user-chip').hidden = false;
   $('app').hidden = true;
   $('signin').hidden = false;
   setDemoChoice(false);
@@ -1190,8 +1193,10 @@ async function enterLiveDemo() {
     state.household = DEMO_HOUSEHOLD;
     await seedDemoIfEmpty();
     await enterApp(cred.user);
-    $('guest-pill').textContent = 'Demo';
+    $('guest-pill').textContent = 'Leave demo';
+    $('guest-pill').setAttribute('aria-label', 'Leave demo, the shared live demo');
     $('guest-pill').hidden = false;
+    $('user-chip').hidden = true;
     $('more-user').textContent = 'Guest (shared demo, wiped every night)';
     toast('Shared demo: others can see what you add, and it is wiped every night. No real details please.');
   } catch (e) {
@@ -1215,7 +1220,7 @@ async function exitLiveDemo() {
   state.account = null;
   state.household = null;
   $('guest-pill').hidden = true;
-  $('guest-pill').textContent = 'Preview';
+  $('user-chip').hidden = false;
   $('app').hidden = true;
   $('signin').hidden = false;
   setDemoChoice(false);
@@ -1259,15 +1264,14 @@ async function seedDemoIfEmpty() {
   await writeDemo(writes);
 }
 
+/* Leave demo (v226): the topbar pill and the More row both end a demo, after asking, since what was tried in it is not kept */
+async function leaveDemo() {
+  const live = state.demoLive && !state.demo;
+  if (await confirmSheet('Leave the demo', live ? 'Go back to the sign-in screen? Anything you added to the shared demo stays there until it is wiped tonight.' : 'Go back to the sign-in screen? Nothing you tried in the demo is kept.', 'Leave demo', false)) { if (live) exitLiveDemo(); else exitPreview(); }
+}
+$('guest-pill').addEventListener('click', leaveDemo);
 $('signout').addEventListener('click', async () => {
-  if (state.demo) {
-    if (await confirmSheet('Leave preview', 'Go back to the sign-in screen?', 'Leave preview', false)) exitPreview();
-    return;
-  }
-  if (state.demoLive) {
-    if (await confirmSheet('Leave the demo', 'Go back to the sign-in screen?', 'Leave the demo', false)) exitLiveDemo();
-    return;
-  }
+  if (state.demo || state.demoLive) { leaveDemo(); return; }
   if (await confirmSheet('Sign out', 'You will need your password to sign back in.', 'Sign out', true)) signOut(auth);
 });
 
