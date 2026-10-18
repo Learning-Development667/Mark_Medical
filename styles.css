@@ -947,6 +947,13 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 .medrow-move:disabled { opacity: 0.35; }
 .med-order { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); }
 .med-order .medrow-moves { flex-direction: row; gap: var(--s-2); }
+.med-more .med-order { margin-top: var(--s-3); padding-top: var(--s-3); border-top: 1px solid var(--border-subtle); }
+.med-order-label { font-size: 16px; color: var(--text-secondary); }
+/* press and hold to drag a card (v217) */
+.med-toggle { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+.card.med.is-dragging { position: relative; z-index: 5; box-shadow: var(--elev-floating); outline: 2px solid var(--teal); transition: none; }
+body.is-med-dragging { overflow: hidden; }
+@media (prefers-reduced-motion: no-preference) { .card.med:not(.is-dragging) { transition: transform 120ms; } }
 
 /* Food diary */
 .diary-head { display: flex; justify-content: space-between; align-items: center; }

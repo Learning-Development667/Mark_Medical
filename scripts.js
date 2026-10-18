@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '216';
+const APP_VERSION = '217';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -8234,53 +8234,105 @@ function activePrn() {
 /* The order of the medicines (v216). Every list (the Meds tab's Scheduled and When needed, the Medicine
    tile's Log a dose, Manage medicines) shows medicines/{id}.order ascending: the field has been there since
    the seed list, and a new medicine takes the highest order plus one, so it goes to the bottom. Mark wanted
-   his own order (the morning ones first, then the when-needed, Senna at night) with up and down controls,
-   in Manage medicines and in Edit medicine. moveMed() swaps a medicine with its neighbour in the whole list
-   (stopped ones included, so Manage medicines moves what it shows); orders missing or shared are first
+   his own order (the morning ones first, then the when-needed, Senna at night). v216 put up and down arrows
+   in Manage medicines and Edit medicine; v217 moved them onto the open Meds card, within its own section, and
+   added press and hold to slide a card (Mark: the card is where he looks). Orders missing or shared are first
    numbered 1 to n in the order on screen, in the same batch. Finished courses (newest first) and Given in
    hospital (the day's doses) keep their own order. `medicines` is family write: no rules change. */
 function sortMedicines(list) {
   return list.slice().sort((a, b) => (a.order || 0) - (b.order || 0) || a.name.localeCompare(b.name));
 }
-function medPlace(m) {
-  const list = sortMedicines(state.medicines);
+function medPlace(m, list) {
+  list = list || sortMedicines(state.medicines);
   return { n: list.findIndex((x) => x.id === m.id) + 1, of: list.length };
 }
-async function moveMed(m, dir) {
-  const list = sortMedicines(state.medicines);
-  const i = list.findIndex((x) => x.id === m.id), j = i + dir;
-  if (i < 0 || j < 0 || j >= list.length) return false;
-  const orders = list.map((x) => x.order);
-  const tidy = orders.some((o, k) => !(o > 0) || orders.indexOf(o) !== k);
-  const want = new Map();
-  if (tidy) list.forEach((x, k) => want.set(x.id, k + 1));
-  else list.forEach((x) => want.set(x.id, x.order));
-  const a = want.get(list[i].id), b = want.get(list[j].id);
-  want.set(list[i].id, b); want.set(list[j].id, a);
+/* Put m just before (or after) target in the whole list and save every order that changed (v217; moveMed()
+   was the v216 neighbour swap). Orders missing or shared are numbered 1 to n as shown first. */
+async function placeMed(m, target, before) {
+  if (!target || target.id === m.id) return false;
+  const list = sortMedicines(state.medicines).filter((x) => x.id !== m.id);
+  const at = list.findIndex((x) => x.id === target.id);
+  if (at < 0) return false;
+  list.splice(before ? at : at + 1, 0, state.medicines.find((x) => x.id === m.id) || m);
+  const want = new Map(list.map((x, k) => [x.id, k + 1]));
   const changed = list.filter((x) => want.get(x.id) !== x.order);
-  if (state.demo) {
-    changed.forEach((x) => { const live = state.medicines.find((y) => y.id === x.id); if (live) live.order = want.get(x.id); });
-    state.medicines = sortMedicines(state.medicines);
-    renderMeds();
-    return true;
-  }
+  const apply = () => { changed.forEach((x) => { const live = state.medicines.find((y) => y.id === x.id); if (live) live.order = want.get(x.id); }); state.medicines = sortMedicines(state.medicines); };
+  if (state.demo) { apply(); renderMeds(); return true; }
   try {
     const batch = writeBatch(db);
     changed.forEach((x) => batch.set(hdoc('medicines', x.id), { order: want.get(x.id) }, { merge: true }));
     await batch.commit();
-    /* the snapshot follows, but the sheet open now reads state at once */
-    changed.forEach((x) => { const live = state.medicines.find((y) => y.id === x.id); if (live) live.order = want.get(x.id); });
-    state.medicines = sortMedicines(state.medicines);
+    apply(); // the snapshot follows, but a sheet open now reads state at once
     return true;
   } catch (e) { console.error(e); toast('Could not move it'); return false; }
 }
+/* One step up or down within `list` (the whole list in Manage medicines and Edit medicine; the card's own
+   section on the Meds tab, so Senna moves among the scheduled ones) */
+async function moveMed(m, dir, list) {
+  list = list || sortMedicines(state.medicines);
+  const i = list.findIndex((x) => x.id === m.id), j = i + dir;
+  if (i < 0 || j < 0 || j >= list.length) return false;
+  return placeMed(m, list[j], dir < 0);
+}
 /* Up and down for one medicine (v216): 44px arrows with the name in the spoken label; `after` redraws */
-function medMoveButtons(m, after) {
-  const { n, of } = medPlace(m);
+function medMoveButtons(m, after, list) {
+  const { n, of } = medPlace(m, list);
   const btn = (dir, word) => h('button', { class: 'medrow-move', type: 'button', 'aria-label': 'Move ' + m.name + ' ' + word,
-    disabled: dir < 0 ? n <= 1 : n >= of, onclick: async () => { if (await moveMed(m, dir)) after(dir); } }, icon(word));
+    disabled: dir < 0 ? n <= 1 : n >= of, onclick: async () => { if (await moveMed(m, dir, list)) after(dir); } }, icon(word));
   return h('span', { class: 'medrow-moves' }, btn(-1, 'up'), btn(1, 'down'));
 }
+/* Press and hold a card's name, then slide it up or down its section (v217, Mark: "hold the medicine down and
+   after say 2 seconds you can just slide it up and down"). Touch only (a desktop has the arrows): after
+   MED_HOLD_MS without the finger moving, the card lifts (.is-dragging), the page stops scrolling, the card
+   follows the finger and swaps places with the card whose middle it passes; letting go saves the new place
+   through placeMed(). A finger that moves first is an ordinary scroll, and a tap still opens the card. */
+const MED_HOLD_MS = 1000;
+function medDrag(card, m, handle, section) {
+  let timer = null, startY = 0, startScroll = 0, dragging = false, moved = false;
+  const shift = (y) => (y - startY) + (window.scrollY - startScroll);
+  const cards = () => [...card.parentNode.querySelectorAll('.card.med')];
+  const end = () => {
+    clearTimeout(timer); timer = null;
+    if (!dragging) return;
+    dragging = false;
+    card.classList.remove('is-dragging'); card.style.transform = '';
+    document.body.classList.remove('is-med-dragging');
+    const list = cards().map((c) => state.medicines.find((x) => x.id === c.dataset.med)).filter(Boolean);
+    const i = list.findIndex((x) => x.id === m.id);
+    const was = section.findIndex((x) => x.id === m.id);
+    if (i === was) return;
+    const target = i > was ? list[i - 1] : list[i + 1];
+    placeMed(m, target, i < was).then((ok) => { if (ok) toast(m.name + ' moved'); else renderMeds(); });
+  };
+  handle.addEventListener('touchstart', (ev) => {
+    if (state.readOnly || state.viewer || ev.touches.length !== 1) return;
+    startY = ev.touches[0].clientY; startScroll = window.scrollY; moved = false;
+    timer = setTimeout(() => {
+      timer = null; dragging = true; moved = true;
+      card.classList.add('is-dragging'); document.body.classList.add('is-med-dragging');
+      if (navigator.vibrate) navigator.vibrate(30);
+    }, MED_HOLD_MS);
+  }, { passive: true });
+  handle.addEventListener('touchmove', (ev) => {
+    const y = ev.touches[0].clientY;
+    if (!dragging) { if (Math.abs(y - startY) > 8) { clearTimeout(timer); timer = null; } return; }
+    ev.preventDefault();
+    /* keep the page moving when the finger nears an edge; the card follows the document, so the scroll is added */
+    if (y < 90) window.scrollBy(0, -8); else if (y > window.innerHeight - 90) window.scrollBy(0, 8);
+    card.style.transform = 'translateY(' + shift(y) + 'px)';
+    const r = card.getBoundingClientRect(), mid = r.top + r.height / 2;
+    const prev = card.previousElementSibling, next = card.nextElementSibling;
+    const midOf = (el) => { const b = el.getBoundingClientRect(); return b.top + b.height / 2; };
+    const swap = (other, before) => { const t0 = card.getBoundingClientRect().top; card.parentNode.insertBefore(before ? card : other, before ? other : card); startY += card.getBoundingClientRect().top - t0; card.style.transform = 'translateY(' + shift(y) + 'px)'; };
+    if (prev && prev.classList.contains('med') && mid < midOf(prev)) swap(prev, true);
+    else if (next && next.classList.contains('med') && mid > midOf(next)) swap(next, false);
+  }, { passive: false });
+  handle.addEventListener('touchend', end, { passive: true });
+  handle.addEventListener('touchcancel', end, { passive: true });
+  handle.addEventListener('click', (ev) => { if (moved) { ev.preventDefault(); ev.stopImmediatePropagation(); moved = false; } }, true);
+  handle.addEventListener('contextmenu', (ev) => { if (dragging || timer) ev.preventDefault(); });
+}
+
 function countMedOnDay(medId, day) {
   const src = day >= (state.recentFrom || '') ? state.recentEntries : state.dayEntries;
   return src.filter((e) => e.type === 'med' && e.medId === medId && e.day === day).length;
@@ -8298,9 +8350,9 @@ function renderMeds() {
   const day = state.selectedDay;
   const sched = activeScheduled(day).filter((m) => !hospitalHidden(m));
   const prn = activePrn().filter((m) => !hospitalHidden(m));
-  $('meds-scheduled').replaceChildren(...sched.map((m) => medCard(m, day)));
+  $('meds-scheduled').replaceChildren(...sched.map((m) => medCard(m, day, sched)));
   if (!sched.length) $('meds-scheduled').append(h('p', { class: 'empty', 'data-art': 'pill', text: 'No scheduled medicines.' }));
-  $('meds-prn').replaceChildren(...prn.map((m) => medCard(m, day)));
+  $('meds-prn').replaceChildren(...prn.map((m) => medCard(m, day, prn)));
   if (!prn.length) $('meds-prn').append(h('p', { class: 'empty', 'data-art': 'pill', text: 'No when-needed medicines.' }));
   const done = finishedCourses(day).filter((m) => m.courseEnd >= addDays(day, -FINISHED_SHOW_DAYS));
   $('meds-done').replaceChildren(...done.map((m) => finishedCard(m)));
@@ -9222,13 +9274,13 @@ function medAutoOpenWhy(m, day) {
   if (m.hospital && isToday && countMedOnDay(m.id, day)) return 'Given in hospital today.';
   return '';
 }
-function medCard(m, day) {
+function medCard(m, day, section) {
   const isToday = day === todayStr();
   const count = countMedOnDay(m.id, day);
   const last = lastMedEntry(m.id);
   const why = medClosedSet().has(m.id) ? '' : medAutoOpenWhy(m, day);
   const open = medOpenSet().has(m.id) || !!why;
-  const card = h('div', { class: 'card med' + (m.hospital ? ' is-hospital' : '') + (open ? ' is-open' : '') });
+  const card = h('div', { class: 'card med' + (m.hospital ? ' is-hospital' : '') + (open ? ' is-open' : ''), 'data-med': m.id });
 
   /* the one status line on the compact card */
   const line = h('div', { class: 'med-line' });
@@ -9261,6 +9313,7 @@ function medCard(m, day) {
     ? h('button', { class: 'btn btn-primary med-log', type: 'button', 'aria-label': 'Log ' + m.name + ' now', onclick: () => logMed(m) }, 'Log now')
     : h('button', { class: 'btn btn-primary med-log', type: 'button', 'aria-label': 'Log a dose of ' + m.name, onclick: () => logMedAtTime(m) }, 'Log a dose');
   card.append(h('div', { class: 'med-top' }, toggle, logBtn));
+  if (section && section.length > 1 && !(state.readOnly || state.viewer)) medDrag(card, m, toggle, section);
 
   /* the rest, shown when open */
   const more = h('div', { class: 'med-more' });
@@ -9299,6 +9352,13 @@ function medCard(m, day) {
     isToday ? h('button', { class: 'btn btn-secondary', type: 'button', onclick: () => logMedAtTime(m) }, 'Other time') : null));
   more.append(h('div', { class: 'med-side' },
     h('button', { class: 'btn btn-link btn-small med-sidefx', type: 'button', 'aria-label': 'Log a side effect of ' + m.name, onclick: () => logSideEffect({ kind: 'med', id: m.id, name: m.name }) }, 'Log a side effect')));
+  /* its place in this section, with up and down (v217); a hold on the name drags it instead */
+  if (section && section.length > 1 && !(state.readOnly || state.viewer)) {
+    const p = medPlace(m, section);
+    more.append(h('div', { class: 'med-order' },
+      h('span', { class: 'med-order-label', text: `Place ${p.n} of ${p.of}. Or hold the name and slide it.` }),
+      medMoveButtons(m, () => { medOpenSet().add(m.id); renderMeds(); const c = document.querySelector('.card.med[data-med="' + m.id + '"] .medrow-move:not([disabled])'); if (c) c.focus(); }, section)));
+  }
   card.append(more);
   return card;
 }
@@ -9799,26 +9859,15 @@ function renderHospitalDoses() {
 
 function openManageMeds() {
   const list = h('div', { class: 'medlist' });
-  const canMove = !(state.readOnly || state.viewer);
-  const draw = (focusId, dir) => {
-    list.replaceChildren(...sortMedicines(state.medicines).map((m) => {
-      const cls = medClass(m);
-      return h('div', { class: 'medrow' + (m.active === false ? ' is-inactive' : ''), 'data-med': m.id },
-        canMove && state.medicines.length > 1 ? medMoveButtons(m, (d) => draw(m.id, d)) : null,
-        h('span', { class: 'medrow-name' }, h('span', { class: 'medrow-title', text: m.name }), h('small', { class: 'medrow-sub medrow-class', text: cls || 'Other' })),
-        h('span', { class: 'pill ' + (medStatus(m).text === 'Course complete' ? 'pill-green' : m.kind === 'prn' ? 'pill-amber' : 'pill-teal'), text: medStatus(m).text === 'Course complete' ? 'Course complete' : m.kind === 'prn' ? 'When needed' : 'Scheduled' }),
-        h('button', { class: 'btn btn-secondary btn-small', type: 'button', onclick: () => openEditMed(m) }, 'Edit'));
-    }));
-    if (focusId) {
-      const row = list.querySelector('[data-med="' + focusId + '"]');
-      const b = row && row.querySelectorAll('.medrow-move')[dir < 0 ? 0 : 1];
-      const alt = row && row.querySelector('.medrow-move:not([disabled])');
-      (b && !b.disabled ? b : alt || row).focus();
-    }
-  };
-  draw();
+  sortMedicines(state.medicines).forEach((m) => {
+    const cls = medClass(m);
+    list.append(h('div', { class: 'medrow' + (m.active === false ? ' is-inactive' : ''), 'data-med': m.id },
+      h('span', { class: 'medrow-name' }, h('span', { class: 'medrow-title', text: m.name }), h('small', { class: 'medrow-sub medrow-class', text: cls || 'Other' })),
+      h('span', { class: 'pill ' + (medStatus(m).text === 'Course complete' ? 'pill-green' : m.kind === 'prn' ? 'pill-amber' : 'pill-teal'), text: medStatus(m).text === 'Course complete' ? 'Course complete' : m.kind === 'prn' ? 'When needed' : 'Scheduled' }),
+      h('button', { class: 'btn btn-secondary btn-small', type: 'button', onclick: () => openEditMed(m) }, 'Edit')
+    ));
+  });
   const body = h('div', null,
-    canMove && state.medicines.length > 1 ? h('p', { class: 'hint', text: 'The arrows set the order on the Meds tab and in Log a dose. A new medicine goes to the bottom.' }) : null,
     list,
     h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => openEditMed(null) }, 'Add a medicine'),
     h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Close')
@@ -9929,14 +9978,6 @@ function openEditMed(m, prefill) {
   hospital.addEventListener('change', sync);
   sync();
 
-  /* where it sits in the lists (v216): the arrows save at once, the rest of the sheet on Save */
-  const orderRow = () => {
-    const label = h('span', { class: 'fieldlabel', text: '' });
-    const wrap = h('div', { class: 'field med-order' });
-    const draw = () => { const p = medPlace(m); label.textContent = 'Place in the list: ' + p.n + ' of ' + p.of; wrap.replaceChildren(label, medMoveButtons(m, () => { draw(); const b = wrap.querySelector('.medrow-move:not([disabled])'); if (b) b.focus(); })); };
-    draw();
-    return h('div', null, wrap, h('p', { class: 'hint', text: 'The order on the Meds tab and in Log a dose. Moving it is saved straight away.' }));
-  };
   const body = h('div', null,
     isNew && explainAvailable() ? h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => readMedicinePhoto((data) => openEditMed(null, data), () => openEditMed(null, pf)) }, 'Read it from a photo') : null,
     isNew && explainAvailable() ? h('p', { class: 'hint', text: "A photo of the box or the pharmacy label. Daybook Assistant (AI from Anthropic, in the US) reads it, and the details fill in below. It can misread a label, so check the name and dose before adding." }) : null,
@@ -9952,7 +9993,6 @@ function openEditMed(m, prefill) {
     hospFields,
     field('Type', kind), schedFields, prnFields,
     isNew ? null : h('label', { class: 'check' }, active, h('span', { text: 'Currently in use' })),
-    isNew || state.medicines.length < 2 ? null : orderRow(),
     h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
       if (!name.value.trim()) { toast('Please enter a name'); return; }
       const data = {
