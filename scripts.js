@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '208';
+const APP_VERSION = '209';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -2010,7 +2010,7 @@ $('settings-setup').addEventListener('click', () => openSetup('full'));
 $('settings-stretch-nudge').addEventListener('change', async (ev) => {
   const on = ev.target.checked;
   if (state.demo) { state.profile = { ...state.profile, stretchNudge: on }; return; }
-  try { await setDoc(hdoc('profile', 'main'), { stretchNudge: on }, { merge: true }); toast(on ? 'Nudge on, at 10:00' : 'Nudge off'); }
+  try { await setDoc(hdoc('profile', 'main'), { stretchNudge: on }, { merge: true }); touchReminderPlan(); toast(on ? 'Nudge on, at 10:00' : 'Nudge off'); }
   catch (e) { console.error(e); ev.target.checked = !on; toast('Could not change this setting'); }
 });
 
@@ -9094,7 +9094,7 @@ function askDoseForm(m) {
         const updated = { ...m, ...data };
         try {
           if (state.demo) Object.assign(state.medicines.find((x) => x.id === m.id) || {}, data);
-          else await setDoc(hdoc('medicines', m.id), data, { merge: true });
+          else { await setDoc(hdoc('medicines', m.id), data, { merge: true }); touchReminderPlan(); }
           Object.assign(m, data);
         } catch (e) { console.error(e); toast('Could not save the dose'); return; }
         result = updated; closeSheet();
@@ -9264,7 +9264,7 @@ function promptMealMeds(mealAt) {
         block.remove(); finish();
         const at = new Date(Date.now() + 15 * 60 * 1000);
         if (state.demo) { toast('Reminders are not sent from the preview'); return; }
-        try { await setDoc(doc(hcol('reminders')), { at: Timestamp.fromDate(at), medId: m.id, medName: m.name, dose: m.dose || '', sent: false, addedBy: state.name, createdAt: serverTimestamp() }); toast(`Reminder set for ${fmtTime(at)}`); }
+        try { await setDoc(doc(hcol('reminders')), { at: Timestamp.fromDate(at), medId: m.id, medName: m.name, dose: m.dose || '', sent: false, addedBy: state.name, createdAt: serverTimestamp() }); touchReminderPlan('oneoff'); toast(`Reminder set for ${fmtTime(at)}`); }
         catch (e) { console.error(e); toast('Could not set the reminder'); }
       } }, 'Remind me in 15 minutes') : null,
       h('button', { class: 'btn btn-link btn-block', type: 'button', onclick: () => { block.remove(); finish(); } }, 'Not this time')
@@ -9300,6 +9300,12 @@ async function bridgeCall(path, payload, fallbackMessage) {
     err.code = data && data.error; err.status = r.status; err.data = data; throw err;
   }
   return data;
+}
+/* Tells the bridge a household's reminder plan has changed (v209): after a medicine is saved, reminders switched on or off,
+   the nudge switched, or a one-off reminder written. Fire and forget: the bridge rebuilds its own copy once a day anyway. */
+function touchReminderPlan(what) {
+  if (state.demo || !BRIDGE || !(auth && auth.currentUser)) return;
+  bridgeCall('/plan', { what: what || 'refresh' }).catch((e) => console.warn('plan', e && e.message));
 }
 async function bridgeExplain(payload) {
   const data = await bridgeCall('/explain', payload, 'Could not reach Daybook Assistant. Try again in a moment, or use Send to my AI app.');
@@ -9352,14 +9358,14 @@ async function setReminders(on) {
     const existing = await reg.pushManager.getSubscription();
     if (!on) {
       if (existing) { await deleteDoc(hdoc('pushSubs', pushSubId(existing.endpoint))).catch(() => {}); await existing.unsubscribe(); }
-      toast('Reminders off on this phone');
+      toast('Reminders off on this phone'); touchReminderPlan();
     } else {
       const perm = await Notification.requestPermission();
       if (perm !== 'granted') { box.checked = false; toast('Notifications were not allowed'); await syncReminders(); return; }
       const sub = existing || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(PUSH.publicKey) });
       const j = sub.toJSON();
       await setDoc(hdoc('pushSubs', pushSubId(sub.endpoint)), { endpoint: sub.endpoint, keys: { p256dh: j.keys.p256dh, auth: j.keys.auth }, private: $('settings-private').checked, addedBy: state.name, uid: state.user ? state.user.uid : null, agent: navigator.userAgent.slice(0, 120), addedAt: serverTimestamp() }, { merge: true });
-      toast('Reminders on for this phone');
+      toast('Reminders on for this phone'); touchReminderPlan();
     }
   } catch (e) { console.error(e); toast('Could not change reminders on this phone'); }
   await syncReminders();
@@ -9723,6 +9729,7 @@ function openEditMed(m, prefill) {
       const ref = isNew ? doc(hcol('medicines')) : hdoc('medicines', m.id);
       try {
         await setDoc(ref, data, { merge: true });
+        touchReminderPlan();
         toast(isNew ? 'Medicine added' : 'Medicine updated');
       } catch (e) { console.error(e); toast('Could not save medicine'); }
     } }, isNew ? 'Add medicine' : 'Save changes'),
