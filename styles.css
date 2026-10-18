@@ -1077,7 +1077,7 @@ body.is-med-dragging { overflow: hidden; }
 /* Reports: five range buttons (7/14/30/90 and Custom) have to sit on one line on a phone */
 #view-food .seg, #view-notes .seg { white-space: nowrap; font-size: 15px; padding-left: 4px; padding-right: 4px; }
 @media (max-width: 359px) {
-  #view-food .segmented, #view-notes .segmented, #view-mood .segmented, #view-pain .segmented { flex-wrap: wrap; }
+  #view-food .segmented, #view-notes .segmented, #view-mood .segmented, #view-pain .segmented, #view-ibd .segmented { flex-wrap: wrap; }
   #view-food .seg, #view-notes .seg { flex: 1 1 30%; }
 }
 /* Reports: custom From and To range */
@@ -1886,3 +1886,9 @@ button.res-row:active { transform: translateY(1px); }
 .resrow-head { display: flex; justify-content: space-between; align-items: center; gap: var(--s-2); margin: 0 0 var(--s-2); }
 .resrow-name { font-weight: 600; }
 .resrow-head .btn-small { min-height: 44px; }
+
+/* ---------- The Crohn's and colitis report screen (v220) ---------- */
+.briefcard p { margin: 0 0 var(--s-2); }
+.briefcard p:last-child { margin-bottom: 0; }
+.stripcard p { margin: 0; }
+.stripcard .card-title { margin-bottom: var(--s-1); }
