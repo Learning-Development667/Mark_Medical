@@ -28,8 +28,8 @@ on:
         description: "Where the Beta code goes (beta-code), e.g. Bincey's patients"
         required: false
         type: string
-      off:
-        description: "beta-code: switch this code off"
+      switch_off:
+        description: "beta-code: switch this code off (named switch_off, since a bare off is read as the word false in YAML)"
         required: false
         type: boolean
         default: false
@@ -97,5 +97,5 @@ jobs:
           MOVE: ${{ inputs.move && 'yes' || 'no' }}
           CODE: ${{ inputs.code }}
           LABEL: ${{ inputs.label }}
-          OFF: ${{ inputs.off && 'yes' || 'no' }}
+          OFF: ${{ inputs.switch_off && 'yes' || 'no' }}
         run: node tools/household_admin.mjs
