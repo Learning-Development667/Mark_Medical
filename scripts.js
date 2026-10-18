@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '221';
+const APP_VERSION = '222';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -13765,14 +13765,15 @@ function openContactsSheet(addNew) {
 $('app-version').textContent = versionText();
 syncStage();
 
-/* ---- Opener: the loading page, shown on every cold start while the account check runs. The Mark 1 Apps
-   film plays every time (since v88; until then only on a phone's first visit, after which a still frame),
-   from one second in (OPENER_START_S, the film's quiet lead-in), so about three seconds; a tap anywhere,
-   the Skip button, a decode error or the OPENER_CAP_MS cap ends it. The page leaves once the film is done
-   and the app or the sign-in screen is ready, and after fifteen seconds regardless. Reduced motion: the
-   still frame for as long as loading takes, half a second at least so it never flashes. The harness sets
-   localStorage daybook.opener.nofilm to skip the film so no test waits on it. ---- */
-const OPENER_START_S = 1, OPENER_CAP_MS = 4500;
+/* ---- Opener: the loading page, shown on every cold start while the account check runs. Since v222 a short
+   watercolour clip (icons/opener.mp4, about four seconds, no sound) fills the screen with the name over it as
+   real text; before that it was the Mark 1 Apps film (v88 to v221), which now lives on the website and the
+   company's own pages. It plays from the start every time; a tap anywhere, the Skip button, a decode error or
+   the OPENER_CAP_MS cap ends it. The page leaves once the clip is done and the app or the sign-in screen is
+   ready, and after fifteen seconds regardless. Reduced motion: the still frame (the clip's poster) for as long
+   as loading takes, half a second at least so it never flashes. The harness sets localStorage
+   daybook.opener.nofilm to skip the clip so no test waits on it. ---- */
+const OPENER_START_S = 0, OPENER_CAP_MS = 4500;
 (function opener() {
   const el = $('opener'), video = $('opener-video'), skip = $('opener-skip');
   if (!el || !video) return;
@@ -13805,9 +13806,9 @@ const OPENER_START_S = 1, OPENER_CAP_MS = 4500;
     video.addEventListener('ended', endFilm);
     video.addEventListener('error', endFilm);
     setTimeout(endFilm, OPENER_CAP_MS);
-    /* skip the quiet lead-in: seek once the browser knows the file, then play */
+    /* play from the start (OPENER_START_S skips a quiet lead-in when a clip has one; this one has none) */
     const begin = () => {
-      try { if (video.currentTime < OPENER_START_S) video.currentTime = OPENER_START_S; } catch (e) { /* not seekable yet: play from the start */ }
+      try { if (OPENER_START_S && video.currentTime < OPENER_START_S) video.currentTime = OPENER_START_S; } catch (e) { /* not seekable yet: play from the start */ }
       const p = video.play();
       if (p && typeof p.catch === 'function') p.catch(endFilm);
     };
