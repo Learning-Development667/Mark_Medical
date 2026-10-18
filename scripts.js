@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '212';
+const APP_VERSION = '213';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -562,10 +562,13 @@ function clearSheetDrafts() {
 function offerDraft() {
   if (state.readOnly || state.viewer) return;
   const list = Object.values(readDrafts()).filter((d) => d.reopen).sort((a, b) => b.at - a.at);
-  for (const k of keptCheckins()) if (!findCheckin(k.day, k.slot)) list.push({ at: k.at, reopen: 'checkin:' + k.slot + ':' + k.day, title: checkinTitle(k.slot) });
+  /* A check-in kept in the circle's shared folder by someone else is theirs, not yours (v213, Mark: "Your unfinished carer's
+     view was kept" at every start, for a carer's view Shelley had started on her phone); it still opens from its own row. */
+  for (const k of keptCheckins()) if (!findCheckin(k.day, k.slot) && (k.local || !k.by || k.by === state.name)) list.push({ at: k.at, reopen: 'checkin:' + k.slot + ':' + k.day, title: checkinTitle(k.slot) });
   list.sort((a, b) => b.at - a.at);
-  const d = list[0];
+  const d = list.find((x) => !offeredBefore(x.reopen, x.at));
   if (!d) return;
+  markOffered(d.reopen, d.at);
   const what = d.reopen === 'note' ? 'note' : d.reopen === 'question' ? 'question for the team' : d.reopen === 'vitals' ? 'vitals' : /^checkin:/.test(d.reopen) ? (d.title || 'check-in').toLowerCase() : 'words';
   const were = d.reopen === 'vitals' ? 'were' : 'was';
   toast(`Your unfinished ${what} ${were} kept${/^checkin:/.test(d.reopen) ? ', as you left it' : ' on this phone'}.`, { label: 'Open it', onClick: () => {
@@ -616,13 +619,17 @@ function keptCheckins() {
       const k = localStorage.key(i);
       if (!k || !k.startsWith(PROG_PREFIX)) continue;
       const p = JSON.parse(localStorage.getItem(k) || 'null');
-      if (p && p.at > cut) out[k.slice(PROG_PREFIX.length)] = p.at;
+      if (p && p.at > cut) out[k.slice(PROG_PREFIX.length)] = { at: p.at, by: p.by || '', local: true };
     }
   } catch (e) { /* nothing kept */ }
   const remote = (state.profile && state.profile.checkinDrafts) || {};
-  for (const k of Object.keys(remote)) { const at = Number(remote[k] && remote[k].at) || 0; if (at > cut && at > (out[k] || 0)) out[k] = at; }
-  return Object.keys(out).map((k) => { const [slot, day] = k.split(':'); return { slot, day, at: out[k] }; }).sort((a, b) => b.at - a.at);
+  for (const k of Object.keys(remote)) { const at = Number(remote[k] && remote[k].at) || 0; if (at > cut && at > ((out[k] && out[k].at) || 0)) out[k] = { at, by: (remote[k] && remote[k].by) || '', local: false }; }
+  return Object.keys(out).map((k) => { const [slot, day] = k.split(':'); return { slot, day, at: out[k].at, by: out[k].by, local: out[k].local }; }).sort((a, b) => b.at - a.at);
 }
+/* The start-up offer is made once per draft per phone (v213): daybook.draft.offered holds the key and the time offered */
+const OFFERED_KEY = 'daybook.draft.offered';
+function offeredBefore(key, at) { try { const m = JSON.parse(localStorage.getItem(OFFERED_KEY) || '{}'); return (m[key] || 0) >= at; } catch (e) { return false; } }
+function markOffered(key, at) { try { const m = JSON.parse(localStorage.getItem(OFFERED_KEY) || '{}'); m[key] = at; const keys = Object.keys(m); if (keys.length > 40) keys.sort((x, y) => m[x] - m[y]).slice(0, keys.length - 40).forEach((x) => delete m[x]); localStorage.setItem(OFFERED_KEY, JSON.stringify(m)); } catch (e) { /* no storage */ } }
 function confirmSheet(title, message, okLabel, danger) {
   return new Promise((resolve) => {
     let result = false; // closing any other way (the X, the backdrop, Escape) counts as Cancel
