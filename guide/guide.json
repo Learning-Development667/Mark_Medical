@@ -1,5 +1,5 @@
 {
- "made": "2026-10-14",
+ "made": "2026-10-18",
  "width": 390,
  "height": 844,
  "topics": [
@@ -14,7 +14,7 @@
      "caption": "On Today, tap Vitals. The other tiles log pain, a drink, food, a note, sleep, bowels, a symptom or a dose the same way.",
      "tap": {
       "x": 0.187,
-      "y": 0.612
+      "y": 0.248
      }
     },
     {
@@ -58,7 +58,7 @@
      "caption": "One question a screen. Slide to the score, 1 to 10. Hours slept come from Apple Health when it is connected.",
      "tap": {
       "x": 0.675,
-      "y": 0.944
+      "y": 0.968
      }
     },
     {
@@ -82,7 +82,7 @@
      "caption": "The review: every answer, tap one to change it, then Save.",
      "tap": {
       "x": 0.5,
-      "y": 0.933
+      "y": 0.968
      }
     },
     {
@@ -103,15 +103,15 @@
    "steps": [
     {
      "file": "meds-1.webp",
-     "caption": "The Meds tab lists today's medicines, a dot for each dose due. Tap Log now when one is taken.",
+     "caption": "The Meds tab lists today's medicines, each with how many doses are done. Tap Log now when one is taken.",
      "tap": {
-      "x": 0.285,
-      "y": 0.611
+      "x": 0.772,
+      "y": 0.381
      }
     },
     {
      "file": "meds-2.webp",
-     "caption": "Logged, with the time as a chip. A when-needed medicine says when the next dose can be given, and when the day's maximum is reached."
+     "caption": "Logged: the line counts it, and the name opens the card with the time of each dose, Other time and Log a side effect. A when-needed medicine says when the next dose can be given."
     },
     {
      "file": "meds-3.webp",
@@ -158,7 +158,7 @@
      "caption": "Type it, or Tap to speak, and say who it is for: Oncology, Gastro, General, Dietitian or the Pain team. It goes to the top of that report.",
      "tap": {
       "x": 0.5,
-      "y": 0.959
+      "y": 0.868
      }
     },
     {
@@ -190,7 +190,7 @@
      "caption": "Four words for each question, then three boxes in your own words. Every tap is saved as you go.",
      "tap": {
       "x": 0.729,
-      "y": 0.613
+      "y": 0.417
      }
     },
     {
@@ -198,7 +198,7 @@
      "caption": "Finish when it is done. Close it instead and Today says it is not finished yet, with everything kept.",
      "tap": {
       "x": 0.5,
-      "y": 0.87
+      "y": 0.871
      }
     },
     {
@@ -218,7 +218,7 @@
      "caption": "The Reports tab: Notes for the team first, then the Food diary, Mood and wellbeing, Pain and pain relief, Documents, and the charts of every reading.",
      "tap": {
       "x": 0.5,
-      "y": 0.179
+      "y": 0.213
      }
     },
     {
@@ -266,7 +266,7 @@
      "caption": "A name, and a phone number or an email address, or both. Save.",
      "tap": {
       "x": 0.5,
-      "y": 2.646
+      "y": 0.873
      }
     },
     {
@@ -306,12 +306,96 @@
      "caption": "On the Treatment tab, the Carer's view: the day's energy, sickness, eating, pain and mood as you see it.",
      "tap": {
       "x": 0.5,
-      "y": 0.434
+      "y": 0.435
      }
     },
     {
      "file": "carer-4.webp",
      "caption": "The same sliders, worded as you see it. They are shown beside the patient's own scores on the treatment cycle chart, never mixed with them."
+    }
+   ]
+  },
+  {
+   "key": "story",
+   "title": "From the day to the report",
+   "sub": "A day's logging, a question when it comes to you, then two pages for the team, sent from the app.",
+   "intro": "This is what Daybook is for: the days between appointments, logged as they happen, become the report for the next one.",
+   "steps": [
+    {
+     "file": "story-1.webp",
+     "caption": "A day starts on Today. The morning check-in is due: a minute, one question a screen.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.325
+     }
+    },
+    {
+     "file": "story-2.webp",
+     "caption": "How you slept, anything new overnight, pain and mood. Slide to the score, or Tap to speak for the words.",
+     "tap": {
+      "x": 0.675,
+      "y": 0.944
+     }
+    },
+    {
+     "file": "story-3.webp",
+     "caption": "Saved as a card. Through the day the tiles log a dose, a drink, a meal, a symptom or a bowel movement in a few taps.",
+     "tap": {
+      "x": 0.813,
+      "y": 0.435
+     }
+    },
+    {
+     "file": "story-4.webp",
+     "caption": "A dose is one tap on the medicine. When-needed ones say whether the next can be given yet.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.38
+     }
+    },
+    {
+     "file": "story-5.webp",
+     "caption": "A question comes to you at 3am. Write it down and it waits for the appointment.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.056
+     }
+    },
+    {
+     "file": "story-6.webp",
+     "caption": "Say who it is for, and it goes to the top of that team's report.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.868
+     }
+    },
+    {
+     "file": "story-7.webp",
+     "caption": "Before the appointment, open Reports. Everything since the last one is already there.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.213
+     }
+    },
+    {
+     "file": "story-8.webp",
+     "caption": "Notes for the team: the questions, what changed, the charts and the week's notes, on two pages. Preview shows them as they print.",
+     "tap": {
+      "x": 0.264,
+      "y": 0.363
+     }
+    },
+    {
+     "file": "story-9.webp",
+     "caption": "Two A4 pages the team can read in a minute, with room to write. Print them, or send them from the app."
+    },
+    {
+     "file": "story-10.webp",
+     "caption": "Send to the team emails the PDF to the nurse, the dietitian or the oncologist, with a copy to you. One tap, and it is done.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.844
+     }
     }
    ]
   }
