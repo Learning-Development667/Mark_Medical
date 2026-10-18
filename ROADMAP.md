@@ -36,7 +36,7 @@ Everything the app needs to do before the look changes, so nothing is restyled t
 - **Ongoing:** small fixes from day-to-day use go straight in (v97 to v105 came from a hospital bed); new ideas go into this list first.
 
 ## Stage 2: UI, how it looks
-10. **The icon.** Today's Home Screen icon is still the Care Log heartbeat. Mark makes the final image in Firefly (the two leaning shapes and a sun lead); full-bleed square, motif inside the middle 65 percent. Claude makes every size for the Home Screen and both stores. Done when it is on the phone.
+10. **The icon.** Made in v224: Mark's Firefly watercolour of two books and a sunrise, every size cut for the Home Screen, the manifest (plain and Android-padded) and the stores (`icons/icon-1024.png`). Mark: remove Daybook from the Home Screen and add it again to see it. Done when it is on Mark's phone; the Apple and Google store pages use `icon-1024.png` later.
 
 ## Stage 3: UX, how it feels to someone new
 11. **The set-up.** Done in v164: the walk-through after Create an account (the packs, the name, a contact, the Home Screen, Tap to speak), on More as the first row and in Settings to run again. Next in the same vein, in Mark's order (13 October 2026): Add new contact and Edit contacts above Who to contact on More (done, v165); Your week for carers, as they see it, opening on the Friday and saving as it goes (done, v166); a one-line Tap to speak instruction under the button the first few times, with a Guide under More (done, v167; action 13's PDF and the retake after the icon remain); the Reports tab as a grouped list, with new reports to follow (Treatment cycles, Readings for the GP, Crohn's and colitis, Menopause diary, Activity and physio, Year in review).
@@ -88,6 +88,7 @@ One at a time, each a few days with its sources checked, on the profile mechanis
 - An "AI used this month: about 12p" line under Settings, from the bridge's own token tally. Offered 4 October; build if wanted.
 
 ## Done
+- v224 The Home Screen icon is Mark's watercolour of two books and a sunrise, in every size, with Android-padded versions; the sign-in card shows it too. Tested in `t/t30.mjs`.
 - v223 An unfinished check-in is announced once per phone and only within a day, so the start-up message stops coming back at every login. Tested in `t/t29.mjs`.
 - v222 The opener is the sign-in watercolour: a short Firefly clip fills the screen, "My Medical Daybook" is real text over the pale sky, and the Mark 1 Apps mark is a small credit chip at the foot. The neon film is kept for the website and company pages. Tested in `t/t28.mjs`; the clip itself to be checked on a phone.
 - v221 Crohn's build 5: tummy pain, the gut in the way and nights up for the toilet in the check-ins with the pack, read by Notes for the team and the Crohn's and colitis report; the set-up's Crohn's step takes the advice line and the regular medicine. Tested in `t/t27.mjs`.
