@@ -40,6 +40,7 @@ Endpoints:
   that expires in seven days; `GET /invite-info?code=` says what a link is for; `POST /join` { code, name? } takes
   the invite up; `POST /member-remove` { uid } (the owner only). The demo project refuses all five.
 - `GET /push-test?key=<inbox key>` sends a test notification to every phone in that household.
+- `GET /usage?key=<BRIDGE_KEY>` (`&rebuild=1` counts now) and `POST /usage` from a sign-in in the operator's circle: the usage counts (v211), counted nightly at 03:30 London into `bridge/usage`; counts only, pseudonymous rows, no content.
 - `GET /remind-now?key=<BRIDGE_KEY>` runs the reminder check for every household by hand (the
   same thing the five-minute cron does).
 

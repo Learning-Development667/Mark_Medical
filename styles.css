@@ -1655,6 +1655,22 @@ body.is-readonly #more-setup, body.is-readonly .settings-setup-hint { display: n
 .guide-words li { margin-bottom: 6px; }
 .guide-words li.is-current { color: var(--teal); font-weight: 600; }
 @media (prefers-reduced-motion: reduce) { .guide-tap { animation: none; } }
+
+/* Usage, the operator's dashboard (v211) */
+.usage-card { margin-top: var(--s-4); }
+.usage-list { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; margin: var(--s-3) 0 0; font-size: 17px; }
+.usage-list dt { color: var(--text-secondary); }
+.usage-list dd { margin: 0; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 600; text-align: right; }
+.usage-bars { display: flex; align-items: flex-end; gap: 2px; height: 72px; margin-top: var(--s-3); padding: 0 2px; border-bottom: 1px solid var(--border-subtle); }
+.usage-bar { flex: 1 1 0; min-width: 2px; background: var(--teal-fill); border-radius: 2px 2px 0 0; }
+.usage-trend-line { margin-top: var(--s-2); font-size: 15px; }
+.usage-tablewrap { overflow-x: auto; margin-top: var(--s-3); -webkit-overflow-scrolling: touch; }
+.usage-table { border-collapse: collapse; font-size: 15px; min-width: 560px; width: 100%; }
+.usage-table th { text-align: left; font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); padding: 4px 8px 6px 0; border-bottom: 1px solid var(--border-subtle); }
+.usage-table td { padding: 8px 8px 8px 0; border-bottom: 1px solid var(--border-subtle); vertical-align: top; font-variant-numeric: tabular-nums; }
+.usage-table td.mono { font-family: var(--font-mono); }
+.usage-table tr.is-quiet td { color: var(--text-muted); }
+#view-usage .status .tile-sub { white-space: normal; overflow: visible; }
 .speakhint { margin: 6px 0 0; font-size: 15px; line-height: 1.4; color: var(--text-muted); }
 
 /* An edit of a saved check-in: Cancel with an unsaved change asks first, and one answer changed from the review comes straight back to it (v169) */
