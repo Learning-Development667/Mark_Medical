@@ -18,8 +18,8 @@ const QUALITY = 0.8;
   /* With no outside connection (the test machine), $DAYBOOK_HARNESS names the Playwright harness, whose routes() serves
      the Firebase stub, the chart and PDF libraries and the fonts from local copies; on a connected machine it is not needed. */
   if (process.env.DAYBOOK_HARNESS) await require(process.env.DAYBOOK_HARNESS).routes(context, {});
-  /* the preview's own markers (the Preview pill, the Guest chip) are not what a signed-in phone shows, so they are hidden in the pictures */
-  await page.addInitScript(() => { try { localStorage.setItem('daybook.opener.nofilm', '1'); localStorage.setItem('daybook.speak.hints', '3'); } catch (e) {} Object.defineProperty(window, 'DAYBOOK_DEMO', { configurable: true, set() {}, get() { return undefined; } }); document.addEventListener('DOMContentLoaded', () => { const st = document.createElement('style'); st.textContent = '#guest-pill, #user-chip { display: none !important; }'; document.head.appendChild(st); }); });
+  /* the preview's own markers (the Preview pill, the Guest chip) are not what a signed-in phone shows, and a toast from the step before would sit over the next picture, so they are hidden in the pictures */
+  await page.addInitScript(() => { try { localStorage.setItem('daybook.opener.nofilm', '1'); localStorage.setItem('daybook.speak.hints', '3'); } catch (e) {} Object.defineProperty(window, 'DAYBOOK_DEMO', { configurable: true, set() {}, get() { return undefined; } }); document.addEventListener('DOMContentLoaded', () => { const st = document.createElement('style'); st.textContent = '#guest-pill, #user-chip, #toast { display: none !important; }'; document.head.appendChild(st); }); });
   await page.clock.setFixedTime(new Date(CLOCK));
   await page.goto(BASE, { waitUntil: 'load' });
   await page.waitForSelector('#signin:not([hidden])');
@@ -53,6 +53,9 @@ const QUALITY = 0.8;
   const tab = async (name) => { await page.click(`.tab[data-tab="${name}"]`); await settle(500); };
   const closeSheet = async () => { await page.keyboard.press('Escape'); await settle(400); };
   const refresh = async () => { await page.click('#day-prev'); await page.click('#day-next'); await settle(); };
+  /* the side-effects step appears in the three days after a session (v189): Next past it, and any other step without a slider */
+  const toRange = async () => { for (let i = 0; i < 3 && !(await page.$('#sheet-body input[type="range"]')); i++) { await page.click('#sheet-body .btn-next'); await settle(300); } };
+  const toReview = async () => { for (let i = 0; i < 10 && !(await page.$('#sheet-body .btn-primary:has-text("Save")')); i++) { await page.click('#sheet-body .btn-next'); await settle(250); } };
   const today = await page.evaluate(() => window.daybookPreview.state.selectedDay);
   for (const f of fs.readdirSync(OUT)) if (f.endsWith('.webp')) fs.unlinkSync(path.join(OUT, f));
 
@@ -79,6 +82,7 @@ const QUALITY = 0.8;
   await page.fill('#sheet-body textarea', 'Nothing new overnight.');
   await shot('A written answer has Tap to speak under it: tap, say it, tap again to stop. Skip is always there.', '#sheet-body .btn-next');
   await page.click('#sheet-body .btn-next'); await settle();
+  await toRange();
   await slider('#sheet-body input[type="range"]', 3);
   await page.fill('#sheet-body textarea', 'Lower back, eased by the morning dose.');
   await shot('Pain right now, with where it is in words underneath. The words go on Notes for the team and the Pain report.', '#sheet-body .btn-next');
@@ -94,9 +98,10 @@ const QUALITY = 0.8;
   /* 3. medicines */
   begin('meds', 'Medicines and reminders', 'Log a dose, see what is due, set reminder times.', 'The Meds tab is the list; the Medicine tile on Today is the quick way to log a dose.');
   await tab('meds');
-  await shot('The Meds tab lists today\'s medicines, a dot for each dose due. Tap Log now when one is taken.', '#meds-scheduled .med-actions .btn-primary');
-  await page.click('#meds-scheduled .med-actions .btn-primary'); await settle(700);
-  await shot('Logged, with the time as a chip. A when-needed medicine says when the next dose can be given, and when the day\'s maximum is reached.');
+  await shot('The Meds tab lists today\'s medicines, each with how many doses are done. Tap Log now when one is taken.', '#meds-scheduled .med-log');
+  await page.click('#meds-scheduled .med-log'); await settle(700);
+  await page.click('#meds-scheduled .med-toggle'); await settle(500);
+  await shot('Logged: the line counts it, and the name opens the card with the time of each dose, Other time and Log a side effect. A when-needed medicine says when the next dose can be given.');
   await tab('today');
   await shot('From Today, the Medicine tile logs a dose without leaving the screen.', '.qa[data-add="medicine"]');
   await page.click('.qa[data-add="medicine"]'); await page.waitForSelector('#sheet:not([hidden])');
@@ -174,6 +179,40 @@ const QUALITY = 0.8;
   await shot('On the Treatment tab, the Carer\'s view: the day\'s energy, sickness, eating, pain and mood as you see it.', '#checkin-carer');
   await page.click('#checkin-carer'); await page.waitForSelector('#sheet:not([hidden])'); await settle();
   await shot('The same sliders, worded as you see it. They are shown beside the patient\'s own scores on the treatment cycle chart, never mixed with them.');
+  await closeSheet();
+
+  /* 9. the whole story, for the website (v230): a day's logging, a question, then the report made and sent */
+  begin('story', 'From the day to the report', 'A day\'s logging, a question when it comes to you, then two pages for the team, sent from the app.', 'This is what Daybook is for: the days between appointments, logged as they happen, become the report for the next one.');
+  await page.evaluate(() => { window.daybookPreview.state.account = { name: 'Guest', role: 'family', relation: 'patient' }; });
+  await page.evaluate((today) => { const st = window.daybookPreview.state; st.recentEntries = st.recentEntries.filter((e) => !(e.type === 'checkin' && e.day === today && (e.slot === 'morning' || e.slot === 'evening'))); st.dayEntries = st.recentEntries.filter((e) => e.day === st.selectedDay); }, today);
+  await tab('today'); await refresh();
+  await shot('A day starts on Today. The morning check-in is due: a minute, one question a screen.', '#checkin-morning');
+  await page.click('#checkin-morning'); await page.waitForSelector('#sheet:not([hidden])'); await settle();
+  await slider('#sheet-body input[type="range"]', 6);
+  await shot('How you slept, anything new overnight, pain and mood. Slide to the score, or Tap to speak for the words.', '#sheet-body .btn-next');
+  await toReview();
+  await page.click('#sheet-body .btn-primary:has-text("Save")'); await settle(700);
+  await shot('Saved as a card. Through the day the tiles log a dose, a drink, a meal, a symptom or a bowel movement in a few taps.', '.qa[data-add="medicine"]');
+  await page.click('.qa[data-add="medicine"]'); await page.waitForSelector('#sheet:not([hidden])'); await settle();
+  await shot('A dose is one tap on the medicine. When-needed ones say whether the next can be given yet.', '#sheet-body .doserow');
+  await page.click('#sheet-body .doserow >> nth=-1'); await settle(700);
+  if (await page.$('#sheet:not([hidden])')) await closeSheet();
+  await shot('A question comes to you at 3am. Write it down and it waits for the appointment.', '#question-now');
+  await page.click('#question-now'); await page.waitForSelector('#sheet:not([hidden])'); await settle();
+  await page.fill('#sheet-body textarea', 'Should I keep taking the anti-sickness tablets on the days I feel fine?');
+  await shot('Say who it is for, and it goes to the top of that team\'s report.', '#sheet-body .btn-primary');
+  await page.click('#sheet-body .btn-primary'); await settle(700);
+  await tab('vitals');
+  await shot('Before the appointment, open Reports. Everything since the last one is already there.', '#rep-notes');
+  await page.click('#rep-notes'); await page.waitForSelector('#view-notes:not([hidden])'); await settle(1500);
+  await shot('Notes for the team: the questions, what changed, the charts and the week\'s notes, on two pages. Preview shows them as they print.', '#notes-preview');
+  await page.click('#notes-preview');
+  await page.waitForFunction(() => { const f = document.querySelector('#sheet .viewer-frame'); return f && f.srcdoc; }, null, { timeout: 60000 }); await settle(1800);
+  await shot('Two A4 pages the team can read in a minute, with room to write. Print them, or send them from the app.');
+  await closeSheet();
+  await page.click('#notes-send'); await page.waitForSelector('#sheet:not([hidden])'); await settle();
+  await page.click('#sheet-body .pickrow'); await settle(900);
+  await shot('Send to the team emails the PDF to the nurse, the dietitian or the oncologist, with a copy to you. One tap, and it is done.', '#send-go, #sheet-body .btn-primary');
   await closeSheet();
 
   fs.writeFileSync(path.join(OUT, 'guide.json'), JSON.stringify({ made: new Date().toISOString().slice(0, 10), width: 390, height: 844, topics }, null, 1));

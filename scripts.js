@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '229';
+const APP_VERSION = '230';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -2379,7 +2379,7 @@ document.querySelectorAll('.tab').forEach((btn) => {
    pages and the Chemo tab no longer need a heading of their own */
 const PAGE_TITLES = { today: 'Today', meds: 'Medicines', vitals: 'Reports', chemo: 'Treatment plan', exercise: 'Exercise', more: 'More', food: 'Food diary', notes: 'Notes for the team', mood: 'Mood and wellbeing', pain: 'Pain and pain relief', docs: 'Documents', settings: 'Settings', guide: 'Guide', usage: 'Usage', results: 'Results', ibd: "Crohn's and colitis" };
 function setBrand(page) {
-  $('brand').replaceChildren('Daybook', page ? h('span', { class: 'brand-page', text: ': ' + page }) : null);
+  $('brand').replaceChildren('Daybook', ...(page ? [h('span', { class: 'brand-page', text: ': ' + page })] : [])); // never a bare null: replaceChildren() writes it as the word (v230)
   document.title = page ? 'Daybook: ' + page : 'My Medical Daybook';
 }
 
@@ -5885,7 +5885,8 @@ function openSendSheet(kind) {
         ? h('p', { class: 'hint', id: 'send-direct-hint', text: 'Daybook sends it for you, from reporting@mymedicaldaybook.co.uk in your name, with the PDF attached. Your own address' + (myEmail ? ', ' + myEmail + ',' : '') + ' is the reply address and gets a copy, so a reply comes straight to you.' })
         : h('p', { class: 'hint', text: 'Your Mail app opens with the PDF and this message, sent from your own email address. The address is copied, to paste into To. iPhone Mail leaves the subject empty, so the subject is also the first line of the message, to copy into Subject.' }),
       send,
-      direct ? h('button', { class: 'btn btn-link btn-block', type: 'button', id: 'send-other', onclick: share }, 'Send from my own Mail app instead') : null,
+      /* spread, never a bare null: replaceChildren() writes a null as the word "null" (v230) */
+      ...(direct ? [h('button', { class: 'btn btn-link btn-block', type: 'button', id: 'send-other', onclick: share }, 'Send from my own Mail app instead')] : []),
       h('button', { class: 'btn btn-link btn-block', type: 'button', onclick: pick }, 'Choose someone else'));
     subject.focus();
   };

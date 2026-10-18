@@ -12,7 +12,7 @@
    Firestore is written through its REST API with a Firebase service account, signed with
    WebCrypto. No Firebase SDK, no build step, nothing to install. */
 
-const ALLOWED_ORIGINS = ['https://learning-development667.github.io'];
+const ALLOWED_ORIGINS = ['https://learning-development667.github.io', 'https://mymedicaldaybook.co.uk', 'https://www.mymedicaldaybook.co.uk', 'https://app.mymedicaldaybook.co.uk']; // the app's origin, and the website's (the Beta code box asks /beta-info) once the domain is live
 
 export default {
   async fetch(request, env) {
