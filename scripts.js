@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '215';
+const APP_VERSION = '216';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -1742,8 +1742,7 @@ async function seedMedicinesIfEmpty() {
 
 function watchMedicines() {
   state.unsub.meds = onSnapshot(hcol('medicines'), (snap) => {
-    state.medicines = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
-      .sort((a, b) => (a.order || 0) - (b.order || 0) || a.name.localeCompare(b.name));
+    state.medicines = sortMedicines(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     renderMeds();
     renderTiles();
   }, (e) => console.error(e));
@@ -8232,6 +8231,56 @@ function activeScheduled(day) {
 function activePrn() {
   return state.medicines.filter((m) => m.active !== false && m.kind === 'prn');
 }
+/* The order of the medicines (v216). Every list (the Meds tab's Scheduled and When needed, the Medicine
+   tile's Log a dose, Manage medicines) shows medicines/{id}.order ascending: the field has been there since
+   the seed list, and a new medicine takes the highest order plus one, so it goes to the bottom. Mark wanted
+   his own order (the morning ones first, then the when-needed, Senna at night) with up and down controls,
+   in Manage medicines and in Edit medicine. moveMed() swaps a medicine with its neighbour in the whole list
+   (stopped ones included, so Manage medicines moves what it shows); orders missing or shared are first
+   numbered 1 to n in the order on screen, in the same batch. Finished courses (newest first) and Given in
+   hospital (the day's doses) keep their own order. `medicines` is family write: no rules change. */
+function sortMedicines(list) {
+  return list.slice().sort((a, b) => (a.order || 0) - (b.order || 0) || a.name.localeCompare(b.name));
+}
+function medPlace(m) {
+  const list = sortMedicines(state.medicines);
+  return { n: list.findIndex((x) => x.id === m.id) + 1, of: list.length };
+}
+async function moveMed(m, dir) {
+  const list = sortMedicines(state.medicines);
+  const i = list.findIndex((x) => x.id === m.id), j = i + dir;
+  if (i < 0 || j < 0 || j >= list.length) return false;
+  const orders = list.map((x) => x.order);
+  const tidy = orders.some((o, k) => !(o > 0) || orders.indexOf(o) !== k);
+  const want = new Map();
+  if (tidy) list.forEach((x, k) => want.set(x.id, k + 1));
+  else list.forEach((x) => want.set(x.id, x.order));
+  const a = want.get(list[i].id), b = want.get(list[j].id);
+  want.set(list[i].id, b); want.set(list[j].id, a);
+  const changed = list.filter((x) => want.get(x.id) !== x.order);
+  if (state.demo) {
+    changed.forEach((x) => { const live = state.medicines.find((y) => y.id === x.id); if (live) live.order = want.get(x.id); });
+    state.medicines = sortMedicines(state.medicines);
+    renderMeds();
+    return true;
+  }
+  try {
+    const batch = writeBatch(db);
+    changed.forEach((x) => batch.set(hdoc('medicines', x.id), { order: want.get(x.id) }, { merge: true }));
+    await batch.commit();
+    /* the snapshot follows, but the sheet open now reads state at once */
+    changed.forEach((x) => { const live = state.medicines.find((y) => y.id === x.id); if (live) live.order = want.get(x.id); });
+    state.medicines = sortMedicines(state.medicines);
+    return true;
+  } catch (e) { console.error(e); toast('Could not move it'); return false; }
+}
+/* Up and down for one medicine (v216): 44px arrows with the name in the spoken label; `after` redraws */
+function medMoveButtons(m, after) {
+  const { n, of } = medPlace(m);
+  const btn = (dir, word) => h('button', { class: 'medrow-move', type: 'button', 'aria-label': 'Move ' + m.name + ' ' + word,
+    disabled: dir < 0 ? n <= 1 : n >= of, onclick: async () => { if (await moveMed(m, dir)) after(dir); } }, icon(word));
+  return h('span', { class: 'medrow-moves' }, btn(-1, 'up'), btn(1, 'down'));
+}
 function countMedOnDay(medId, day) {
   const src = day >= (state.recentFrom || '') ? state.recentEntries : state.dayEntries;
   return src.filter((e) => e.type === 'med' && e.medId === medId && e.day === day).length;
@@ -8340,7 +8389,7 @@ function medStatus(m) {
    the dose most often logged (the latest of equals), so a one-off "2 tablets" does not take over. */
 function shownDose(m, doses) {
   const box = (m.dose || '').trim();
-  if (medStatus(m).text === 'Taking now') return box;
+  if (medStatus(m).text === 'Taking now' || m.doseSet) return box;
   const list = (doses || state.recentEntries.filter((e) => e.type === 'med' && e.medId === m.id))
     .filter((e) => e.dose && String(e.dose).trim()).slice().sort((a, b) => entryDate(a) - entryDate(b));
   if (!list.length || list.some((e) => String(e.dose).trim() === box)) return box;
@@ -8372,7 +8421,8 @@ function finishedCard(m) {
       h('span', { class: 'pill pill-green', text: 'Course complete' }),
       h('span', { class: 'med-last', text: 'Ended ' + fmtDayShort(m.courseEnd) + (last ? ', last dose ' + fmtDayShort(last.day) + ' ' + fmtTime(entryDate(last)) : '') })),
     h('div', { class: 'med-actions' },
-      h('button', { class: 'btn btn-secondary', type: 'button', onclick: () => openMedHistory(m) }, 'See every dose')));
+      h('button', { class: 'btn btn-secondary', type: 'button', onclick: () => openMedHistory(m) }, 'See every dose'),
+      h('button', { class: 'btn btn-secondary', type: 'button', 'aria-label': 'Edit ' + m.name + ', its dose and dates', onclick: () => openEditMed(m) }, 'Edit')));
 }
 /* Every dose of one medicine, from the start: two equality filters, so no composite index, and the
    viewer role's rules (med entries only) can see the query is theirs to read */
@@ -9105,6 +9155,7 @@ async function openMedHistory(m, fromList) {
       ...(Array.isArray(m.doseChanges) ? m.doseChanges : []).map((c) => h('p', { class: 'muted medhist-change', text: doseChangeText(c) })),
       m.courseEnd ? h('p', { class: 'muted', text: (m.courseEnd < todayStr() ? 'Course ended ' : 'Course ends ') + fmtDayLong(m.courseEnd) + '.' }) : null),
     out,
+    (state.readOnly || state.viewer) ? null : h('button', { class: 'btn btn-secondary btn-block', type: 'button', id: 'medhist-edit', onclick: () => openEditMed(m) }, 'Edit ' + m.name + ' (dose, dates, name)'),
     fromList ? h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: openMedHistoryList }, 'All medicines') : null,
     h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Close'));
   const fxBox = h('div', { class: 'medhist-fx' });
@@ -9748,15 +9799,26 @@ function renderHospitalDoses() {
 
 function openManageMeds() {
   const list = h('div', { class: 'medlist' });
-  state.medicines.forEach((m) => {
-    const cls = medClass(m);
-    list.append(h('div', { class: 'medrow' + (m.active === false ? ' is-inactive' : '') },
-      h('span', { class: 'medrow-name' }, h('span', { class: 'medrow-title', text: m.name }), h('small', { class: 'medrow-sub medrow-class', text: cls || 'Other' })),
-      h('span', { class: 'pill ' + (medStatus(m).text === 'Course complete' ? 'pill-green' : m.kind === 'prn' ? 'pill-amber' : 'pill-teal'), text: medStatus(m).text === 'Course complete' ? 'Course complete' : m.kind === 'prn' ? 'When needed' : 'Scheduled' }),
-      h('button', { class: 'btn btn-secondary btn-small', type: 'button', onclick: () => openEditMed(m) }, 'Edit')
-    ));
-  });
+  const canMove = !(state.readOnly || state.viewer);
+  const draw = (focusId, dir) => {
+    list.replaceChildren(...sortMedicines(state.medicines).map((m) => {
+      const cls = medClass(m);
+      return h('div', { class: 'medrow' + (m.active === false ? ' is-inactive' : ''), 'data-med': m.id },
+        canMove && state.medicines.length > 1 ? medMoveButtons(m, (d) => draw(m.id, d)) : null,
+        h('span', { class: 'medrow-name' }, h('span', { class: 'medrow-title', text: m.name }), h('small', { class: 'medrow-sub medrow-class', text: cls || 'Other' })),
+        h('span', { class: 'pill ' + (medStatus(m).text === 'Course complete' ? 'pill-green' : m.kind === 'prn' ? 'pill-amber' : 'pill-teal'), text: medStatus(m).text === 'Course complete' ? 'Course complete' : m.kind === 'prn' ? 'When needed' : 'Scheduled' }),
+        h('button', { class: 'btn btn-secondary btn-small', type: 'button', onclick: () => openEditMed(m) }, 'Edit'));
+    }));
+    if (focusId) {
+      const row = list.querySelector('[data-med="' + focusId + '"]');
+      const b = row && row.querySelectorAll('.medrow-move')[dir < 0 ? 0 : 1];
+      const alt = row && row.querySelector('.medrow-move:not([disabled])');
+      (b && !b.disabled ? b : alt || row).focus();
+    }
+  };
+  draw();
   const body = h('div', null,
+    canMove && state.medicines.length > 1 ? h('p', { class: 'hint', text: 'The arrows set the order on the Meds tab and in Log a dose. A new medicine goes to the bottom.' }) : null,
     list,
     h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => openEditMed(null) }, 'Add a medicine'),
     h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Close')
@@ -9867,19 +9929,30 @@ function openEditMed(m, prefill) {
   hospital.addEventListener('change', sync);
   sync();
 
+  /* where it sits in the lists (v216): the arrows save at once, the rest of the sheet on Save */
+  const orderRow = () => {
+    const label = h('span', { class: 'fieldlabel', text: '' });
+    const wrap = h('div', { class: 'field med-order' });
+    const draw = () => { const p = medPlace(m); label.textContent = 'Place in the list: ' + p.n + ' of ' + p.of; wrap.replaceChildren(label, medMoveButtons(m, () => { draw(); const b = wrap.querySelector('.medrow-move:not([disabled])'); if (b) b.focus(); })); };
+    draw();
+    return h('div', null, wrap, h('p', { class: 'hint', text: 'The order on the Meds tab and in Log a dose. Moving it is saved straight away.' }));
+  };
   const body = h('div', null,
     isNew && explainAvailable() ? h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => readMedicinePhoto((data) => openEditMed(null, data), () => openEditMed(null, pf)) }, 'Read it from a photo') : null,
     isNew && explainAvailable() ? h('p', { class: 'hint', text: "A photo of the box or the pharmacy label. Daybook Assistant (AI from Anthropic, in the US) reads it, and the details fill in below. It can misread a label, so check the name and dose before adding." }) : null,
     field('Name', name),
     h('p', { class: 'fieldlabel', text: 'How is it taken?' }), formChips,
     countField, doseField, dosePreview, ivHint, askField,
-    isNew ? null : h('p', { class: 'hint med-dose-hint', text: 'Changing the dose? Change it here and save. It stays the same medicine: the doses already logged keep the amount they were taken at, and the change is noted in its history. There is no need to add it again or end this one.' }),
+    isNew ? null : h('p', { class: 'hint med-dose-hint', text: medStatus(m).text === 'Taking now'
+      ? 'Changing the dose? Change it here and save. It stays the same medicine: the doses already logged keep the amount they were taken at, and the change is noted in its history. There is no need to add it again or end this one.'
+      : 'This medicine is no longer being taken. The dose typed here is what its card and the Medicine history show for it, so if it was put up before the course ended, type the dose it was really taken at. The doses already logged keep their own amounts.' }),
     field('How and when', how), field('What it is for', purpose),
     h('label', { class: 'check' }, hospital, h('span', { text: 'Given by the hospital (hospital monitored)' })),
     h('p', { class: 'hint', text: 'Tick this for a drip, an injection or anything the nurses give. Its doses are marked as given in hospital, and Daybook sends no reminders for it.' }),
     hospFields,
     field('Type', kind), schedFields, prnFields,
     isNew ? null : h('label', { class: 'check' }, active, h('span', { text: 'Currently in use' })),
+    isNew || state.medicines.length < 2 ? null : orderRow(),
     h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
       if (!name.value.trim()) { toast('Please enter a name'); return; }
       const data = {
@@ -9896,6 +9969,8 @@ function openEditMed(m, prefill) {
       if (!isNew && oldDose && data.dose && data.dose !== oldDose && stillTaken) {
         data.doseChanges = [...(Array.isArray(m.doseChanges) ? m.doseChanges : []), { from: oldDose, to: data.dose, day: todayStr(), by: state.name || '' }];
       }
+      /* a dose typed on a medicine no longer taken is what the person wants shown for it (v216): shownDose() keeps it */
+      if (!isNew && !stillTaken && data.dose !== oldDose) data.doseSet = true;
       if (kind.value === 'scheduled') {
         data.perDay = hospital.checked ? null : Math.max(1, parseInt(perDay.value, 10) || 1);
         data.courseEnd = courseEnd.value || null;
