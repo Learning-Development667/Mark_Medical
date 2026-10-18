@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '228';
+const APP_VERSION = '229';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -2391,6 +2391,7 @@ function showTab(name) {
   if (highlight === 'food' || highlight === 'notes' || highlight === 'mood' || highlight === 'pain' || highlight === 'results' || highlight === 'ibd') highlight = state.reportReturn || 'vitals';
   document.querySelectorAll('.tab').forEach((b) => { const on = b.dataset.tab === highlight; b.classList.toggle('is-active', on); if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
   document.querySelectorAll('.view').forEach((v) => { v.hidden = v.dataset.view !== name; });
+  document.body.dataset.page = name; // the watercolour behind the app is stronger on the hub pages (styles.css, v229)
   setBrand(PAGE_TITLES[name] || '');
   window.scrollTo(0, 0);
   enterView(document.querySelector('.view[data-view="' + name + '"]'));
