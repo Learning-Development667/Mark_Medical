@@ -383,7 +383,10 @@ code { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-s
 .field input:focus, .field textarea:focus, .field select:focus, textarea:focus { border-color: var(--teal); box-shadow: 0 0 0 4px var(--teal-light); }
 .field input[type="number"], .field input[type="time"], .field input[type="date"], .field input[inputmode="decimal"], .field input[inputmode="numeric"] { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 textarea { line-height: 1.5; resize: vertical; }
-.field-row { display: flex; flex-wrap: wrap; gap: 10px; }
+.field-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+/* v214: iPhone Safari gives a date box an intrinsic width that two in a row cannot shrink below, so they overlapped and ran off the screen */
+.field input[type="date"], .field input[type="time"], .field input[type="month"] { max-width: 100%; min-width: 0; -webkit-appearance: none; appearance: none; display: block; }
+.field input::-webkit-date-and-time-value { text-align: left; min-height: 1.4em; }
 .field-row > .field { flex: 1 1 130px; min-width: 0; }
 .field input, .field select { min-width: 0; }
 .field-row .field { flex: 1; }
@@ -915,8 +918,10 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 .medlist { display: flex; flex-direction: column; gap: var(--s-2); }
 .medrow { display: flex; align-items: center; gap: 10px; background: var(--surface-sunken); border-radius: var(--r-sm); padding: 10px var(--s-3); min-height: 56px; }
 .medrow .medrow-name { flex: 1; font-weight: 600; }
-.medrow.is-inactive .medrow-name { color: var(--text-secondary); text-decoration: line-through; }
+.medrow.is-inactive .medrow-name { color: var(--text-secondary); }
+.medrow.is-inactive .medrow-title { text-decoration: line-through; }
 .medrow-sub { display: block; font-size: 16px; font-weight: 400; color: var(--text-secondary); }
+.medrow-class { color: var(--teal); font-weight: 500; margin-top: 2px; }
 
 /* Food diary */
 .diary-head { display: flex; justify-content: space-between; align-items: center; }

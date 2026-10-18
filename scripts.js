@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '213';
+const APP_VERSION = '214';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -8281,6 +8281,53 @@ function medFrequency(m) {
   const n = m.perDay || 1;
   return n === 1 ? 'Once a day' : n === 2 ? 'Twice a day' : n + ' times a day';
 }
+/* What a medicine is for, in a word or two (v214, Mark: a third column on Manage medicines, "pain relief", "chemo",
+   "anti sickness", "laxative"...): the name first against the usual UK names, then the words in What it is for. */
+const MED_CLASSES = [
+  ['Chemo', /paclitaxel|abraxane|carboplatin|cisplatin|oxaliplatin|gemcitabine|capecitabine|fluorouracil|5-?fu\b|docetaxel|cyclophosphamide|doxorubicin|epirubicin|irinotecan|etoposide|vincristine|vinorelbine|temozolomide|folfirinox|folfox|pemetrexed|bleomycin|cytarabine|azacitidine|trastuzumab|bevacizumab|cetuximab|rituximab/i],
+  ['Immunotherapy', /pembrolizumab|keytruda|nivolumab|opdivo|atezolizumab|durvalumab|ipilimumab|avelumab/i],
+  ['Hormone treatment', /tamoxifen|letrozole|anastrozole|exemestane|enzalutamide|abiraterone|bicalutamide|goserelin|zoladex|leuprorelin|degarelix/i],
+  ['Anti-sickness', /ondansetron|metoclopramide|cyclizine|domperidone|prochlorperazine|aprepitant|levomepromazine|granisetron|haloperidol/i],
+  ['Laxative', /senna|senokot|macrogol|laxido|movicol|lactulose|docusate|bisacodyl|dulcolax|picosulfate|fybogel|ispaghula|glycerol supp/i],
+  ['Anti-diarrhoeal', /loperamide|imodium|diphenoxylate|lomotil/i],
+  ['Blood thinner', /dalteparin|fragmin|enoxaparin|clexane|tinzaparin|apixaban|rivaroxaban|edoxaban|warfarin|heparin|dabigatran/i],
+  ['Steroid', /prednisolone|dexamethasone|budesonide|hydrocortisone|methylprednisolone|beclometasone/i],
+  ['Stomach protection', /omeprazole|lansoprazole|pantoprazole|esomeprazole|rabeprazole|ranitidine|famotidine|gaviscon|peptac|sucralfate/i],
+  ['Digestive enzymes', /creon|pancrex|nutrizym/i],
+  ["Crohn's or colitis", /adalimumab|humira|amgevita|infliximab|remicade|vedolizumab|entyvio|ustekinumab|stelara|risankizumab|upadacitinib|tofacitinib|azathioprine|mercaptopurine|mesalazine|pentasa|octasa|asacol|salofalk|sulfasalazine|balsalazide/i],
+  ['Antibiotic', /amoxicillin|co-amoxiclav|augmentin|flucloxacillin|penicillin|doxycycline|clarithromycin|erythromycin|azithromycin|metronidazole|ciprofloxacin|levofloxacin|trimethoprim|nitrofurantoin|cefalexin|cephalexin|gentamicin|vancomycin|piperacillin|tazocin|meropenem|co-trimoxazole|rifaximin/i],
+  ['Antifungal', /fluconazole|nystatin|miconazole|clotrimazole|itraconazole/i],
+  ['Antiviral', /aciclovir|valaciclovir|oseltamivir/i],
+  ['Antihistamine', /chlorphenamine|piriton|cetirizine|loratadine|fexofenadine|hydroxyzine/i],
+  ['Anxiety or sleep', /diazepam|lorazepam|zopiclone|temazepam|melatonin|promethazine|clonazepam/i],
+  ['Mood', /sertraline|citalopram|escitalopram|fluoxetine|mirtazapine|venlafaxine|paroxetine|trazodone/i],
+  ['Blood pressure or heart', /amlodipine|ramipril|lisinopril|perindopril|losartan|candesartan|bisoprolol|atenolol|propranolol|bendroflumethiazide|furosemide|spironolactone|doxazosin|digoxin|isosorbide|clopidogrel|aspirin 75/i],
+  ['Cholesterol', /atorvastatin|simvastatin|rosuvastatin|pravastatin|ezetimibe/i],
+  ['Diabetes', /metformin|gliclazide|insulin|sitagliptin|empagliflozin|dapagliflozin|semaglutide/i],
+  ['Thyroid', /levothyroxine|carbimazole/i],
+  ['Bones', /adcal|calcichew|alendronic|alendronate|risedronate|colecalciferol|vitamin d|denosumab|prolia|zoledronic/i],
+  ['Mouth care', /difflam|gelclair|bonjela|chlorhexidine|corsodyl|caphosol/i],
+  ['Fluids (drip)', /sodium chloride|saline|hartmann|dextrose|glucose 5/i],
+  ['Nutrition', /ferrous|iron|folic acid|b12|cyanocobalamin|hydroxocobalamin|ensure|fortisip|fortijuice|complan|multivitamin|forceval|thiamine/i],
+  ['Breathing', /salbutamol|ventolin|tiotropium|seretide|symbicort|fostair|montelukast/i]
+];
+const PURPOSE_CLASSES = [
+  ['Chemo', /chemo/i], ['Immunotherapy', /immunotherap/i], ['Pain relief', /pain|ache|nerve/i], ['Anti-sickness', /sick|nausea|vomit/i],
+  ['Laxative', /constipat|bowels (open|moving)|laxative|soften/i], ['Anti-diarrhoeal', /diarrh|loose stool|runs\b/i],
+  ['Antibiotic', /infection|antibiotic|sepsis/i], ['Blood thinner', /clot|thin(ner)?\b|dvt|embol/i], ['Steroid', /steroid|inflamm/i],
+  ['Stomach protection', /acid|reflux|heartburn|stomach|indigestion|ulcer/i], ["Crohn's or colitis", /crohn|colitis|flare|ibd|\bgut\b/i],
+  ['Anxiety or sleep', /anxi|panic|sleep|insomnia|spasm|restless/i], ['Mood', /mood|depress/i], ['Blood pressure or heart', /blood pressure|heart|angina/i],
+  ['Diabetes', /diabet|sugar/i], ['Bones', /bone|calcium/i], ['Mouth care', /mouth|ulcer|thrush/i], ['Nutrition', /vitamin|iron|anaemi|supplement|feed/i],
+  ['Fluids (drip)', /fluid|dehydrat|hydrat/i], ['Breathing', /breath|asthma|inhal|chest/i], ['Skin', /itch|rash|skin|eczema|dry/i], ['Antihistamine', /allerg|hay fever/i]
+];
+function medClass(m) {
+  const name = String((m && m.name) || '');
+  for (const [label, re] of MED_CLASSES) if (re.test(name)) return label;
+  if (PAIN_MED_RE.test(name)) return 'Pain relief'; // defined further down the file, so read here, not in the table
+  const purpose = String((m && m.purpose) || '');
+  for (const [label, re] of PURPOSE_CLASSES) if (re.test(purpose)) return label;
+  return '';
+}
 function medStatus(m) {
   if (m.active === false) return { level: 'muted', text: 'Stopped' };
   if (m.kind === 'scheduled' && m.courseEnd && m.courseEnd < todayStr()) return { level: 'green', text: 'Course complete' };
@@ -9189,7 +9236,7 @@ function askDoseForm(m) {
     const body = h('div', { class: 'askdose' },
       h('p', { class: 'wiz-hint', text: `Asked once. Saved as "${m.dose}" so far. How do you take it, and how many this time? Saved on the medicine, so this is not asked again. Tick Ask how many each time if the number changes.` }),
       h('p', { class: 'fieldlabel', text: 'How is it taken?' }), c.formChips,
-      c.countField, c.doseField, c.dosePreview, c.askField,
+      c.countField, c.doseField, c.dosePreview, c.ivHint, c.askField,
       h('p', { class: 'hint', text: 'Change it any time in Manage medicines, Edit. A different amount one day: use Other time, or change the dose afterwards from its "..." menu.' }),
       h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
         const data = c.result();
@@ -9519,9 +9566,11 @@ const DOSE_FORMS = [
   { key: 'ml', label: 'Liquid (ml)', one: 'ml', many: 'ml' },
   { key: 'puff', label: 'Puffs', one: 'puff', many: 'puffs' },
   { key: 'drop', label: 'Drops', one: 'drop', many: 'drops' },
+  { key: 'iv', label: 'Drip or injection' },   // v214, Mark: "Why isn't IV an option at the top?"; uncounted, the dose as typed
   { key: 'none', label: 'Not counted' }
 ];
-const doseFormOf = (key) => DOSE_FORMS.find((f) => f.key === key && key !== 'none') || null;
+const UNCOUNTED_FORMS = ['none', 'iv'];
+const doseFormOf = (key) => DOSE_FORMS.find((f) => f.key === key && !UNCOUNTED_FORMS.includes(key)) || null;
 function fmtDoseCount(n) {
   const whole = Math.floor(n), half = Math.abs(n - whole - 0.5) < 0.01;
   if (half) return (whole ? String(whole) : '') + '\u00bd';
@@ -9565,6 +9614,8 @@ function splitDose(m) {
   if (t) return { form: t[2].toLowerCase(), count: t[1] === '\u00bd' ? 0.5 : words[t[1].toLowerCase()] || parseFloat(t[1]), strength: (t[3] || t[4] || '').trim() };
   const l = dose.match(/^(\d+(?:\.\d+)?)\s*ml(?:\s*\(([^()]+)\))?$/i);
   if (l) return { form: 'ml', count: parseFloat(l[1]), strength: (l[2] || '').trim() };
+  /* a drip or an injection saved before v214 opens on that chip: the hospital route, or the words in the name or how */
+  if (m && ((m.hospital && ['drip', 'injection'].includes(m.route)) || /inject|infusion|\bdrip\b|\biv\b|intravenous|subcut/i.test((m.name || '') + ' ' + (m.how || '')))) return { form: 'iv', count: 1, strength: dose };
   return { form: 'none', count: 1, strength: dose };
 }
 function openHospitalDose(edit, prefill) {
@@ -9663,8 +9714,9 @@ function renderHospitalDoses() {
 function openManageMeds() {
   const list = h('div', { class: 'medlist' });
   state.medicines.forEach((m) => {
+    const cls = medClass(m);
     list.append(h('div', { class: 'medrow' + (m.active === false ? ' is-inactive' : '') },
-      h('span', { class: 'medrow-name', text: m.name }),
+      h('span', { class: 'medrow-name' }, h('span', { class: 'medrow-title', text: m.name }), h('small', { class: 'medrow-sub medrow-class', text: cls || 'Other' })),
       h('span', { class: 'pill ' + (medStatus(m).text === 'Course complete' ? 'pill-green' : m.kind === 'prn' ? 'pill-amber' : 'pill-teal'), text: medStatus(m).text === 'Course complete' ? 'Course complete' : m.kind === 'prn' ? 'When needed' : 'Scheduled' }),
       h('button', { class: 'btn btn-secondary btn-small', type: 'button', onclick: () => openEditMed(m) }, 'Edit')
     ));
@@ -9691,6 +9743,7 @@ function doseControls(parts, opts = {}) {
   const doseLabel = h('span', { text: 'Dose' });
   const doseField = h('label', { class: 'field' }, doseLabel, dose);
   const dosePreview = h('p', { class: 'med-dose-preview', role: 'status' });
+  const ivHint = h('p', { class: 'hint', text: 'A drip or an injection is logged whole, as one dose. If the hospital gives it, tick Given by the hospital below so Daybook sends no reminders for it.' });
   const askBox = h('input', { type: 'checkbox' });
   askBox.checked = opts.ask != null ? !!opts.ask : true;
   const askField = h('div', null, h('label', { class: 'check' }, askBox, h('span', { text: 'Ask how many each time I log it' })),
@@ -9701,8 +9754,9 @@ function doseControls(parts, opts = {}) {
     askField.hidden = !f;
     count.unitEl.textContent = unitWord();
     countField.querySelector('.fieldlabel').textContent = f && f.key === 'ml' ? 'How many ml each time' : 'How many each time';
+    ivHint.hidden = formIn.value !== 'iv';
     doseLabel.textContent = !f ? 'Dose' : f.key === 'ml' ? 'Strength (optional, as on the bottle)' : `Strength of one ${f.one} (optional, as on the box)`;
-    dose.placeholder = !f ? 'e.g. 7,500 units, or apply to skin' : f.key === 'ml' ? 'e.g. 10 mg in 5 ml' : f.key === 'sachet' ? 'e.g. in 250 ml water' : 'e.g. 500 mg';
+    dose.placeholder = formIn.value === 'iv' ? 'e.g. 260 mg, 7,500 units or 1000 ml' : !f ? 'e.g. apply to skin, or 1 patch' : f.key === 'ml' ? 'e.g. 10 mg in 5 ml' : f.key === 'sachet' ? 'e.g. in 250 ml water' : 'e.g. 500 mg';
     const text = composeDose(count.value(), formIn.value, dose.value);
     dosePreview.textContent = text ? 'Each dose is logged as ' + text + '.' : '';
   };
@@ -9711,7 +9765,7 @@ function doseControls(parts, opts = {}) {
   syncDose();
   const result = () => ({ dose: composeDose(count.value(), formIn.value, dose.value), doseForm: formIn.value || 'none',
     doseCount: doseFormOf(formIn.value) ? count.value() || 1 : null, strength: dose.value.trim(), askCount: doseFormOf(formIn.value) ? askBox.checked : false });
-  return { formIn, formChips, count, countField, dose, doseField, dosePreview, askField, askBox, syncDose, result };
+  return { formIn, formChips, count, countField, dose, doseField, dosePreview, ivHint, askField, askBox, syncDose, result };
 }
 
 function openEditMed(m, prefill) {
@@ -9722,7 +9776,7 @@ function openEditMed(m, prefill) {
     hospital: pf.hospital === true || pf.route === 'drip', route: pf.route || null };
   const name = h('input', { type: 'text', value: m.name, required: true });
   /* the dose: how it is taken, how many each time, the strength of one (v191) */
-  const { formIn, formChips, count, countField, dose, doseField, dosePreview, askField, askBox } = doseControls(splitDose(m), { ask: m.askCount !== false });
+  const { formIn, formChips, count, countField, dose, doseField, dosePreview, ivHint, askField, askBox } = doseControls(splitDose(m), { ask: m.askCount !== false });
   const how = h('input', { type: 'text', value: m.how || '' });
   const purpose = h('input', { type: 'text', value: m.purpose || '' });
   const kind = h('select', null, h('option', { value: 'scheduled', text: 'Scheduled (regular doses)' }), h('option', { value: 'prn', text: 'When needed' }));
@@ -9757,9 +9811,9 @@ function openEditMed(m, prefill) {
   const addTime = h('button', { class: 'btn btn-secondary btn-small', type: 'button', onclick: () => { const v = timeInputEl.value; if (!v) return; if (!times.includes(v)) times.push(v); times.sort(); timeInputEl.value = ''; drawTimes(); } }, 'Add time');
   const withMeals = h('input', { type: 'checkbox' });
   withMeals.checked = medWithMeals(m);
-  const schedFields = h('div', null, field('Doses per day', perDay), h('div', { class: 'field-row' }, field('Course starts (optional)', courseStart), field('Course ends (optional)', courseEnd)),
+  const schedFields = h('div', null, field('Doses per day', perDay), h('div', { class: 'field-row' }, field('Course starts', courseStart), field('Course ends', courseEnd)),
     h('label', { class: 'check' }, steroid, h('span', { text: 'A steroid course (prednisolone, budesonide, dexamethasone)' })),
-    h('p', { class: 'hint', text: 'With its dates, the course is shaded on the Treatment calendar and counted there as a steroid course in the last 12 months.' }),
+    h('p', { class: 'hint', text: 'Both dates are optional. With them, a steroid course is shaded on the Treatment calendar and counted there as a course in the last 12 months.' }),
     h('p', { class: 'fieldlabel', text: 'Reminder times (optional)' }), timeChips,
     h('div', { class: 'field-row timeadd' }, timeInputEl, addTime),
     h('p', { class: 'hint', text: 'A notification on each phone that has reminders on (More > Settings). Nothing is sent if the dose is already logged.' }),
@@ -9783,7 +9837,7 @@ function openEditMed(m, prefill) {
     isNew && explainAvailable() ? h('p', { class: 'hint', text: "A photo of the box or the pharmacy label. Daybook Assistant (AI from Anthropic, in the US) reads it, and the details fill in below. It can misread a label, so check the name and dose before adding." }) : null,
     field('Name', name),
     h('p', { class: 'fieldlabel', text: 'How is it taken?' }), formChips,
-    countField, doseField, dosePreview, askField,
+    countField, doseField, dosePreview, ivHint, askField,
     isNew ? null : h('p', { class: 'hint med-dose-hint', text: 'Changing the dose? Change it here and save. It stays the same medicine: the doses already logged keep the amount they were taken at, and the change is noted in its history. There is no need to add it again or end this one.' }),
     field('How and when', how), field('What it is for', purpose),
     h('label', { class: 'check' }, hospital, h('span', { text: 'Given by the hospital (hospital monitored)' })),
