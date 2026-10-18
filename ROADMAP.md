@@ -88,6 +88,7 @@ One at a time, each a few days with its sources checked, on the profile mechanis
 - An "AI used this month: about 12p" line under Settings, from the bridge's own token tally. Offered 4 October; build if wanted.
 
 ## Done
+- v225 The Beta pill sits clear of the name on the cover screens, and the icon addresses carry a version so a phone fetches the new picture. Tested in `t/t31.mjs`.
 - v224 The Home Screen icon is Mark's watercolour of two books and a sunrise, in every size, with Android-padded versions; the sign-in card shows it too. Tested in `t/t30.mjs`.
 - v223 An unfinished check-in is announced once per phone and only within a day, so the start-up message stops coming back at every login. Tested in `t/t29.mjs`.
 - v222 The opener is the sign-in watercolour: a short Firefly clip fills the screen, "My Medical Daybook" is real text over the pale sky, and the Mark 1 Apps mark is a small credit chip at the foot. The neon film is kept for the website and company pages. Tested in `t/t28.mjs`; the clip itself to be checked on a phone.

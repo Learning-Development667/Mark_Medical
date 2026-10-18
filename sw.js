@@ -55,8 +55,8 @@ self.addEventListener('push', function (event) {
     body: data.body || 'Medicine reminder',
     tag: data.tag || 'daybook',
     renotify: true,
-    icon: './icons/icon-192.png',
-    badge: './icons/icon-192.png',
+    icon: './icons/icon-192.png?i=2',
+    badge: './icons/icon-192.png?i=2',
     data: { url: data.url || './' }
   }));
 });

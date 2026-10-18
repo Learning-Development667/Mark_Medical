@@ -428,7 +428,7 @@ textarea { line-height: 1.5; resize: vertical; }
   text-align: center;
 }
 .signin-logo { border-radius: 18px; margin-bottom: var(--s-3); }
-.signin-card .brand { font-size: var(--fs-3xl); margin-bottom: 6px; }
+.signin-card .brand { font-size: var(--fs-3xl); line-height: 1.2; margin-bottom: 10px; } /* v225: the heading's own 1.0 line height let the tail of the y run into the Beta pill */
 .signin-card .brand-pre { display: block; margin-bottom: 4px; font-family: var(--font-body); font-weight: 600; font-size: 15px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--text-secondary); }
 .signin-card form { text-align: left; margin-top: 22px; }
 
