@@ -642,6 +642,9 @@ const EXPLAIN_MODEL = 'claude-opus-5-5';
 const EXPLAIN_MAX_TOKENS = 4000;             // a letter's explanation or a question list; also the cost cap per call
 const EXPLAIN_LIMIT_REAL = 40;               // calls a day per household on the real project
 const EXPLAIN_LIMIT_MONTH = 60;              // calls a month per household on the real project (v209): a budget, not just a brake
+/* Never counted against the month (v210, Mark: a circle must always be able to summarise a report it is sending to a clinician):
+   the report kinds. Only the day's 40 brakes them. Letters, photos, plans and suggested questions use the month's allowance. */
+const EXPLAIN_REPORT_KINDS = ['report', 'weekly', 'mood', 'pain'];
 const EXPLAIN_LIMIT_DEMO = 12;               // calls a day from the shared demo (its guest sign-in is public)
 const DEMO_HOUSEHOLD = 'demo';               // the demo project's one household (DEMO_HOUSEHOLD in scripts.js)
 const EXPLAIN_MAX_PAGES = 8;
@@ -1043,9 +1046,9 @@ async function aiUsage(env) {
   for (const hh of households) {
     const d = await fs.get(hp(hh.id, 'bridge/explainLog'));
     if (!d || !d.fields || f(d.fields, 'month') !== month) continue;
-    const c = Number(f(d.fields, 'monthReal') || 0), i = Number(f(d.fields, 'monthTokensIn') || 0), o = Number(f(d.fields, 'monthTokensOut') || 0);
-    calls += c; tin += i; tout += o;
-    rows.push({ household: hh.id, name: f(hh.fields, 'name') || '', calls: c, tokensIn: i, tokensOut: o, pence: Math.round((i * AI_PENCE_PER_MTOK_IN + o * AI_PENCE_PER_MTOK_OUT) / 1e6) });
+    const c = Number(f(d.fields, 'monthReal') || 0), rp = Number(f(d.fields, 'monthReports') || 0), i = Number(f(d.fields, 'monthTokensIn') || 0), o = Number(f(d.fields, 'monthTokensOut') || 0);
+    calls += c + rp; tin += i; tout += o;
+    rows.push({ household: hh.id, name: f(hh.fields, 'name') || '', calls: c + rp, reports: rp, other: c, tokensIn: i, tokensOut: o, pence: Math.round((i * AI_PENCE_PER_MTOK_IN + o * AI_PENCE_PER_MTOK_OUT) / 1e6) });
   }
   rows.sort((a, b) => b.calls - a.calls);
   return { month, households: households.length, active: rows.length, calls, tokensIn: tin, tokensOut: tout, pence: Math.round((tin * AI_PENCE_PER_MTOK_IN + tout * AI_PENCE_PER_MTOK_OUT) / 1e6), limitPerHousehold: EXPLAIN_LIMIT_MONTH, rows };
@@ -1135,8 +1138,10 @@ async function handleExplain(request, env) {
   const monthUsed = (allFields.month && allFields.month.stringValue === month) ? Number(allFields.monthReal && allFields.monthReal.integerValue || 0) : 0;
   const monthTokIn = (allFields.month && allFields.month.stringValue === month) ? Number(allFields.monthTokensIn && allFields.monthTokensIn.integerValue || 0) : 0;
   const monthTokOut = (allFields.month && allFields.month.stringValue === month) ? Number(allFields.monthTokensOut && allFields.monthTokensOut.integerValue || 0) : 0;
-  if (!demo && monthUsed >= EXPLAIN_LIMIT_MONTH) return json({ error: 'limit', message: 'Your care circle has used this month\'s Daybook Assistant allowance (' + EXPLAIN_LIMIT_MONTH + ' requests). It starts again on the 1st. Until then use Send to my AI app.' }, 429);
-  await fs.set(hp(hid, 'bridge/explainLog'), { day: { stringValue: day }, real: { integerValue: String(n('real') + (demo ? 0 : 1)) }, demo: { integerValue: String(n('demo') + (demo ? 1 : 0)) }, tokensIn: { integerValue: String(n('tokensIn')) }, tokensOut: { integerValue: String(n('tokensOut')) }, month: { stringValue: month }, monthReal: { integerValue: String(monthUsed + (demo ? 0 : 1)) }, monthTokensIn: { integerValue: String(monthTokIn) }, monthTokensOut: { integerValue: String(monthTokOut) }, updatedAt: { timestampValue: new Date().toISOString() } });
+  const reportKind = EXPLAIN_REPORT_KINDS.includes(kind);
+  const monthReports = (allFields.month && allFields.month.stringValue === month) ? Number(allFields.monthReports && allFields.monthReports.integerValue || 0) : 0;
+  if (!demo && !reportKind && monthUsed >= EXPLAIN_LIMIT_MONTH) return json({ error: 'limit', message: 'Your care circle has used this month\'s Daybook Assistant allowance for letters, photos and suggested questions (' + EXPLAIN_LIMIT_MONTH + '). It starts again on the 1st. The summaries on the reports still work, and Send to my AI app is there for the rest.' }, 429);
+  await fs.set(hp(hid, 'bridge/explainLog'), { day: { stringValue: day }, real: { integerValue: String(n('real') + (demo ? 0 : 1)) }, demo: { integerValue: String(n('demo') + (demo ? 1 : 0)) }, tokensIn: { integerValue: String(n('tokensIn')) }, tokensOut: { integerValue: String(n('tokensOut')) }, month: { stringValue: month }, monthReal: { integerValue: String(monthUsed + (demo || reportKind ? 0 : 1)) }, monthReports: { integerValue: String(monthReports + (demo || !reportKind ? 0 : 1)) }, monthTokensIn: { integerValue: String(monthTokIn) }, monthTokensOut: { integerValue: String(monthTokOut) }, updatedAt: { timestampValue: new Date().toISOString() } });
 
   const content = pages.map((data) => ({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data } }));
   const head = kind === 'document'
