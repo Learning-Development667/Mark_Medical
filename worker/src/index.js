@@ -36,6 +36,7 @@ export default {
       if (url.pathname === '/member-remove' && request.method === 'POST') return withCors(request, await handleRemoveMember(request, env));
       if (url.pathname === '/owner-transfer' && request.method === 'POST') return withCors(request, await handleOwnerTransfer(request, env));
       if (url.pathname === '/plan' && request.method === 'POST') return withCors(request, await handlePlan(request, env));
+      if (url.pathname === '/usage' && request.method === 'POST') return withCors(request, await handleUsage(request, env));
       /* Diagnostic: what the phone last sent and what was written, for checking the field names.
          Opened in a browser with ?key=<the household's inbox key>. Health data only, no secrets. */
       if (url.pathname === '/last' && request.method === 'GET') {
@@ -64,6 +65,13 @@ export default {
         if (!env.BRIDGE_KEY || url.searchParams.get('key') !== env.BRIDGE_KEY) return json({ error: 'Unauthorised' }, 401);
         return json(await runReminders(env, { rebuild: url.searchParams.get('rebuild') === '1' }));
       }
+      /* The usage counts (v211), the same document the app's Usage page reads: ?key=<BRIDGE_KEY>, &rebuild=1 counts again now */
+      if (url.pathname === '/usage' && request.method === 'GET') {
+        if (!env.BRIDGE_KEY || url.searchParams.get('key') !== env.BRIDGE_KEY) return json({ error: 'Unauthorised' }, 401);
+        if (url.searchParams.get('rebuild') === '1') return json(await buildUsage(env));
+        const fs = await firestore(env);
+        return json(readUsageDoc(await fs.get(USAGE_PATH)) || { error: 'none', message: 'No counts yet. Add &rebuild=1 to count now.' });
+      }
       /* Daybook Assistant use this month, every circle: ?key=<BRIDGE_KEY> (v209, so the Anthropic bill is never a surprise) */
       if (url.pathname === '/ai-usage' && request.method === 'GET') {
         if (!env.BRIDGE_KEY || url.searchParams.get('key') !== env.BRIDGE_KEY) return json({ error: 'Unauthorised' }, 401);
@@ -78,6 +86,9 @@ export default {
   /* Cron (wrangler.toml, every five minutes): medicine reminders as push notifications */
   async scheduled(event, env, ctx) {
     ctx.waitUntil(runReminders(env).catch((e) => console.error('reminders', e)));
+    /* The usage counts (v211), once a night in the quiet hours: the run that lands in the 03:30 London window counts, unless today is already counted */
+    const now = londonNow();
+    if (now.minutes >= USAGE_AT && now.minutes < USAGE_AT + 5) ctx.waitUntil(buildUsage(env, { ifNotToday: true }).catch((e) => console.error('usage', e)));
   }
 };
 
@@ -268,6 +279,8 @@ async function firestore(env) {
   const base = `https://firestore.googleapis.com/v1/projects/${sa.project_id}/databases/(default)/documents/`;
   const headers = { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' };
   return {
+    /* The full resource name of a document, for referenceValue filters (v211) */
+    docName(path) { return base + path; },
     async get(path) {
       const r = await fetch(base + path, { headers });
       if (r.status === 404) return null;
@@ -314,6 +327,29 @@ async function firestore(env) {
       if (!r.ok) throw new Error('Firestore query ' + collection + ': ' + r.status + ' ' + await r.text());
       const rows = await r.json();
       return rows.filter((x) => x.document).map((x) => ({ id: x.document.name.split('/').pop(), fields: x.document.fields || {} }));
+    },
+    /* Any structured query on a collection (v211): the query is given whole, the documents come back as { id, fields } */
+    async run(collection, structuredQuery) {
+      const segs = collection.split('/');
+      const collectionId = segs.pop();
+      const parent = segs.length ? '/' + segs.join('/') : '';
+      const r = await fetch(base.replace(/\/$/, '') + parent + ':runQuery', { method: 'POST', headers, body: JSON.stringify({ structuredQuery: { from: [{ collectionId }], ...structuredQuery } }) });
+      if (!r.ok) throw new Error('Firestore query ' + collection + ': ' + r.status + ' ' + await r.text());
+      const rows = await r.json();
+      return rows.filter((x) => x.document).map((x) => ({ id: x.document.name.split('/').pop(), fields: x.document.fields || {} }));
+    },
+    /* How many documents match (v211): a count aggregation, billed as one read per thousand matched, never the documents themselves */
+    async count(collection, where) {
+      const segs = collection.split('/');
+      const collectionId = segs.pop();
+      const parent = segs.length ? '/' + segs.join('/') : '';
+      const structuredQuery = { from: [{ collectionId }] };
+      if (where) structuredQuery.where = where;
+      const r = await fetch(base.replace(/\/$/, '') + parent + ':runAggregationQuery', { method: 'POST', headers, body: JSON.stringify({ structuredAggregationQuery: { structuredQuery, aggregations: [{ alias: 'n', count: {} }] } }) });
+      if (!r.ok) throw new Error('Firestore count ' + collection + ': ' + r.status + ' ' + await r.text());
+      const rows = await r.json();
+      const row = rows.find((x) => x.result && x.result.aggregateFields);
+      return row ? Number(row.result.aggregateFields.n.integerValue || 0) : 0;
     }
   };
 }
@@ -1053,6 +1089,110 @@ async function aiUsage(env) {
   rows.sort((a, b) => b.calls - a.calls);
   return { month, households: households.length, active: rows.length, calls, tokensIn: tin, tokensOut: tout, pence: Math.round((tin * AI_PENCE_PER_MTOK_IN + tout * AI_PENCE_PER_MTOK_OUT) / 1e6), limitPerHousehold: EXPLAIN_LIMIT_MONTH, rows };
 }
+/* ------------------------------------------------------------------ */
+/* The usage counts (v211): the operator's dashboard                     */
+/* ------------------------------------------------------------------ */
+/* Mark, 18 October 2026: a dashboard only he can see, "so I can track what's being used and what it's for", within GDPR.
+   Counts, never content: how many circles, how many logged anything this week, how many did their check-ins, which
+   features and which Daybook Assistant kinds were used, how many reports were sent. Nothing a person wrote, no names,
+   no email addresses. Per-circle rows carry a pseudonym (the first eight characters of a salted hash of the circle id,
+   the salt being BRIDGE_KEY, so the rows cannot be tied back to a circle from the page) and only this week's counts;
+   the totals are kept for USAGE_HISTORY_DAYS days so a trend can be read. Counted once a night (USAGE_AT, London)
+   into bridge/usage, the bridge's own top-level document, which the rules deny to everyone; about 20 reads a circle.
+   Read by POST /usage from a sign-in in the operator's own circle (the household whose inbox key is BRIDGE_KEY), and
+   by nobody else: the row under More never shows for another circle, and the bridge refuses them if they ask. */
+const USAGE_PATH = 'bridge/usage';
+const USAGE_AT = 3 * 60 + 30;           // 03:30 London, inside the five-minute cron
+const USAGE_HISTORY_DAYS = 90;
+const USAGE_WEEK = 7;
+const USAGE_MAX_ROWS = 2000;            // past this the document nears Firestore's 1 MB: shard the rows then
+const AI_KINDS = ['document', 'report', 'weekly', 'mood', 'pain', 'programme', 'medicine', 'flare', 'notes'];
+const dayMinus = (day, n) => { const d = new Date(day + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() - n); return d.toISOString().slice(0, 10); };
+function readUsageDoc(doc) {
+  if (!doc || !doc.fields) return null;
+  const F = doc.fields;
+  const num = (v) => Number(v && (v.integerValue ?? v.doubleValue) || 0);
+  const map = (v) => Object.fromEntries(Object.entries((v && v.mapValue && v.mapValue.fields) || {}).map(([k, x]) => [k, x.mapValue ? map(x) : (x.stringValue ?? num(x))]));
+  return { day: f(F, 'day'), built: f(F, 'built'), totals: map(F.totals), history: map(F.history), circles: map(F.circles) };
+}
+const usageVal = (v) => (typeof v === 'string' ? strVal(v) : typeof v === 'object' && v ? { mapValue: { fields: Object.fromEntries(Object.entries(v).map(([k, x]) => [k, usageVal(x)])) } } : intVal(Number(v) || 0));
+/* One circle's counts for the week to "day": reads its household record (given), profile, Assistant log, the check-ins by id,
+   one count of this week's entries, the latest entry's day, one count of reports sent and of phones. About 20 reads. */
+async function countCircle(fs, hh, day) {
+  const hid = hh.id;
+  const from = dayMinus(day, USAGE_WEEK - 1);
+  const days = []; for (let i = 0; i < USAGE_WEEK; i++) days.push(dayMinus(day, i));
+  const docRef = (id) => fs.docName(hp(hid, 'entries/' + id));
+  const [profile, ai, entries7, latest, sent, members, phones, checkins] = await Promise.all([
+    fs.get(hp(hid, 'profile/main')),
+    fs.get(hp(hid, 'bridge/explainLog')),
+    fs.count(hp(hid, 'entries'), { fieldFilter: { field: { fieldPath: 'day' }, op: 'GREATER_THAN_OR_EQUAL', value: strVal(from) } }),
+    fs.run(hp(hid, 'entries'), { orderBy: [{ field: { fieldPath: 'day' }, direction: 'DESCENDING' }], limit: 1 }),
+    fs.count(hp(hid, 'entries'), { fieldFilter: { field: { fieldPath: 'type' }, op: 'EQUAL', value: strVal('sent') } }),
+    fs.count(hp(hid, 'members')),
+    fs.count(hp(hid, 'pushSubs')),
+    /* the week's check-ins by their deterministic ids ({day}_morning, {day}_evening): one count on the built-in index, no composite index needed */
+    fs.count(hp(hid, 'entries'), { fieldFilter: { field: { fieldPath: '__name__' }, op: 'IN', value: { arrayValue: { values: days.flatMap((d) => [docRef(d + '_morning'), docRef(d + '_evening')]).map((n) => ({ referenceValue: n })) } } } })
+  ]);
+  const pf = (profile && profile.fields) || {};
+  const packsMap = pf.packs && pf.packs.mapValue ? pf.packs.mapValue.fields : null;
+  const packs = packsMap ? Object.keys(packsMap).filter((k) => packsMap[k].booleanValue) : ['cancer'];
+  const month = day.slice(0, 7);
+  const af = (ai && ai.fields && f(ai.fields, 'month') === month) ? ai.fields : {};
+  const kinds = Object.fromEntries(Object.entries((af.monthKinds && af.monthKinds.mapValue && af.monthKinds.mapValue.fields) || {}).map(([k, v]) => [k, Number(v.integerValue || 0)]));
+  const aiMonth = Number(f(af, 'monthReal') || 0) + Number(f(af, 'monthReports') || 0);
+  const created = (f(hh.fields, 'createdAt') || '').slice(0, 10);
+  return { created, code: String(f(hh.fields, 'betaCode') || '').slice(0, 24), packs: packs.join(','), members, phones, entries7, checkins7: checkins, last: latest.length ? String(f(latest[0].fields, 'day') || '') : '', ai: aiMonth, kinds, sent, setup: !!(f(pf, 'setupDone') || packsMap) };
+}
+async function buildUsage(env, opts) {
+  opts = opts || {};
+  const fs = await firestore(env);
+  const day = londonNow().day;
+  const before = readUsageDoc(await fs.get(USAGE_PATH));
+  if (opts.ifNotToday && before && before.day === day) return { skipped: 'already counted today', day };
+  const households = (await fs.list('households')).filter((hh) => hh.id !== DEMO_HOUSEHOLD).slice(0, USAGE_MAX_ROWS);
+  const feedback = await fs.count('feedback');
+  const circles = {};
+  const t = { circles: households.length, new7: 0, new30: 0, active7: 0, logging7: 0, checkins7: 0, checkinSlots: 0, members: 0, phones: 0, aiCircles: 0, aiCalls: 0, sent: 0, setup: 0, feedback, packCancer: 0, packIbd: 0, packMenopause: 0 };
+  const kinds = Object.fromEntries(AI_KINDS.map((k) => [k, 0]));
+  const codes = {};
+  for (const hh of households) {
+    const c = await countCircle(fs, hh, day);
+    const pid = (await sha256Hex(hh.id + ':' + (env.BRIDGE_KEY || ''))).slice(0, 8);
+    circles[pid] = { created: c.created, code: c.code, packs: c.packs, members: c.members, phones: c.phones, entries7: c.entries7, checkins7: c.checkins7, last: c.last, ai: c.ai, sent: c.sent, setup: c.setup ? 1 : 0 };
+    if (c.created && c.created >= dayMinus(day, 6)) t.new7++;
+    if (c.created && c.created >= dayMinus(day, 29)) t.new30++;
+    if (c.entries7 > 0) { t.active7++; t.checkinSlots += USAGE_WEEK * 2; }
+    if (c.checkins7 >= USAGE_WEEK) t.logging7++;
+    t.checkins7 += c.checkins7; t.members += c.members; t.phones += c.phones; t.sent += c.sent;
+    if (c.ai > 0) { t.aiCircles++; t.aiCalls += c.ai; }
+    for (const [k, n] of Object.entries(c.kinds)) kinds[k] = (kinds[k] || 0) + n;
+    if (c.setup) t.setup++;
+    if (c.packs.includes('cancer')) t.packCancer++;
+    if (c.packs.includes('ibd')) t.packIbd++;
+    if (c.packs.includes('menopause')) t.packMenopause++;
+    if (c.code) codes[c.code] = (codes[c.code] || 0) + 1;
+  }
+  const history = Object.fromEntries(Object.entries((before && before.history) || {}).filter(([d]) => d >= dayMinus(day, USAGE_HISTORY_DAYS - 1)));
+  history[day] = { circles: t.circles, active7: t.active7, logging7: t.logging7, checkins7: t.checkins7, aiCalls: t.aiCalls, sent: t.sent };
+  const totals = { ...t, kinds, codes };
+  await fs.set(USAGE_PATH, { day: strVal(day), built: nowTs(), totals: usageVal(totals), history: usageVal(history), circles: usageVal(circles) });
+  return { day, built: new Date().toISOString(), totals, history, circles };
+}
+/* POST /usage { what: 'check' | 'read' | 'rebuild' }: the operator's circle only (the household whose inbox key is BRIDGE_KEY) */
+async function handleUsage(request, env) {
+  const a = await whoIs(request, env); if (a.error) return a.error;
+  if (a.demo) return json({ error: 'unauthorised', operator: false }, 403);
+  const { who, fs } = a;
+  const me = await memberOf(fs, who.uid);
+  const opHid = env.BRIDGE_KEY ? await householdForKey(fs, env.BRIDGE_KEY) : null;
+  if (!me.hid || !opHid || me.hid !== opHid) return json({ error: 'unauthorised', operator: false, message: 'Only the operator\'s own circle can see the usage counts.' }, 403);
+  const body = (await readJson(request)) || {};
+  if (body.what === 'check') return json({ operator: true });
+  if (body.what === 'rebuild') return json({ operator: true, usage: await buildUsage(env) });
+  return json({ operator: true, usage: readUsageDoc(await fs.get(USAGE_PATH)) });
+}
+
 async function handleOwnerTransfer(request, env) {
   const a = await whoIs(request, env); if (a.error) return a.error;
   if (a.demo) return json({ error: 'demo', message: 'Not available in the demo.' }, 403);
@@ -1140,8 +1280,11 @@ async function handleExplain(request, env) {
   const monthTokOut = (allFields.month && allFields.month.stringValue === month) ? Number(allFields.monthTokensOut && allFields.monthTokensOut.integerValue || 0) : 0;
   const reportKind = EXPLAIN_REPORT_KINDS.includes(kind);
   const monthReports = (allFields.month && allFields.month.stringValue === month) ? Number(allFields.monthReports && allFields.monthReports.integerValue || 0) : 0;
+  /* Which features were used this month (v211, for the operator's Usage page): a count per kind, never what was sent */
+  const monthKinds = (allFields.month && allFields.month.stringValue === month && allFields.monthKinds && allFields.monthKinds.mapValue) ? { ...(allFields.monthKinds.mapValue.fields || {}) } : {};
+  if (!demo) monthKinds[kind] = intVal(Number(monthKinds[kind] && monthKinds[kind].integerValue || 0) + 1);
   if (!demo && !reportKind && monthUsed >= EXPLAIN_LIMIT_MONTH) return json({ error: 'limit', message: 'Your care circle has used this month\'s Daybook Assistant allowance for letters, photos and suggested questions (' + EXPLAIN_LIMIT_MONTH + '). It starts again on the 1st. The summaries on the reports still work, and Send to my AI app is there for the rest.' }, 429);
-  await fs.set(hp(hid, 'bridge/explainLog'), { day: { stringValue: day }, real: { integerValue: String(n('real') + (demo ? 0 : 1)) }, demo: { integerValue: String(n('demo') + (demo ? 1 : 0)) }, tokensIn: { integerValue: String(n('tokensIn')) }, tokensOut: { integerValue: String(n('tokensOut')) }, month: { stringValue: month }, monthReal: { integerValue: String(monthUsed + (demo || reportKind ? 0 : 1)) }, monthReports: { integerValue: String(monthReports + (demo || !reportKind ? 0 : 1)) }, monthTokensIn: { integerValue: String(monthTokIn) }, monthTokensOut: { integerValue: String(monthTokOut) }, updatedAt: { timestampValue: new Date().toISOString() } });
+  await fs.set(hp(hid, 'bridge/explainLog'), { day: { stringValue: day }, real: { integerValue: String(n('real') + (demo ? 0 : 1)) }, demo: { integerValue: String(n('demo') + (demo ? 1 : 0)) }, tokensIn: { integerValue: String(n('tokensIn')) }, tokensOut: { integerValue: String(n('tokensOut')) }, month: { stringValue: month }, monthReal: { integerValue: String(monthUsed + (demo || reportKind ? 0 : 1)) }, monthReports: { integerValue: String(monthReports + (demo || !reportKind ? 0 : 1)) }, monthTokensIn: { integerValue: String(monthTokIn) }, monthTokensOut: { integerValue: String(monthTokOut) }, monthKinds: { mapValue: { fields: monthKinds } }, updatedAt: { timestampValue: new Date().toISOString() } });
 
   const content = pages.map((data) => ({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data } }));
   const head = kind === 'document'
@@ -1244,7 +1387,7 @@ async function googleKey(kid, fetchFn) {
 }
 
 /* For the test harness only (scratchpad): nothing in the app or the workflow uses these */
-export const _test = { mapOffProduct, handleFood, verifyFirebaseToken, askClaude, aiErrorMessage, EXPLAIN_SYSTEM, distanceKm, payloadFor, sha256Hex, hp, stretchNudgeDue, stretchTickedOn, planEntryFromDocs, planEntryDue, readPlanDoc, planEntryFields, runReminders, runHouseholdReminders, touchPlan, firestore };
+export const _test = { mapOffProduct, handleFood, verifyFirebaseToken, askClaude, aiErrorMessage, EXPLAIN_SYSTEM, distanceKm, payloadFor, sha256Hex, hp, stretchNudgeDue, stretchTickedOn, planEntryFromDocs, planEntryDue, readPlanDoc, planEntryFields, runReminders, runHouseholdReminders, touchPlan, firestore, buildUsage, countCircle, readUsageDoc, handleUsage, USAGE_PATH };
 
 /* ------------------------------------------------------------------ */
 /* Plumbing                                                             */

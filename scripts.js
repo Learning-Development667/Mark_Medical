@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '210';
+const APP_VERSION = '211';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -1069,6 +1069,7 @@ async function enterApp(user) {
     syncReminders();
     setTimeout(offerDraft, 1500);
     setTimeout(offerCircle, 2500);
+    syncUsageRow();
     if (state.setupPending && !state.readOnly && !state.viewer) { const kind = state.setupPending; state.setupPending = null; setTimeout(() => openSetup(kind), 700); }
   } else if (!state.demo) {
     stopData();
@@ -1681,7 +1682,7 @@ function buildIbdFixture() {
 
 function startDemoData(pack) {
   /* a hook for the Playwright harness, preview only: nothing here can reach Firestore */
-  window.daybookPreview = { state, addEntry, renderExercise, exerciseLogFor };
+  window.daybookPreview = { state, addEntry, renderExercise, exerciseLogFor, syncUsageRow, openUsage };
   state.previewPack = pack === 'ibd' ? 'ibd' : 'cancer';
   const fixture = state.previewPack === 'ibd' ? buildIbdFixture() : buildDemoFixture();
   const seed = state.previewPack === 'ibd' ? IBD_MEDICINES : SEED_MEDICINES;
@@ -2278,7 +2279,7 @@ document.querySelectorAll('.tab').forEach((btn) => {
 
 /* The topbar carries the page name ("Care Log: Food diary"), so the report
    pages and the Chemo tab no longer need a heading of their own */
-const PAGE_TITLES = { today: 'Today', meds: 'Medicines', vitals: 'Reports', chemo: 'Treatment plan', exercise: 'Exercise', more: 'More', food: 'Food diary', notes: 'Notes for the team', mood: 'Mood and wellbeing', pain: 'Pain and pain relief', docs: 'Documents', settings: 'Settings', guide: 'Guide' };
+const PAGE_TITLES = { today: 'Today', meds: 'Medicines', vitals: 'Reports', chemo: 'Treatment plan', exercise: 'Exercise', more: 'More', food: 'Food diary', notes: 'Notes for the team', mood: 'Mood and wellbeing', pain: 'Pain and pain relief', docs: 'Documents', settings: 'Settings', guide: 'Guide', usage: 'Usage' };
 function setBrand(page) {
   $('brand').replaceChildren('Daybook', page ? h('span', { class: 'brand-page', text: ': ' + page }) : null);
   document.title = page ? 'Daybook: ' + page : 'My Medical Daybook';
@@ -2288,7 +2289,7 @@ function showTab(name) {
   /* Report pages highlight the tab they were opened from (Documents can be reached from a report too) */
   let highlight = name;
   if (name === 'docs') highlight = state.docsReturn || 'more';
-  if (name === 'settings' || name === 'guide') highlight = 'more';
+  if (name === 'settings' || name === 'guide' || name === 'usage') highlight = 'more';
   if (highlight === 'food' || highlight === 'notes' || highlight === 'mood' || highlight === 'pain') highlight = state.reportReturn || 'vitals';
   document.querySelectorAll('.tab').forEach((b) => { const on = b.dataset.tab === highlight; b.classList.toggle('is-active', on); if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
   document.querySelectorAll('.view').forEach((v) => { v.hidden = v.dataset.view !== name; });
@@ -4191,6 +4192,101 @@ $('guide-prev').addEventListener('click', () => { guideStop(); guideShow(guide.i
 $('guide-next').addEventListener('click', () => { guideStop(); guideShow(guide.i + 1); });
 $('guide-play').addEventListener('click', () => { if (guide.playing) guideStop(); else { guideShow(guide.i + 1); guidePlay(); } });
 $('guide-phone').addEventListener('click', () => { if (guide.playing) guideStop(); else guidePlay(); });
+
+/* ---------- Usage (v211): the operator's dashboard ----------
+   Mark, 18 October 2026: a dashboard only he can see, to track what is used and what for, within GDPR. The bridge counts
+   once a night (worker: buildUsage) and hands the counts to a sign-in in the operator's own circle alone (POST /usage; the
+   household whose inbox key is BRIDGE_KEY); every other circle is refused, and the row under More never shows for them.
+   Counts only, never content: no names, nothing anyone wrote; each circle is a pseudonym. The answer to "is this circle
+   the operator's" is cached on the phone for a day (daybook.operator.{uid}) so the row is there at once next time. */
+const USAGE_KIND_NAMES = { document: 'Explain a letter or result', report: 'Notes for the team summary', weekly: 'Weekly notes summary (older app)', mood: 'Mood and wellbeing brief', pain: 'Pain report brief', programme: 'Exercise plan from a photo', medicine: 'Medicine from a photo', flare: 'Flare plan from a photo', notes: 'Suggested questions' };
+let usageData = null;
+function syncUsageRow() {
+  const row = $('more-usage');
+  row.hidden = true;
+  if (!BRIDGE || state.demo || state.demoLive || !state.user || state.viewer) return;
+  const key = 'daybook.operator.' + state.user.uid;
+  let cached = null;
+  try { cached = JSON.parse(localStorage.getItem(key) || 'null'); } catch (e) { cached = null; }
+  if (cached && Date.now() - cached.at < 86400000) { row.hidden = !cached.operator; if (cached.operator) return; if (Date.now() - cached.at < 3600000) return; }
+  bridgeCall('/usage', { what: 'check' }).then((d) => {
+    const operator = !!(d && d.operator);
+    try { localStorage.setItem(key, JSON.stringify({ operator, at: Date.now() })); } catch (e) { /* no storage */ }
+    row.hidden = !operator;
+  }).catch((e) => {
+    if (e && e.status === 403) { try { localStorage.setItem(key, JSON.stringify({ operator: false, at: Date.now() })); } catch (x) { /* no storage */ } }
+  });
+}
+function openUsage() {
+  showTab('usage');
+  const body = $('usage-body');
+  body.replaceChildren(h('p', { class: 'hint', text: 'Fetching the counts' }));
+  bridgeCall('/usage', { what: 'read' }).then((d) => { usageData = d.usage; renderUsage(); })
+    .catch((e) => body.replaceChildren(h('p', { class: 'hint', text: e.message })));
+}
+function usageTile(label, value, sub, tone) {
+  return h('div', { class: 'tile' + (tone ? ' ' + tone : '') }, h('span', { class: 'tile-label', text: label }), h('span', { class: 'tile-value', text: String(value) }), h('span', { class: 'tile-sub', text: sub }));
+}
+function renderUsage() {
+  const body = $('usage-body');
+  const u = usageData;
+  const countBtn = h('button', { class: 'btn btn-secondary', type: 'button', onclick: (ev) => withBusy(ev.currentTarget, 'Counting, about a minute', async () => {
+    try { const d = await bridgeCall('/usage', { what: 'rebuild' }); usageData = d.usage; renderUsage(); toast('Counted just now'); } catch (e) { toast(e.message); }
+  }) }, 'Count again now');
+  if (!u || !u.totals) { body.replaceChildren(h('p', { class: 'hint', text: 'Nothing counted yet. The first count runs tonight at 03:30, or count now.' }), countBtn); return; }
+  const t = u.totals;
+  const pct = (a, b) => (b ? Math.round(a / b * 100) + '%' : '0%');
+  const built = u.built ? new Date(u.built) : null;
+  const tiles = h('div', { class: 'status', role: 'group', 'aria-label': 'Usage at a glance' }, h('div', { class: 'tiles tiles-2' },
+    usageTile('Care circles', t.circles, t.new30 + ' new in the last 30 days' + (t.new7 ? ', ' + t.new7 + ' this week' : ''), 'is-teal'),
+    usageTile('Logged this week', t.active7, pct(t.active7, t.circles) + ' of circles logged something', t.circles && t.active7 / t.circles >= 0.5 ? 'is-green' : 'is-amber'),
+    usageTile('Check-ins done', pct(t.checkins7, t.checkinSlots), t.checkins7 + ' of ' + t.checkinSlots + ' this week; ' + plural(t.logging7, 'circle') + ' did one every day', t.checkinSlots && t.checkins7 / t.checkinSlots >= 0.5 ? 'is-green' : 'is-amber'),
+    usageTile('Assistant this month', t.aiCalls, 'by ' + plural(t.aiCircles, 'circle') + '; ' + plural(t.sent, 'report') + ' sent by email so far', 'is-teal')));
+  const kinds = Object.entries(t.kinds || {}).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]);
+  const features = h('div', { class: 'card usage-card' },
+    h('h3', { class: 'card-title', text: 'Features used' }),
+    h('p', { class: 'hint', text: 'Daybook Assistant this month, by kind. Then the standing counts.' }),
+    h('dl', { class: 'usage-list' },
+      ...(kinds.length ? kinds.flatMap(([k, n]) => [h('dt', { text: USAGE_KIND_NAMES[k] || k }), h('dd', { text: String(n) })]) : [h('dt', { text: 'Daybook Assistant' }), h('dd', { text: 'Not used this month' })]),
+      h('dt', { text: 'Reports sent by email (all time)' }), h('dd', { text: String(t.sent) }),
+      h('dt', { text: 'Phones with reminders on' }), h('dd', { text: String(t.phones) }),
+      h('dt', { text: 'People in circles' }), h('dd', { text: String(t.members) }),
+      h('dt', { text: 'Set-up completed' }), h('dd', { text: t.setup + ' of ' + t.circles }),
+      h('dt', { text: 'Set up for cancer treatment' }), h('dd', { text: String(t.packCancer) }),
+      h('dt', { text: "Set up for Crohn's or colitis" }), h('dd', { text: String(t.packIbd) }),
+      h('dt', { text: 'Set up for menopause' }), h('dd', { text: String(t.packMenopause) }),
+      h('dt', { text: 'Feedback sent (all time)' }), h('dd', { text: String(t.feedback) })));
+  const codes = Object.entries(t.codes || {}).sort((a, b) => b[1] - a[1]);
+  const from = h('div', { class: 'card usage-card' },
+    h('h3', { class: 'card-title', text: 'Where circles came from' }),
+    h('p', { class: 'hint', text: 'By Beta code. A circle with no code joined before the codes, or by invite into an existing circle.' }),
+    codes.length ? h('dl', { class: 'usage-list' }, ...codes.flatMap(([c, n]) => [h('dt', { text: c }), h('dd', { text: String(n) })])) : h('p', { class: 'muted', text: 'No Beta codes used yet.' }));
+  const hist = Object.entries(u.history || {}).sort((a, b) => a[0].localeCompare(b[0]));
+  const maxA = Math.max(1, ...hist.map(([, v]) => Number(v.active7 || 0)));
+  const bars = h('div', { class: 'usage-bars', role: 'img', 'aria-label': 'Circles that logged something in the week before each day, over the last ' + hist.length + ' days' },
+    ...hist.map(([d, v]) => h('span', { class: 'usage-bar', style: 'height:' + Math.max(4, Math.round(Number(v.active7 || 0) / maxA * 100)) + '%', title: fmtDayShort(d) + ': ' + v.active7 + ' of ' + v.circles })));
+  const trend = h('div', { class: 'card usage-card' },
+    h('h3', { class: 'card-title', text: 'Day by day' }),
+    h('p', { class: 'hint', text: 'Each bar is a night\'s count of circles that logged something in the week before it. ' + (hist.length ? hist.length + ' nights so far, 90 kept.' : 'Nothing yet.') }),
+    bars,
+    hist.length ? h('p', { class: 'muted usage-trend-line', text: fmtDayShort(hist[0][0]) + ': ' + hist[0][1].active7 + ' of ' + hist[0][1].circles + ' circles. ' + fmtDayShort(hist[hist.length - 1][0]) + ': ' + hist[hist.length - 1][1].active7 + ' of ' + hist[hist.length - 1][1].circles + '.' }) : null);
+  const rows = Object.entries(u.circles || {}).sort((a, b) => String(b[1].last || '').localeCompare(String(a[1].last || '')));
+  const packWords = (p) => String(p || '').split(',').filter(Boolean).map((k) => ({ cancer: 'Cancer', ibd: 'Crohn\'s or colitis', menopause: 'Menopause' })[k] || k).join(', ');
+  const table = h('div', { class: 'card usage-card' },
+    h('h3', { class: 'card-title', text: 'Each circle' }),
+    h('p', { class: 'hint', text: 'A code per circle, never a name. This week\'s entries and check-ins (of 14), when something was last logged, Assistant requests this month, reports sent.' }),
+    h('div', { class: 'usage-tablewrap' }, h('table', { class: 'usage-table' },
+      h('thead', null, h('tr', null, ...['Circle', 'Since', 'For', 'Entries', 'Check-ins', 'Last logged', 'Assistant', 'Sent', 'Phones'].map((x) => h('th', { text: x })))),
+      h('tbody', null, ...rows.map(([pid, c]) => h('tr', { class: c.entries7 > 0 ? '' : 'is-quiet' },
+        h('td', { class: 'mono', text: pid }), h('td', { text: c.created ? fmtDayShort(c.created) : '' }), h('td', { text: packWords(c.packs) }),
+        h('td', { text: String(c.entries7) }), h('td', { text: c.checkins7 + ' of 14' }), h('td', { text: c.last ? fmtDayShort(c.last) : 'Never' }),
+        h('td', { text: String(c.ai) }), h('td', { text: String(c.sent) }), h('td', { text: String(c.phones) })))))));
+  body.replaceChildren(
+    h('p', { class: 'muted', text: built ? 'Counted ' + built.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ' at ' + built.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) + '. The counts are for the week to ' + fmtDayShort(u.day) + ', the Assistant for the month.' : ''}),
+    tiles, features, from, trend, table, countBtn);
+}
+$('more-usage').addEventListener('click', openUsage);
+$('usage-back').addEventListener('click', () => showTab('more'));
 
 function openManageMeals() {
   const list = h('div', { class: 'medlist' });

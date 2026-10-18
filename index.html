@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=210">
+  <link rel="stylesheet" href="styles.css?v=211">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -794,6 +794,11 @@
             <span class="checkin-main"><span class="checkin-title">Settings</span><span class="checkin-sub">Food estimates, the app and its version</span></span>
             <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
           </button>
+          <button id="more-usage" class="checkin-row menu-row" type="button" hidden>
+            <svg class="icon checkin-icon" aria-hidden="true"><use href="#i-trend"/></svg>
+            <span class="checkin-main"><span class="checkin-title">Usage</span><span class="checkin-sub">How Daybook is being used, in counts. Shown only to the circle that runs Daybook</span></span>
+            <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
+          </button>
         </div>
         <p class="hint">The Food diary and Notes for the team are under Reports.</p>
         <h2 class="section-title">Who to contact</h2>
@@ -803,6 +808,15 @@
         </div>
         <div id="calls" class="cards"></div>
         <button id="signout" class="btn btn-danger btn-block" type="button">Sign out</button>
+      </section>
+
+      <!-- USAGE (v211, reached from More, the operator's circle only) -->
+      <section id="view-usage" class="view" data-view="usage" hidden>
+        <div class="diary-head">
+          <button id="usage-back" class="btn btn-link" type="button">&#8249; Back</button>
+        </div>
+        <p class="hint">Counts only: how many circles, how many logged this week, which features were used. Nothing anyone wrote, no names, no addresses. Each circle is a code that cannot be traced back. Counted once a night at 03:30.</p>
+        <div id="usage-body"></div>
       </section>
 
       <!-- SETTINGS (reached from More) -->
@@ -945,7 +959,7 @@
   <!-- Privacy, terms and About (since v90): plain English, opened in the sheet from the Settings App card,
        the sign-in and sign-up screens, or ?page=privacy|terms|about in the address (openLegal()). -->
   <template id="tpl-privacy">
-    <p class="legal-date mono">Last updated 17 October 2026</p>
+    <p class="legal-date mono">Last updated 18 October 2026</p>
     <p>My Medical Daybook (Daybook for short) is made and run by Mark 1 Apps Ltd, a company registered in England and Wales (company number 17510025), which is responsible for the information the app holds (the "data controller" in UK law). Mark 1 Apps Ltd is registered with the Information Commissioner's Office, registration number ZC275185. <span data-contact></span></p>
     <h3>The short version</h3>
     <ul>
@@ -970,6 +984,7 @@
     <ul>
       <li><b>The members of your care circle,</b> the people the patient, or whoever set the circle up, chose, according to the access they were given. Family members can add, change and delete. A read-only member sees everything and changes nothing. A "medicines and treatment only" member sees medicines, the treatment calendar (with the mood marks) and the readings, sleep and drinks charts, and nothing else. The database itself enforces these rules, not just the app.</li>
       <li><b>Mark 1 Apps Ltd,</b> as the operator, has administrative access to the database in order to run it. Faults are in the code, not in anyone's circle, so running Daybook never involves reading your records. The only times anyone at Mark 1 Apps Ltd would open a circle's records are if you ask for help with something only your own records can explain and agree to it first, or where the law requires it. Both would be rare, and you would know.</li>
+      <li><b>Usage counts.</b> To see which parts of Daybook are used and keep it running well, the operator sees counts, worked out once a night: how many circles there are, how many logged anything in the last week, how many check-ins were done, how many times each Daybook Assistant feature and the Send by email button were used, and which conditions circles are set up for. Each circle appears as a short code that cannot be traced back to it, with those counts and the date something was last logged. The counts never include anything you wrote, any reading, any name or any address, and the daily totals are kept for 90 days.</li>
       <li><b>Google,</b> as the company hosting the database, under its own data processing terms.</li>
       <li><b>Cloudflare,</b> which runs Daybook's bridge, <b>Resend,</b> only for a report you email from Daybook, and <b>Anthropic,</b> only for what you send with an AI button, as described below.</li>
       <li>Nobody else, unless the law requires it.</li>
@@ -1084,6 +1099,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=210"></script>
+  <script type="module" src="scripts.js?v=211"></script>
 </body>
 </html>
