@@ -481,7 +481,7 @@ body.is-viewer #trends-reports,
 body.is-viewer #vitals-log,
 body.is-viewer #meds-manage,
 body.is-viewer #meds-hospital-add,
-body.is-viewer .med-actions,
+body.is-viewer .med-actions, body.is-viewer .med-log,
 body.is-viewer #chemo-cycle-section,
 body.is-viewer #chemo-add-run,
 body.is-viewer #chemo-docs-section,
@@ -497,7 +497,7 @@ body.is-readonly #food-nutrition-row,
 body.is-readonly #food-totals,
 body.is-readonly #meds-manage,
 body.is-readonly #meds-hospital-add,
-body.is-readonly .med-actions,
+body.is-readonly .med-actions, body.is-readonly .med-log,
 body.is-readonly #meds-doc-add,
 body.is-readonly #vitals-log,
 body.is-readonly #chemo-doc-add,
@@ -825,6 +825,22 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 .med-time:active { transform: translateY(1px); }
 .med-time-view { cursor: default; }
 .med-actions { display: flex; gap: 10px; }
+/* The compact Meds card (v215): the name, a word for what it is for, one status line and Log now; the rest on a tap */
+.med-top { display: flex; align-items: center; gap: 10px; }
+.med-toggle { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 8px; background: none; border: 0; padding: 0; min-height: 48px; text-align: left; font: inherit; color: inherit; cursor: pointer; }
+.med-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; overflow-wrap: anywhere; }
+.med-tag { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--teal); }
+.med-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 16px; color: var(--text-secondary); }
+.med-line .pill { font-size: 13px; min-height: 24px; padding: 0 9px; }
+.med-muted { color: var(--text-muted); }
+.med-chev { flex: 0 0 auto; width: 22px; height: 22px; color: var(--text-muted); transition: transform var(--t-base) ease; transform: rotate(90deg); }
+.med.is-open .med-chev { transform: rotate(-90deg); }
+.med-log { flex: 0 0 auto; margin: 0; min-height: 48px; padding: 0 18px; }
+.med-more { margin-top: var(--s-3); padding-top: var(--s-3); border-top: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: var(--s-2); }
+.med-more[hidden] { display: none; }
+.med-why { margin: 0; font-size: 15px; color: var(--teal); font-weight: 600; overflow-wrap: anywhere; }
+.med-more .med-actions .btn { flex: 0 1 auto; min-width: 140px; }
+@media (prefers-reduced-motion: reduce) { .med-chev { transition: none; } }
 .med-actions .btn { flex: 1; margin-top: var(--s-1); }
 .med.is-complete { box-shadow: var(--elev-raised), inset 0 0 0 2px var(--success-light); }
 .med.is-ended { opacity: 0.6; }
