@@ -88,6 +88,7 @@ One at a time, each a few days with its sources checked, on the profile mechanis
 - An "AI used this month: about 12p" line under Settings, from the bridge's own token tally. Offered 4 October; build if wanted.
 
 ## Done
+- 18 October 2026 Beta codes for the first testers: **FRIENDS** ("Friends and family") made for the two friends with Crohn's and anyone else Mark invites by WhatsApp; **CROHNS** made first and switched off before anyone used it, since the sign-up banner shows the label and not everyone will be there for Crohn's. The Household admin switch-off tickbox fixed (it had been named `off`, which YAML reads as false).
 - v227 The topbar pill in a demo is a Leave demo button that asks first; the Guest chip beside it is hidden while a demo runs. Tested in `t/t33.mjs`.
 - v226 One Demo button on the sign-in screen that opens a choice of the cancer or the Crohn's demo; the shared live demo stays as a quiet third option. Tested in `t/t32.mjs`.
 - v225 The Beta pill sits clear of the name on the cover screens, and the icon addresses carry a version so a phone fetches the new picture. Tested in `t/t31.mjs`.
