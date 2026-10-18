@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '214';
+const APP_VERSION = '215';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -9154,66 +9154,101 @@ function prnStatus(m) {
   return { level: 'green', text: 'Can be given now', block: false };
 }
 
+/* The Meds card, compact (v215). Mark: "the meds page is quite busy now and a lot of scrolling... just the name of
+   the drug and log now up front, and an optional expand with all the other data". The card is the name, a word for
+   what it is for, one status line and Log now; a tap on the name opens the rest (dose, how and when, what it is for,
+   the dots, the time chips, Other time, Log a side effect). Which cards are open is kept for the session
+   (state.openMeds); a card opens itself when something needs a look (a dose changed in the last 14 days, a course
+   ending within three days, a hospital medicine given today), saying why, unless it was closed by hand. */
+const MED_OPEN_SOON_DAYS = 3;
+function medOpenSet() { if (!state.openMeds) state.openMeds = new Set(); return state.openMeds; }
+function medClosedSet() { if (!state.closedMeds) state.closedMeds = new Set(); return state.closedMeds; }
+function medAutoOpenWhy(m, day) {
+  const isToday = day === todayStr();
+  const ch = recentDoseChange(m);
+  if (ch) return doseChangeText(ch);
+  if (m.courseEnd && m.courseEnd >= day && m.courseEnd <= addDays(day, MED_OPEN_SOON_DAYS)) return 'Course ends ' + fmtDayShort(m.courseEnd) + '.';
+  if (m.hospital && isToday && countMedOnDay(m.id, day)) return 'Given in hospital today.';
+  return '';
+}
 function medCard(m, day) {
   const isToday = day === todayStr();
   const count = countMedOnDay(m.id, day);
   const last = lastMedEntry(m.id);
-  const card = h('div', { class: 'card med' + (m.hospital ? ' is-hospital' : '') });
-  const head = h('div', { class: 'med-head' },
-    h('div', null,
-      h('div', { class: 'med-name', text: m.name }),
-      m.hospital ? h('span', { class: 'pill pill-hosp med-hosp', text: 'Given in hospital' }) : null,
-      h('div', { class: 'med-dose', text: [medDoseLabel(m), m.hospital && m.route ? ROUTE_WORDS[m.route] : ''].filter(Boolean).join(' \u00b7 ') }),
-      recentDoseChange(m) ? h('div', { class: 'med-was', text: doseChangeText(recentDoseChange(m)) }) : null,
-      h('div', { class: 'med-how', text: m.how })
-    ),
-    m.purpose ? h('span', { class: 'med-purpose', text: m.purpose }) : null
-  );
-  card.append(head);
+  const why = medClosedSet().has(m.id) ? '' : medAutoOpenWhy(m, day);
+  const open = medOpenSet().has(m.id) || !!why;
+  const card = h('div', { class: 'card med' + (m.hospital ? ' is-hospital' : '') + (open ? ' is-open' : '') });
 
+  /* the one status line on the compact card */
+  const line = h('div', { class: 'med-line' });
+  const perDay = m.perDay || 1;
+  if (m.hospital) line.append(h('span', { text: count ? `${count} given ` + (isToday ? 'today' : 'this day') : (isToday ? 'Nothing given today' : 'Not given this day') }));
+  else if (m.kind === 'scheduled') {
+    line.append(h('span', { text: `${Math.min(count, perDay)} of ${perDay}` + (isToday ? ' today' : '') }));
+    if (count >= perDay) { card.classList.add('is-complete'); line.append(h('span', { class: 'pill pill-green', text: isToday ? 'Done for today' : 'All doses given' })); }
+    else if (!isToday && !count) line.append(h('span', { class: 'med-muted', text: 'Not given this day' }));
+  } else {
+    if (isToday) { const st = prnStatus(m); line.append(h('span', { class: 'pill pill-' + st.level, text: st.text })); }
+    if (m.maxPerDay) line.append(h('span', { text: `${count} of ${m.maxPerDay}` + (isToday ? ' today' : '') }));
+    else if (count) line.append(h('span', { text: `${count} ` + (isToday ? 'today' : 'this day') }));
+    else if (!isToday) line.append(h('span', { class: 'med-muted', text: 'Not given this day' }));
+  }
+  const cls = medClass(m);
+  const toggle = h('button', { class: 'med-toggle', type: 'button', 'aria-expanded': open ? 'true' : 'false', 'aria-label': m.name + (open ? ', hide the details' : ', show the details'), onclick: () => {
+    const now = card.classList.toggle('is-open');
+    toggle.setAttribute('aria-expanded', now ? 'true' : 'false');
+    toggle.setAttribute('aria-label', m.name + (now ? ', hide the details' : ', show the details'));
+    more.hidden = !now;
+    if (now) { medOpenSet().add(m.id); medClosedSet().delete(m.id); } else { medOpenSet().delete(m.id); medClosedSet().add(m.id); }
+  } },
+    h('span', { class: 'med-main' },
+      h('span', { class: 'med-name', text: m.name }),
+      cls ? h('span', { class: 'med-tag', text: cls }) : null,
+      line),
+    icon('chevron', 'icon med-chev'));
+  const logBtn = isToday
+    ? h('button', { class: 'btn btn-primary med-log', type: 'button', 'aria-label': 'Log ' + m.name + ' now', onclick: () => logMed(m) }, 'Log now')
+    : h('button', { class: 'btn btn-primary med-log', type: 'button', 'aria-label': 'Log a dose of ' + m.name, onclick: () => logMedAtTime(m) }, 'Log a dose');
+  card.append(h('div', { class: 'med-top' }, toggle, logBtn));
+
+  /* the rest, shown when open */
+  const more = h('div', { class: 'med-more' });
+  more.hidden = !open;
+  if (why) more.append(h('p', { class: 'med-why', text: 'Opened because: ' + why }));
+  more.append(h('div', { class: 'med-head' },
+    h('div', null,
+      m.hospital ? h('span', { class: 'pill pill-hosp med-hosp', text: 'Given in hospital' }) : null,
+      h('div', { class: 'med-dose', text: [medDoseLabel(m), m.hospital && m.route ? ROUTE_WORDS[m.route] : ''].filter(Boolean).join(' · ') }),
+      recentDoseChange(m) && !why ? h('div', { class: 'med-was', text: doseChangeText(recentDoseChange(m)) }) : null,
+      m.how ? h('div', { class: 'med-how', text: m.how }) : null),
+    m.purpose ? h('span', { class: 'med-purpose', text: m.purpose }) : null));
   const status = h('div', { class: 'med-status' });
-  if (m.hospital) {
-    /* given by the nurses as often as they decide (a second bag, a third): counted, never "1 of 1" */
-    if (count) status.append(h('span', { class: 'med-last', text: `${count} given ` + (isToday ? 'today' : 'this day') }));
-  } else if (m.kind === 'scheduled') {
-    const perDay = m.perDay || 1;
+  if (!m.hospital && m.kind === 'scheduled') {
     const dots = h('div', { class: 'dots' });
     for (let i = 0; i < perDay; i++) dots.append(h('span', { class: 'dot' + (i < count ? ' is-done' : '') }));
-    status.append(dots, h('span', { class: 'med-last', text: `${Math.min(count, perDay)} of ${perDay}` + (isToday ? ' today' : '') }));
-    if (count >= perDay) { card.classList.add('is-complete'); status.append(h('span', { class: 'pill pill-green', text: isToday ? 'Done for today' : 'All doses given' })); }
+    status.append(dots);
     if (m.courseEnd) status.append(h('span', { class: 'pill pill-teal', text: 'Course ends ' + fmtDayShort(m.courseEnd) }));
-  } else {
-    if (isToday) {
-      const s = prnStatus(m);
-      status.append(h('span', { class: 'pill pill-' + s.level, text: s.text }));
-    }
-    if (m.maxPerDay) status.append(h('span', { class: 'med-last', text: `${count} of ${m.maxPerDay}` + (isToday ? ' today' : '') }));
   }
-  card.append(status);
-
   /* Every dose given that day, as tappable chips (tap one to see or delete it) */
   const dayEntriesSrc = day >= (state.recentFrom || '') ? state.recentEntries : state.dayEntries;
   const doses = dayEntriesSrc.filter((e) => e.type === 'med' && e.medId === m.id && e.day === day).sort((a, b) => entryDate(a) - entryDate(b));
   if (doses.length) {
-    card.append(h('div', { class: 'med-times' },
+    more.append(status, h('div', { class: 'med-times' },
       h('span', { class: 'med-times-label', text: isToday ? 'Today' : fmtDayShort(day) }),
       ...doses.map((e) => (state.viewer || state.readOnly)
         ? h('span', { class: 'med-time med-time-view', text: fmtTime(entryDate(e)) + ' · ' + (e.addedBy || '') })
         : h('button', { class: 'med-time', type: 'button', 'aria-label': `Dose at ${fmtTime(entryDate(e))}, tap for options`, onclick: () => entryOptions(e) },
-          fmtTime(entryDate(e)) + ' · ' + (e.addedBy || '')))
-    ));
-  } else if (isToday && last) {
-    status.append(h('span', { class: 'med-last', text: 'Last ' + fmtDayShort(last.day) + ' ' + fmtTime(entryDate(last)) + ' (' + (last.addedBy || '') + ')' }));
-  } else if (!isToday) {
-    status.append(h('span', { class: 'med-last', text: 'Not given this day' }));
+          fmtTime(entryDate(e)) + ' · ' + (e.addedBy || '')))));
+  } else {
+    if (isToday && last) status.append(h('span', { class: 'med-last', text: 'Last ' + fmtDayShort(last.day) + ' ' + fmtTime(entryDate(last)) + ' (' + (last.addedBy || '') + ')' }));
+    else if (isToday) status.append(h('span', { class: 'med-last', text: 'No dose logged yet' }));
+    more.append(status);
   }
-
-  card.append(h('div', { class: 'med-actions' },
-    isToday ? h('button', { class: 'btn btn-primary', type: 'button', onclick: () => logMed(m) }, 'Log now') : null,
-    h('button', { class: isToday ? 'btn btn-secondary' : 'btn btn-primary', type: 'button', onclick: () => logMedAtTime(m) }, isToday ? 'Other time' : 'Log a dose')
-  ));
-  card.append(h('div', { class: 'med-side' },
+  more.append(h('div', { class: 'med-actions' },
+    isToday ? h('button', { class: 'btn btn-secondary', type: 'button', onclick: () => logMedAtTime(m) }, 'Other time') : null));
+  more.append(h('div', { class: 'med-side' },
     h('button', { class: 'btn btn-link btn-small med-sidefx', type: 'button', 'aria-label': 'Log a side effect of ' + m.name, onclick: () => logSideEffect({ kind: 'med', id: m.id, name: m.name }) }, 'Log a side effect')));
+  card.append(more);
   return card;
 }
 
