@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '222';
+const APP_VERSION = '223';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -566,7 +566,10 @@ function offerDraft() {
      view was kept" at every start, for a carer's view Shelley had started on her phone); it still opens from its own row. */
   for (const k of keptCheckins()) if (!findCheckin(k.day, k.slot) && (k.local || !k.by || k.by === state.name)) list.push({ at: k.at, reopen: 'checkin:' + k.slot + ':' + k.day, title: checkinTitle(k.slot) });
   list.sort((a, b) => b.at - a.at);
-  const d = list.find((x) => !offeredBefore(x.reopen, x.at));
+  /* A check-in is offered once per phone however often it is saved again, and only within a day of being left (v222, Mark: the same
+     carer's view message at every login, since opening it or closing it again re-stamped it and it was offered anew); its row on
+     Today says "Unfinished, kept as you left it" for as long as it is kept. Other kept words are offered once per save, as before. */
+  const d = list.find((x) => /^checkin:/.test(x.reopen) ? (!offeredEver(x.reopen) && Date.now() - x.at < CHECKIN_OFFER_MS) : !offeredBefore(x.reopen, x.at));
   if (!d) return;
   markOffered(d.reopen, d.at);
   const what = d.reopen === 'note' ? 'note' : d.reopen === 'question' ? 'question for the team' : d.reopen === 'vitals' ? 'vitals' : /^checkin:/.test(d.reopen) ? (d.title || 'check-in').toLowerCase() : 'words';
@@ -628,6 +631,8 @@ function keptCheckins() {
 }
 /* The start-up offer is made once per draft per phone (v213): daybook.draft.offered holds the key and the time offered */
 const OFFERED_KEY = 'daybook.draft.offered';
+const CHECKIN_OFFER_MS = 24 * 3600 * 1000;
+function offeredEver(key) { try { return key in JSON.parse(localStorage.getItem(OFFERED_KEY) || '{}'); } catch (e) { return false; } }
 function offeredBefore(key, at) { try { const m = JSON.parse(localStorage.getItem(OFFERED_KEY) || '{}'); return (m[key] || 0) >= at; } catch (e) { return false; } }
 function markOffered(key, at) { try { const m = JSON.parse(localStorage.getItem(OFFERED_KEY) || '{}'); m[key] = at; const keys = Object.keys(m); if (keys.length > 40) keys.sort((x, y) => m[x] - m[y]).slice(0, keys.length - 40).forEach((x) => delete m[x]); localStorage.setItem(OFFERED_KEY, JSON.stringify(m)); } catch (e) { /* no storage */ } }
 function confirmSheet(title, message, okLabel, danger) {
