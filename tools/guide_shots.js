@@ -23,7 +23,7 @@ const QUALITY = 0.8;
   await page.clock.setFixedTime(new Date(CLOCK));
   await page.goto(BASE, { waitUntil: 'load' });
   await page.waitForSelector('#signin:not([hidden])');
-  await page.click('#guest-button'); await page.waitForSelector('#app:not([hidden])'); await page.waitForTimeout(1200);
+  await page.click('#guest-button'); await page.click('[data-preview="cancer"]'); await page.waitForSelector('#app:not([hidden])'); await page.waitForTimeout(1200);
   const conv = await context.newPage();
   const topics = [];
   let topic = null;

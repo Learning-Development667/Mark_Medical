@@ -1860,8 +1860,8 @@ button.weekmore { min-height: 44px; padding-left: 0; }
 /* ---------- The condition previews (v206) ---------- */
 .preview-packs { margin-top: var(--s-3); text-align: center; }
 .preview-packs .hint { margin-bottom: var(--s-2); }
-.preview-packs .btnrow { justify-content: center; flex-wrap: wrap; gap: var(--s-2); }
-.preview-packs .btn-small { min-height: 44px; }
+.preview-packs .btn-block { margin-bottom: var(--s-2); }
+.preview-packs .btn-link { min-height: var(--tap); margin-top: var(--s-1); }
 .preview-packs .hint-small { margin-top: var(--s-2); }
 
 /* ---------- Results, recorded not interpreted (v219) ---------- */
