@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '225';
+const APP_VERSION = '226';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -1148,8 +1148,17 @@ document.querySelectorAll('[data-preview]').forEach((b) => b.addEventListener('c
   history.replaceState(null, '', u.pathname + (u.searchParams.toString() ? '?' + u.searchParams : '') + u.hash);
   if (want === 'ibd' || want === 'cancer') state.previewLink = want;
 })();
-$('guest-button').addEventListener('click', () => (DEMO ? enterLiveDemo() : enterPreview()));
-if (DEMO) $('guest-hint').textContent = 'Try the app for real on a shared demo with example data. No sign-in needed. Anything you add can be seen by other visitors and is wiped every night, so no real details please.';
+/* Demo (v226, Mark: "when we click demo we can choose either a cancer demo or a Crohn's demo"): one button on the sign-in
+   screen opens the choice (the two in-memory previews, nothing saved). The shared live demo, where the Daybook Assistant works,
+   stays as a quiet third option when config.js has one. */
+function setDemoChoice(open) {
+  $('demo-choice').hidden = !open;
+  $('guest-button').setAttribute('aria-expanded', String(open));
+  $('guest-hint').hidden = open;
+  if (open) { const first = $('demo-choice').querySelector('[data-preview]'); if (first) first.focus(); }
+}
+$('guest-button').addEventListener('click', () => setDemoChoice($('demo-choice').hidden));
+if (DEMO) { $('demo-live').hidden = false; $('demo-live-hint').hidden = false; $('demo-live').addEventListener('click', () => enterLiveDemo()); }
 
 function exitPreview() {
   stopData();
@@ -1157,13 +1166,14 @@ function exitPreview() {
   $('guest-pill').hidden = true;
   $('app').hidden = true;
   $('signin').hidden = false;
+  setDemoChoice(false);
 }
 
 /* Live demo: sign in to the demo project as its guest, seed it with the example data if it is
    empty (the nightly reset only wipes), then run the app exactly as for a family member. */
 let demoApp = null, demoAuth = null, demoDb = null;
 async function enterLiveDemo() {
-  const btn = $('guest-button');
+  const btn = $('demo-live');
   btn.disabled = true;
   btn.textContent = 'Opening the demo';
   try {
@@ -1192,7 +1202,7 @@ async function enterLiveDemo() {
     toast('The demo could not be opened. Check the signal and try again.');
   } finally {
     btn.disabled = false;
-    btn.textContent = 'Guest';
+    btn.textContent = 'Open the shared live demo instead';
   }
 }
 async function exitLiveDemo() {
@@ -1208,6 +1218,7 @@ async function exitLiveDemo() {
   $('guest-pill').textContent = 'Preview';
   $('app').hidden = true;
   $('signin').hidden = false;
+  setDemoChoice(false);
 }
 /* The same made-up data the preview uses, written once into the demo project when it is empty */
 function demoClean(v) {

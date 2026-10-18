@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=225">
+  <link rel="stylesheet" href="styles.css?v=226">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -103,9 +103,16 @@
       </form>
       <p id="invite-banner" class="invite-banner" hidden></p>
       <button id="signup-button" class="btn btn-secondary btn-block" type="button" hidden>Create an account</button>
-      <button id="guest-button" class="btn btn-secondary btn-block" type="button">Guest</button>
+      <button id="guest-button" class="btn btn-secondary btn-block" type="button" aria-expanded="false" aria-controls="demo-choice">Demo</button>
       <p class="hint" id="guest-hint">See the app with made-up example data. No sign-in needed, and nothing you do is saved.</p>
-      <div class="preview-packs"><p class="hint">Or see it set up for a condition, with a made-up person's records:</p><div class="btnrow"><button class="btn btn-secondary btn-small" type="button" data-preview="cancer">Cancer treatment</button><button class="btn btn-secondary btn-small" type="button" data-preview="ibd">Crohn's or colitis</button></div><p class="hint hint-small">Menopause is coming later.</p></div>
+      <div id="demo-choice" class="preview-packs" hidden>
+        <p class="hint"><b>Who would you like to look at?</b> A made-up person with a month of records.</p>
+        <button class="btn btn-secondary btn-block" type="button" data-preview="cancer">Cancer treatment</button>
+        <button class="btn btn-secondary btn-block" type="button" data-preview="ibd">Crohn's or colitis</button>
+        <p class="hint hint-small">Menopause is coming later.</p>
+        <button id="demo-live" class="btn-link" type="button" hidden>Open the shared live demo instead</button>
+        <p class="hint hint-small" id="demo-live-hint" hidden>The shared demo is a cancer example that everyone can see. Anything you add can be seen by other visitors and is wiped every night, so no real details please. The Daybook Assistant works there.</p>
+      </div>
       <p class="legal-foot"><button class="btn-link legal-link" type="button" data-page="privacy">Privacy</button><button class="btn-link legal-link" type="button" data-page="terms">Terms</button><button class="btn-link legal-link" type="button" data-page="about">About</button></p>
     </div>
   </section>
@@ -1156,6 +1163,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=225"></script>
+  <script type="module" src="scripts.js?v=226"></script>
 </body>
 </html>

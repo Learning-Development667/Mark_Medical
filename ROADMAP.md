@@ -88,6 +88,7 @@ One at a time, each a few days with its sources checked, on the profile mechanis
 - An "AI used this month: about 12p" line under Settings, from the bridge's own token tally. Offered 4 October; build if wanted.
 
 ## Done
+- v226 One Demo button on the sign-in screen that opens a choice of the cancer or the Crohn's demo; the shared live demo stays as a quiet third option. Tested in `t/t32.mjs`.
 - v225 The Beta pill sits clear of the name on the cover screens, and the icon addresses carry a version so a phone fetches the new picture. Tested in `t/t31.mjs`.
 - v224 The Home Screen icon is Mark's watercolour of two books and a sunrise, in every size, with Android-padded versions; the sign-in card shows it too. Tested in `t/t30.mjs`.
 - v223 An unfinished check-in is announced once per phone and only within a day, so the start-up message stops coming back at every login. Tested in `t/t29.mjs`.
