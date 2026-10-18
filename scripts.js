@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '227';
+const APP_VERSION = '228';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -1851,6 +1851,7 @@ function syncSettings() {
   const rname = $('settings-report-name');
   if (document.activeElement !== rname) rname.value = (state.profile && state.profile.reportName) || '';
   rname.disabled = Boolean(state.readOnly);
+  syncWeekSetting();
   /* Today's timeline reads the setting when it draws, so redraw it, and any open report */
   renderToday();
   if (!$('view-food').hidden) renderFoodDiary();
@@ -2232,6 +2233,29 @@ $('settings-protein').addEventListener('change', async (ev) => {
   catch (e) { console.error(e); toast('Could not save the target'); }
 });
 $('food-nutrition').addEventListener('change', (ev) => setDetailedNutrition(ev.target.checked, ev.target));
+/* My week ends on (v228): a day of the week, and a one-tap "use my treatment day" once treatment sessions are on the calendar */
+function treatmentWeekday() {
+  const days = sessionDays().sort(), today = todayStr();
+  const k = days.find((d) => d >= today) || days[days.length - 1];
+  return k ? parseDay(k).getDay() : null;
+}
+function syncWeekSetting() {
+  const sel = $('settings-week-end'), btn = $('settings-week-treatment');
+  if (!sel) return;
+  if (document.activeElement !== sel) sel.value = String(weekEndDay());
+  sel.disabled = Boolean(state.readOnly || state.viewer);
+  const tw = treatmentWeekday();
+  btn.hidden = tw == null || tw === weekEndDay() || sel.disabled;
+  if (!btn.hidden) btn.textContent = 'Use my treatment day (' + WEEKDAY_NAMES[tw] + ')';
+  renderWeekRow();
+}
+async function setWeekEnd(n) {
+  if (!Number.isInteger(n) || n < 0 || n > 6) return;
+  await saveProfilePatch({ weekEnd: n }, 'Your week now ends on ' + WEEKDAY_NAMES[n]);
+  syncWeekSetting();
+}
+$('settings-week-end').addEventListener('change', (ev) => setWeekEnd(parseInt(ev.target.value, 10)));
+$('settings-week-treatment').addEventListener('click', () => { const tw = treatmentWeekday(); if (tw != null) setWeekEnd(tw); });
 $('settings-report-name').addEventListener('change', async (ev) => {
   const reportName = ev.target.value.trim().slice(0, 60) || null;
   if (state.demo) { state.profile = { ...state.profile, reportName }; toast(reportName ? 'Name on the report saved' : 'Name on the report cleared'); return; }
@@ -4191,7 +4215,7 @@ function deleteMeal(id) {
 }
 
 $('more-meals').addEventListener('click', openManageMeals);
-$('more-settings').addEventListener('click', () => showTab('settings'));
+$('more-settings').addEventListener('click', () => { showTab('settings'); syncWeekSetting(); });
 $('settings-back').addEventListener('click', () => showTab('more'));
 
 /* ---------- The Guide (v167) ----------
@@ -8018,9 +8042,14 @@ async function saveCheckin(slot, day, answers, existing, opts = {}) {
    on (0 to 3, the same four words as the evening taps) and three written ones for everyone (what helped, what was hardest,
    the week in a sentence). Stored like any check-in, entries/{day}_week { type "checkin", slot "week" }, one per Monday-to-
    Sunday week (opening it again that week edits it). Never on Notes for the team: it feeds the Mood and wellbeing report. */
+/* The week ends on a day the person chooses (v228, Mark: his chemo is on Fridays and he wanted his week, and so its wellbeing check, to
+   end there): profile/main.weekEnd, 0 Sunday to 6 Saturday, Sunday when not set, so a household that never chose keeps Monday to Sunday.
+   weekPos(day) is the day's place in its week, 0 the first day, 6 the last. */
+const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+function weekEndDay() { const n = state.profile && state.profile.weekEnd; return Number.isInteger(n) && n >= 0 && n <= 6 ? n : 0; }
+function weekPos(day) { return (parseDay(day).getDay() - weekEndDay() - 1 + 14) % 7; }
 function weekBounds(day) {
-  const d = parseDay(day), dow = (d.getDay() + 6) % 7; // Monday 0
-  const from = addDays(day, -dow);
+  const from = addDays(day, -weekPos(day));
   return { from, to: addDays(from, 6) };
 }
 function weekCheckFor(day, slot = 'week') {
@@ -8592,7 +8621,7 @@ function readResultsPhoto(onRead, onCancel) {
 function renderWeekRow() {
   const row = $('week-check'), sub = $('week-check-sub'), title = $('week-check-title');
   if (!row) return;
-  const slot = weekSlot(), day = state.selectedDay, dow = (parseDay(day).getDay() + 6) % 7; // Monday 0
+  const slot = weekSlot(), day = state.selectedDay, dow = weekPos(day); // 0 the first day of the week, 6 its last
   title.textContent = slot === 'weekcarer' ? 'Your week, as you see it' : 'Your week';
   row.disabled = state.readOnly;
   row.classList.remove('is-done', 'is-due');
@@ -8609,7 +8638,7 @@ function renderWeekRow() {
   else {
     const last = state.recentEntries.filter((e) => e.type === 'checkin' && e.slot === slot && e.done !== false).sort((a, b) => b.day.localeCompare(a.day))[0];
     if (dow === 6) row.classList.add('is-due');
-    sub.textContent = (dow === 6 ? 'Last day of the week. Five minutes.' : 'Five minutes, any time up to Sunday.') + (last ? ' Last done ' + fmtDayShort(last.day) + '.' : ' Not done yet.');
+    sub.textContent = (dow === 6 ? 'Last day of the week. Five minutes.' : 'Five minutes, any time up to ' + WEEKDAY_NAMES[weekEndDay()] + '.') + (last ? ' Last done ' + fmtDayShort(last.day) + '.' : ' Not done yet.');
   }
 }
 $('week-check').addEventListener('click', () => openWeekCheck($('week-check').dataset.day || state.selectedDay));

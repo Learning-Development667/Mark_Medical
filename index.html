@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=227">
+  <link rel="stylesheet" href="styles.css?v=228">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -943,6 +943,17 @@
           </label>
           <p class="hint">Your full name, as the hospital has it. It goes at the top of every report and in the subject and sign-off of the covering email, so the team can file them against your records. Left empty, the reports use the first name of the circle's patient and the email is signed with your first name.</p>
         </div>
+        <h2 class="section-title">Your week</h2>
+        <div id="settings-week" class="card settings-group">
+          <label class="field">
+            <span>My week ends on</span>
+            <select id="settings-week-end">
+              <option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option><option value="6">Saturday</option><option value="0">Sunday</option>
+            </select>
+          </label>
+          <button id="settings-week-treatment" class="btn btn-secondary btn-block" type="button" hidden>Use my treatment day</button>
+          <p class="hint">The weekly Your week check-in asks about the week up to this day, and offers itself over the last three days of it. If you have treatment on the same day each week, ending your week there makes each one a treatment week.</p>
+        </div>
         <h2 class="section-title">Reminders</h2>
         <div id="settings-reminders-group" class="card settings-group">
           <label class="check settings-toggle">
@@ -1163,6 +1174,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=227"></script>
+  <script type="module" src="scripts.js?v=228"></script>
 </body>
 </html>
