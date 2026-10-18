@@ -88,6 +88,7 @@ One at a time, each a few days with its sources checked, on the profile mechanis
 - An "AI used this month: about 12p" line under Settings, from the bridge's own token tally. Offered 4 October; build if wanted.
 
 ## Done
+- v229 A watercolour behind the app, light and dark, strongest on the hub pages, with slightly see-through cards there; the More page is no longer a black slab. Every text colour keeps its contrast on the wash. Tested in `t/t36.mjs`.
 - v228 The week for the Your week check-in ends on a day you choose (More > Settings > Your week), with a one-tap Use my treatment day; Sunday until chosen. Tested in `t/t34.mjs`.
 - 18 October 2026 Beta codes for the first testers: **FRIENDS** ("Friends and family") made for the two friends with Crohn's and anyone else Mark invites by WhatsApp; **CROHNS** made first and switched off before anyone used it, since the sign-up banner shows the label and not everyone will be there for Crohn's. The Household admin switch-off tickbox fixed (it had been named `off`, which YAML reads as false).
 - v227 The topbar pill in a demo is a Leave demo button that asks first; the Guest chip beside it is hidden while a demo runs. Tested in `t/t33.mjs`.

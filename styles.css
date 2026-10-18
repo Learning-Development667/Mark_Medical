@@ -1902,3 +1902,27 @@ button.res-row:active { transform: translateY(1px); }
 .stripcard p { margin: 0; }
 .stripcard .card-title { margin-bottom: var(--s-1); }
 .scale-chips { margin-top: var(--s-3); }
+
+/* ---------- The watercolour behind the app (v229) ----------
+   Mark: the More page "looks like a black abyss", and the sign-in's watercolour is lovely. One fixed layer behind every screen:
+   icons/wash-light.jpg (the garden lifted to a pale tint) and icons/wash-dark.jpg (the same shapes as a deep teal glow). Both are baked so
+   that no pixel is darker (light) or lighter (dark) than the limit at which every text colour used on the page itself keeps 4.5:1 or better
+   (checked on the saved files: muted 4.74, teal 4.55, success and warning 4.6, danger 4.94 on the light; every colour 4.75 or better on the
+   dark). Cards, tiles and sheets are opaque and sit on top, so only the page between them shows it. --wash is the strength: full on the
+   hub pages with the most empty page, softer on the busy ones; a lower strength only moves the colours towards the plain page, never away. */
+.app::before {
+  content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background: url("icons/wash-light.jpg") 34% 50% / cover no-repeat;
+  opacity: var(--wash, 0.7);
+  transform: translateZ(0);
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .app::before { background-image: url("icons/wash-dark.jpg"); } }
+body[data-page="more"], body[data-page="settings"], body[data-page="guide"], body[data-page="usage"], body[data-page="docs"], body[data-page="vitals"] { --wash: 1; }
+/* On the hub pages the cards let a little of the painting through (about a fifth), so the page is not a few thin strips of colour between slabs of dark.
+   The surface under the text is still the card colour with a capped tint behind it, so every text pair keeps its contrast (dark: card 80% over a wash no lighter than L 0.039). */
+body[data-page="more"] :is(.card, .checkin-row):not(.is-due):not(.is-flare),
+body[data-page="settings"] :is(.card, .checkin-row):not(.is-due):not(.is-flare),
+body[data-page="guide"] :is(.card, .checkin-row):not(.is-due):not(.is-flare),
+body[data-page="usage"] .card,
+body[data-page="docs"] :is(.card, .checkin-row):not(.is-due) { background: color-mix(in srgb, var(--surface) 78%, transparent); }
+@media print, (forced-colors: active) { .app::before { display: none; } }
