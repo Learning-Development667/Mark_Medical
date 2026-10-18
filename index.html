@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=221">
+  <link rel="stylesheet" href="styles.css?v=222">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -59,23 +59,22 @@
     <symbol id="i-barcode" viewBox="0 0 24 24"><path d="M4 6v12M7 6v12M11 6v12M14 6v12M17 6v12M20 6v12" /><path d="M3 4h2M3 20h2M19 4h2M19 20h2" /></symbol>
   </svg>
 
-  <!-- Opener: the loading page. The full name at the top (My Medical over Daybook), the Mark 1 Apps film, the version at the bottom.
-       The film plays on every start, from one second in; reduced motion shows the still frame instead. -->
+  <!-- Opener (v222): the loading page. A short watercolour clip fills the screen (the same garden as the sign-in page),
+       the full name sits over the pale sky as real text, and the company credit is a small line at the foot.
+       The clip plays from the start on every cold start; reduced motion shows the still frame instead. -->
   <div id="opener" class="opener" role="status" aria-label="My Medical Daybook is loading">
+    <video id="opener-video" class="opener-video" muted playsinline preload="auto" poster="icons/opener-poster.jpg" aria-hidden="true" tabindex="-1">
+      <source src="icons/opener.mp4" type="video/mp4">
+    </video>
     <div class="opener-top">
       <span class="opener-pre">My Medical</span>
       <span class="opener-brand">Daybook</span>
       <span class="opener-strap">Your companion between appointments.</span>
       <span class="pill pill-stage opener-stage" data-stage>Beta</span>
     </div>
-    <div class="opener-film">
-      <video id="opener-video" class="opener-video" muted playsinline preload="auto" poster="icons/mark1apps-poster.jpg" aria-hidden="true" tabindex="-1">
-        <source src="icons/mark1apps.mp4" type="video/mp4">
-      </video>
-    </div>
     <div class="opener-foot">
       <button id="opener-skip" class="btn-link opener-skip" type="button" hidden>Skip</button>
-      <span class="opener-made mono">Made by Mark 1 Apps Ltd</span>
+      <span class="opener-co"><img src="icons/mark1apps-line.png" alt="" width="40" height="34"><span class="opener-made">Made by Mark 1 Apps Ltd</span></span>
       <span class="opener-legal mono">Copyright 2026 Mark 1 Apps Ltd. All rights reserved.</span>
       <span class="opener-version mono" id="opener-version"></span>
     </div>
@@ -1157,6 +1156,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=221"></script>
+  <script type="module" src="scripts.js?v=222"></script>
 </body>
 </html>

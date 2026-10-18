@@ -8,11 +8,10 @@
 
 /* ---------- Design tokens ---------- */
 :root {
-  /* The opener and the Mark 1 Apps mark: the film's own near-black navy, the same in both schemes */
-  --opener-bg: #030214; /* sampled from the film itself, so the video box has no visible edge */
-  --opener-fg: #FFFFFF;
-  --opener-muted: rgba(255, 255, 255, 0.68);
-  --opener-glow: #0093FF; /* the mark's own electric blue, used only on this page */
+  /* The Mark 1 Apps mark's navy (the Settings card) and the opener's watercolour colours, the same in both schemes */
+  --opener-bg: #030214; /* the Mark 1 Apps film's own near-black navy: the Settings card's mark sits on it */
+  /* The opener's watercolour (v222): always light, the same in both schemes; the words sit on the pale sky over a paper glow */
+  --opener-ink: #17263A; --opener-teal: #18727A; --opener-paper: #F6F4EF; --opener-slate: #3D4D5C;
   /* Colour: surfaces */
   --surface: #FFFFFF;
   --surface-raised: #FFFFFF;
@@ -466,7 +465,7 @@ textarea { line-height: 1.5; resize: vertical; }
 /* The stage pill (v132): "Beta" on the opener and the four cover screens, muted; never in the topbar, where it squeezed the page title */
 .pill-stage { min-height: 26px; padding: 1px 9px; font-size: 14px; background: var(--surface-sunken); color: var(--text-secondary); }
 .signin-card .pill-stage { margin-bottom: var(--s-2); }
-.opener-stage { margin-top: 14px; background: color-mix(in srgb, var(--opener-fg) 14%, transparent); color: var(--opener-fg); }
+.opener-stage { margin-top: 14px; background: color-mix(in srgb, var(--opener-ink) 10%, transparent); color: var(--opener-slate); }
 .main {
   flex: 1;
   width: 100%; max-width: 640px; margin: 0 auto;
@@ -1205,23 +1204,30 @@ body.is-med-dragging { overflow: hidden; }
 .key-mood .cal-face:last-of-type { margin-right: 3px; }
 .key-mood .cal-face { width: 10px; height: 10px; }
 
-/* ---------- Opener (loading page) ---------- */
-.opener { position: fixed; inset: 0; z-index: 50; background: var(--opener-bg); color: var(--opener-fg); display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: max(32px, env(safe-area-inset-top)) 24px max(24px, env(safe-area-inset-bottom)); transition: opacity 420ms ease; }
+/* ---------- Opener (loading page, v222) ---------- */
+.opener { position: fixed; inset: 0; z-index: 50; background: var(--opener-paper); color: var(--opener-ink); display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: max(32px, env(safe-area-inset-top)) 24px max(24px, env(safe-area-inset-bottom)); overflow: hidden; transition: opacity 420ms ease; }
 .opener.is-leaving { opacity: 0; pointer-events: none; }
 .opener[hidden] { display: none; }
-/* The name is the headline: large, letter-spaced, with a soft glow in the mark's blue so the title and the film read as one piece */
-.opener-top { text-align: center; margin-top: 10vh; }
-.opener-brand { display: block; font-family: var(--font-head); font-weight: 600; font-size: clamp(60px, 19vw, 110px); letter-spacing: -0.01em; line-height: 1; color: var(--opener-fg); text-shadow: 0 0 18px color-mix(in srgb, var(--opener-glow) 55%, transparent), 0 0 48px color-mix(in srgb, var(--opener-glow) 30%, transparent); }
-.opener-pre { display: block; margin-bottom: 6px; font-family: var(--font-body); font-weight: 600; font-size: clamp(15px, 4.4vw, 21px); letter-spacing: 0.22em; line-height: 1; color: var(--opener-muted); text-transform: uppercase; }
-.opener-strap { display: block; margin-top: 14px; color: var(--opener-muted); font-size: 18px; letter-spacing: 0.01em; }
-/* The maker's film, smaller than the name, its edges feathered so the mark floats on the page rather than sitting in a box */
-.opener-film { width: min(72%, 360px); aspect-ratio: 16 / 9; -webkit-mask-image: radial-gradient(ellipse 62% 62% at 50% 50%, #000 48%, transparent 100%); mask-image: radial-gradient(ellipse 62% 62% at 50% 50%, #000 48%, transparent 100%); }
-.opener-video { width: 100%; height: 100%; object-fit: cover; background: var(--opener-bg); display: block; }
+/* The watercolour fills the screen; the picture's tree and horizon are kept in view on a tall phone */
+.opener-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 34% 50%; background: var(--opener-paper); display: block; }
+/* A dark wash at the foot only, so the pale foot text reads on the foliage */
+.opener::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 42%; background: linear-gradient(to top, rgba(10, 24, 30, 0.82), rgba(10, 24, 30, 0.5) 55%, rgba(10, 24, 30, 0)); pointer-events: none; }
+.opener-top, .opener-foot { position: relative; z-index: 1; }
+/* The name: real text over the pale sky, on a soft paper glow so it can never blend into the picture */
+.opener-top { text-align: center; margin-top: 9vh; padding: 28px 36px 24px; max-width: 100%; background: radial-gradient(closest-side, color-mix(in srgb, var(--opener-paper) 88%, transparent) 55%, color-mix(in srgb, var(--opener-paper) 0%, transparent)); animation: openerIn 1500ms cubic-bezier(.2, .7, .2, 1) 350ms both; }
+@keyframes openerIn { from { opacity: 0; filter: blur(7px); transform: translateY(8px); } to { opacity: 1; filter: blur(0); transform: none; } }
+.opener-brand { display: block; font-family: var(--font-head); font-weight: 600; font-size: clamp(60px, 19vw, 110px); letter-spacing: -0.01em; line-height: 1; color: var(--opener-ink); }
+.opener-pre { display: block; margin-bottom: 8px; font-family: var(--font-body); font-weight: 600; font-size: clamp(15px, 4.4vw, 21px); letter-spacing: 0.22em; line-height: 1; color: var(--opener-teal); text-transform: uppercase; }
+.opener-strap { display: block; margin-top: 14px; color: var(--opener-slate); font-size: 18px; letter-spacing: 0.01em; }
 .opener-foot { display: flex; flex-direction: column; align-items: center; gap: var(--s-1); text-align: center; }
-.opener-skip { color: var(--opener-fg); min-height: var(--tap); padding: 0 var(--s-4); font-size: 17px; margin-bottom: var(--s-2); }
-.opener-made { color: var(--opener-muted); font-size: 13px; letter-spacing: 0.1em; text-transform: uppercase; }
-.opener-legal { color: var(--opener-muted); font-size: 12px; letter-spacing: 0.02em; }
-.opener-version { color: var(--opener-muted); font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; margin-top: var(--s-1); }
+.opener-skip { color: #FFFFFF; min-height: var(--tap); padding: 0 var(--s-4); font-size: 17px; margin-bottom: var(--s-2); }
+/* The company credit: the line-art mark on a small paper chip, with the company's name beside it */
+.opener-co { display: inline-flex; align-items: center; gap: 10px; padding: 7px 16px 7px 10px; border-radius: 999px; background: var(--opener-paper); color: var(--opener-ink); }
+.opener-co img { height: 30px; width: auto; display: block; }
+.opener-made { font-size: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
+.opener-legal { color: rgba(255, 255, 255, 0.86); font-size: 12px; letter-spacing: 0.02em; margin-top: var(--s-1); }
+.opener-version { color: rgba(255, 255, 255, 0.86); font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; margin-top: var(--s-1); }
+@media (prefers-reduced-motion: reduce) { .opener-top { animation: none; } }
 /* Bowels sheet (since v91): the Bristol chart as a list of seven rows, one tap each */
 .bristol { display: flex; flex-direction: column; gap: var(--s-2); margin: var(--s-2) 0 var(--s-4); }
 .bristol-row {

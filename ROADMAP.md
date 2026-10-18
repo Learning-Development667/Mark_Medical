@@ -88,6 +88,7 @@ One at a time, each a few days with its sources checked, on the profile mechanis
 - An "AI used this month: about 12p" line under Settings, from the bridge's own token tally. Offered 4 October; build if wanted.
 
 ## Done
+- v222 The opener is the sign-in watercolour: a short Firefly clip fills the screen, "My Medical Daybook" is real text over the pale sky, and the Mark 1 Apps mark is a small credit chip at the foot. The neon film is kept for the website and company pages. Tested in `t/t28.mjs`; the clip itself to be checked on a phone.
 - v221 Crohn's build 5: tummy pain, the gut in the way and nights up for the toilet in the check-ins with the pack, read by Notes for the team and the Crohn's and colitis report; the set-up's Crohn's step takes the advice line and the regular medicine. Tested in `t/t27.mjs`.
 - v220 Crohn's build 4: the Crohn's and colitis report for the IBD team, in the house style, as many pages as it needs, with the Gastro questions. Tested in `t/t26.mjs`.
 - v219 Crohn's build 3: Results on the Reports tab, recorded not interpreted: blood tests and calprotectin as the team gives them, with the lab's range as a band on an SVG chart, Add results for several from one sample, read from a photo through the bridge, on the timeline, Notes for the team and the two-page report as facts only. Tested in `t/t24.mjs` and `t/t25.mjs`.
