@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '219';
+const APP_VERSION = '220';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -771,6 +771,7 @@ const state = {
   notesRange: 14,
   moodRange: 28,
   painRange: 28,
+  ibdRange: 28,
   foodRangeMode: 'preset',
   notesRangeMode: 'preset',
   foodCustomFrom: null,
@@ -2294,7 +2295,7 @@ document.querySelectorAll('.tab').forEach((btn) => {
 
 /* The topbar carries the page name ("Care Log: Food diary"), so the report
    pages and the Chemo tab no longer need a heading of their own */
-const PAGE_TITLES = { today: 'Today', meds: 'Medicines', vitals: 'Reports', chemo: 'Treatment plan', exercise: 'Exercise', more: 'More', food: 'Food diary', notes: 'Notes for the team', mood: 'Mood and wellbeing', pain: 'Pain and pain relief', docs: 'Documents', settings: 'Settings', guide: 'Guide', usage: 'Usage', results: 'Results' };
+const PAGE_TITLES = { today: 'Today', meds: 'Medicines', vitals: 'Reports', chemo: 'Treatment plan', exercise: 'Exercise', more: 'More', food: 'Food diary', notes: 'Notes for the team', mood: 'Mood and wellbeing', pain: 'Pain and pain relief', docs: 'Documents', settings: 'Settings', guide: 'Guide', usage: 'Usage', results: 'Results', ibd: "Crohn's and colitis" };
 function setBrand(page) {
   $('brand').replaceChildren('Daybook', page ? h('span', { class: 'brand-page', text: ': ' + page }) : null);
   document.title = page ? 'Daybook: ' + page : 'My Medical Daybook';
@@ -2305,7 +2306,7 @@ function showTab(name) {
   let highlight = name;
   if (name === 'docs') highlight = state.docsReturn || 'more';
   if (name === 'settings' || name === 'guide' || name === 'usage') highlight = 'more';
-  if (highlight === 'food' || highlight === 'notes' || highlight === 'mood' || highlight === 'pain' || highlight === 'results') highlight = state.reportReturn || 'vitals';
+  if (highlight === 'food' || highlight === 'notes' || highlight === 'mood' || highlight === 'pain' || highlight === 'results' || highlight === 'ibd') highlight = state.reportReturn || 'vitals';
   document.querySelectorAll('.tab').forEach((b) => { const on = b.dataset.tab === highlight; b.classList.toggle('is-active', on); if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
   document.querySelectorAll('.view').forEach((v) => { v.hidden = v.dataset.view !== name; });
   setBrand(PAGE_TITLES[name] || '');
@@ -2319,6 +2320,7 @@ function showTab(name) {
   if (name === 'mood') renderMoodReport();
   if (name === 'pain') renderPainReport();
   if (name === 'results') renderResults();
+  if (name === 'ibd') renderIbdReport();
   if (name === 'chemo') renderChemo();
   if (name === 'exercise') renderExercise();
   if (name === 'docs') showDocsList();
@@ -2575,7 +2577,7 @@ function entrySub(e) {
   if (e.type === 'pain' && e.note) bits.push(e.note);
   if (e.type === 'symptom') { const c = causeOf(e); bits.push(c ? 'Side effect of ' + c.name + (e.sessionDay ? ' on ' + fmtDayShort(e.sessionDay) : '') : 'Symptom'); if (e.fromCheckin) bits.push('From the ' + slotWord(e.fromCheckin).toLowerCase() + ' check-in'); if (e.note) bits.push(e.note); }
   if (e.type === 'bowel') { const ts = bowelTypes(e); if (ts.length > 1) bits.push(ts.map((t) => bristolName(t)).join(', ')); const f = bowelFlagWords(e); if (f) bits.push(f); if (e.note) bits.push(e.note); }
-  if (e.type === 'question') bits.push((isDietitianQ(e) ? 'Question for the dietitian' : isWellbeingQ(e) ? 'Question for the therapist' : isPainQ(e) ? 'Question for the pain team' : 'Question for the team') + (e.answered ? ', answered' : '') + (isDietitianQ(e) || isWellbeingQ(e) || isPainQ(e) ? '' : ' · ' + teamLabel(teamOf(e))));
+  if (e.type === 'question') bits.push((isDietitianQ(e) ? 'Question for the dietitian' : isWellbeingQ(e) ? 'Question for the therapist' : isPainQ(e) ? 'Question for the pain team' : packOn('ibd') && isGastroQ(e) ? 'Question for the gastro team' : 'Question for the team') + (e.answered ? ', answered' : '') + (isDietitianQ(e) || isWellbeingQ(e) || isPainQ(e) ? '' : ' · ' + teamLabel(teamOf(e))));
   if (e.type === 'sent') bits.push('By email to ' + (e.to || '') + (e.copyTo ? ', with a copy to ' + e.copyTo : ''));
   if (e.type === 'call') { bits.push(e.note ? 'They said: ' + e.note : 'Logged from I think I\'m flaring'); }
   if (e.type === 'result') { bits.push('Result' + (e.source ? ' from ' + e.source : '') + ', as given'); if (e.range) bits.push('range ' + e.range); if (e.note) bits.push(e.note); }
@@ -5670,6 +5672,16 @@ const SEND_KINDS = {
     attached: (range) => `Attached: Pain and pain relief, ${range}.`,
     check: ' Use Preview on the Pain screen to look at it first.'
   },
+  ibd: {
+    data: () => state.ibdPdf,
+    file: (n) => n.filename,
+    blob: () => ibdReportBlob(),
+    subject: (range) => `My Crohn's and colitis report, ${range}`,
+    named: (who, range) => `Crohn's and colitis: ${who}, ${range}`,
+    words: (range, n) => `Ahead of our appointment, here is my Crohn's and colitis report from Daybook for ${range}: my bowels against my usual, any blood and urgency, flare days and the calls I made, my treatment, my weight and temperature, and the results I was given${n && n.questions && n.questions.length ? `, with ${n.questions.length === 1 ? 'a question' : n.questions.length + ' questions'} I would like to ask` : ''}.`,
+    attached: (range) => `Attached: Crohn's and colitis, ${range}.`,
+    check: " Use Preview on the Crohn's and colitis screen to look at it first."
+  },
   meds: {
     data: () => state.medsPdf,
     file: (n) => n.filename,
@@ -6219,7 +6231,7 @@ function buildTwoPage(n) {
 
 /* The report fitted into a hidden frame (two A4 pages or nothing), ready to print or turn into a PDF */
 let reportModule = null;
-const REPORT_NAMES = { notes: 'Notes for the team', food: 'Food diary', meds: 'Medicine history', mood: 'Mood and wellbeing', pain: 'Pain and pain relief' };
+const REPORT_NAMES = { notes: 'Notes for the team', food: 'Food diary', meds: 'Medicine history', mood: 'Mood and wellbeing', pain: 'Pain and pain relief', ibd: "Crohn's and colitis" };
 /* One hidden frame per report (v121), so the fitted Notes for the team survives a Food diary fit */
 function reportFrame(kind) {
   const id = 'report-frame-' + (kind || 'notes');
@@ -6234,13 +6246,14 @@ function reportFrame(kind) {
    because every Preview, Print, Save and Send fitted the whole report again). The key is the report's
    own data object (replaced on every redraw), the Daybook Assistant summary and the settings the
    report reads; fits on one frame run one after another, never at once. */
-const fitMemo = { notes: null, food: null, meds: null, mood: null, pain: null };
-const fitQueue = { notes: Promise.resolve(), food: Promise.resolve(), meds: Promise.resolve(), mood: Promise.resolve(), pain: Promise.resolve() };
+const fitMemo = { notes: null, food: null, meds: null, mood: null, pain: null, ibd: null };
+const fitQueue = { notes: Promise.resolve(), food: Promise.resolve(), meds: Promise.resolve(), mood: Promise.resolve(), pain: Promise.resolve(), ibd: Promise.resolve() };
 function fitKey(kind) {
   const p = state.profile || {};
   if (kind === 'meds') return [state.medsPdf, p.reportName, state.patientName, state.medicines];
   if (kind === 'mood') return [state.moodPdf, state.moodAI, p.reportName, state.patientName, state.days];
   if (kind === 'pain') return [state.painPdf, state.painAI, p.reportName, state.patientName, state.days, state.medicines];
+  if (kind === 'ibd') return [state.ibdPdf, p.reportName, state.patientName, state.days, state.medicines, p.ibd, p.flarePlan, p.calls];
   return kind === 'food' ? [state.foodPdf, p.reportName, state.patientName, p.proteinTarget, p.detailedNutrition, state.nutrition]
     : [state.notesPdf, state.notesAI, p.reportName, state.patientName, p.proteinTarget];
 }
@@ -6257,7 +6270,7 @@ function memoFit(kind, run) {
 function warmReport(kind) {
   setTimeout(() => {
     if ($('view-' + (kind === 'notes' ? 'notes' : kind)).hidden) return;
-    (kind === 'food' ? fittedFoodReport() : kind === 'mood' ? fittedMoodReport() : kind === 'pain' ? fittedPainReport() : fittedReport()).catch(() => {});
+    (kind === 'food' ? fittedFoodReport() : kind === 'mood' ? fittedMoodReport() : kind === 'pain' ? fittedPainReport() : kind === 'ibd' ? fittedIbdReport() : fittedReport()).catch(() => {});
     loadScript(CDN.jspdf).catch(() => {});
     loadScript(CDN.html2canvas).catch(() => {});
   }, 900);
@@ -6651,7 +6664,8 @@ const REPORT_KINDS = {
   food: { data: () => state.foodPdf, fit: () => fittedFoodReport(), blob: () => foodReportBlob(), html: (R) => reportModule.foodReportHtml(R) },
   meds: { data: () => state.medsPdf, fit: () => fittedMedsReport(), blob: () => medsReportBlob(), html: (R) => reportModule.medsReportHtml(R) },
   mood: { data: () => state.moodPdf, fit: () => fittedMoodReport(), blob: () => moodReportBlob(), html: (R) => reportModule.moodReportHtml(R) },
-  pain: { data: () => state.painPdf, fit: () => fittedPainReport(), blob: () => painReportBlob(), html: (R) => reportModule.painReportHtml(R) }
+  pain: { data: () => state.painPdf, fit: () => fittedPainReport(), blob: () => painReportBlob(), html: (R) => reportModule.painReportHtml(R) },
+  ibd: { data: () => state.ibdPdf, fit: () => fittedIbdReport(), blob: () => ibdReportBlob(), html: (R) => reportModule.ibdReportHtml(R) }
 };
 let PDF_INSET_MM = 0;
 async function printThroughShare(kind, makeBlob) {
@@ -7151,7 +7165,7 @@ function weekLabel(w) { return w.from === w.to ? fmtDayLong(w.from) : `${w.from.
 function buildNotesReport(entries, questionsAll, from, to, rangeLabel) {
   const glance = summaryRows(entries, from, to);
   /* Open questions by team (v133): the oncologist's first, then gastro, general and not sure; dietitian ones go to the Food diary report and are only counted here */
-  const open = sortQuestions(questionsAll.filter((q) => !q.answered && !isDietitianQ(q) && !isWellbeingQ(q) && !isPainQ(q)));
+  const open = sortQuestions(questionsAll.filter((q) => !q.answered && !isDietitianQ(q) && !isWellbeingQ(q) && !isPainQ(q) && !(packOn('ibd') && isGastroQ(q))));
   const shape = (q) => ({ id: q.id, team: teamOf(q), teamLabel: teamLabel(teamOf(q)), text: q.note, who: q.addedBy || 'unknown', day: q.day });
   /* Only questions added in the report's period are printed (v207, Mark: an older list that was dealt with in clinic
      but never marked as answered kept printing). Older open ones are counted, and listed on the screen to be tidied. */
@@ -7160,6 +7174,7 @@ function buildNotesReport(entries, questionsAll, from, to, rangeLabel) {
   const dietitian = questionsAll.filter((q) => !q.answered && isDietitianQ(q)).length;
   const wellbeing = questionsAll.filter((q) => !q.answered && isWellbeingQ(q)).length;
   const painQ = questionsAll.filter((q) => !q.answered && isPainQ(q)).length;
+  const gastroQ = packOn('ibd') ? questionsAll.filter((q) => !q.answered && isGastroQ(q)).length : 0;
   const dayAnswered = (q) => answeredDayOf(q) || q.day;
   const answers = questionsAll.filter((q) => q.answered && dayAnswered(q) >= from && dayAnswered(q) <= to)
     .sort((a, b) => entryDate(a) - entryDate(b))
@@ -7195,6 +7210,7 @@ function buildNotesReport(entries, questionsAll, from, to, rangeLabel) {
   if (dietitian) lines.push(`- ${plural(dietitian, 'question')} for the dietitian ${dietitian === 1 ? 'is' : 'are'} on the Food diary report.`);
   if (wellbeing) lines.push(`- ${plural(wellbeing, 'question')} for the therapist ${wellbeing === 1 ? 'is' : 'are'} on the Mood and wellbeing report.`);
   if (painQ) lines.push(`- ${plural(painQ, 'question')} for the pain team ${painQ === 1 ? 'is' : 'are'} on the Pain report.`);
+  if (gastroQ) lines.push(`- ${plural(gastroQ, 'question')} for the gastro team ${gastroQ === 1 ? 'is' : 'are'} on the Crohn's and colitis report.`);
   lines.push('', 'Summary (simple checks by the app, not a diagnosis):');
   if (glance.length) glance.forEach((g) => lines.push(`- ${LEVEL_WORD[g.level]}: ${g.text}`));
   else lines.push('- No readings logged in this period.');
@@ -7204,7 +7220,7 @@ function buildNotesReport(entries, questionsAll, from, to, rangeLabel) {
     d.notes.forEach((n) => lines.push(`- ${n.who}, ${n.time}${n.context ? ' (' + n.context + ')' : ''}: ${n.text}`));
   });
   else lines.push('- No written notes in this period.');
-  return { questions, older, dietitian, wellbeing, painQ, answers, answered, glance, days, weeks: notesByWeek(days, from, to), rangeLabel, text: lines.join('\n') };
+  return { questions, older, dietitian, wellbeing, painQ, gastroQ, answers, answered, glance, days, weeks: notesByWeek(days, from, to), rangeLabel, text: lines.join('\n') };
 }
 
 /* The name on the report: Settings' "Name on the report" if set, else the member whose relation is the patient */
@@ -7276,6 +7292,7 @@ async function renderNotesReport() {
   if (report.dietitian) $('notes-questions').append(h('p', { class: 'muted', text: `${plural(report.dietitian, 'question')} for the dietitian ${report.dietitian === 1 ? 'is' : 'are'} on the Food diary, with its report.` }));
   if (report.wellbeing) $('notes-questions').append(h('p', { class: 'muted', text: `${plural(report.wellbeing, 'question')} for the therapist ${report.wellbeing === 1 ? 'is' : 'are'} on the Mood and wellbeing report.` }));
   if (report.painQ) $('notes-questions').append(h('p', { class: 'muted', text: `${plural(report.painQ, 'question')} for the pain team ${report.painQ === 1 ? 'is' : 'are'} on the Pain report.` }));
+  if (report.gastroQ) $('notes-questions').append(h('p', { class: 'muted', text: `${plural(report.gastroQ, 'question')} for the gastro team ${report.gastroQ === 1 ? 'is' : 'are'} on the Crohn's and colitis report.` }));
   /* Answered questions are filed, not listed (v114): one line and a way to the documents */
   syncAnswerDocs(questionsAll);
   if (report.answered) {
@@ -9309,6 +9326,203 @@ async function painReportBlob() {
   return res ? reportPdfBlob(res) : null;
 }
 
+/* ------------------------------------------------------------------ */
+/* The Crohn's and colitis report (v220): build (4) of Mark's Crohn's plan. The house style, as many A4 */
+/* pages as it needs: tiles, four charts, the treatment and flare strip, the Gastro questions, then page */
+/* by page the weeks, the flare log and calls, outside the gut, results as given and a panel to write on. */
+/* Facts as logged, against the person's own usual; the only levels are v145's bowel rules. Never advice. */
+/* ------------------------------------------------------------------ */
+function isGastroQ(q) { return teamOf(q) === 'gastro'; }
+async function renderIbdReport() {
+  const range = reportRange('ibd');
+  const { from, to } = range;
+  $('ibd-sub').textContent = reportRangeLabel('ibd', range);
+  const [loaded, questionsAll, results] = await Promise.all([loadEntriesFrom(from), loadQuestions(), loadResults().catch(() => [])]);
+  if (!loaded) return;
+  const entries = loaded.filter((e) => e.day <= to);
+  const qs = sortQuestions(questionsAll.filter((q) => !q.answered && isGastroQ(q)));
+  state.ibdPdf = { from, to, entries, results, questions: qs.map((q) => ({ id: q.id, team: 'gastro', teamLabel: 'Gastro', text: q.note, who: q.addedBy || 'unknown', day: q.day })), filename: `Daybook crohns colitis ${to}.pdf`, title: "Crohn's and colitis" };
+  loadPatientName();
+  $('ibd-questions-section').hidden = !qs.length;
+  $('ibd-questions').replaceChildren(...state.ibdPdf.questions.map((q) => questionCard(q, renderIbdReport)));
+  const I = buildIbdReport(state.ibdPdf);
+  $('ibd-tiles').replaceChildren(...I.tiles.map((t) => h('div', { class: 'tile' + (t.tone ? ' is-' + t.tone : '') },
+    h('span', { class: 'tile-label', text: t.k }), h('span', { class: 'tile-value' }, t.v, t.unit ? h('small', { text: t.unit }) : null), h('span', { class: 'tile-sub', text: t.n }))));
+  $('ibd-brief').replaceChildren(...I.brief.map((b) => h('p', null, b.head ? h('b', { text: b.head + '. ' }) : null, b.text)));
+  $('ibd-strip').replaceChildren(...I.strip.map((s) => h('div', { class: 'card stripcard' }, h('h3', { class: 'card-title', text: s.head }), h('p', { text: s.text }))));
+  $('ibd-weeks').replaceChildren(...I.weeks.map((w) => h('div', { class: 'card wkcard' },
+    h('div', { class: 'wk-head' }, h('span', { text: w.label }), h('span', { class: 'muted', text: w.aDay + ' a day' })),
+    h('p', { class: 'wk-sub', text: [w.aDaySub, 'Blood: ' + w.blood, 'Urgency: ' + w.urgency, 'Weight: ' + w.weight, w.other].filter(Boolean).join('. ') + '.' }))));
+  $('ibd-flare').replaceChildren(...(I.flareLog.length ? I.flareLog.map((f) => h('div', { class: 'card wordcard' }, h('span', { class: 'word-when', text: f.when }), h('p', { text: f.text }))) : [h('p', { class: 'hint', text: 'No flare days marked and no calls logged in this period. Both come from I think I\'m flaring on Today.' })]));
+  $('ibd-results').replaceChildren(...(I.results.length ? I.results.map((r) => h('div', { class: 'card wordcard' }, h('span', { class: 'word-when', text: r.when }), h('p', { text: r.text }))) : [h('p', { class: 'hint', text: 'No results recorded in this period. Add them under Reports, Results, as the team gives them.' })]));
+  $('ibd-send').hidden = state.readOnly || state.viewer;
+  warmReport('ibd');
+}
+function buildIbdReport(n) {
+  const { from, to, entries } = n;
+  const days = []; for (let d = from; d <= to; d = addDays(d, 1)) days.push(d);
+  const avg = (l) => (l.length ? Math.round(l.reduce((t, v) => t + v, 0) / l.length * 10) / 10 : null);
+  const one = (v) => (v == null ? '' : String(Math.round(v * 10) / 10));
+  const text = (x) => (x == null ? '' : String(x).trim());
+  const info = ibdInfo();
+  const kindWord = (IBD_KINDS.find(([k]) => k === info.kind) || [])[1] || '';
+  const stoma = Boolean(ibdStoma());
+  const usual = ibdUsual();
+  const what = stoma ? 'Bag emptied' : 'Bowels';
+  const bowels = entries.filter((e) => e.type === 'bowel');
+  const real = bowels.filter((e) => !e.none);
+  const byDay = {}; real.forEach((e) => { (byDay[e.day] = byDay[e.day] || []).push(e); });
+  const noneDays = new Set(bowels.filter((e) => e.none).map((e) => e.day).filter((d) => !byDay[d]));
+  const logged = Object.keys(byDay).sort();
+  const countOf = (d) => (byDay[d] ? byDay[d].length : noneDays.has(d) ? 0 : null);
+  const bloodOf = (d) => (byDay[d] ? Math.max(0, ...byDay[d].map(bloodGradeOf)) : null);
+  const dayList = (pred) => [...new Set(real.filter(pred).map((e) => e.day))].sort();
+  const bloodDays = dayList((e) => bloodGradeOf(e) > 0), blackDays = dayList((e) => e.black);
+  const worstBlood = bloodDays.length ? Math.max(...real.map(bloodGradeOf)) : 0;
+  const rush = real.filter((e) => Number(e.urgency) === 2 || (e.urgency == null && e.urgent && !e.accident)).length;
+  const rushDays = dayList((e) => Number(e.urgency) === 2 || (e.urgency == null && e.urgent && !e.accident));
+  const accidents = real.filter((e) => e.accident).length, nightN = real.filter((e) => e.night).length, nightDays = dayList((e) => e.night);
+  const wateryDays = dayList((e) => e.stoma && e.output === 'watery');
+  const looseN = stoma ? 0 : real.filter(isLoose).length;
+  const counts = logged.map((d) => byDay[d].length);
+  const mean = counts.length ? avg(counts) : null;
+  const most = counts.length ? Math.max(...counts) : 0, mostDay = logged.find((d) => byDay[d].length === most);
+  const above = usual && most >= usual + 3;
+  const twDays = stoma ? [] : logged.filter((d) => byDay[d].length >= 6 && bloodOf(d));
+  const bloodWord = (g) => ['none', 'streaks', 'mixed in', 'mostly blood'][g] || '';
+  /* flare days and calls */
+  const flareDays = days.filter(isFlareDay);
+  const runs = []; flareDays.forEach((d) => { const r = runs[runs.length - 1]; if (r && addDays(r.to, 1) === d) r.to = d; else runs.push({ from: d, to: d }); });
+  const calls = entries.filter((e) => e.type === 'call').sort((a, b) => entryDate(a) - entryDate(b));
+  const plan = flarePlan();
+  /* readings */
+  const temps = entries.filter((e) => e.type === 'temp' && e.value != null);
+  const tempHi = temps.length ? temps.reduce((m, e) => (Number(e.value) > Number(m.value) ? e : m)) : null;
+  const ws = entries.filter((e) => e.type === 'weight' && e.value != null).sort((a, b) => a.day.localeCompare(b.day) || entryDate(a) - entryDate(b));
+  const wFirst = ws[0], wLast = ws[ws.length - 1], wChange = ws.length > 1 ? Math.round((Number(wLast.value) - Number(wFirst.value)) * 10) / 10 : null;
+  const ci = entries.filter((e) => isPatientCheckin(e) && e.slot !== 'week');
+  const pains = []; entries.forEach((e) => { if (e.type === 'pain' && e.value != null) pains.push(Number(e.value)); if (isPatientCheckin(e)) { if (e.pain != null && e.pain !== '') pains.push(Number(e.pain)); if (e.worstPain != null && e.worstPain !== '') pains.push(Number(e.worstPain)); } });
+  const energy = ci.filter((e) => e.slot === 'evening' && e.energy != null && e.energy !== '').map((e) => Number(e.energy));
+  const outside = ci.filter((e) => e.slot === 'evening' && Array.isArray(e.outside)).sort((a, b) => a.day.localeCompare(b.day));
+  /* treatment: injections or infusions, steroid courses, the IBD medicines */
+  const sessions = Object.keys(state.days || {}).filter((d) => state.days[d].chemo && isRepeat(treatmentOf(state.days[d]))).sort();
+  const inRangeSessions = sessions.filter((d) => d >= from && d <= to);
+  const nextSession = sessions.find((d) => d > to) || null;
+  const steroids = steroidCourses().filter((m) => m.courseStart <= to && (!m.courseEnd || m.courseEnd >= from));
+  const yearAgo = addDays(to, -365);
+  const steroids12 = steroidCourses().filter((m) => m.courseStart <= to && m.courseStart >= yearAgo);
+  const meds = (state.medicines || []).filter((m) => m.active !== false && !(m.courseEnd && m.courseEnd < from));
+  const ibdMeds = meds.filter((m) => /crohn|colitis|ibd|steroid|biologic|anti-tnf|infliximab|adalimumab|vedolizumab|ustekinumab|azathioprine|mercaptopurine|methotrexate|mesalazine|budesonide|prednisolone|tofacitinib|upadacitinib|risankizumab|mirikizumab|filgotinib|golimumab/i.test((m.name || '') + ' ' + (m.purpose || '')) || medClass(m) === "Crohn's or colitis" || medClass(m) === 'Steroid');
+  const results = sortResults((n.results || []).filter((e) => e.day >= from && e.day <= to));
+  const patient = (state.profile && state.profile.reportName) || state.patientName || state.name || 'The patient';
+  /* tiles */
+  const tone = twDays.length || blackDays.length || worstBlood >= 3 ? 'red' : above || bloodDays.length || rush || accidents || nightN || wateryDays.length >= 2 ? 'amber' : logged.length ? 'green' : '';
+  const tiles = [
+    logged.length ? { k: what + ' a day', v: one(mean), unit: usual ? 'usual ' + usual : 'a day', tone: above ? 'amber' : 'green', n: `On the ${plural(logged.length, 'day')} logged of ${days.length}. Most ${most} on ${rDay(mostDay)}.${noneDays.size ? ' None on ' + plural(noneDays.size, 'day') + '.' : ''}` }
+      : { k: what + ' a day', v: 'None', unit: '', tone: '', n: 'No bowel movements logged in this period.' },
+    logged.length ? { k: 'Blood', v: String(bloodDays.length), unit: 'of ' + plural(logged.length, 'day'), tone: worstBlood >= 3 || blackDays.length ? 'red' : bloodDays.length ? 'amber' : 'green',
+      n: bloodDays.length ? `Worst ${bloodWord(worstBlood)}, on ${bloodDays.slice(0, 3).map(rDay).join(', ')}${bloodDays.length > 3 ? ' and ' + (bloodDays.length - 3) + ' more' : ''}.${blackDays.length ? ' Black or tarry on ' + plural(blackDays.length, 'day') + '.' : ''}` : 'No blood logged.' + (twDays.length ? '' : '') }
+      : { k: 'Blood', v: 'None', unit: '', tone: '', n: 'Nothing logged.' },
+    logged.length ? { k: stoma ? 'Leaks and nights' : 'Urgency', v: String(stoma ? accidents : rush), unit: stoma ? plural(accidents, 'leak').replace(/^\d+\s/, '') : 'straight away', tone: rush || accidents || nightN ? 'amber' : 'green',
+      n: [stoma ? '' : (rush ? 'Had to go straight away ' + plural(rush, 'time') : 'Never had to go straight away'), stoma ? '' : accidents ? plural(accidents, 'accident or leak') : 'no accidents', nightN ? plural(nightN, 'time') + ' at night' : 'none at night', wateryDays.length ? 'watery output on ' + plural(wateryDays.length, 'day') : ''].filter(Boolean).join(', ') + '.' }
+      : { k: 'Urgency', v: 'None', unit: '', tone: '', n: 'Nothing logged.' },
+    { k: 'Flare days', v: flareDays.length ? String(flareDays.length) : 'None', unit: flareDays.length ? 'of ' + days.length : '', tone: flareDays.length ? 'amber' : '',
+      n: flareDays.length ? `Marked as flaring ${runs.map((r) => (r.from === r.to ? rDay(r.from) : rDay(r.from) + ' to ' + rDay(r.to))).join('; ')}.${calls.length ? ' ' + plural(calls.length, 'call') + ' to the advice line.' : ''}` : 'No day marked as a flare day' + (calls.length ? '; ' + plural(calls.length, 'call') + ' to the advice line.' : '.') }
+  ];
+  /* charts, drawn by report.js renderChart() */
+  const teal = REPORT_TEAL, red = REPORT_RED, ink = REPORT_INK, warm = '#C2703D';
+  const dayLabels = days.map((d, i) => (i === 0 || i === days.length - 1 || parseDay(d).getDate() === 1 ? rDay(d) : String(parseDay(d).getDate())));
+  const countSeries = days.map(countOf);
+  const cMax = Math.max(usual ? usual + 2 : 4, 4, ...countSeries.map((v) => v || 0));
+  const bloodSeries = days.map((d) => (byDay[d] ? bloodOf(d) : null));
+  const flareMarks = days.map((d, i) => (isFlareDay(d) ? i : -1)).filter((i) => i >= 0);
+  const sessionMarks = days.map((d, i) => (inRangeSessions.includes(d) ? i : -1)).filter((i) => i >= 0);
+  const tempVals = days.map((d) => { const l = temps.filter((e) => e.day === d).map((e) => Number(e.value)); return l.length ? Math.max(...l) : null; });
+  const wVals = days.map((d) => { const l = ws.filter((e) => e.day === d); return l.length ? Number(l[l.length - 1].value) : null; });
+  const wNums = wVals.filter((v) => v != null);
+  const wLo = wNums.length ? Math.floor(Math.min(...wNums) - 1) : 0, wHi = wNums.length ? Math.max(Math.ceil(Math.max(...wNums) + 1), wLo + 4) : 4;
+  const charts = [
+    { title: (stoma ? 'Bag emptied' : 'Bowel movements') + ' a day', stat: logged.length ? `Average ${one(mean)}${usual ? ', usual ' + usual : ''}, most ${most}` : 'None logged', tone: above ? 'amber' : logged.length ? 'green' : '', type: 'bars', min: 0, max: cMax, ticks: [0, Math.round(cMax / 2), cMax], bands: usual ? [{ from: 0, to: usual, c: teal }] : [], series: [{ d: countSeries, c: teal }], marks: flareMarks },
+    { title: 'Blood (0 none to 3 mostly blood)', stat: bloodDays.length ? `On ${plural(bloodDays.length, 'day')}, worst ${bloodWord(worstBlood)}` : 'No blood logged', tone: worstBlood >= 3 ? 'red' : bloodDays.length ? 'amber' : logged.length ? 'green' : '', min: 0, max: 3, ticks: [0, 1, 2, 3], bands: [{ from: 2, to: 3, c: red }], series: [{ d: bloodSeries, c: red }], marks: flareMarks },
+    { title: 'Temperature (°C)', stat: temps.length ? `Highest ${Number(tempHi.value).toFixed(1)} on ${rDay(tempHi.day)}` : 'No readings', tone: temps.length ? (Number(tempHi.value) >= 38 ? 'red' : Number(tempHi.value) >= 37.5 ? 'amber' : 'green') : '', min: 35, max: Math.max(40, ...tempVals.filter((v) => v != null)), ticks: [35, 37.5, 40], bands: [{ from: 37.5, to: 38, c: REPORT_AMBER }, { from: 38, to: 45, c: red }], series: [{ d: tempVals, c: ink }], marks: sessionMarks },
+    { title: 'Weight (kg)', stat: ws.length ? `${fmtKg(wLast.value)}${wChange != null && Math.abs(wChange) >= 0.1 ? (wChange < 0 ? ', down ' : ', up ') + Math.abs(wChange) + ' kg' : ''}` : 'No readings', tone: wChange != null && wChange <= -2 ? (wChange <= -4 ? 'red' : 'amber') : ws.length ? 'green' : '', min: wLo, max: wHi, ticks: [wLo, Math.round((wLo + wHi) / 2), wHi], series: [{ d: wVals, c: teal }], marks: sessionMarks }
+  ];
+  const key = `<b>Bars</b> ${stoma ? 'times the bag was emptied' : 'bowel movements'} a day as logged${usual ? ', the shaded band up to the usual ' + usual : ''}. <b>Blood</b> the worst grade that day, as logged; shaded from mixed in. <b>Triangles</b> flare days on the first two charts, injections or infusions on the others. <b>Temperature</b> shaded 37.5 to 37.9 and from 38.0.`;
+  /* the strip: treatment, the flare plan, results */
+  const strip = [];
+  const medLine = ibdMeds.map((m) => m.name + (m.dose ? ' ' + m.dose : '') + (m.kind === 'prn' ? ' (when needed)' : '')).join('; ');
+  const lastSession = inRangeSessions.length ? inRangeSessions[inRangeSessions.length - 1] : sessions.filter((d) => d <= to).pop();
+  const sessLine = sessions.length ? `${inRangeSessions.length ? plural(inRangeSessions.length, sessionLabel(state.days[inRangeSessions[0]]).replace(/^.* /, '')) + ' in this period' + (inRangeSessions.length <= 4 ? ' (' + inRangeSessions.map(rDay).join(', ') + ')' : '') : 'None in this period'}${lastSession ? ', last ' + sessionLabel(state.days[lastSession]) + ' ' + rDay(lastSession) + (state.days[lastSession].chemoDone ? ', done' : ', not ticked done') : ''}${nextSession ? ', next ' + rDay(nextSession) : ''}.` : '';
+  const sterLine = steroids12.length ? `Steroid courses in the last 12 months: ${steroids12.length} (${steroids12.map((m) => m.name + ', ' + rDay(m.courseStart) + (m.courseEnd ? ' to ' + rDay(m.courseEnd) : ' onwards')).join('; ')}).` : 'No steroid course recorded in the last 12 months.';
+  strip.push({ head: 'Treatment', text: [medLine ? 'Medicines: ' + medLine + '.' : 'No Crohn\'s or colitis medicine on the list.', sessLine, sterLine].filter(Boolean).join(' ') });
+  const advice = flareContact();
+  strip.push({ head: 'Flare plan', text: plan.steps ? `From ${plan.from || 'the team'}${plan.given ? ', ' + rDay(plan.given) : ''}: ${text(plan.steps)}${plan.when ? ' When to ring: ' + text(plan.when) : ''}${advice ? ' Advice line: ' + advice.label + '.' : ''}` : 'No flare plan written in Daybook.' + (advice ? ' Advice line: ' + advice.label + '.' : '') });
+  const resLatest = latestResultsText(results, true);
+  if (resLatest) strip.push({ head: 'Results, as the team gave them', text: resLatest + '.' });
+  /* the brief: plain sentences from the figures, never a judgement */
+  const brief = [];
+  brief.push({ head: what, text: logged.length ? `About ${one(mean)} a day on the ${plural(logged.length, 'day')} logged${usual ? `, against ${patient}'s usual ${usual}` : ' (no usual number set in Settings)'}; most ${most} on ${rDay(mostDay)}.` + (looseN ? ` Loose (type 6 or 7) ${plural(looseN, 'time')}.` : '') + (noneDays.size ? ` None on ${plural(noneDays.size, 'day')}.` : '') : 'No bowel movements were logged in this period.' });
+  brief.push({ head: 'Blood and urgency', text: logged.length ? [bloodDays.length ? `Blood on ${plural(bloodDays.length, 'day')}, ${bloodWord(worstBlood)} at worst` : 'No blood logged', blackDays.length ? `black or tarry on ${plural(blackDays.length, 'day')}` : '', rush ? `had to go straight away ${plural(rush, 'time')} on ${plural(rushDays.length, 'day')}` : 'never had to go straight away', accidents ? plural(accidents, stoma ? 'bag leak' : 'accident or leak') : '', nightN ? `up at night ${plural(nightN, 'time')}` : ''].filter(Boolean).join('; ') + '.' + (twDays.length ? ` Six or more with blood on ${twDays.map(rDay).join(', ')}.` : '') : 'Nothing logged.' });
+  brief.push({ head: 'Flares and treatment', text: (flareDays.length ? `Marked as flaring on ${plural(flareDays.length, 'day')}${runs.length === 1 ? ` (${rDay(runs[0].from)}${runs[0].to !== runs[0].from ? ' to ' + rDay(runs[0].to) : ''})` : ''}.` : 'No flare days marked.') + (calls.length ? ` ${plural(calls.length, 'call')} to the advice line, listed below.` : '') + (steroids.length ? ` On ${steroids.map((m) => m.name).join(' and ')} in this period.` : '') + (sessLine ? ' ' + sessLine.charAt(0).toUpperCase() + sessLine.slice(1) : '') });
+  brief.push({ head: 'Body', text: [ws.length ? `Weight ${fmtKg(wLast.value)} on ${rDay(wLast.day)}` + (wChange != null && Math.abs(wChange) >= 0.1 ? `, ${wChange < 0 ? 'down' : 'up'} ${Math.abs(wChange)} kg since ${rDay(wFirst.day)}` : '') : 'No weight logged', temps.length ? `temperature highest ${Number(tempHi.value).toFixed(1)} °C on ${rDay(tempHi.day)}` : '', pains.length ? `pain up to ${Math.max(...pains)}/10` : '', energy.length ? `energy averaged ${avg(energy)}/10 in the evening check-ins` : '', outside.length ? `outside the gut: ${outside.map((e) => (e.outside.length ? outsideText(e.outside).toLowerCase() : 'none of the usual') + ' (week to ' + rDay(e.day) + ')').join('; ')}` : ''].filter(Boolean).join('; ') + '.' });
+  /* week by week */
+  const weeks = reportWeeks(from, to).map((w) => {
+    const wd = days.filter((d) => d >= w.from && d <= w.to);
+    const lg = wd.filter((d) => byDay[d]);
+    const cs = lg.map((d) => byDay[d].length);
+    const bl = lg.filter((d) => bloodOf(d) > 0), wb = bl.length ? Math.max(...bl.map(bloodOf)) : 0;
+    const es = lg.flatMap((d) => byDay[d]);
+    const ru = es.filter((e) => Number(e.urgency) === 2 || (e.urgency == null && e.urgent && !e.accident)).length, ac = es.filter((e) => e.accident).length, ni = es.filter((e) => e.night).length;
+    const wws = ws.filter((e) => e.day >= w.from && e.day <= w.to);
+    const fl = wd.filter(isFlareDay).length, cl = calls.filter((e) => e.day >= w.from && e.day <= w.to).length;
+    const ste = wd.some((d) => steroidOn(d).length), inj = inRangeSessions.filter((d) => d >= w.from && d <= w.to).length;
+    const other = [fl ? plural(fl, 'flare day') : '', cl ? plural(cl, 'call') : '', ste ? 'on steroids' : '', inj ? plural(inj, 'injection or infusion') : ''].filter(Boolean).join(', ');
+    return { label: rDay(w.from) + ' to ' + rDay(w.to), aDay: cs.length ? one(avg(cs)) : 'None', aDaySub: cs.length ? `most ${Math.max(...cs)}, ${plural(lg.length, 'day')} logged` : 'nothing logged',
+      blood: bl.length ? `${plural(bl.length, 'day')}, ${bloodWord(wb)}` : 'none', urgency: [ru ? ru + ' straight away' : '', ac ? plural(ac, 'accident') : '', ni ? ni + ' at night' : ''].filter(Boolean).join(', ') || 'none',
+      weight: wws.length ? fmtKg(wws[wws.length - 1].value) : 'none', other: other || '' };
+  });
+  /* the flare log: flare days and calls, in time order */
+  const flareLog = [];
+  runs.forEach((r) => flareLog.push({ day: r.from, when: r.from === r.to ? rDay(r.from) : rDay(r.from) + ' to ' + rDay(r.to), text: `Marked as flaring${r.from === r.to ? '' : ', ' + (dayGap(r.from, r.to) + 1) + ' days'}.` }));
+  calls.forEach((e) => flareLog.push({ day: e.day, when: rDay(e.day) + ', ' + fmtTime(entryDate(e)), text: `Call to ${e.who || 'the advice line'}${e.note ? ': ' + text(e.note) : ''}` }));
+  flareLog.sort((a, b) => a.day.localeCompare(b.day));
+  /* results as given, every one in the period */
+  const resultRows = results.map((e) => ({ day: e.day, when: resDay(e.day), text: `${resultName(e)} ${fmtResultFull(e)}${e.range ? ', range as given ' + e.range : ''}${e.source ? ', from ' + e.source : ''}${e.note ? '. ' + text(e.note) : ''}` }));
+  const outsideRows = outside.map((e) => ({ when: 'Week to ' + rDay(e.day), text: e.outside.length ? outsideText(e.outside) : 'None of these' }));
+  const questions = (n.questions || []).map((q) => ({ team: 'Gastro', text: fixMedWords(q.text), by: `Asked by ${q.who}, ${rDay(q.day)}` }));
+  const items = [{ t: 'brief' }];
+  items.push({ t: 'sec', s: 'weeks' }); weeks.forEach((_, r) => items.push({ t: 'wk', r }));
+  if (flareLog.length) { items.push({ t: 'sec', s: 'flare' }); flareLog.forEach((_, r) => items.push({ t: 'fl', r })); }
+  if (outsideRows.length) { items.push({ t: 'sec', s: 'outside' }); outsideRows.forEach((_, r) => items.push({ t: 'out', r })); }
+  if (resultRows.length) { items.push({ t: 'sec', s: 'results' }); resultRows.forEach((_, r) => items.push({ t: 'res', r })); }
+  if (questions.length) { items.push({ t: 'sec', s: 'q' }); questions.forEach((_, q) => items.push({ t: 'q', q })); }
+  items.push({ t: 'notes' });
+  const period = rPeriod(from, to);
+  const condition = [kindWord, stoma ? (ibdStoma() === 'ileostomy' ? 'ileostomy' : 'colostomy') : '', usual ? 'usual ' + usual + ' a day' : ''].filter(Boolean).join(', ');
+  return { patient, period, prepared: rDay(todayStr()) + ' ' + parseDay(todayStr()).getFullYear(), condition, tiles, charts, key, days: dayLabels, strip, brief, weeks, flareLog, outside: outsideRows, results: resultRows, questions, items, pages: [], docTitle: `Crohn's and colitis, ${patient}, ${period}`, stoma };
+}
+function fittedIbdReport() {
+  return memoFit('ibd', async () => {
+    if (!state.ibdPdf) return null;
+    if (!reportModule) reportModule = await import('./report.js?v=' + APP_VERSION);
+    const I = buildIbdReport(state.ibdPdf);
+    const res = await reportModule.fitIbdReport(reportFrame('ibd'), I);
+    if (!res.ok) { toast('One entry is too long to fit on a page. Shorten it and try again.'); return null; }
+    return res;
+  });
+}
+async function ibdReportBlob() {
+  const res = await fittedIbdReport();
+  return res ? reportPdfBlob(res) : null;
+}
+$('ibd-send').addEventListener('click', () => openSendSheet('ibd'));
+$('ibd-preview').addEventListener('click', () => { if (state.ibdPdf) openReportViewer('ibd', false); });
+$('ibd-pdf').addEventListener('click', () => { if (state.ibdPdf) savePdf(state.ibdPdf.filename, state.ibdPdf.title, ibdReportBlob); });
+$('ibd-print').addEventListener('click', () => openReportViewer('ibd', true));
+$('ibd-back').addEventListener('click', () => showTab(state.reportReturn || 'vitals'));
+$('rep-ibd').addEventListener('click', () => openReport('ibd', 'vitals'));
+wireReportRange('ibd', () => renderIbdReport());
+
 function openMedHistoryList() {
   const groups = [
     ['Taking now', state.medicines.filter((m) => medStatus(m).text === 'Taking now')],
@@ -10511,6 +10725,7 @@ function renderVitalsLatest(entries) {
 function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
 
 async function renderVitals() {
+  $('rep-ibd').hidden = !packOn('ibd');
   document.querySelectorAll('#view-vitals .unitswitch').forEach((w) => w.sync && w.sync());
   const from = addDays(todayStr(), -(state.trendRange - 1));
   const entries = await loadEntriesFrom(from);

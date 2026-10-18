@@ -1004,3 +1004,102 @@ ${pages}
 </html>`;
 }
 export function fitPainReport(frame, P, opts = {}) { return paginate(frame, P, painReportHtml, opts); }
+
+/* ------------------------------------------------------------------ */
+/* The Crohn's and colitis report (v220, build 4 of Mark's Crohn's plan). The house style, as many A4   */
+/* pages as it needs: tiles, four charts, the treatment and flare strip, then the brief, the weeks, the  */
+/* flare log, outside the gut, results as the team gave them, the Gastro questions and a panel to write */
+/* on. Everything arrives in I already worked out (buildIbdReport() in scripts.js). Paginated by paginate(). */
+/* ------------------------------------------------------------------ */
+const IBD_CSS = `
+.tiles.ibd .tile .v{font-size:14.5pt}
+.cgrid.ibd{margin-top:1mm}
+.strip.ibd{grid-template-columns:1fr 1fr;margin-top:1mm}
+.strip.ibd.three{grid-template-columns:1.1fr 1fr 1fr}
+.strip.ibd>div{font-size:7.4pt;line-height:1.4}
+.strip.ibd .pre{display:block;font-size:6.6pt;letter-spacing:.06em;text-transform:uppercase;color:var(--teal);font-weight:600;margin-bottom:.6mm}
+.wbody{flex:1;display:flex;flex-direction:column;gap:3.6mm;min-height:0}
+.brief{display:grid;grid-template-columns:1fr 1fr;gap:2.2mm 5mm;font-size:8.3pt;line-height:1.42}
+.brief p b{font-weight:600}
+.wsec{display:flex;flex-direction:column;gap:1.8mm}
+.wkhead,.wkrow{display:grid;grid-template-columns:24mm 22mm 28mm 30mm 18mm 1fr;gap:2mm;align-items:start}
+.wkhead{font-size:6.6pt;letter-spacing:.06em;text-transform:uppercase;color:var(--slate);background:var(--mist);padding:1.6mm 2mm;border-bottom:1.3px solid var(--ink);font-weight:600}
+.wkrow{padding:1.8mm 2mm;border-bottom:1px solid var(--line);font-size:7.9pt;line-height:1.35}
+.wkrow .n{font-variant-numeric:tabular-nums;white-space:nowrap}
+.wkrow .sm{display:block;color:var(--slate);font-size:7.1pt}
+.loglist{list-style:none;display:grid;grid-template-columns:1fr 1fr;gap:1.2mm 5mm}
+.loglist.one{grid-template-columns:1fr}
+.loglist li{display:grid;grid-template-columns:30mm 1fr;gap:2mm;font-size:7.7pt;line-height:1.36;padding:1.2mm 0;border-bottom:1px solid var(--line)}
+.loglist li time{font-weight:600;color:var(--teal);font-size:7.1pt;line-height:1.3}
+.wq{display:grid;grid-template-columns:1fr 1fr;gap:2.6mm}
+.mnotes{background:var(--teal-soft);border-radius:2.4mm;padding:3mm 3.6mm;display:flex;flex-direction:column;flex:1;min-height:30mm}
+.mnotes h3{font-family:Inter,sans-serif;font-size:8.6pt;font-weight:600;letter-spacing:0}
+.mnotes .lines{flex:1;margin-top:1.4mm;position:relative;overflow:hidden}
+.mnotes .lines i{position:absolute;left:0;right:0;height:0;border-top:1px solid rgba(30,127,134,.35)}
+`;
+/* I: { patient, period, prepared, condition, tiles[], charts[4], key, days[], strip[{ head, text }], brief[{ head, text }], weeks[], flareLog[{ when, text }],
+   outside[{ when, text }], results[{ when, text }], questions[{ team, text, by }], items[{ t: 'brief'|'sec'|'wk'|'fl'|'out'|'res'|'q'|'notes', s, r, q }], pages[[item index]], noteLines, stoma } */
+export function ibdReportHtml(I) {
+  const total = I.pages.length;
+  const LISTS = { flare: ['The flare log', 'Flare days marked from I think I\'m flaring, and every call to the advice line with what they said.', 'fl', 'flareLog', 'one'], outside: ['Outside the gut', 'The weekly check-in question: joints, eyes, skin, mouth ulcers and around the bottom.', 'out', 'outside', ''], results: ['Results, as the team gave them', 'Every result recorded in this period, with the lab\'s range where it was printed. Not interpreted.', 'res', 'results', 'one'] };
+  const pages = I.pages.map((idx, p) => {
+    let html = '', open = null;
+    const close = () => { if (open) { html += LISTS[open] ? '</ul></div>' : open === 'q' ? '</div></div>' : '</div>'; open = null; } };
+    idx.forEach((i) => {
+      const it = I.items[i];
+      if (it.t === 'brief') { close(); html += `<div class="wsec" data-i="${i}"><h2 class="sec">The period in brief <small>Worked out by the app from what was logged. Facts, not an opinion.</small></h2><div class="brief">${(I.brief || []).map((b) => `<p>${b.head ? `<b>${esc(b.head)}.</b> ` : ''}${esc(b.text)}</p>`).join('')}</div></div>`; return; }
+      if (it.t === 'notes') {
+        close();
+        let l = ''; for (let k = 1; k <= (I.noteLines == null ? 6 : I.noteLines); k++) l += `<i style="top:calc(${k} * 7mm)"></i>`;
+        html += `<div class="mnotes" data-i="${i}"><h3>Notes from the appointment</h3><div class="lines">${l}</div></div>`;
+        return;
+      }
+      const listKind = it.t === 'fl' ? 'flare' : it.t === 'out' ? 'outside' : it.t === 'res' ? 'results' : it.t === 'wk' ? 'weeks' : it.t === 'q' ? 'q' : null;
+      if (it.t === 'sec' || (listKind && open !== listKind)) {
+        close();
+        const which = it.t === 'sec' ? it.s : listKind;
+        const cont = it.t !== 'sec';
+        const L = LISTS[which];
+        const title = L ? L[0] : which === 'weeks' ? 'Week by week' : 'Questions for the gastro team';
+        const note = L ? L[1] : which === 'weeks' ? ((I.stoma ? 'Bag emptied' : 'Bowel movements') + ' a day, blood, urgency, weight and what else happened that week.') : 'Labelled Gastro in the app. Space under each to write the reply.';
+        html += `<div class="wsec"><h2 class="sec"${cont ? '' : ` data-i="${i}"`}>${esc(title)}${cont ? ', continued' : ` <small>${esc(note)}</small>`}</h2>`;
+        if (L) html += `<ul class="loglist ${L[4]}">`;
+        if (which === 'weeks') html += `<div class="wkhead"><span>Week</span><span>A day</span><span>Blood</span><span>Urgency</span><span>Weight</span><span>Also</span></div>`;
+        if (which === 'q') html += '<div class="wq">';
+        open = which;
+        if (it.t === 'sec') return;
+      }
+      if (it.t === 'wk') {
+        const w = I.weeks[it.r];
+        html += `<div class="wkrow" data-i="${i}"><span class="n">${esc(w.label)}</span><span class="n">${esc(w.aDay)}<span class="sm">${esc(w.aDaySub)}</span></span><span>${esc(w.blood)}</span><span>${esc(w.urgency)}</span><span class="n">${esc(w.weight)}</span><span>${esc(w.other || '')}</span></div>`;
+      }
+      if (LISTS[open] && it.t === LISTS[open][2]) { const r = I[LISTS[open][3]][it.r]; html += `<li data-i="${i}"><time>${esc(r.when)}</time><span>${esc(r.text)}</span></li>`; }
+      if (it.t === 'q') { const q = I.questions[it.q]; html += `<article class="q" data-i="${i}"><header><div>${q.team ? `<div class="team">${esc(q.team)}</div>` : ''}<h3>${esc(q.text)}</h3><div class="by">${esc(q.by)}</div></div></header><div class="lines" style="min-height:16.2mm">${lines(3)}</div></article>`; }
+    });
+    close();
+    const charts = (I.charts || []).map((c) => `<div class="c"><div class="h"><h3>${esc(c.title)}</h3><span class="stat ${esc(c.tone || '')}">${esc(c.stat)}</span></div>${renderChart(c, I.days)}</div>`).join('');
+    const key = `<div class="c key">${I.key || ''}</div>`;
+    const strip = `<div class="strip ibd${I.strip.length > 2 ? ' three' : ''}">${I.strip.map((s) => `<div data-sec="${esc(s.head)}"><span class="pre">${esc(s.head)}</span>${esc(s.text)}</div>`).join('')}</div>`;
+    const first = p === 0
+      ? `<div class="masthead"><div><div class="titlerow"><h1>Crohn's and colitis</h1><span class="madeby">Created with <b>My Medical Daybook</b></span></div><div class="sub">Bowels, blood and urgency against ${esc(I.patient)}'s usual, flares, treatment and results as logged, for the IBD team.${I.condition ? ' ' + esc(I.condition.charAt(0).toUpperCase() + I.condition.slice(1)) + '.' : ''}</div></div><div class="who"><strong>${esc(I.patient)}</strong>Period: ${esc(I.period)}<br>Prepared: ${esc(I.prepared)}</div></div>`
+        + `<div class="tiles ibd">${I.tiles.map((t) => `<div class="tile ${esc(t.tone || '')}"><div class="k">${esc(t.k)}</div><div class="v">${esc(t.v)}${t.unit ? `<em>${esc(t.unit)}</em>` : ''}</div><div class="n">${esc(t.n)}</div></div>`).join('')}</div>`
+        + `<div class="cgrid ibd">${charts}${key}</div>` + strip
+      : `<div class="runner"><h2>Crohn's and colitis</h2><span>${esc(I.patient)} · ${esc(I.period)}</span></div>`;
+    return `<section class="page" id="page${p + 1}">${first}<div class="wbody">${html}</div><div class="foot"><span>As logged in Daybook, against ${esc(I.patient)}'s own usual. Results as the team gave them. Not medical advice.</span>${madeBy(p + 1, total)}</div></section>`;
+  }).join('\n');
+  return `<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<title>Crohn's and colitis, ${esc(I.patient)}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>${CSS}${IBD_CSS}</style>
+</head>
+<body class="ibd">
+${pages}
+</body>
+</html>`;
+}
+export function fitIbdReport(frame, I, opts = {}) { return paginate(frame, I, ibdReportHtml, opts); }
