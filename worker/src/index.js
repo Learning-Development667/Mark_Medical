@@ -35,6 +35,7 @@ export default {
       if (url.pathname === '/join' && request.method === 'POST') return withCors(request, await handleJoin(request, env));
       if (url.pathname === '/member-remove' && request.method === 'POST') return withCors(request, await handleRemoveMember(request, env));
       if (url.pathname === '/owner-transfer' && request.method === 'POST') return withCors(request, await handleOwnerTransfer(request, env));
+      if (url.pathname === '/plan' && request.method === 'POST') return withCors(request, await handlePlan(request, env));
       /* Diagnostic: what the phone last sent and what was written, for checking the field names.
          Opened in a browser with ?key=<the household's inbox key>. Health data only, no secrets. */
       if (url.pathname === '/last' && request.method === 'GET') {
@@ -61,7 +62,12 @@ export default {
       /* Runs the reminder check by hand for every household: ?key=<BRIDGE_KEY> (the operator's key) */
       if (url.pathname === '/remind-now' && request.method === 'GET') {
         if (!env.BRIDGE_KEY || url.searchParams.get('key') !== env.BRIDGE_KEY) return json({ error: 'Unauthorised' }, 401);
-        return json(await runReminders(env));
+        return json(await runReminders(env, { rebuild: url.searchParams.get('rebuild') === '1' }));
+      }
+      /* Daybook Assistant use this month, every circle: ?key=<BRIDGE_KEY> (v209, so the Anthropic bill is never a surprise) */
+      if (url.pathname === '/ai-usage' && request.method === 'GET') {
+        if (!env.BRIDGE_KEY || url.searchParams.get('key') !== env.BRIDGE_KEY) return json({ error: 'Unauthorised' }, 401);
+        return json(await aiUsage(env));
       }
       return withCors(request, json({ error: 'Not found' }, 404));
     } catch (e) {
@@ -394,40 +400,127 @@ const f = (fields, k) => { const v = fields[k]; if (!v) return null; return v.st
 function isPrivateSub(sub) { return f(sub.fields, 'private') !== false; }
 function payloadFor(sub, payload, privateBody) { return privateBody && isPrivateSub(sub) ? { ...payload, body: privateBody } : payload; }
 
-/* Every household in turn; a phone only ever hears about its own household's medicines */
-async function runReminders(env) {
+/* The reminder plan (v209). Until v208 every five-minute run listed every household and read each one's
+   phones, log, profile, medicines and doses (about 25 reads a household, 288 times a day: the free tier's
+   whole read allowance at seven households). Now one document, bridge/reminderPlan { day, built,
+   households { hid: { phones, nudge, oneOff, times [{ medId, t, name, dose }] } } }, is read once a run,
+   and a household is only looked at in the minutes around one of its medicine times, the 10:00 nudge or a
+   one-off reminder the app has flagged. The plan is rebuilt from the database once a day (the first run
+   after midnight London, or when it is missing), and one household's entry is rebuilt on demand by
+   POST /plan { what: 'refresh' } (the app calls it after a medicine, reminder or nudge change) or flagged by
+   POST /plan { what: 'oneoff' } (after "Remind me in 15 minutes"). The log is written only when something
+   was sent. A phone on an older app still works: its changes are picked up at the daily rebuild. */
+const PLAN_PATH = 'bridge/reminderPlan';
+function planEntryFromDocs(subs, profile, medicines, oneOffs, day) {
+  const active = medicines.filter((m) => f(m.fields, 'active') !== false && f(m.fields, 'kind') !== 'prn' && f(m.fields, 'hospital') !== true && (!f(m.fields, 'courseEnd') || f(m.fields, 'courseEnd') >= day));
+  const times = [];
+  active.forEach((m) => (f(m.fields, 'times') || []).map(toMinutes).filter((t) => t != null).forEach((t) => times.push({ medId: m.id, t, name: f(m.fields, 'name') || 'Medicine', dose: f(m.fields, 'dose') || '' })));
+  return { phones: subs.length, nudge: !!(profile && f(profile.fields, 'stretchNudge') === true), oneOff: oneOffs.some((r) => f(r.fields, 'sent') !== true), times };
+}
+async function buildPlanEntry(fs, hid, day) {
+  const subs = await fs.list(hp(hid, 'pushSubs'));
+  if (!subs.length) return null;
+  const [profile, medicines, oneOffs] = await Promise.all([fs.get(hp(hid, 'profile/main')), fs.list(hp(hid, 'medicines')), fs.list(hp(hid, 'reminders'))]);
+  return planEntryFromDocs(subs, profile, medicines, oneOffs, day);
+}
+const planEntryFields = (e) => ({ mapValue: { fields: {
+  phones: { integerValue: String(e.phones) }, nudge: { booleanValue: !!e.nudge }, oneOff: { booleanValue: !!e.oneOff },
+  times: { arrayValue: { values: e.times.map((x) => ({ mapValue: { fields: { medId: strVal(x.medId), t: { integerValue: String(x.t) }, name: strVal(x.name), dose: strVal(x.dose) } } })) } }
+} } });
+function readPlanDoc(doc) {
+  if (!doc || !doc.fields) return null;
+  const hh = ((doc.fields.households || {}).mapValue || {}).fields || {};
+  const households = {};
+  Object.keys(hh).forEach((hid) => {
+    const e = (hh[hid].mapValue || {}).fields || {};
+    const times = ((e.times || {}).arrayValue || {}).values || [];
+    households[hid] = { phones: Number(f(e, 'phones') || 0), nudge: f(e, 'nudge') === true, oneOff: f(e, 'oneOff') === true,
+      times: times.map((v) => { const t = (v.mapValue || {}).fields || {}; return { medId: f(t, 'medId'), t: Number(f(t, 't')), name: f(t, 'name') || 'Medicine', dose: f(t, 'dose') || '' }; }) };
+  });
+  return { day: f(doc.fields, 'day'), built: f(doc.fields, 'built'), households };
+}
+async function writePlan(fs, plan) {
+  await fs.set(PLAN_PATH, { day: strVal(plan.day), built: { timestampValue: new Date().toISOString() }, households: { mapValue: { fields: Object.fromEntries(Object.entries(plan.households).map(([hid, e]) => [hid, planEntryFields(e)])) } } });
+}
+async function buildPlan(fs, day) {
+  const households = await fs.list('households');
+  const plan = { day, households: {} };
+  for (const hh of households) { const e = await buildPlanEntry(fs, hh.id, day); if (e) plan.households[hh.id] = e; }
+  await writePlan(fs, plan);
+  return plan;
+}
+/* Whether a household needs looking at this run: the due window and the nudge window of any medicine time, the 10:00 window, or a flagged one-off */
+function planEntryDue(e, now) {
+  if (e.oneOff) return true;
+  if (e.nudge && now.minutes >= STRETCH_NUDGE_AT && now.minutes < STRETCH_NUDGE_AT + REMINDER_WINDOW_MIN) return true;
+  return e.times.some((x) => now.minutes >= x.t && now.minutes < x.t + NUDGE_AFTER_MIN + REMINDER_WINDOW_MIN);
+}
+/* Rebuilds one household's entry in the plan (after a change in the app), or flags its one-off */
+async function touchPlan(fs, hid, what) {
+  const now = londonNow();
+  let plan = readPlanDoc(await fs.get(PLAN_PATH)) || { day: now.day, households: {} };
+  if (what === 'oneoff') { if (plan.households[hid]) plan.households[hid].oneOff = true; else { const e = await buildPlanEntry(fs, hid, now.day); if (e) { e.oneOff = true; plan.households[hid] = e; } } }
+  else { const e = await buildPlanEntry(fs, hid, now.day); if (e) plan.households[hid] = e; else delete plan.households[hid]; }
+  await writePlan(fs, plan);
+  return plan.households[hid] || null;
+}
+async function handlePlan(request, env) {
+  const a = await whoIs(request, env); if (a.error) return a.error;
+  if (a.demo) return json({ ok: true, demo: true });
+  const { who, fs } = a;
+  const me = await memberOf(fs, who.uid);
+  if (!me.hid || me.role !== 'family') return json({ error: 'unauthorised', message: 'Only family members can change reminders.' }, 403);
+  const body = await readJson(request);
+  const what = body && body.what === 'oneoff' ? 'oneoff' : 'refresh';
+  const entry = await touchPlan(fs, me.hid, what);
+  return json({ ok: true, what, phones: entry ? entry.phones : 0, times: entry ? entry.times.length : 0 });
+}
+
+/* Every household due this run; a phone only ever hears about its own household's medicines */
+async function runReminders(env, opts = {}) {
   if (!env.VAPID_PRIVATE_KEY) return { skipped: 'VAPID_PRIVATE_KEY is not set' };
   const fs = await firestore(env);
-  const households = await fs.list('households');
-  const out = {};
-  for (const hh of households) out[hh.id] = await runHouseholdReminders(env, fs, hh.id);
-  return { households: households.length, ...out };
-}
-async function runHouseholdReminders(env, fs, hid) {
-  const subs = await fs.list(hp(hid, 'pushSubs'));
-  if (!subs.length) return { skipped: 'no phones have reminders on' };
   const now = londonNow();
+  let plan = opts.rebuild ? null : readPlanDoc(await fs.get(PLAN_PATH));
+  let rebuilt = false;
+  if (!plan || plan.day !== now.day) { plan = await buildPlan(fs, now.day); rebuilt = true; }
+  const out = {};
+  let changed = false;
+  for (const [hid, e] of Object.entries(plan.households)) {
+    if (!planEntryDue(e, now)) continue;
+    const r = await runHouseholdReminders(env, fs, hid, e, now);
+    out[hid] = r;
+    if (e.oneOff && r && r.oneOffsPending === false) { e.oneOff = false; changed = true; }
+  }
+  if (changed) await writePlan(fs, plan);
+  return { households: Object.keys(plan.households).length, rebuilt, due: Object.keys(out).length, ...out };
+}
+async function runHouseholdReminders(env, fs, hid, entry, nowIn) {
+  const now = nowIn || londonNow();
   const logDoc = await fs.get(hp(hid, 'bridge/reminderLog'));
   const lf = logDoc ? logDoc.fields : {};
   const sent = f(lf, 'day') === now.day && lf.sent && lf.sent.mapValue ? Object.keys(lf.sent.mapValue.fields || {}) : [];
   const sentSet = new Set(sent);
-  const profile = await fs.get(hp(hid, 'profile/main')); // read for the 10:00 exercise nudge
-  const medicines = (await fs.list(hp(hid, 'medicines'))).filter((m) => f(m.fields, 'active') !== false && f(m.fields, 'kind') !== 'prn' && (!f(m.fields, 'courseEnd') || f(m.fields, 'courseEnd') >= now.day));
-  const doses = await fs.query(hp(hid, 'entries'), { day: now.day, type: 'med' });
+  const sentBefore = sentSet.size;
+  let subs = null;
+  const phones = async () => { if (!subs) subs = await fs.list(hp(hid, 'pushSubs')); return subs; };
+  /* the medicines and their times come from the plan; a household with no entry (the operator's /remind-now before any plan) is read in full */
+  const plan = entry || await buildPlanEntry(fs, hid, now.day);
+  if (!plan) return { skipped: 'no phones have reminders on' };
+  const timesDue = plan.times.filter((x) => now.minutes >= x.t && now.minutes < x.t + NUDGE_AFTER_MIN + REMINDER_WINDOW_MIN);
+  const doses = timesDue.length ? await fs.query(hp(hid, 'entries'), { day: now.day, type: 'med' }) : [];
   const doseMinutes = (medId) => doses.filter((d) => f(d.fields, 'medId') === medId).map((d) => londonNow(new Date(f(d.fields, 'at'))).minutes);
   const out = [];
   /* A private phone (pushSubs/{id}.private, true unless switched off) gets the same notification without the medicine's name or dose */
   const send = async (key, payload, privateBody) => {
-    for (const sub of subs) out.push({ key, phone: sub.id, private: isPrivateSub(sub), result: await sendPush(env, fs, sub, payloadFor(sub, payload, privateBody)) });
+    for (const sub of await phones()) out.push({ key, phone: sub.id, private: isPrivateSub(sub), result: await sendPush(env, fs, sub, payloadFor(sub, payload, privateBody)) });
     sentSet.add(key);
   };
-  for (const m of medicines) {
-    if (f(m.fields, 'hospital') === true) continue; // given by the nurses: no reminders
-    const times = (f(m.fields, 'times') || []).map(toMinutes).filter((t) => t != null);
-    const name = f(m.fields, 'name') || 'Medicine', dose = f(m.fields, 'dose') || '';
-    const taken = doseMinutes(m.id);
-    for (const t of times) {
-      const key = `${m.id}|${t}`;
+  for (const x of timesDue) {
+    const { medId, t, name, dose } = x;
+    const taken = doseMinutes(medId);
+    {
+      const key = `${medId}|${t}`;
       const takenSince = taken.some((x) => x >= t - LOGGED_BEFORE_MIN);
       if (!sentSet.has(key) && now.minutes >= t && now.minutes < t + REMINDER_WINDOW_MIN && !takenSince) {
         await send(key, { title: 'Daybook', body: `${name} ${dose} is due`.trim(), tag: key, url: appUrl('meds') }, 'A medicine is due');
@@ -440,7 +533,8 @@ async function runHouseholdReminders(env, fs, hid) {
   }
   /* The gentle nudge at 10:00, household-wide, no medicine named, so the same body for a private phone */
   const nudgeKey = 'stretch|' + now.day;
-  if (now.minutes >= STRETCH_NUDGE_AT && now.minutes < STRETCH_NUDGE_AT + REMINDER_WINDOW_MIN && !sentSet.has(nudgeKey)) {
+  if (plan.nudge && now.minutes >= STRETCH_NUDGE_AT && now.minutes < STRETCH_NUDGE_AT + REMINDER_WINDOW_MIN && !sentSet.has(nudgeKey)) {
+    const profile = await fs.get(hp(hid, 'profile/main'));
     const nudgeOn = !!(profile && f(profile.fields, 'stretchNudge') === true);
     if (nudgeOn) {
       const exEntries = await fs.query(hp(hid, 'entries'), { day: now.day, type: 'exercise' });
@@ -449,16 +543,20 @@ async function runHouseholdReminders(env, fs, hid) {
       if (due) await send(nudgeKey, { title: 'Daybook', body: 'Your gentle exercises are there if you feel up to them. No pressure.', tag: nudgeKey, url: appUrl('exercise') }, null);
     }
   }
-  /* One-off reminders from the app ("Remind me in 15 minutes" after a meal) */
-  const oneOffs = await fs.list(hp(hid, 'reminders'));
-  for (const r of oneOffs) {
-    if (f(r.fields, 'sent') === true) { if (new Date(f(r.fields, 'at')).getTime() < Date.now() - 86400000) await fs.remove(hp(hid, 'reminders/' + r.id)); continue; }
-    if (new Date(f(r.fields, 'at')).getTime() > Date.now()) continue;
-    await send('oneoff|' + r.id, { title: 'Daybook', body: `Reminder: ${f(r.fields, 'medName') || 'medicine'} ${f(r.fields, 'dose') || ''}`.trim(), tag: 'oneoff|' + r.id, url: appUrl('meds') }, 'Reminder: a medicine to take');
-    await fs.merge(hp(hid, 'reminders/' + r.id), { sent: { booleanValue: true } });
+  /* One-off reminders from the app ("Remind me in 15 minutes" after a meal), only while the plan flags one */
+  let oneOffsPending = null;
+  if (plan.oneOff) {
+    const oneOffs = await fs.list(hp(hid, 'reminders'));
+    oneOffsPending = false;
+    for (const r of oneOffs) {
+      if (f(r.fields, 'sent') === true) { if (new Date(f(r.fields, 'at')).getTime() < Date.now() - 86400000) await fs.remove(hp(hid, 'reminders/' + r.id)); continue; }
+      if (new Date(f(r.fields, 'at')).getTime() > Date.now()) { oneOffsPending = true; continue; }
+      await send('oneoff|' + r.id, { title: 'Daybook', body: `Reminder: ${f(r.fields, 'medName') || 'medicine'} ${f(r.fields, 'dose') || ''}`.trim(), tag: 'oneoff|' + r.id, url: appUrl('meds') }, 'Reminder: a medicine to take');
+      await fs.merge(hp(hid, 'reminders/' + r.id), { sent: { booleanValue: true } });
+    }
   }
-  await fs.set(hp(hid, 'bridge/reminderLog'), { day: strVal(now.day), at: { timestampValue: new Date().toISOString() }, sent: { mapValue: { fields: Object.fromEntries([...sentSet].map((k) => [k, { booleanValue: true }])) } } });
-  return { day: now.day, minutes: now.minutes, phones: subs.length, medicines: medicines.length, sent: out };
+  if (sentSet.size !== sentBefore || (logDoc && f(lf, 'day') !== now.day && sentSet.size)) await fs.set(hp(hid, 'bridge/reminderLog'), { day: strVal(now.day), at: { timestampValue: new Date().toISOString() }, sent: { mapValue: { fields: Object.fromEntries([...sentSet].map((k) => [k, { booleanValue: true }])) } } });
+  return { day: now.day, minutes: now.minutes, phones: plan.phones, due: timesDue.length, sent: out, oneOffsPending };
 }
 
 /* Web Push (RFC 8030, 8291, 8292) with nothing but WebCrypto: VAPID signature, aes128gcm payload */
@@ -543,6 +641,7 @@ const nowTs = () => ({ timestampValue: new Date().toISOString() });
 const EXPLAIN_MODEL = 'claude-opus-5-5';
 const EXPLAIN_MAX_TOKENS = 4000;             // a letter's explanation or a question list; also the cost cap per call
 const EXPLAIN_LIMIT_REAL = 40;               // calls a day per household on the real project
+const EXPLAIN_LIMIT_MONTH = 60;              // calls a month per household on the real project (v209): a budget, not just a brake
 const EXPLAIN_LIMIT_DEMO = 12;               // calls a day from the shared demo (its guest sign-in is public)
 const DEMO_HOUSEHOLD = 'demo';               // the demo project's one household (DEMO_HOUSEHOLD in scripts.js)
 const EXPLAIN_MAX_PAGES = 8;
@@ -932,6 +1031,25 @@ async function handleJoin(request, env) {
 
 /* POST /owner-transfer { uid } (v199): the owner hands the circle to another family member (the patient, in the app), or the
    patient takes charge of a circle a carer set up for them (uid is their own; refused while the owner is the patient). */
+/* Every circle's Daybook Assistant use this month, for the operator: calls, tokens in and out, and a rough cost in pence
+   (claude-opus-5-5 is $4 in and $20 out per million tokens, taken at about 80p to the dollar; the Anthropic Console has the real bill) */
+const AI_PENCE_PER_MTOK_IN = 320, AI_PENCE_PER_MTOK_OUT = 1600;
+async function aiUsage(env) {
+  const fs = await firestore(env);
+  const month = londonNow().day.slice(0, 7);
+  const households = await fs.list('households');
+  const rows = [];
+  let calls = 0, tin = 0, tout = 0;
+  for (const hh of households) {
+    const d = await fs.get(hp(hh.id, 'bridge/explainLog'));
+    if (!d || !d.fields || f(d.fields, 'month') !== month) continue;
+    const c = Number(f(d.fields, 'monthReal') || 0), i = Number(f(d.fields, 'monthTokensIn') || 0), o = Number(f(d.fields, 'monthTokensOut') || 0);
+    calls += c; tin += i; tout += o;
+    rows.push({ household: hh.id, name: f(hh.fields, 'name') || '', calls: c, tokensIn: i, tokensOut: o, pence: Math.round((i * AI_PENCE_PER_MTOK_IN + o * AI_PENCE_PER_MTOK_OUT) / 1e6) });
+  }
+  rows.sort((a, b) => b.calls - a.calls);
+  return { month, households: households.length, active: rows.length, calls, tokensIn: tin, tokensOut: tout, pence: Math.round((tin * AI_PENCE_PER_MTOK_IN + tout * AI_PENCE_PER_MTOK_OUT) / 1e6), limitPerHousehold: EXPLAIN_LIMIT_MONTH, rows };
+}
 async function handleOwnerTransfer(request, env) {
   const a = await whoIs(request, env); if (a.error) return a.error;
   if (a.demo) return json({ error: 'demo', message: 'Not available in the demo.' }, 403);
@@ -1010,8 +1128,15 @@ async function handleExplain(request, env) {
   const logFields = (logDoc && logDoc.fields && logDoc.fields.day && logDoc.fields.day.stringValue === day) ? logDoc.fields : {};
   const n = (k) => Number(logFields[k] && logFields[k].integerValue || 0);
   const used = demo ? n('demo') : n('real');
-  if (used >= (demo ? EXPLAIN_LIMIT_DEMO : EXPLAIN_LIMIT_REAL)) return json({ error: 'limit', message: demo ? 'The demo has used Daybook Assistant for today. Try again tomorrow, or use Send to my AI app.' : 'Your household has used Daybook Assistant\'s requests for today (' + EXPLAIN_LIMIT_REAL + ' a day). Use Send to my AI app, or try again tomorrow.' }, 429);
-  await fs.set(hp(hid, 'bridge/explainLog'), { day: { stringValue: day }, real: { integerValue: String(n('real') + (demo ? 0 : 1)) }, demo: { integerValue: String(n('demo') + (demo ? 1 : 0)) }, tokensIn: { integerValue: String(n('tokensIn')) }, tokensOut: { integerValue: String(n('tokensOut')) }, updatedAt: { timestampValue: new Date().toISOString() } });
+  if (used >= (demo ? EXPLAIN_LIMIT_DEMO : EXPLAIN_LIMIT_REAL)) return json({ error: 'limit', message: demo ? 'The demo has used Daybook Assistant for today. Try again tomorrow, or use Send to my AI app.' : 'Your care circle has used Daybook Assistant\'s requests for today (' + EXPLAIN_LIMIT_REAL + ' a day). Use Send to my AI app, or try again tomorrow.' }, 429);
+  /* The month's count (v209): kept on the same document across days, reset when the month changes */
+  const month = day.slice(0, 7);
+  const allFields = (logDoc && logDoc.fields) || {};
+  const monthUsed = (allFields.month && allFields.month.stringValue === month) ? Number(allFields.monthReal && allFields.monthReal.integerValue || 0) : 0;
+  const monthTokIn = (allFields.month && allFields.month.stringValue === month) ? Number(allFields.monthTokensIn && allFields.monthTokensIn.integerValue || 0) : 0;
+  const monthTokOut = (allFields.month && allFields.month.stringValue === month) ? Number(allFields.monthTokensOut && allFields.monthTokensOut.integerValue || 0) : 0;
+  if (!demo && monthUsed >= EXPLAIN_LIMIT_MONTH) return json({ error: 'limit', message: 'Your care circle has used this month\'s Daybook Assistant allowance (' + EXPLAIN_LIMIT_MONTH + ' requests). It starts again on the 1st. Until then use Send to my AI app.' }, 429);
+  await fs.set(hp(hid, 'bridge/explainLog'), { day: { stringValue: day }, real: { integerValue: String(n('real') + (demo ? 0 : 1)) }, demo: { integerValue: String(n('demo') + (demo ? 1 : 0)) }, tokensIn: { integerValue: String(n('tokensIn')) }, tokensOut: { integerValue: String(n('tokensOut')) }, month: { stringValue: month }, monthReal: { integerValue: String(monthUsed + (demo ? 0 : 1)) }, monthTokensIn: { integerValue: String(monthTokIn) }, monthTokensOut: { integerValue: String(monthTokOut) }, updatedAt: { timestampValue: new Date().toISOString() } });
 
   const content = pages.map((data) => ({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data } }));
   const head = kind === 'document'
@@ -1034,7 +1159,7 @@ async function handleExplain(request, env) {
   }
   if (reply.refused) return json({ error: 'refused', message: 'Daybook Assistant declined this one. Try Send to my AI app instead.' }, 422);
   /* Usage for Mark's own accounting (tokens only, never the text) */
-  await fs.merge(hp(hid, 'bridge/explainLog'), { tokensIn: { integerValue: String(n('tokensIn') + reply.usage.input) }, tokensOut: { integerValue: String(n('tokensOut') + reply.usage.output) } }).catch(() => {});
+  await fs.merge(hp(hid, 'bridge/explainLog'), { tokensIn: { integerValue: String(n('tokensIn') + reply.usage.input) }, tokensOut: { integerValue: String(n('tokensOut') + reply.usage.output) }, monthTokensIn: { integerValue: String(monthTokIn + reply.usage.input) }, monthTokensOut: { integerValue: String(monthTokOut + reply.usage.output) } }).catch(() => {});
   return json({ text: reply.text, model: reply.model, usage: reply.usage, cut: reply.cut });
 }
 
@@ -1114,7 +1239,7 @@ async function googleKey(kid, fetchFn) {
 }
 
 /* For the test harness only (scratchpad): nothing in the app or the workflow uses these */
-export const _test = { mapOffProduct, handleFood, verifyFirebaseToken, askClaude, aiErrorMessage, EXPLAIN_SYSTEM, distanceKm, payloadFor, sha256Hex, hp, stretchNudgeDue, stretchTickedOn };
+export const _test = { mapOffProduct, handleFood, verifyFirebaseToken, askClaude, aiErrorMessage, EXPLAIN_SYSTEM, distanceKm, payloadFor, sha256Hex, hp, stretchNudgeDue, stretchTickedOn, planEntryFromDocs, planEntryDue, readPlanDoc, planEntryFields, runReminders, runHouseholdReminders, touchPlan, firestore };
 
 /* ------------------------------------------------------------------ */
 /* Plumbing                                                             */
