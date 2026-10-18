@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '230';
+const APP_VERSION = '231';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -13890,7 +13890,7 @@ function checkDayRollover() {
 setInterval(checkDayRollover, 60 * 1000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) checkDayRollover(); });
 
-/* Service worker: registered with the GitHub Pages scope /Mark_Medical/ (derived from the page URL so it also works locally) */
+/* Service worker: registered with the app's root scope (derived from the page URL, so it is / on app.mymedicaldaybook.co.uk and also works locally) */
 if ('serviceWorker' in navigator) {
   const scope = new URL('./', location.href).pathname;
   navigator.serviceWorker.register('sw.js', { scope }).catch((e) => console.warn('SW registration failed', e));
