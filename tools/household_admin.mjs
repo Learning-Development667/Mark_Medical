@@ -73,7 +73,7 @@ if (action === 'create') {
   if (!old && off) { console.error('No Beta code ' + code); process.exit(1); }
   if (old) await fs.merge('betaCodes/' + code, { active: { booleanValue: !off }, ...(label ? { label: str(label) } : {}) });
   else await fs.set('betaCodes/' + code, { label: str(label || code), active: { booleanValue: true }, uses: { integerValue: '0' }, createdAt: ts() });
-  console.log(`Beta code ${code}: ${off ? 'switched off' : old ? 'on' : 'made'}${label ? ', ' + label : ''}. People type it when they create an account; a link that fills it in is ${process.env.APP_URL || 'https://learning-development667.github.io/Mark_Medical/'}?beta=${code}`);
+  console.log(`Beta code ${code}: ${off ? 'switched off' : old ? 'on' : 'made'}${label ? ', ' + label : ''}. People type it when they create an account; a link that fills it in is ${process.env.APP_URL || 'https://app.mymedicaldaybook.co.uk/'}?beta=${code}`);
 } else if (action === 'beta-codes') {
   const codes = await fs.list('betaCodes');
   for (const c of codes) console.log(`${c.id}  ${fieldString(c.fields, 'label')}  ${c.fields.active && c.fields.active.booleanValue === false ? 'off' : 'on'}  used ${(c.fields.uses && c.fields.uses.integerValue) || 0} times`);
