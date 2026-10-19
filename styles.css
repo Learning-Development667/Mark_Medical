@@ -1545,6 +1545,13 @@ body.is-readonly .workout .btn { display: none; }
 /* The report viewer (v120): the two pages inside Daybook, scaled to the sheet */
 .viewer-frame { display: block; width: 100%; border: 0; border-radius: var(--r-sm); background: var(--surface-sunken); margin-top: var(--s-3); }
 .viewer-btns { margin-top: 0; }
+.viewer-zoom { display: flex; align-items: center; gap: var(--s-2); margin-top: var(--s-3); flex-wrap: wrap; }
+.viewer-zoom .btn { min-height: 44px; margin: 0; }
+.viewer-zbtn { width: 48px; padding: 0; font-size: 24px; line-height: 1; flex: none; }
+.viewer-zfit { flex: 1 1 auto; width: auto; }
+.viewer-zlevel { min-width: 3.4em; text-align: center; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 600; color: var(--text-primary); }
+/* v239: the pages scroll and zoom inside their own box, which fills the rest of the sheet */
+.viewer .viewer-frame { height: max(300px, calc(min(92vh, var(--vvh, 100vh) - 16px) - var(--viewer-chrome, 270px))); }
 
 /* ---------- The report look (v122) ----------
    Mark chose Direction D on the brand board: the look of the two-page reports carried into the app.
