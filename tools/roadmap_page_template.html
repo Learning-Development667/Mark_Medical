@@ -1,0 +1,80 @@
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>Daybook Roadmap</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Inter:wght@400;500;600&display=swap">
+<style>
+/* Layout: one calm column. Where things stand first, then each stage as rows that are done, in progress or waiting. Daybook's own palette and faces (the report look). */
+:root {
+  --bg: #F6F4EF; --card: #FFFFFF; --sunken: #E8EDF0; --ink: #17263A; --muted: #56667A; --line: #D5DEE5;
+  --teal: #18727A; --teal-fill: #1E7F86; --teal-light: #DDEEEF; --done: #2D7354; --done-fill: #3F8F6B; --done-light: #E1F1E9;
+  --warm: #A8582A;
+  --display: Fraunces, Georgia, "Times New Roman", serif;
+  --body: Inter, "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0F1B24; --card: #172633; --sunken: #12202B; --ink: #E6EEF2; --muted: #9FB0BF; --line: #2C3E4D;
+  --teal: #5CC3C9; --teal-fill: #5CC3C9; --teal-light: #123A3F; --done: #7BC8A0; --done-fill: #3F8F6B; --done-light: #14301F; --warm: #E49A66; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #0F1B24; --card: #172633; --sunken: #12202B; --ink: #E6EEF2; --muted: #9FB0BF; --line: #2C3E4D;
+  --teal: #5CC3C9; --teal-fill: #5CC3C9; --teal-light: #123A3F; --done: #7BC8A0; --done-fill: #3F8F6B; --done-light: #14301F; --warm: #E49A66; color-scheme: dark; }
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 17px; line-height: 1.5; }
+.wrap { max-width: 680px; margin: 0 auto; padding-block: 28px 56px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 24px; }
+header h1 { font-family: var(--display); font-weight: 600; font-size: clamp(32px, 7vw, 42px); letter-spacing: -0.01em; line-height: 1.05; margin: 0; text-wrap: balance; }
+header p { margin: 8px 0 0; color: var(--muted); }
+.stamp { font-size: 13px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--teal); margin-bottom: 8px; font-variant-numeric: tabular-nums; }
+.overall { background: var(--card); border: 1px solid var(--line); border-top: 4px solid var(--teal-fill); border-radius: 12px; padding: 18px 20px; display: grid; gap: 10px; }
+.overall .big { font-family: var(--display); font-weight: 600; font-size: 34px; line-height: 1.1; }
+.overall .big span { color: var(--muted); font-family: var(--body); font-weight: 400; font-size: 17px; display: block; margin-top: 2px; }
+.overall p { margin: 0; color: var(--muted); font-size: 15px; }
+.bar { height: 10px; border-radius: 99px; background: var(--sunken); overflow: hidden; }
+.bar i { display: block; height: 100%; border-radius: 99px; background: var(--done-fill); }
+.next { display: grid; gap: 4px; padding-top: 4px; font-size: 16px; }
+.next b { font-size: 13px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--teal); }
+section { display: grid; gap: 8px; }
+.stage-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+h2 { font-family: var(--display); font-weight: 600; font-size: 22px; letter-spacing: -0.01em; margin: 0; }
+.count { font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; }
+ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+li { display: flex; gap: 12px; align-items: flex-start; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; min-width: 0; }
+li .box { flex: none; width: 24px; height: 24px; border-radius: 7px; border: 2px solid var(--line); display: grid; place-items: center; margin-top: 1px; }
+li.done { background: var(--done-light); border-color: transparent; }
+li.done .box { background: var(--done-fill); border-color: var(--done-fill); }
+li.done .box svg { stroke: #FFFFFF; }
+li.done .t { color: var(--muted); }
+li.now { border-color: var(--teal); box-shadow: inset 0 0 0 1px var(--teal); }
+li.now .box { border-color: var(--teal); }
+li .t { min-width: 0; overflow-wrap: anywhere; }
+li .t small { display: block; color: var(--muted); font-size: 15px; line-height: 1.45; margin-top: 2px; }
+.who { font-size: 12px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--teal); background: var(--teal-light); border-radius: 6px; padding: 2px 6px; margin-left: 4px; white-space: nowrap; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.sub { margin: -2px 0 2px; color: var(--muted); font-size: 15px; }
+.key { display: flex; gap: 8px 18px; flex-wrap: wrap; font-size: 14px; color: var(--muted); }
+.key span { display: inline-flex; align-items: center; gap: 8px; }
+.key i { width: 16px; height: 16px; border-radius: 5px; border: 2px solid var(--line); display: inline-block; }
+.key .k-now { border-color: var(--teal); }
+.key .k-done { background: var(--done-fill); border-color: var(--done-fill); }
+footer { color: var(--muted); font-size: 15px; }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="stamp">Updated 19 October 2026 · Daybook v239</div>
+    <h1>Daybook Action List</h1>
+    <p>What is left to do, in order. Build, then how it looks, then how it feels, then the website, then the stores.</p>
+  </header>
+
+  <div class="overall" aria-label="Where it stands">
+    <div class="big">About 65% <span>of the way to both app stores</span></div>
+    <div class="bar" role="img" aria-label="About 65 percent"><i style="width:65%"></i></div>
+    <p>A best guess. The web app is complete enough for the Beta. What is left is the native iPhone and Android apps, export and delete, the security tightening and the Apple enrolment, which is no longer blocked.</p>
+    <div class="next"><b>Next</b><span>Mark: finish the Apple enrolment (16), switch Firebase to pay-as-you-go (9b), confirm the support@ mailbox, then the Beta messages and first invites (15a). Claude: export and delete (8), then the iPhone app (17).</span></div>
+  </div>
+
+  <div class="key" aria-label="Key"><span><i class="k-done"></i>Done</span><span><i class="k-now"></i>In progress</span><span><i></i>Not started</span></div>
+
+  {{BUILT}}
+  {{STAGES}}
+
+  <footer>The full detail lives in ROADMAP.md in the Daybook repository. New ideas go into the right stage before they are built.</footer>
+</div>
