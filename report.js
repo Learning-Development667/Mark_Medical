@@ -113,6 +113,11 @@ h2.sec small{font-family:Inter,sans-serif;font-weight:400;font-size:7.6pt;color:
 .weeks.nat{display:flex;flex-direction:column;flex:none;gap:3mm}
 .week.nat{flex:none;overflow:visible}
 .tailh{margin:.6mm 0 0}
+.carerbox{flex:none;background:#FBF3EC;border-left:1.2mm solid #C2703D;border-radius:0 2.4mm 2.4mm 0}
+.carerbox li time{color:#9A5527}
+.carerbox li b{font-weight:600}
+.carerbox li .cmood{display:block}
+.carerbox li .ctext{display:block;margin-top:.4mm}
 .tail .more{margin:0}
 `;
 
@@ -196,6 +201,16 @@ function weekHtml(w, wide, o = {}) {
   return `<div class="week${wide ? ' wide' : ''}${o.nat ? ' nat' : ''}" data-sec="${esc(w.title)}"${o.ti == null ? '' : ` data-ti="${o.ti}"`}><div class="wh"><h3>${esc(w.title)}${from ? ' <small>(continued)</small>' : ''}</h3><span>${esc(w.range)}</span></div>${w.theme && !from ? `<div class="theme">${esc(w.theme)}</div>` : ''}${items}${w.foot && last ? `<p class="ai">${esc(w.foot)}</p>` : ''}</div>`;
 }
 
+/* The carer's own mood scores and observations, kept apart from the patient's (v237). C: { title, range, summary, note,
+   days: [{ when, moods, texts: [string] }] }. Every observation is printed whole; a long list carries on, headed "continued". */
+function carerHtml(C, o = {}) {
+  const from = o.from || 0, to = o.to == null ? C.days.length : o.to;
+  const shown = C.days.slice(from, to);
+  const last = to >= C.days.length;
+  const items = `<ul>${shown.map((d) => `<li><time>${esc(d.when)}</time><span>${d.moods ? `<b class="cmood">${esc(d.moods)}</b>` : ''}${d.texts.map((t) => `<span class="ctext">${esc(t)}</span>`).join('')}</span></li>`).join('')}</ul>`;
+  return `<div class="week carerbox wide${o.nat ? ' nat' : ''}" data-sec="${esc(C.title)}"${o.ti == null ? '' : ` data-ti="${o.ti}"`}><div class="wh"><h3>${esc(C.title)}${from ? ' <small>(continued)</small>' : ''}</h3><span>${esc(C.range)}</span></div>${C.summary && !from ? `<div class="theme">${esc(C.summary)}</div>` : ''}${items}${C.note && last ? `<p class="ai">${esc(C.note)}</p>` : ''}</div>`;
+}
+
 /* The pages after the two fixed ones (since v236). Nothing on a report is cut short: whatever page 1 or page 2
    cannot hold is laid out here, page after page, in the order it was moved: the latest note when page 1 could
    not hold it, the questions that did not fit, then the weekly notes (a long week carries on, headed
@@ -205,6 +220,7 @@ function tailItems(R) {
   if (R.latestMoved && R.latest) items.push({ k: 'l' });
   (R.extraQ || []).forEach((_, n) => items.push({ k: 'q', n }));
   if (R.weeksPage3) R.weeks.forEach((w, n) => items.push({ k: 'w', n, from: 0, to: w.entries.length }));
+  if (R.carer && R.carerTail) items.push({ k: 'c', from: 0, to: R.carer.days.length });
   return items;
 }
 export function tailPagesOf(R) {
@@ -225,6 +241,10 @@ function tailPageHtml(R, items, p, total) {
       return;
     }
     flushQ();
+    if (it.k === 'c') {
+      body += `<div class="weeks nat">${carerHtml(R.carer, { nat: true, ti, from: it.from, to: it.to })}</div>`;
+      return;
+    }
     if (it.k === 'l') {
       const L = R.latest;
       body += `<div class="latest" data-ti="${ti}" data-sec="Latest"><div class="when">${esc(L.when1)}<br>${esc(L.when2)}</div><div><b>${esc(L.title)}</b>${esc(L.text)}</div></div>`;
@@ -236,8 +256,9 @@ function tailPageHtml(R, items, p, total) {
   });
   flushQ();
   const kinds = new Set(items.map((i) => i.k));
-  const hasQ = kinds.has('q') || kinds.has('l'), hasW = kinds.has('w');
-  const title = hasQ && hasW ? 'More questions, and the weekly notes' : hasQ ? 'More questions for the team' : (p > 0 ? 'Weekly notes, continued' : 'Weekly notes');
+  const hasQ = kinds.has('q') || kinds.has('l'), hasW = kinds.has('w'), hasC = kinds.has('c');
+  const base = hasQ && hasW ? 'More questions, and the weekly notes' : hasQ ? 'More questions for the team' : hasW ? (p > 0 ? 'Weekly notes, continued' : 'Weekly notes') : '';
+  const title = hasC ? (base ? base + ", and the carer's view" : "The carer's view") : base;
   return `<section class="page tail" id="page${3 + p}">
   <div class="runner"><h2>${title}</h2><span>${esc(R.patient)} · ${esc(R.period)}</span></div>
   ${body}
@@ -311,6 +332,7 @@ ${bar}
   <div class="runner"><h2>${R.weeksPage3 ? 'Readings' : 'Readings and weekly notes'}</h2><span>${esc(R.patient)} · ${esc(R.period)}</span></div>
   <div class="cgrid" data-sec="Charts">${charts}${key}</div>
   ${R.weeksPage3 ? '' : weeksHtml}
+  ${R.carer && !R.carerTail ? carerHtml(R.carer) : ''}
   <div class="foot"><span>${esc(R.foot)}</span>${madeBy(2, total)}</div>
 </section>
 ${tail.map((items, p) => tailPageHtml(R, items, p, total)).join('\n')}
@@ -359,7 +381,7 @@ export function spillTail(doc, R) {
     const idx = Number(bad.dataset.ti);
     const items = R.tailPages[p];
     const it = items[idx];
-    if (it.k === 'w' && it.to - it.from > 1) {
+    if ((it.k === 'w' || it.k === 'c') && it.to - it.from > 1) {
       let keep = [...bad.querySelectorAll('li')].filter((li) => li.getBoundingClientRect().bottom <= limit).length;
       if (!keep && !idx) keep = 1;
       if (keep && keep < it.to - it.from) {
@@ -381,6 +403,10 @@ export function spillTail(doc, R) {
    to the pages after the second, then page 1 gives up its writing lines and its questions, and last of all the
    latest note, which is then printed in full after them. */
 export function shrink(R, over) {
+  /* The carer's area (v237) gives way first: if page 2 is full, it moves whole to the pages after the second, and the weeks stay where they were */
+  if (R.carer && !R.carerTail && over.some((s) => s === R.carer.title || s === 'Week by week' || s === 'Page 2' || R.weeks.some((w) => w.title === s))) {
+    R.carerTail = true; R.tailPages = null; return true;
+  }
   if (!R.weeksPage3 && R.weeks.some((w) => over.includes(w.title) || over.includes('Week by week') || over.includes('Page 2'))) {
     R.weeksPage3 = true; R.tailPages = null; return true;
   }
@@ -883,6 +909,11 @@ const MOOD_CSS = `
 .wkhead{font-size:6.6pt;letter-spacing:.06em;text-transform:uppercase;color:var(--slate);background:var(--mist);padding:1.6mm 2mm;border-bottom:1.3px solid var(--ink);font-weight:600}
 .wkrow{padding:1.8mm 2mm;border-bottom:1px solid var(--line);font-size:7.9pt;line-height:1.35}
 .wkrow .n{font-variant-numeric:tabular-nums;white-space:nowrap}
+.crow{display:grid;grid-template-columns:14mm 1fr;gap:2mm;padding:1.8mm 2mm;border-bottom:1px solid var(--line);font-size:7.9pt;line-height:1.35;border-left:1.2mm solid #C2703D;background:#FBF3EC}
+.crow time{font-weight:600;color:#9A5527}
+.cnote{font-size:7.9pt;color:var(--slate);margin:0 0 1.6mm}
+.crow b{display:block;font-weight:600}
+.crow .ctext{display:block;margin-top:.4mm}
 .wkrow .sm{display:block;color:var(--slate);font-size:7.1pt}
 .wkrow .dots i{display:inline-block;width:2.2mm;height:2.2mm;border-radius:50%;background:var(--line);margin-right:.6mm;vertical-align:middle}
 .wkrow .dots i.on{background:var(--teal)}
@@ -949,18 +980,24 @@ export function moodReportHtml(W) {
         html += `<div class="mnotes" data-i="${i}"><h3>Notes from the session</h3><div class="lines">${l}</div></div>`;
         return;
       }
-      if (it.t === 'sec' || (it.t === 'wk' && open !== 'weeks') || (it.t === 'q' && open !== 'q')) {
+      if (it.t === 'sec' || (it.t === 'wk' && open !== 'weeks') || (it.t === 'q' && open !== 'q') || (it.t === 'cd' && open !== 'carer')) {
         close();
-        const which = it.t === 'sec' ? it.s : it.t === 'wk' ? 'weeks' : 'q';
+        const which = it.t === 'sec' ? it.s : it.t === 'wk' ? 'weeks' : it.t === 'cd' ? 'carer' : 'q';
         const cont = it.t !== 'sec';
-        const title = which === 'weeks' ? 'Week by week' : 'Questions';
+        const title = which === 'weeks' ? 'Week by week' : which === 'carer' ? W.carer.title : 'Questions';
         const C = W.cols || { taps: true, checks: true };
-        const note = which === 'weeks' ? (C.taps ? 'The evening taps (how much, out of four: not at all to a lot) and sleep' : 'Mood, low days and sleep') + (C.checks ? ', and the weekly check in ' + esc(W.patient) + "'s words." : ', week by week.') : 'Labelled Wellbeing in the app. Space under each to write the reply.';
+        const note = which === 'carer' ? '' : which === 'weeks' ? (C.taps ? 'The evening taps (how much, out of four: not at all to a lot) and sleep' : 'Mood, low days and sleep') + (C.checks ? ', and the weekly check in ' + esc(W.patient) + "'s words." : ', week by week.') : 'Labelled Wellbeing in the app. Space under each to write the reply.';
         html += `<div class="wsec"><h2 class="sec"${cont ? '' : ` data-i="${i}"`}>${title}${cont ? ', continued' : ` <small>${note}</small>`}</h2>`;
+        if (which === 'carer' && !cont) html += `<p class="cnote">${esc((W.carer.summary + ' ' + W.carer.note).trim())}</p>`;
         if (which === 'weeks') html += `<div class="wkhead" style="grid-template-columns:${wkCols(C)}"><span>Week</span>${C.taps ? '<span>Felt low</span><span>Worried or on edge</span><span>Enjoyed something</span>' : '<span>Mood</span><span>Low days</span>'}<span>Sleep</span>${C.checks ? '<span>The week in a sentence</span>' : ''}</div>`;
         if (which === 'q') html += '<div class="wq">';
         open = which;
         if (it.t === 'sec') return;
+      }
+      if (it.t === 'cd') {
+        const d = W.carer.days[it.r];
+        html += `<div class="crow" data-i="${i}"><time>${esc(d.when)}</time><span>${d.moods ? `<b>${esc(d.moods)}</b>` : ''}${d.texts.map((t) => `<span class="ctext">${esc(t)}</span>`).join('')}</span></div>`;
+        return;
       }
       if (it.t === 'wk') {
         const w = W.weeks[it.r];

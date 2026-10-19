@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '236';
+const APP_VERSION = '237';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -6264,6 +6264,53 @@ function whenWords(day, today) {
 }
 
 /* The report's data for report.js: R in the design's terms */
+/* The carer's own morning and evening mood and observations in a period, laid out for a report (v237, Mark: the carer adds
+   how they see the patient's mood at the patient's own two times, with a box for what they noticed, and it goes into the
+   report as its own little area). Kept apart from the patient's figures; the patient's own score at the same time sits beside
+   each one for comparison. Every observation is given whole. Null when the carer added nothing in the period. */
+function carerLog(entries, from, to) {
+  const rows = entries.filter((e) => e.type === 'checkin' && isCarerDaySlot(e.slot) && e.day >= from && e.day <= to && (e.mood != null || String(e.noticed || '').trim()));
+  if (!rows.length) return null;
+  const pw = patientWord(), own = pw === 'them' ? 'their own' : pw + "'s own";
+  const names = [...new Set(rows.map((e) => e.addedBy || 'the carer'))];
+  const patientMood = (day, slot) => { const c = entries.find((e) => isPatientCheckin(e) && e.day === day && e.slot === slot && e.mood != null); return c ? Number(c.mood) : null; };
+  const byDay = {};
+  rows.forEach((e) => { (byDay[e.day] = byDay[e.day] || []).push(e); });
+  const mine = [], theirs = [];
+  const days = Object.keys(byDay).sort().map((day) => {
+    const list = byDay[day].slice().sort((a, b) => (a.slot === b.slot ? 0 : a.slot === 'carermorning' ? -1 : 1));
+    const moods = [], texts = [];
+    list.forEach((e) => {
+      const w = e.slot === 'carermorning' ? 'Morning' : 'Evening';
+      const by = names.length > 1 ? ' (' + (e.addedBy || 'the carer') + ')' : '';
+      if (e.mood != null) {
+        const pm = patientMood(day, e.slot === 'carermorning' ? 'morning' : 'evening');
+        moods.push(`${w}${by} ${e.mood}/10` + (pm != null ? ` (${own} ${pm})` : ''));
+        mine.push({ day, v: Number(e.mood) });
+        if (pm != null) theirs.push(pm);
+      }
+      const t = String(e.noticed || '').trim();
+      if (t) texts.push(`${w}${by}: ${t}`);
+    });
+    return { day, when: rDay(day), moods: moods.join(' \u00b7 '), texts };
+  });
+  const r1 = (n) => Math.round(n * 10) / 10;
+  const who = joinAnd(names);
+  const bits = [];
+  if (mine.length) {
+    const lo = mine.reduce((a, b) => (b.v < a.v ? b : a));
+    bits.push(`Mood as ${who} saw it averaged ${r1(mine.reduce((t, x) => t + x.v, 0) / mine.length)}/10 over ${plural(mine.length, 'reading')}, lowest ${lo.v}/10 on ${rDay(lo.day)}.`);
+    if (theirs.length) bits.push(`${capFirst(own)} scores at the same times averaged ${r1(theirs.reduce((t, x) => t + x, 0) / theirs.length)}/10.`);
+  }
+  return {
+    title: `As ${who} saw it`,
+    range: rRange(days[0].day, days[days.length - 1].day),
+    summary: bits.join(' '),
+    note: `Scores and words are the carer's own, kept apart from the patient's. The patient's own score for the same time is in brackets.`,
+    days
+  };
+}
+
 function buildTwoPage(n) {
   const { from, to, report, entries } = n;
   const today = todayStr();
@@ -6304,7 +6351,7 @@ function buildTwoPage(n) {
     patient, period, prepared: rDay(today) + ' ' + parseDay(today).getFullYear(),
     latest, tiles, meds, hospital, steady, sideFx: twoPageSideFx(entries), results: twoPageResults(entries),
     questions: qs, more: 0, older: report.older.length, olderFrom: rDay(from), extraQ: [], weeksPage3: false, lines: 3,
-    charts, days: labels, weeks,
+    charts, days: labels, weeks, carer: carerLog(entries, from, to), carerTail: false,
     weeksNote: ai ? 'Summarised from the daily notes by Daybook Assistant, an AI helper. Every note is in Daybook.' : 'The most telling note of each day. Every note is in Daybook.',
     foot: 'Notes for the team'
   };
@@ -7282,7 +7329,7 @@ function buildNotesReport(entries, questionsAll, from, to, rangeLabel) {
     const list = (byDay[day] || []).slice().sort((a, b) => entryDate(a) - entryDate(b));
     const notes = list.filter((e) => e.type === 'note' || (e.note && ['temp', 'weight', 'vitals', 'med', 'pain', 'bowel', 'symptom'].includes(e.type)))
       .map((e) => ({ time: fmtTime(entryDate(e)), who: e.addedBy || 'unknown', text: e.note, context: e.type === 'note' ? '' : noteContext(e), src: { id: e.id, field: 'note', words: e.note, label: e.type === 'note' ? 'Note' : 'Note ' + (/^with /.test(noteContext(e)) ? '' : 'with ') + noteContext(e), day: e.day, time: fmtTime(entryDate(e)), who: e.addedBy } }));
-    list.filter((e) => e.type === 'checkin' && !isWeekSlot(e.slot)).forEach((e) => {
+    list.filter((e) => e.type === 'checkin' && !isWeekSlot(e.slot) && !isCarerDaySlot(e.slot)).forEach((e) => {
       const keys = e.slot === 'carer' ? REPORT_CARER_KEYS : REPORT_CHECKIN_KEYS;
       keys.forEach(([k, label]) => {
         if (e[k]) notes.push({ time: fmtTime(entryDate(e)), who: e.addedBy || 'unknown', text: label + ': ' + e[k], context: e.slot === 'carer' ? "carer's view" : e.slot + ' check-in', src: { id: e.id, field: k, words: e[k], label: checkinTitle(e.slot, e) + ': ' + label, day: e.day, time: fmtTime(entryDate(e)), who: e.addedBy, checkin: true } });
@@ -7309,6 +7356,12 @@ function buildNotesReport(entries, questionsAll, from, to, rangeLabel) {
   lines.push('', 'Summary (simple checks by the app, not a diagnosis):');
   if (glance.length) glance.forEach((g) => lines.push(`- ${LEVEL_WORD[g.level]}: ${g.text}`));
   else lines.push('- No readings logged in this period.');
+  const carerCl = carerLog(entries, from, to);
+  if (carerCl) {
+    lines.push('', carerCl.title + ' (' + carerCl.note + '):');
+    if (carerCl.summary) lines.push('- ' + carerCl.summary);
+    carerCl.days.forEach((d) => lines.push(`- ${fmtDayShort(d.day)}: ${[d.moods, ...d.texts].filter(Boolean).join('. ')}`));
+  }
   lines.push('', 'Notes (who wrote each one, then the note):');
   if (days.length) days.forEach((d) => {
     lines.push('', `${fmtDayLong(d.day)} (${fmtDayNum(d.day)})`);
@@ -7490,6 +7543,17 @@ const CHECKIN_QUESTIONS = {
     { key: 'pain', kind: 'pain', q: 'Pain today, as you see it', low: '1 none', high: '10 worst' },
     { key: 'mood', kind: 'slider', q: 'Mood today, as you see it', low: '1 rough', high: '10 great' },
     { key: 'noticed', kind: 'text', q: 'What did you notice today?', ph: 'e.g. slept most of the afternoon, colour better than yesterday' }
+  ],
+  /* The carer's mood and observations, at the patient's own two times (v237, Mark: the carer should add how they feel the
+     patient's mood was each day, mirroring the patient's check-ins, with a box for what they noticed, in its own area on the
+     report): a morning and an evening, two short questions each, kept apart from every patient figure. */
+  carermorning: [
+    { key: 'mood', kind: 'slider', q: 'Their mood this morning, as you see it', low: '1 rough', high: '10 great' },
+    { key: 'noticed', kind: 'text', q: 'Anything you noticed this morning?', ph: 'e.g. quiet at breakfast, brighter after a walk' }
+  ],
+  carerevening: [
+    { key: 'mood', kind: 'slider', q: 'Their mood this evening, as you see it', low: '1 rough', high: '10 great' },
+    { key: 'noticed', kind: 'text', q: 'Anything you noticed this evening?', ph: 'e.g. tired but in good spirits, ate well' }
   ]
 };
 /* The four answers to a wellbeing question (v156), stored as 0 to 3; "quite a bit or a lot" is 2 or more */
@@ -7598,9 +7662,12 @@ function isWeekSlot(slot) { return slot === 'week' || slot === 'weekcarer'; }
 function weekSlot() { return isCarerUser() ? 'weekcarer' : 'week'; }
 /* A patient check-in, as opposed to the carer's view */
 function patientWord() { const n = patientFullName() || ''; return n ? n.split(/\s+/)[0] : 'them'; }
-function isPatientCheckin(e) { return e.type === 'checkin' && e.slot !== 'carer' && e.slot !== 'weekcarer'; }
+const CARER_DAY_SLOTS = ['carermorning', 'carerevening'];
+function isCarerDaySlot(slot) { return slot === 'carermorning' || slot === 'carerevening'; }
+function isPatientCheckin(e) { return e.type === 'checkin' && e.slot !== 'carer' && e.slot !== 'weekcarer' && !isCarerDaySlot(e.slot); }
 function checkinTitle(slot, e) {
   if (slot === 'weekcarer') return e && e.addedBy ? 'The week as ' + e.addedBy + ' saw it' : 'Your week, as you see it';
+  if (isCarerDaySlot(slot)) { const w = slot === 'carermorning' ? 'Morning' : 'Evening'; return e && e.addedBy ? w + ' as ' + e.addedBy + ' saw it' : w + ', as you see it'; }
   return slot === 'carer' ? "Carer's view" : slot === 'week' ? 'Your week' : slotWord(slot) + ' check-in';
 }
 function checkinId(day, slot) { return day + '_' + slot; }
@@ -7609,7 +7676,7 @@ function findCheckin(day, slot) {
   return state.dayEntries.find((e) => e.id === id) || state.recentEntries.find((e) => e.id === id) || null;
 }
 function dueSlot() { return new Date().getHours() < 15 ? 'morning' : 'evening'; }
-function slotWord(slot) { return slot === 'morning' ? 'Morning' : slot === 'evening' ? 'Evening' : slot === 'week' ? 'Your week' : slot === 'weekcarer' ? 'Your week, as you see it' : "Carer's view"; }
+function slotWord(slot) { return slot === 'morning' ? 'Morning' : slot === 'evening' ? 'Evening' : slot === 'week' ? 'Your week' : slot === 'weekcarer' ? 'Your week, as you see it' : slot === 'carermorning' ? 'Morning, as you see it' : slot === 'carerevening' ? 'Evening, as you see it' : "Carer's view"; }
 
 function checkinSummary(e) {
   const bits = [];
@@ -7705,8 +7772,36 @@ function renderCheckins() {
     else sub.textContent = state.readOnly ? 'Not filled in' : 'Not filled in, tap to add';
   });
   renderQuestionRow();
+  renderCarerMoodRows();
   renderWeekRow();
   renderFlareRow();
+}
+/* The carer's morning and evening mood and observations (v237): two rows at the patient's own two times, on a carer's Today and,
+   for anyone in the family, with the carer's view on the Treatment tab. A saved one shows as the ordinary check-in card. */
+function carerMoodRow(slot, day, isToday) {
+  const c = findCheckin(day, slot);
+  if (c) return checkinCard(c, false);
+  const morning = slot === 'carermorning';
+  const due = isToday && dueSlot() === (morning ? 'morning' : 'evening');
+  const sub = !state.readOnly && readProgress(slot, day) ? 'Unfinished, kept as you left it. Tap to carry on'
+    : due ? (state.readOnly ? 'Due now' : 'Due now, about a minute')
+    : isToday && morning ? (state.readOnly ? 'Missed this morning' : 'Missed this morning, tap to fill in')
+    : isToday ? 'Later today'
+    : (state.readOnly ? 'Not filled in' : 'Not filled in, tap to add');
+  const row = h('button', { class: 'checkin-row' + (due || (!state.readOnly && readProgress(slot, day)) ? ' is-due' : ''), type: 'button', id: 'carer-' + slot + (isToday ? '' : '-d'), disabled: state.readOnly, onclick: () => openCheckin(slot, day) },
+    icon(morning ? 'sun' : 'moon', 'checkin-icon'),
+    h('span', { class: 'checkin-main' }, h('span', { class: 'checkin-title', text: slotWord(slot) }), h('span', { class: 'checkin-sub', text: sub })),
+    icon('chevron', 'checkin-chev'));
+  return row;
+}
+function renderCarerMoodRows() {
+  const today = $('carer-mood-today'), chemo = $('carer-mood-chemo');
+  if (today) {
+    const show = isCarerUser() && !state.viewer;
+    today.hidden = !show;
+    today.replaceChildren(...(show ? CARER_DAY_SLOTS.map((slot) => carerMoodRow(slot, state.selectedDay, state.selectedDay === todayStr())) : []));
+  }
+  if (chemo) chemo.replaceChildren(...(state.viewer ? [] : CARER_DAY_SLOTS.map((slot) => carerMoodRow(slot, todayStr(), true))));
 }
 /* Open questions for the team: a live list, so the Today row can say how many are waiting */
 function watchQuestions() {
@@ -8003,7 +8098,7 @@ function openCheckin(slot, initialDay) {
 async function saveCheckin(slot, day, answers, existing, opts = {}) {
   const id = checkinId(day, slot);
   const today = todayStr();
-  const at = existing ? entryDate(existing) : atFromInputs(day, day === today ? fmtTime(new Date()) : (slot === 'morning' ? '09:00' : slot === 'carer' ? '20:00' : '21:00'));
+  const at = existing ? entryDate(existing) : atFromInputs(day, day === today ? fmtTime(new Date()) : (slot === 'morning' || slot === 'carermorning' ? '09:00' : slot === 'carer' ? '20:00' : '21:00'));
   const data = { type: 'checkin', slot, day, addedBy: existing && existing.addedBy ? existing.addedBy : state.name };
   CHECKIN_QUESTIONS[slot].forEach((q) => { if (q.key in answers) data[q.key] = answers[q.key]; });
   if (slot === 'morning') data.sleepHours = answers.sleepHours;
@@ -8018,7 +8113,7 @@ async function saveCheckin(slot, day, answers, existing, opts = {}) {
     if (!inProgress) data.editedBy = state.name;
   }
   const mirror = {};
-  if (slot !== 'carer' && data.mood != null) mirror.mood = Math.max(1, Math.min(5, Math.ceil(data.mood / 2)));
+  if (slot !== 'carer' && !isCarerDaySlot(slot) && data.mood != null) mirror.mood = Math.max(1, Math.min(5, Math.ceil(data.mood / 2)));
   if (slot === 'evening' && data.goodThing) mirror.good = data.goodThing;
   const label = (slot === 'weekcarer' ? 'Your week' : checkinTitle(slot)) + (existing && !inProgress ? ' updated' : ' saved');
 
@@ -8983,6 +9078,16 @@ async function renderMoodReport() {
   box.value = W.brief.map((b) => (b.head ? b.head + '. ' : '') + b.text).join('\n\n');
   box.readOnly = !ai || state.readOnly;
   $('mood-brief-note').textContent = ai ? 'Written by Daybook Assistant from your scores and notes. Change any word; the report uses what is in the box.' : W.briefNote + (explainAvailable() && !state.readOnly ? ' Tap the button for a written brief from your notes.' : '');
+  /* the carer's own mood and words, in their own area (v237) */
+  $('mood-carer-section').hidden = !W.carer;
+  if (W.carer) {
+    $('mood-carer-title').textContent = W.carer.title;
+    $('mood-carer-hint').textContent = (W.carer.summary + ' ' + W.carer.note).trim();
+    $('mood-carer').replaceChildren(...W.carer.days.map((d) => h('div', { class: 'card wkcard carer-card' },
+      h('div', { class: 'wk-head' }, h('span', { text: fmtDayLong(d.day) })),
+      d.moods ? h('p', { class: 'wk-sub', text: d.moods }) : null,
+      ...d.texts.map((t) => h('p', { class: 'wk-sentence', text: t })))));
+  }
   /* the weeks */
   $('mood-weeks').replaceChildren(...W.weeks.map((w) => h('div', { class: 'card wkcard' },
     h('div', { class: 'wk-head' }, h('span', { text: w.label }), h('span', { class: 'muted', text: 'Sleep ' + w.sleep })),
@@ -9186,13 +9291,15 @@ function buildMoodReport(n) {
   const items = [{ t: 'brief' }];
   if (quotes.length) items.push({ t: 'quotes' });
   if (helped.length || hardest.length) items.push({ t: 'two' });
+  const carer = carerLog(entries, from, to);
+  if (carer) { items.push({ t: 'sec', s: 'carer' }); carer.days.forEach((_, r) => items.push({ t: 'cd', r })); }
   items.push({ t: 'sec', s: 'weeks' }); weeks.forEach((_, r) => items.push({ t: 'wk', r }));
   if (questions.length) { items.push({ t: 'sec', s: 'q' }); questions.forEach((_, q) => items.push({ t: 'q', q })); }
   items.push({ t: 'notes' });
   const period = rPeriod(from, to);
   /* the table shows what was logged: the taps' columns only when some evening has them, the sentence only with a weekly check (v157) */
   const cols = { taps: taps.length > 0, checks: wkChecks.length > 0 || carerChecks.length > 0 };
-  return { patient, period, prepared: rDay(todayStr()) + ' ' + parseDay(todayStr()).getFullYear(), tiles, chart, days: dayLabels, daysFull, brief, briefNote, quotes, quotesNote, helped, hardest, weeks, cols, questions, items, pages: [], docTitle: `Mood and wellbeing, ${patient}, ${period}` };
+  return { patient, period, prepared: rDay(todayStr()) + ' ' + parseDay(todayStr()).getFullYear(), tiles, chart, days: dayLabels, daysFull, brief, briefNote, quotes, quotesNote, helped, hardest, carer, weeks, cols, questions, items, pages: [], docTitle: `Mood and wellbeing, ${patient}, ${period}` };
 }
 function fittedMoodReport() {
   return memoFit('mood', async () => {
@@ -12158,6 +12265,7 @@ function renderChemo() {
   renderCycleTile();
   renderSideEffects();
   renderCarerRow();
+  renderCarerMoodRows();
   renderCycleChart();
   renderChemoDocs();
 }
@@ -12399,7 +12507,7 @@ function cycleSeries(entries, m, view = 'session') {
     for (let d = start, n = 0; d < end && d <= today && n <= cap; d = addDays(d, 1), n++) {
       const list = byDay[d] || [];
       const pv = list.filter((e) => e.slot !== 'carer' && m.slots.includes(e.slot)).map(read).filter((v) => v != null);
-      const cv = m.carer ? list.filter((e) => e.slot === 'carer' && e[m.key] != null).map((e) => Number(e[m.key])) : [];
+      const cv = m.carer ? list.filter((e) => (e.slot === 'carer' || isCarerDaySlot(e.slot)) && e[m.key] != null).map((e) => Number(e[m.key])) : [];
       if (pv.length) { const s = sums[n] || (sums[n] = { sum: 0, n: 0 }); s.sum += mean(pv); s.n++; used.add(start); }
       if (cv.length) { const s = carerSums[n] || (carerSums[n] = { sum: 0, n: 0 }); s.sum += mean(cv); s.n++; used.add(start); }
     }

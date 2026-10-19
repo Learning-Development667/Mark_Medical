@@ -1666,6 +1666,8 @@ h1, h2, h3 { font-weight: 600; }
 .wkcard .wk-dots i.on { background: var(--teal); }
 .wkcard .wk-dots i.warm { background: var(--warm); }
 .wkcard .wk-sentence { margin: 4px 0 0; }
+.wkcard.carer-card { border-left: 4px solid var(--warm); }
+.wkcard.carer-card .wk-sub { font-weight: 600; color: var(--text-primary); }
 .wkcard .wk-sub { font-size: 15px; color: var(--text-secondary); margin: 4px 0 0; }
 /* The Pain report screen (v161) */
 .todcard { display: flex; flex-direction: column; gap: var(--s-3); }
