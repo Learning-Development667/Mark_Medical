@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=237">
+  <link rel="stylesheet" href="styles.css?v=238">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -46,6 +46,7 @@
     <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11"/><path d="M7.5 10.5L12 15l4.5-4.5"/><path d="M5 19.5h14"/></symbol>
     <symbol id="i-print" viewBox="0 0 24 24"><path d="M7 9V4h10v5"/><rect x="4" y="9" width="16" height="7.5" rx="2"/><path d="M7 14h10v6H7z"/></symbol>
     <symbol id="i-send" viewBox="0 0 24 24"><path d="M21 3L10.5 13.5"/><path d="M21 3l-6.5 18-4-7.5-7.5-4z"/></symbol>
+    <symbol id="i-speaker" viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4.2 4.2 0 0 1 0 6"/><path d="M18 6.5a7.8 7.8 0 0 1 0 11"/></symbol>
     <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3M8.5 21h7"/></symbol>
     <symbol id="i-question" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.6a2.4 2.4 0 1 1 3.4 2.2c-.7.4-1 .9-1 1.7"/><path d="M12 16.6h.01"/></symbol>
     <symbol id="i-bowel" viewBox="0 0 24 24"><path d="M7.5 3.5h9v6h-9z"/><path d="M5 9.5h14v2.2a7 7 0 0 1-14 0z"/><path d="M8.5 18.3L7.5 21h9l-1-2.7"/></symbol>
@@ -960,6 +961,16 @@
           <button id="settings-week-treatment" class="btn btn-secondary btn-block" type="button" hidden>Use my treatment day</button>
           <p class="hint">The weekly Your week check-in asks about the week up to this day, and offers itself over the last three days of it. If you have treatment on the same day each week, ending your week there makes each one a treatment week.</p>
         </div>
+        <div id="settings-speak">
+          <h2 class="section-title">Talking instead of typing</h2>
+          <div class="card settings-group">
+            <label class="check settings-toggle">
+              <input id="settings-speakcheck" type="checkbox">
+              <span>Show me what was heard before anything is saved</span>
+            </label>
+            <p class="hint">Optional, and on this phone only. After you use Tap to speak, Daybook shows the words it heard before a note, answer or check-in is saved, with a button to read them out, so a misheard word can be put right. Leave it off if you would rather trust the words as they come; you can always change them in the box.</p>
+          </div>
+        </div>
         <h2 class="section-title">Reminders</h2>
         <div id="settings-reminders-group" class="card settings-group">
           <label class="check settings-toggle">
@@ -1180,6 +1191,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=237"></script>
+  <script type="module" src="scripts.js?v=238"></script>
 </body>
 </html>

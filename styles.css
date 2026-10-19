@@ -1927,3 +1927,22 @@ body[data-page="guide"] :is(.card, .checkin-row):not(.is-due):not(.is-flare),
 body[data-page="usage"] .card,
 body[data-page="docs"] :is(.card, .checkin-row):not(.is-due) { background: color-mix(in srgb, var(--surface) 78%, transparent); }
 @media print, (forced-colors: active) { .app::before { display: none; } }
+
+/* Check the words before saving (v238): the words Tap to speak heard, over the sheet, before the save goes ahead */
+.scheck { position: fixed; inset: 0; z-index: 420; }
+.scheck-backdrop { position: absolute; inset: 0; background: rgba(10, 20, 28, 0.45); }
+.scheck-panel {
+  position: absolute; left: 0; right: 0; bottom: 0; max-height: calc(100% - 40px - var(--safe-t)); overflow: auto;
+  background: var(--surface); color: var(--text-primary); border-radius: var(--r-lg) var(--r-lg) 0 0;
+  padding: var(--s-5) var(--s-5) calc(var(--s-5) + var(--safe-b)); box-shadow: var(--elev-sheet);
+  display: flex; flex-direction: column; gap: var(--s-3); animation: rise var(--t-slow) var(--ease-out);
+}
+@media (min-width: 640px) { .scheck-panel { left: calc(50% - 280px); right: auto; width: 560px; bottom: 24px; border-radius: var(--r-lg); } }
+.scheck-title { font-family: var(--font-head); font-weight: 600; font-size: 25px; letter-spacing: -0.01em; margin: 0; }
+.scheck-title:focus { outline: none; }
+.scheck-item { background: var(--surface-sunken); border-radius: var(--r-md); padding: var(--s-3) var(--s-4); }
+.scheck-label { margin: 0 0 4px; font-size: 14px; font-weight: 600; color: var(--text-secondary); }
+.scheck-words { margin: 0; font-size: 20px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.scheck .btn .icon { width: 20px; height: 20px; }
+.scheck-read { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+@media (prefers-reduced-motion: reduce) { .scheck-panel { animation: none; } }
