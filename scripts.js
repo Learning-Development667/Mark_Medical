@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '233';
+const APP_VERSION = '234';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -13839,14 +13839,14 @@ syncStage();
 /* ---- Opener: the loading page, shown on every cold start while the account check runs. Since v222 a short
    watercolour clip (icons/opener.mp4, about four seconds, no sound) fills the screen with the name over it as
    real text; before that it was the Mark 1 Apps film (v88 to v221), which now lives on the website and the
-   company's own pages. It plays from the start every time; a tap anywhere, the Skip button, a decode error or
+   company's own pages. It plays from the start every time; a tap anywhere (there is no Skip button since v234), a decode error or
    the OPENER_CAP_MS cap ends it. The page leaves once the clip is done and the app or the sign-in screen is
    ready, and after fifteen seconds regardless. Reduced motion: the still frame (the clip's poster) for as long
    as loading takes, half a second at least so it never flashes. The harness sets localStorage
    daybook.opener.nofilm to skip the clip so no test waits on it. ---- */
 const OPENER_START_S = 0, OPENER_CAP_MS = 4500;
 (function opener() {
-  const el = $('opener'), video = $('opener-video'), skip = $('opener-skip');
+  const el = $('opener'), video = $('opener-video');
   if (!el || !video) return;
   $('opener-version').textContent = versionText();
   let noFilm = false;
@@ -13869,10 +13869,8 @@ const OPENER_START_S = 0, OPENER_CAP_MS = 4500;
   const check = () => { if (!appReady && ready()) { appReady = true; maybe(); } };
   new MutationObserver(check).observe(document.body, { attributes: true, subtree: true, attributeFilter: ['hidden'] });
   check();
-  const endFilm = () => { if (filmDone) return; filmDone = true; skip.hidden = true; maybe(); };
+  const endFilm = () => { if (filmDone) return; filmDone = true; maybe(); };
   if (!filmDone) {
-    skip.hidden = false;
-    skip.addEventListener('click', endFilm);
     el.addEventListener('click', endFilm);
     video.addEventListener('ended', endFilm);
     video.addEventListener('error', endFilm);
