@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '235';
+const APP_VERSION = '236';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -5731,8 +5731,8 @@ const SEND_KINDS = {
     blob: () => foodReportBlob(),
     subject: (range) => `My food diary, ${range}`,
     named: (who, range) => `Food diary: ${who}, ${range}`,
-    words: (range, n) => `Here is my food diary from Daybook for ${range}: two pages, with protein against the target, drinks and food groups first, then the trends and what I ate week by week.${n && n.questions && n.questions.length ? ` My ${n.questions.length === 1 ? 'question' : 'questions'} for you ${n.questions.length === 1 ? 'is' : 'are'} on the first page.` : ''}`,
-    attached: (range) => `Attached: Food diary, ${range}, two pages.`,
+    words: (range, n) => `Here is my food diary from Daybook for ${range}: protein against the target, drinks and food groups first, then the trends and what I ate week by week.${n && n.questions && n.questions.length ? ` My ${n.questions.length === 1 ? 'question' : 'questions'} for you ${n.questions.length === 1 ? 'is' : 'are'} in the report.` : ''}`,
+    attached: (range) => `Attached: Food diary, ${range}.`,
     check: ' Use Preview on the Food diary to look at it first.'
   },
   mood: {
@@ -6182,11 +6182,10 @@ function twoPageSideFx(entries) {
   const parts = [...byCause.entries()].map(([name, list]) => {
     const w = new Map();
     list.forEach((e) => { const k = String(e.what || 'Symptom').toLowerCase(); w.set(k, Math.max(w.get(k) || 0, Number(e.value))); });
-    const what = [...w.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k, v]) => `${k} up to ${v}/10`);
+    const what = [...w.entries()].sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} up to ${v}/10`);
     return { name, worst: Math.max(...w.values()), text: `${name}: ${what.join(', ')}` };
   }).sort((a, b) => b.worst - a.worst);
-  const shown = parts.slice(0, 4).map((p) => p.text);
-  return shown.join('. ') + '.' + (parts.length > 4 ? ` Plus ${parts.length - 4} more in the app.` : '');
+  return parts.map((p) => p.text).join('. ') + '.';
 }
 
 /* The weeks: blocks of seven days counted back from the last day of the period, so the period's
@@ -6233,7 +6232,6 @@ function plainWeek(w, report, entries) {
     if (!telling.length) return;
     const best = telling.slice().sort((a, b) => (/check-in|carer/.test(a.context) ? 1 : 0) - (/check-in|carer/.test(b.context) ? 1 : 0) || b.body.length - a.body.length)[0];
     let text = fixMedWords(best.body.trim());
-    if (text.length > 220) { const s = text.slice(0, 220); text = (s.match(/^[\s\S]*[.!?](?=\s|$)/) || [s.replace(/\s+\S*$/, '') + '…'])[0]; }
     /* a note of a new or worsening symptom is an alert in its own right */
     const worse = /^New or worse symptoms: /.test(best.text) || WORSE_WORDS.test(best.body);
     byDay.set(d.day, { day: d.day, text: (alertDays.has(d.day) ? reason(d.day) + ' ' : '') + capFirst(text), alert: alertDays.has(d.day) || worse });
@@ -6241,7 +6239,6 @@ function plainWeek(w, report, entries) {
   /* an alert day with no written note still gets its row */
   alertDays.forEach((day) => { if (!byDay.has(day)) byDay.set(day, { day, text: reason(day), alert: true }); });
   let entriesOut = [...byDay.values()].sort((a, b) => a.day.localeCompare(b.day));
-  if (entriesOut.length > 6) entriesOut = entriesOut.slice().sort((a, b) => (b.alert ? 1 : 0) - (a.alert ? 1 : 0) || b.text.length - a.text.length).slice(0, 6).sort((a, b) => a.day.localeCompare(b.day));
   return { theme, entries: entriesOut.map((e) => ({ when: rDay(e.day), text: e.text, alert: e.alert })) };
 }
 
@@ -6255,9 +6252,9 @@ function plainLatest(report, to) {
   if (!isSymptom) return null;
   const body = fixMedWords(last.text.replace(/^(New or worse symptoms|Settled since yesterday|What the carer noticed): /, '').trim());
   const first = (body.match(/^[^.!?]+[.!?]?/) || [body])[0].trim();
-  const title = first.length <= 70 ? first.replace(/[.!?]$/, '') : first.split(/\s+/).slice(0, 8).join(' ') + '…';
-  let text = first.length <= 70 ? body.slice(first.length).trim() : body;
-  if (text.length > 240) text = text.slice(0, 240).replace(/\s+\S*$/, '') + '…';
+  /* the whole note is printed (v236): a long first sentence is not cut to make a title, the title is plain words */
+  const title = first.length <= 70 ? first.replace(/[.!?]$/, '') : 'New or worse symptoms noted';
+  const text = first.length <= 70 ? body.slice(first.length).trim() : body;
   return { day: last.day, time: last.time, title: capFirst(title), text };
 }
 function whenWords(day, today) {
@@ -6542,7 +6539,7 @@ function buildFoodReport(n) {
     if (d.partial) parts.push(`Day in progress. ${d.e === 1 ? 'One entry' : capFirst(numberWord(d.e)) + ' entries'} so far${d.p != null ? ', ' + d.p + ' g protein' : ''}.`);
     else if (d.leftOut) parts.push('Totals left out (see Points to discuss).');
     else if (d.p != null) parts.push(d === low ? `Lowest protein of the week at ${d.p} g.` : d === high ? `Highest protein at ${d.p} g.` : `Protein ${d.p} g.`);
-    const names = foodNames(d.foods, 4);
+    const names = foodNames(d.foods, 99); // every meal named, none left as "and 3 more items" (v236)
     parts.push(names ? names + '.' : 'No food logged.');
     if (d.u > 0 && !d.partial) parts.push(`${d.u === 1 ? 'One item' : capFirst(numberWord(d.u)) + ' items'} not counted.`);
     if (d.l != null && d.l >= 4 && !d.partial) parts.push(`Drinks ${fmtLitres(d.l)} L.`);
@@ -6586,8 +6583,8 @@ function buildFoodReport(n) {
   return {
     docTitle: `Food diary, ${patient}, ${period}`,
     patient, period, logged: first ? `${period} (${plural(D.length, 'day')})` : 'nothing in this period', prepared: rDay(today) + ' ' + parseDay(today).getFullYear(),
-    banner, tiles, days: D, target, pMax, pTicks, callout, lMax, lTicks, grid, points: points.slice(0, 5), charts, weeks,
-    questions: (n.questions || []).map((q) => ({ text: capFirst(fixMedWords(q.text || '').trim()), by: `Asked by ${q.who}, ${rDay(q.day)}` })), more: 0,
+    banner, tiles, days: D, target, pMax, pTicks, callout, lMax, lTicks, grid, points, charts, weeks,
+    questions: (n.questions || []).map((q) => ({ text: capFirst(fixMedWords(q.text || '').trim()), by: `Asked by ${q.who}, ${rDay(q.day)}` })), more: 0, extraQ: [], extraPts: [], weeksPage3: false,
     caveat: (detailedNutritionOn() ? 'Calorie and macro figures are estimates from typical portion sizes, scaled by how much was eaten, or entered from the packet.' : 'Calorie and macro estimates are off in Settings.') + (D.some((d) => d.source === 'Apple Health' || d.source === 'food app') ? ' Days with food-app totals use those instead.' : '') + ' Not medical advice.'
   };
 }
@@ -6601,7 +6598,7 @@ function fittedFoodReport() {
     if (!foodIndex) await loadFoodTable();
     const F = buildFoodReport(n);
     const res = await reportModule.fitReport(reportFrame('food'), F, { html: reportModule.foodReportHtml, shrink: reportModule.shrinkFood });
-    if (!res.ok) { toast(`The food diary would run past two pages at: ${res.over.join(', ')}. Try a shorter range.`); return null; }
+    if (!res.ok) { toast(`The food diary would not fit at: ${res.over.join(', ')}. Try a shorter range.`); return null; }
     return res;
   });
 }
@@ -6762,7 +6759,7 @@ async function openReportViewer(kind, printNow) {
   const K = REPORT_KINDS[kind];
   if (printNow && IS_IOS) { printThroughShare(kind, K.blob); return; }
   const name = REPORT_NAMES[kind];
-  const body = h('div', { class: 'viewer' }, h('p', { class: 'hint', text: kind === 'meds' || kind === 'mood' || kind === 'pain' ? 'Making the pages, a few seconds.' : 'Making the two pages, a few seconds.' }));
+  const body = h('div', { class: 'viewer' }, h('p', { class: 'hint', text: kind === 'meds' || kind === 'mood' || kind === 'pain' ? 'Making the pages, a few seconds.' : 'Making the pages, a few seconds.' }));
   openSheet(name, body);
   let res = null;
   try { res = await K.fit(); }
@@ -9105,8 +9102,6 @@ function buildMoodReport(n) {
   const allScores = ci.map((e) => score(e, 'mood')).filter((v) => v != null);
   const lowDays = scored.filter((d) => Math.min(d.moodM ?? 99, d.moodE ?? 99) <= 4);
   const dayWord = (d) => DOW[parseDay(d).getDay()] + ' ' + rDay(d);
-  /* whole sentences up to max characters, at least min where the text allows; never a lone "Rough." when more follows */
-  const firstSentence = (s, max, min) => { const t = text(s).replace(/\s+/g, ' '); if (t.length <= max) return t; let end = 0; const re = /[.!?](\s|$)/g; let m; while ((m = re.exec(t))) { if (m.index + 1 > max) break; end = m.index + 1; if (end >= (min || 0)) break; } return end ? t.slice(0, end) : t.slice(0, max - 1).replace(/\s\S*$/, '') + '\u2026'; };
   const both = (d) => (d.moodM != null && d.moodE != null ? 1 : 0);
   const best = scored.slice().sort((a, b) => b.mood - a.mood || both(b) - both(a) || b.day.localeCompare(a.day))[0];
   const worst = scored.slice().sort((a, b) => a.mood - b.mood || both(b) - both(a) || b.day.localeCompare(a.day))[0];
@@ -9120,7 +9115,7 @@ function buildMoodReport(n) {
   const tiles = [
     /* v233: the quote was cut at 90 characters, which chopped a dictated note mid-sentence; the report tile now takes whole
        sentences up to 260 characters and the screen shows the note whole (full) */
-    best ? { k: 'Best day', v: dayWord(best.day), unit: '', tone: 'green', n: moodWords(best) + '.' + (bestQuote ? ' “' + firstSentence(bestQuote[1], 500, 60) + '”' : ''),
+    best ? { k: 'Best day', v: dayWord(best.day), unit: '', tone: 'green', n: moodWords(best) + '.' + (bestQuote ? ' “' + text(bestQuote[1]).replace(/\s+/g, ' ').trim() + '”' : ''),
       full: moodWords(best) + '.' + (bestQuote ? ' “' + text(bestQuote[1]).replace(/\s+/g, ' ').trim() + '”' : '') }
       : { k: 'Best day', v: 'None', unit: '', tone: '', n: 'No mood scores in this period.' },
     worst ? { k: 'Hardest day', v: dayWord(worst.day), unit: '', tone: worst.mood <= 3 ? 'red' : worst.mood <= 5 ? 'amber' : 'green', n: moodWords(worst) + (worstWhy.length ? ', ' + worstWhy.join(', ') : '') + '.' }
@@ -9181,7 +9176,7 @@ function buildMoodReport(n) {
     briefNote = 'Worked out by the app from the scores and the weekly check.';
     const cands = daysFull.flatMap((d) => d.notes.filter(([l]) => !/good thing/.test(l)).map(([l, t]) => ({ when: rDay(d.day) + (/morning/.test(l) ? ', morning' : ', evening'), text: t, low: d.mood != null && d.mood <= 4 })))
       .filter((q) => q.text.length > 25 && !isRoutineNote({ text: q.text })).sort((a, b) => b.text.length - a.text.length).slice(0, 3)
-      .map((q) => ({ ...q, text: firstSentence(q.text, 1500, 1000) }));
+      .map((q) => ({ ...q, text: text(q.text).replace(/\s+/g, ' ') }));
     quotes = cands.sort((a, b) => a.when.localeCompare(b.when));
     quotesNote = quotes.length ? 'Three of the notes from the period, as written.' : '';
     helped = wkChecks.filter((e) => text(e.helped)).map((e) => ({ head: weekBounds(e.day).from === from ? rDay(e.day) : rDay(weekBounds(e.day).from) + ' to ' + rDay(weekBounds(e.day).to), text: text(e.helped) }));
@@ -9326,7 +9321,6 @@ function buildPainReport(n) {
   const text = (x) => (x == null ? '' : String(x).trim());
   const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const dayWord = (d) => DOW[parseDay(d).getDay()] + ' ' + rDay(d);
-  const firstSentence = (s, max, min) => { const t = text(s).replace(/\s+/g, ' '); if (t.length <= max) return t; let end = 0; const re = /[.!?](\s|$)/g; let m; while ((m = re.exec(t))) { if (m.index + 1 > max) break; end = m.index + 1; if (end >= (min || 0)) break; } return end ? t.slice(0, end) : t.slice(0, max - 1).replace(/\s\S*$/, '') + '…'; };
   const painMeds = state.medicines.filter(isPainMed);
   const painIds = new Set(painMeds.map((m) => m.id));
   const doses = entries.filter((e) => e.type === 'med' && e.medId && painIds.has(e.medId));
@@ -9412,13 +9406,11 @@ function buildPainReport(n) {
     { label: 'Evening check-in', avg: avg(evenings), n: evenings.length },
     { label: 'Worst pain today', avg: avg(worsts), n: worsts.length }
   ];
-  /* the words: everything written under a pain score, in time order; the longest kept when there are too many */
+  /* the words: everything written under a pain score, in time order; only the plain "none" and "nothing new" answers are left out (v236) */
   let words = daysFull.flatMap((d) => d.notes).filter((w) => !isRoutineNote({ text: w.text }));
-  const WORDS_MAX = 16;
-  if (words.length > WORDS_MAX) { const keep = new Set(words.slice().sort((a, b) => b.text.length - a.text.length).slice(0, WORDS_MAX)); words = words.filter((w) => keep.has(w)); }
   const wordsTotal = daysFull.flatMap((d) => d.notes).length;
-  /* printed whole (the report takes as many pages as it needs); only a very long note is cut at a sentence past 600 characters, 900 at most */
-  words = words.map((w) => ({ ...w, text: firstSentence(w.text, 900, 600) }));
+  /* every note is printed whole, none left out and none cut (v236; the report takes as many pages as it needs) */
+  words = words.map((w) => ({ ...w, text: String(w.text == null ? '' : w.text).replace(/\s+/g, ' ').trim() }));
   const weeks = reportWeeks(from, to).map((w) => {
     const inW = daysFull.filter((d) => d.day >= w.from && d.day <= w.to);
     const nw = inW.flatMap((d) => d.now), sc = inW.filter((d) => d.max != null), b = sc.filter((d) => d.max >= 7), ws = inW.map((d) => d.worst).filter((v) => v != null);
@@ -9808,7 +9800,7 @@ function buildMedsReport(doses, sideFx = []) {
   /* the four tiles: counts, the regular names, how much the when-needed ones were used, what is no longer taken */
   const short = (m) => String(m.name).split(/\s+/).filter((w) => !/\d/.test(w) && !/^(injection|injections|tablets?|capsules?|sachets?|cream|liquid|solution|patch(es)?|spray|drops|gel|oral)$/i.test(w)).join(' ') || m.name;
   const names = regular.map(short);
-  const nameList = names.length > 5 ? names.slice(0, 4).join(', ') + ' and ' + (names.length - 4) + ' more' : names.length > 1 ? names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1] : names[0];
+  const nameList = names.length > 1 ? names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1] : names[0];
   const usedMost = prn.map((m) => ({ m, d: used14(m) })).filter((x) => x.d >= 7).sort((a, b) => b.d - a.d);
   const prnNote = !prn.length ? 'None on the list.'
     : usedMost.length === 1 ? `${short(usedMost[0].m)} was used on ${usedMost[0].d} of the last 14 days.`

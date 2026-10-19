@@ -1,12 +1,14 @@
-/* The two-page Notes for the team report (since v117), from the approved design
+/* The Notes for the team report (since v117), from the approved design
    (clinical-summary-report.html, October 2026). reportHtml(R) turns the data the app prepares
    (buildTwoPage() in scripts.js) into a complete A4 HTML document: page 1 the latest new symptom,
    eight tiles, the medicines strip, Steady and the questions with room to write; page 2 the
-   charts and two weekly cards. Nothing in here works anything out from the readings: every
-   number arrives in R already calculated. fitReport() writes it into an iframe, checks that both
-   pages fit, and shortens what it is allowed to (writing lines, then questions moved to "plus N
-   more", then the weekly entries) until they do; if they still do not, it fails and names the
-   section. Exactly two pages, never three. UK English, no em dashes. */
+   charts and the weekly cards. Nothing in here works anything out from the readings: every
+   number arrives in R already calculated. fitReport() writes it into an iframe and checks that the
+   pages fit. Since v236 nothing is ever cut short or left out: what page 1 or page 2 cannot hold
+   (the weeks, the questions, last of all the latest note) moves to pages after the second, and
+   spillTail() carries those on page after page. Only the writing lines under each question shrink,
+   from three to one. If something still does not fit it fails and names the section.
+   UK English, no em dashes. */
 
 const C = { ink: '#17263A', slate: '#5B6B7C', line: '#D5DEE5', teal: '#1E7F86', amber: '#E0A030', red: '#C8453B', green: '#3F8F6B' };
 export const REPORT_COLOURS = C;
@@ -106,6 +108,12 @@ h2.sec small{font-family:Inter,sans-serif;font-weight:400;font-size:7.6pt;color:
 .foot{display:flex;justify-content:space-between;font-size:6.6pt;color:var(--slate);border-top:1px solid var(--line);padding-top:1.6mm;margin-top:auto;align-items:baseline;gap:4mm}
 .foot .made{white-space:nowrap}
 .foot .made b{font-family:Fraunces,Georgia,serif;font-weight:600;font-size:7.6pt;color:var(--teal)}
+.qwrap.nat{flex:none}
+.qgrid.nat{flex:none;grid-auto-rows:auto}
+.weeks.nat{display:flex;flex-direction:column;flex:none;gap:3mm}
+.week.nat{flex:none;overflow:visible}
+.tailh{margin:.6mm 0 0}
+.tail .more{margin:0}
 `;
 
 export function esc(s) {
@@ -178,11 +186,63 @@ function questionHtml(q, extra) {
   return `<article class="q${extra ? ' extra' : ''}" data-sec="${extra ? 'Other points' : 'Question ' + esc(q.i)}"><header>${extra ? '<div class="no">+</div>' : ''}<div>${q.team ? `<div class="team">${esc(q.team)}</div>` : ''}<h3>${esc(q.text)}</h3><div class="by">${esc(q.by)}</div></div></header><div class="lines" style="min-height:${(q.lines || 1) * 4.6 + 2.4}mm">${lines(40)}</div></article>`;
 }
 
-function weekHtml(w, wide) {
+function weekHtml(w, wide, o = {}) {
+  const from = o.from || 0, to = o.to == null ? w.entries.length : o.to;
+  const shown = w.entries.slice(from, to);
   const items = w.entries.length
-    ? `<ul>${w.entries.map((e) => `<li${e.alert ? ' class="alert"' : ''}><time>${esc(e.when)}</time><span>${esc(e.text)}</span></li>`).join('')}</ul>`
+    ? `<ul>${shown.map((e) => `<li${e.alert ? ' class="alert"' : ''}><time>${esc(e.when)}</time><span>${esc(e.text)}</span></li>`).join('')}</ul>`
     : '<p class="none">No written notes this week.</p>';
-  return `<div class="week${wide ? ' wide' : ''}" data-sec="${esc(w.title)}"><div class="wh"><h3>${esc(w.title)}</h3><span>${esc(w.range)}</span></div>${w.theme ? `<div class="theme">${esc(w.theme)}</div>` : ''}${items}${w.foot ? `<p class="ai">${esc(w.foot)}</p>` : ''}</div>`;
+  const last = to >= w.entries.length;
+  return `<div class="week${wide ? ' wide' : ''}${o.nat ? ' nat' : ''}" data-sec="${esc(w.title)}"${o.ti == null ? '' : ` data-ti="${o.ti}"`}><div class="wh"><h3>${esc(w.title)}${from ? ' <small>(continued)</small>' : ''}</h3><span>${esc(w.range)}</span></div>${w.theme && !from ? `<div class="theme">${esc(w.theme)}</div>` : ''}${items}${w.foot && last ? `<p class="ai">${esc(w.foot)}</p>` : ''}</div>`;
+}
+
+/* The pages after the two fixed ones (since v236). Nothing on a report is cut short: whatever page 1 or page 2
+   cannot hold is laid out here, page after page, in the order it was moved: the latest note when page 1 could
+   not hold it, the questions that did not fit, then the weekly notes (a long week carries on, headed
+   "continued"). R.tailPages is [[item, ...], ...] and is changed by spillTail() until every page fits. */
+function tailItems(R) {
+  const items = [];
+  if (R.latestMoved && R.latest) items.push({ k: 'l' });
+  (R.extraQ || []).forEach((_, n) => items.push({ k: 'q', n }));
+  if (R.weeksPage3) R.weeks.forEach((w, n) => items.push({ k: 'w', n, from: 0, to: w.entries.length }));
+  return items;
+}
+export function tailPagesOf(R) {
+  if (!R.tailPages) { const items = tailItems(R); R.tailPages = items.length ? [items] : []; }
+  return R.tailPages;
+}
+function tailPageHtml(R, items, p, total) {
+  let body = '', qs = [], seenQ = false, seenW = false;
+  const flushQ = () => {
+    if (!qs.length) return;
+    body += `${seenQ ? '' : '<h2 class="sec tailh" style="margin-bottom:2.4mm">More questions for the team <small>Space is left under each one to write the reply.</small></h2>'}<div class="qwrap nat" data-sec="More questions"><div class="qgrid nat">${qs.join('')}</div></div>`;
+    seenQ = true; qs = [];
+  };
+  items.forEach((it, ti) => {
+    if (it.k === 'q') {
+      const q = R.extraQ[it.n];
+      qs.push(questionHtml({ ...q, i: R.questions.length + it.n + 1, lines: Math.max(R.lines, 3) }, false).replace(/data-sec="Question /, `data-ti="${ti}" data-sec="More question `));
+      return;
+    }
+    flushQ();
+    if (it.k === 'l') {
+      const L = R.latest;
+      body += `<div class="latest" data-ti="${ti}" data-sec="Latest"><div class="when">${esc(L.when1)}<br>${esc(L.when2)}</div><div><b>${esc(L.title)}</b>${esc(L.text)}</div></div>`;
+      return;
+    }
+    if (!seenW) body += `<h2 class="sec tailh" style="margin-bottom:2.4mm">Week by week <small>${esc(R.weeksNote || 'Each week summarised from the daily notes.')}</small></h2>`;
+    seenW = true;
+    body += `<div class="weeks nat">${weekHtml(R.weeks[it.n], true, { nat: true, ti, from: it.from, to: it.to })}</div>`;
+  });
+  flushQ();
+  const kinds = new Set(items.map((i) => i.k));
+  const hasQ = kinds.has('q') || kinds.has('l'), hasW = kinds.has('w');
+  const title = hasQ && hasW ? 'More questions, and the weekly notes' : hasQ ? 'More questions for the team' : (p > 0 ? 'Weekly notes, continued' : 'Weekly notes');
+  return `<section class="page tail" id="page${3 + p}">
+  <div class="runner"><h2>${title}</h2><span>${esc(R.patient)} · ${esc(R.period)}</span></div>
+  ${body}
+  <div class="foot"><span>${esc(R.foot)}</span>${madeBy(3 + p, total)}</div>
+</section>`;
 }
 
 /* R: { title, subtitle, patient, period, prepared, latest?, tiles[8], meds, hospital?, steady?,
@@ -198,11 +258,11 @@ export function reportHtml(R) {
   const other = questionHtml({ text: 'Other points from today', by: R.otherBy || 'For anything raised in the appointment', lines: R.lines }, true);
   /* An odd number of questions leaves the Other points card the empty half; otherwise it takes the full width */
   const otherCard = R.questions.length % 2 ? other : other.replace('class="q extra"', 'class="q extra wide"');
-  /* A third page (v207) when the questions or the weeks need it: never cut before then. Questions moved there
-     keep their numbers on from page 1. */
-  const extraQ = (R.extraQ || []).map((q, i) => questionHtml({ ...q, i: R.questions.length + i + 1, lines: R.lines }, false).replace(/data-sec="Question /, 'data-sec="More question '));
-  const page3 = extraQ.length || R.weeksPage3;
-  const total = page3 ? 3 : 2;
+  /* Pages after the second (v207, v236): whatever pages 1 and 2 cannot hold is laid out after them, never cut.
+     Questions moved there keep their numbers on from page 1. */
+  const tail = tailPagesOf(R);
+  const total = 2 + tail.length;
+  const extraN = (R.extraQ || []).length;
   const olderLine = R.older ? `<p class="more">${esc(R.older === 1 ? '1 older question is' : R.older + ' older questions are')} still open in the app, asked before ${esc(R.olderFrom || 'this period')}.</p>` : '';
   const noneLine = R.questions.length ? '' : '<p class="none" data-sec="No questions">No new questions this time.</p>';
   const charts = R.charts.map((c) => `<div class="c" data-sec="${esc(c.title)}"><div class="h"><h3>${esc(c.title)}</h3><span class="stat ${esc(c.tone || '')}">${esc(c.stat)}</span></div>${renderChart(c, R.days)}</div>`).join('');
@@ -232,7 +292,7 @@ ${bar}
     <div><div class="titlerow"><h1>${esc(R.title)}</h1><span class="madeby">Created with <b>My Medical Daybook</b></span></div><div class="sub">${esc(R.subtitle)}</div></div>
     <div class="who"><strong>${esc(R.patient)}</strong>Period: ${esc(R.period)}<br>Prepared: ${esc(R.prepared)}</div>
   </div>
-  ${R.latest ? `<div class="latest" data-sec="Latest"><div class="when">${esc(R.latest.when1)}<br>${esc(R.latest.when2)}</div><div><b>${esc(R.latest.title)}</b>${esc(R.latest.text)}</div></div>` : ''}
+  ${R.latest && !R.latestMoved ? `<div class="latest" data-sec="Latest"><div class="when">${esc(R.latest.when1)}<br>${esc(R.latest.when2)}</div><div><b>${esc(R.latest.title)}</b>${esc(R.latest.text)}</div></div>` : ''}
   <div data-sec="At a glance">
     <h2 class="sec" style="margin-bottom:2.4mm">At a glance <small>Highlights from simple checks by the app. Not medical advice.</small></h2>
     <div class="tiles">${R.tiles.map(tileHtml).join('')}</div>
@@ -241,8 +301,8 @@ ${bar}
   <div class="qwrap" data-sec="Questions">
     <h2 class="sec" style="margin-bottom:2.4mm">Questions for the team <small>Space is left under each one to write the reply.</small></h2>
     ${noneLine}<div class="qgrid">${qs.join('')}${otherCard}</div>
-    ${extraQ.length ? `<p class="more">${esc(extraQ.length === 1 ? 'One more question' : extraQ.length + ' more questions')} on page 3.</p>` : ''}
-    ${R.more ? `<p class="more">Plus ${esc(R.more)} more ${R.more === 1 ? 'question' : 'questions'} in the app.</p>` : ''}
+    ${extraN ? `<p class="more">${esc(extraN === 1 ? 'One more question' : extraN + ' more questions')} on page 3.</p>` : ''}
+    ${R.latestMoved ? '<p class="more">The latest note is in full on page 3.</p>' : ''}
     ${olderLine}
   </div>
   <div class="foot"><span>${esc(R.foot)}</span>${madeBy(1, total)}</div>
@@ -253,12 +313,7 @@ ${bar}
   ${R.weeksPage3 ? '' : weeksHtml}
   <div class="foot"><span>${esc(R.foot)}</span>${madeBy(2, total)}</div>
 </section>
-${page3 ? `<section class="page" id="page3">
-  <div class="runner"><h2>${extraQ.length && R.weeksPage3 ? 'More questions, and the weekly notes' : extraQ.length ? 'More questions for the team' : 'Weekly notes'}</h2><span>${esc(R.patient)} · ${esc(R.period)}</span></div>
-  ${extraQ.length ? `<div class="qwrap" data-sec="More questions"><div class="qgrid">${extraQ.join('')}</div></div>` : ''}
-  ${R.weeksPage3 ? weeksHtml : ''}
-  <div class="foot"><span>${esc(R.foot)}</span>${madeBy(3, total)}</div>
-</section>` : ''}
+${tail.map((items, p) => tailPageHtml(R, items, p, total)).join('\n')}
 </body>
 </html>`;
 }
@@ -269,10 +324,11 @@ ${page3 ? `<section class="page" id="page3">
 const madeBy = (n, total = 2) => `<span class="made">Created with <b>My Medical Daybook</b> · Page ${n} of ${total}</span>`;
 
 /* Which sections run past their space: anything whose bottom passes the top of its page's foot,
-   a card whose own content is taller than the card, or a page whose content is taller than A4 */
+   a card whose own content is taller than the card, or a page whose content is taller than A4.
+   The pages after the second are laid out by spillTail() and are not judged here. */
 export function overflowOf(doc) {
   const out = [];
-  doc.querySelectorAll('.page').forEach((page) => {
+  doc.querySelectorAll('.page:not(.tail)').forEach((page) => {
     const foot = page.querySelector('.foot');
     const limit = foot.getBoundingClientRect().top + 0.5;
     page.querySelectorAll('[data-sec]').forEach((el) => {
@@ -284,39 +340,56 @@ export function overflowOf(doc) {
   return [...new Set(out)];
 }
 
-/* Shorten one weekly entry: a sentence off the end, or failing that a cut at a word with an ellipsis */
-function shorten(text) {
-  const parts = text.match(/[^.!?]+[.!?]+(\s|$)/g);
-  if (parts && parts.length > 1) return parts.slice(0, -1).join('').trim();
-  const cut = text.slice(0, Math.floor(text.length * 0.75)).replace(/\s+\S*$/, '');
-  return cut.length < text.length ? cut.replace(/[,;:]$/, '') + '…' : text;
+/* Where the content of a page may reach: the page's bottom less its padding, the foot and the gap above it */
+function pageLimit(doc, page) {
+  const cs = doc.defaultView.getComputedStyle(page);
+  const foot = page.querySelector('.foot').getBoundingClientRect();
+  return page.getBoundingClientRect().bottom - parseFloat(cs.paddingBottom) - foot.height - (parseFloat(cs.rowGap) || 0) - 1;
 }
-/* One step of shortening for the sections that ran over; false when nothing more can give */
-export function shrink(R, over) {
-  /* Since v207 nothing is cut while a third page can take it: the weeks move to page 3 whole, and questions
-     that page 1 cannot hold go there too. Only a page 3 that still overflows is shortened. */
-  const weeksPage = R.weeksPage3 ? 'Page 3' : 'Page 2';
-  const weekOver = R.weeks.filter((w) => over.includes(w.title) || over.includes('Week by week') || over.includes(weeksPage));
-  if (weekOver.length) {
-    if (!R.weeksPage3) { R.weeksPage3 = true; return true; }
-    let changed = false;
-    weekOver.forEach((w) => {
-      const long = w.entries.slice().sort((a, b) => b.text.length - a.text.length)[0];
-      if (long && long.text.length > 110) { const t = shorten(long.text); if (t !== long.text) { long.text = t; changed = true; return; } }
-      const drop = w.entries.findIndex((e) => !e.alert);
-      if (w.entries.length > 1 && drop >= 0) { w.entries.splice(drop, 1); w.dropped = (w.dropped || 0) + 1; changed = true; return; }
-      if (w.theme && w.theme.length > 90) { w.theme = shorten(w.theme); changed = true; }
-    });
-    if (changed) return true;
+
+/* Moves whatever runs past a tail page's end onto the next page, and says whether it changed anything: the
+   first item (or entry of a week) that does not fit starts the next page. Returns 'stuck' when one item alone is
+   taller than a page. Used by the Notes for the team and the Food diary alike (items carry data-ti). */
+export function spillTail(doc, R) {
+  const pages = [...doc.querySelectorAll('.page.tail')];
+  for (let p = 0; p < pages.length; p++) {
+    const limit = pageLimit(doc, pages[p]);
+    const bad = [...pages[p].querySelectorAll('[data-ti]')].find((e) => e.getBoundingClientRect().bottom > limit);
+    if (!bad) continue;
+    const idx = Number(bad.dataset.ti);
+    const items = R.tailPages[p];
+    const it = items[idx];
+    if (it.k === 'w' && it.to - it.from > 1) {
+      let keep = [...bad.querySelectorAll('li')].filter((li) => li.getBoundingClientRect().bottom <= limit).length;
+      if (!keep && !idx) keep = 1;
+      if (keep && keep < it.to - it.from) {
+        const after = items.splice(idx);
+        items.push({ ...it, to: it.from + keep });
+        (R.tailPages[p + 1] = R.tailPages[p + 1] || []).unshift({ ...it, from: it.from + keep }, ...after.slice(1));
+        return true;
+      }
+    }
+    if (!idx) return 'stuck';
+    (R.tailPages[p + 1] = R.tailPages[p + 1] || []).unshift(...items.splice(idx));
+    return true;
   }
-  const page3 = over.some((s) => /^More question|^More questions|^Page 3/.test(s));
-  if (page3 && R.extraQ && R.extraQ.length) { R.extraQ.pop(); R.more = (R.more || 0) + 1; return true; }
-  const page1 = over.some((s) => /^Question|^Other points|^Questions|^No questions|^Page 1|^Medicines|^Steady|^Latest/.test(s));
+  return false;
+}
+
+/* One step of making room for the sections that ran over; false when nothing more can give. Nothing is ever
+   cut short or left out (v236, Mark: "if you cant read the full content the thing is pointless"): the weeks move
+   to the pages after the second, then page 1 gives up its writing lines and its questions, and last of all the
+   latest note, which is then printed in full after them. */
+export function shrink(R, over) {
+  if (!R.weeksPage3 && R.weeks.some((w) => over.includes(w.title) || over.includes('Week by week') || over.includes('Page 2'))) {
+    R.weeksPage3 = true; R.tailPages = null; return true;
+  }
+  const page1 = over.some((s) => /^Question|^Other points|^Questions|^No questions|^Page 1|^Medicines|^Steady|^Latest|^Side effects|^Results/.test(s));
   if (page1) {
     if (R.lines > 2) { R.lines -= 1; return true; }
-    if (R.questions.length > 1) { R.extraQ = R.extraQ || []; R.extraQ.unshift(R.questions.pop()); return true; }
+    if (R.questions.length) { R.extraQ = R.extraQ || []; R.extraQ.unshift(R.questions.pop()); R.tailPages = null; return true; }
     if (R.lines > 1) { R.lines -= 1; return true; }
-    if (R.latest && R.latest.text.length > 90) { R.latest.text = shorten(R.latest.text); return true; }
+    if (R.latest && !R.latestMoved) { R.latestMoved = true; R.tailPages = null; return true; }
   }
   return false;
 }
@@ -327,18 +400,22 @@ export async function fitReport(frame, R, opts = {}) {
     frame.onload = () => resolve();
     frame.srcdoc = html;
   });
-  for (let i = 0; i < 60; i++) {
+  for (let i = 0; i < 120; i++) {
     await write((opts.html || reportHtml)(R));
     const doc = frame.contentDocument;
     doc.documentElement.classList.add('capture');
     if (doc.fonts && doc.fonts.ready) await Promise.race([doc.fonts.ready, new Promise((r) => setTimeout(r, opts.fontWait || 3000))]);
     const over = overflowOf(doc);
-    if (!over.length) return { ok: true, R, doc };
+    if (!over.length) {
+      const spilled = spillTail(doc, R);
+      if (spilled === 'stuck') return { ok: false, over: ['A page after the second'], R, doc };
+      if (spilled) continue;
+      return { ok: true, R, doc };
+    }
     if (!(opts.shrink || shrink)(R, over)) return { ok: false, over, R, doc };
   }
   return { ok: false, over: ['Report'], R };
 }
-
 
 /* ------------------------------------------------------------------ */
 /* The two-page Food diary (since v119), from the approved design      */
@@ -383,7 +460,9 @@ body.food .tile .v em{margin-left:.8mm}
 .dq li{font-size:7.7pt;line-height:1.38}
 .dq li b{display:block;font-weight:600}
 .dq li span{font-size:7pt;color:var(--slate)}
-.dq .more{font-size:7pt;color:var(--slate);margin-top:1.4mm}
+.dq .more,.pts .more{font-size:7pt;color:var(--slate);margin-top:1.4mm}
+.pts.nat,.dq.nat{flex:none}
+.dq.nat+.pts.nat,.pts.nat+.dq.nat{margin-top:0}
 .nlines{background:var(--teal-soft);border-radius:2.4mm;padding:2.8mm 3.4mm;display:flex;flex-direction:column;flex:1;min-height:14mm}
 .nlines h3{font-family:Inter,sans-serif;font-size:8.4pt;font-weight:600;letter-spacing:0}
 .nlines .lines{flex:1;margin-top:1.4mm;position:relative;overflow:hidden}
@@ -481,11 +560,50 @@ function stackedMacros(D, uid) {
   return s + '</svg>';
 }
 
-function foodWeekHtml(w, wide) {
+function foodWeekHtml(w, wide, o = {}) {
+  const from = o.from || 0, to = o.to == null ? w.entries.length : o.to, first = !from, last = to >= w.entries.length;
   const chips = w.chips.map((c) => `<div class="chip ${c.cls}">${esc(c.top)}<b>${esc(c.val)}</b></div>`).join('');
-  const items = w.entries.length ? `<ul>${w.entries.map((e) => `<li><time>${esc(e.when)}</time><span>${esc(e.text)}</span></li>`).join('')}</ul>` : '<p class="none">Nothing logged this week.</p>';
-  const often = w.often.length ? `<div class="often"><h4>What came up most</h4><ul>${w.often.map((o) => `<li>${esc(o)}</li>`).join('')}</ul></div>` : '';
-  return `<div class="week${wide ? ' wide' : ''}" data-sec="${esc(w.title)}"><div class="wh"><h3>${esc(w.title)}</h3><span>${esc(w.range)}</span></div>${w.pills.length ? `<div class="pills">${w.pills.map((p) => `<span>${esc(p)}</span>`).join('')}</div>` : ''}${w.theme ? `<div class="theme">${esc(w.theme)}</div>` : ''}${chips ? `<div class="chips">${chips}</div>` : ''}${items}${often}</div>`;
+  const items = w.entries.length ? `<ul>${w.entries.slice(from, to).map((e) => `<li><time>${esc(e.when)}</time><span>${esc(e.text)}</span></li>`).join('')}</ul>` : '<p class="none">Nothing logged this week.</p>';
+  const often = w.often.length && last ? `<div class="often"><h4>What came up most</h4><ul>${w.often.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>` : '';
+  return `<div class="week${wide ? ' wide' : ''}${o.nat ? ' nat' : ''}" data-sec="${esc(w.title)}"${o.ti == null ? '' : ` data-ti="${o.ti}"`}><div class="wh"><h3>${esc(w.title)}${from ? ' <small>(continued)</small>' : ''}</h3><span>${esc(w.range)}</span></div>${first && w.pills.length ? `<div class="pills">${w.pills.map((x) => `<span>${esc(x)}</span>`).join('')}</div>` : ''}${first && w.theme ? `<div class="theme">${esc(w.theme)}</div>` : ''}${first && chips ? `<div class="chips">${chips}</div>` : ''}${items}${often}</div>`;
+}
+
+/* The pages after the second (v236): the dietitian questions and points to discuss that page 1 could not hold,
+   then the weeks when page 2 could not hold them. Same machinery as the Notes for the team (spillTail()). */
+function foodTailItems(F) {
+  const items = [];
+  (F.extraQ || []).forEach((_, n) => items.push({ k: 'dq', n }));
+  (F.extraPts || []).forEach((_, n) => items.push({ k: 'pt', n }));
+  if (F.weeksPage3) F.weeks.forEach((w, n) => items.push({ k: 'w', n, from: 0, to: w.entries.length }));
+  return items;
+}
+function foodTailPages(F) {
+  if (!F.tailPages) { const items = foodTailItems(F); F.tailPages = items.length ? [items] : []; }
+  return F.tailPages;
+}
+function foodTailPageHtml(F, items, p, total) {
+  let body = '', dq = [], pts = [], seenDq = false, seenPt = false, seenW = false;
+  const flush = () => {
+    if (dq.length) { body += `<div class="dq nat" data-sec="Questions">${seenDq ? '' : '<h3>More questions for the dietitian</h3>'}<ul>${dq.join('')}</ul></div>`; seenDq = true; dq = []; }
+    if (pts.length) { body += `<div class="pts nat" data-sec="Points to discuss">${seenPt ? '' : '<h3>More points to discuss</h3>'}<ul>${pts.join('')}</ul></div>`; seenPt = true; pts = []; }
+  };
+  items.forEach((it, ti) => {
+    if (it.k === 'dq') { if (pts.length) flush(); const q = F.extraQ[it.n]; dq.push(`<li data-ti="${ti}"><b>${esc(q.text)}</b><span>${esc(q.by)}</span></li>`); return; }
+    if (it.k === 'pt') { if (dq.length) flush(); pts.push(`<li data-ti="${ti}">${esc(F.extraPts[it.n])}</li>`); return; }
+    flush();
+    if (!seenW) body += '<h2 class="sec tailh" style="margin-bottom:2.2mm">Week by week <small>Weeks match Notes for the team. Chips show protein in grams each day.</small></h2>';
+    seenW = true;
+    body += `<div class="weeks nat">${foodWeekHtml(F.weeks[it.n], true, { nat: true, ti, from: it.from, to: it.to })}</div>`;
+  });
+  flush();
+  const kinds = new Set(items.map((i) => i.k));
+  const hasText = kinds.has('dq') || kinds.has('pt'), hasW = kinds.has('w');
+  const title = hasText && hasW ? 'More to discuss, and the weekly summary' : hasText ? 'More to discuss' : (p > 0 ? 'Weekly summary, continued' : 'Weekly summary');
+  return `<section class="page tail" id="page${3 + p}">
+  <div class="runner"><h2>${title}</h2><span>${esc(F.patient)} · ${esc(F.period)}</span></div>
+  ${body}
+  <div class="foot"><span>Food diary</span>${madeBy(3 + p, total)}</div>
+</section>`;
 }
 
 /* F: { patient, logged, prepared, period, banner { when1, when2, title, text }, tiles[4], days[] ({ label, short, p, k, c, f, l, e, u, partial, leftOut }),
@@ -512,6 +630,9 @@ export function foodReportHtml(F) {
   }
   const charts = F.charts.map((c) => `<div class="c" data-sec="${esc(c.title)}"><div class="h"><h3>${esc(c.title)}</h3><span class="stat ${esc(c.tone || '')}">${esc(c.stat)}</span></div>${c.svg}</div>`).join('');
   const key = `<div class="c key"><b>Key</b><span><svg class="sw hatch" width="11" height="11" viewBox="0 0 12 12" aria-hidden="true"><rect width="12" height="12" fill="#1E7F86"/>${hatchLines(0, 0, 12, 12)}</svg>Hatched: some items had no nutrition data, or the day is still in progress, so the total may be low</span>${D.some((d) => d.leftOut) ? '<span><b>?</b> totals left out (see Points to discuss)</span>' : ''}<span><i class="sw" style="background:#1E7F86"></i>Protein <i class="sw" style="background:#8FA6B8;margin-left:2mm"></i>Carbs <i class="sw" style="background:#E0A030;margin-left:2mm"></i>Fat</span></div>`;
+  const tail = foodTailPages(F);
+  const total = 2 + tail.length;
+  const extraQn = (F.extraQ || []).length, extraPn = (F.extraPts || []).length;
   const weeks = F.weeks.length ? F.weeks.map((w) => foodWeekHtml(w, F.weeks.length === 1)).join('')
     : foodWeekHtml({ title: 'Food', range: F.period, pills: [], theme: '', chips: [], entries: [], often: [] }, true);
   const bar = F.bar ? `<div class="bar"><span>${esc(F.bar)}</span><button type="button" onclick="window.print()">Print or save as PDF</button></div>` : '';
@@ -542,22 +663,23 @@ ${bar}
       <div class="card grow" data-sec="Drinks chart"><div class="cardhead"><h3>Drinks each day (litres)</h3><span>Amber: 4 L or over</span></div>${drinks}</div>
     </div>
     <div class="col">
-      <div class="pts" data-sec="Points to discuss"><h3>Points to discuss</h3><ul>${F.points.map((p) => `<li>${esc(p)}</li>`).join('')}</ul></div>
-      ${F.questions && F.questions.length ? `<div class="dq" data-sec="Questions"><h3>Questions for the dietitian</h3><ul>${F.questions.map((q) => `<li><b>${esc(q.text)}</b><span>${esc(q.by)}</span></li>`).join('')}</ul>${F.more ? `<p class="more">Plus ${esc(F.more)} more ${F.more === 1 ? 'question' : 'questions'} in the app.</p>` : ''}</div>` : ''}
+      <div class="pts" data-sec="Points to discuss"><h3>Points to discuss</h3><ul>${F.points.map((p) => `<li>${esc(p)}</li>`).join('')}</ul>${extraPn ? `<p class="more">${esc(extraPn === 1 ? 'One more point' : extraPn + ' more points')} on page 3.</p>` : ''}</div>
+      ${(F.questions && F.questions.length) || extraQn ? `<div class="dq" data-sec="Questions"><h3>Questions for the dietitian</h3>${F.questions && F.questions.length ? `<ul>${F.questions.map((q) => `<li><b>${esc(q.text)}</b><span>${esc(q.by)}</span></li>`).join('')}</ul>` : ''}${extraQn ? `<p class="more">${esc(extraQn === 1 ? 'One more question' : extraQn + ' more questions')} on page 3.</p>` : ''}</div>` : ''}
       <div class="nlines" data-sec="Dietitian notes"><h3>Notes from the dietitian</h3><div class="lines">${(() => { let l = ''; for (let i = 1; i <= 40; i++) l += `<i style="top:calc(${i} * 5.2mm)"></i>`; return l; })()}</div></div>
     </div>
   </div>
-  <div class="foot"><span>${esc(F.caveat)}</span>${madeBy(1)}</div>
+  <div class="foot"><span>${esc(F.caveat)}</span>${madeBy(1, total)}</div>
 </section>
 <section class="page" id="page2">
-  <div class="runner"><h2>Trends and weekly summary</h2><span>${esc(F.patient)} · ${esc(F.period)}</span></div>
+  <div class="runner"><h2>${F.weeksPage3 ? 'Trends' : 'Trends and weekly summary'}</h2><span>${esc(F.patient)} · ${esc(F.period)}</span></div>
   <div class="cgrid" data-sec="Charts">${charts}${key}</div>
-  <div class="wwrap" data-sec="Week by week">
+  ${F.weeksPage3 ? '' : `<div class="wwrap" data-sec="Week by week">
     <h2 class="sec" style="margin-bottom:2.2mm">Week by week <small>Weeks match Notes for the team. Chips show protein in grams each day.</small></h2>
     <div class="weeks">${weeks}</div>
-  </div>
-  <div class="foot"><span>Food diary</span>${madeBy(2)}</div>
+  </div>`}
+  <div class="foot"><span>Food diary</span>${madeBy(2, total)}</div>
 </section>
+${tail.map((items, p) => foodTailPageHtml(F, items, p, total)).join('\n')}
 </body>
 </html>`;
 }
@@ -565,19 +687,14 @@ export function foodChartSvg(kind, D, o) {
   if (kind === 'stacked') return stackedMacros(D, o.uid);
   return foodBars(o, D, o.uid);
 }
-/* One step of shortening for the Food diary: the weekly entries first (a sentence off the longest,
-   then the earliest entry), then the points to discuss */
+/* One step of making room for the Food diary; nothing is cut (v236): the weeks move to the pages after the
+   second, then the dietitian questions and the points to discuss that page 1 cannot hold go there too */
 export function shrinkFood(F, over) {
-  const weekOver = F.weeks.filter((w) => over.includes(w.title) || over.includes('Week by week') || over.includes('Page 2'));
-  for (const w of weekOver) {
-    const long = w.entries.slice().sort((a, b) => b.text.length - a.text.length)[0];
-    if (long && long.text.length > 90) { const t = shorten(long.text); if (t !== long.text) { long.text = t; return true; } }
-    if (w.often.length > 2) { w.often.pop(); return true; }
-    if (w.entries.length > 2) { w.entries.splice(w.entries[0].lead ? 1 : 0, 1); return true; }
-    if (w.often.length) { w.often = []; return true; }
+  if (!F.weeksPage3 && F.weeks.some((w) => over.includes(w.title) || over.includes('Week by week') || over.includes('Page 2'))) { F.weeksPage3 = true; F.tailPages = null; return true; }
+  if (over.some((s) => /Points|Questions|Page 1|Food groups|Drinks|Dietitian/.test(s))) {
+    if (F.questions && F.questions.length) { F.extraQ = F.extraQ || []; F.extraQ.unshift(F.questions.pop()); F.tailPages = null; return true; }
+    if (F.points.length > 1) { F.extraPts = F.extraPts || []; F.extraPts.unshift(F.points.pop()); F.tailPages = null; return true; }
   }
-  if (over.some((s) => /Points|Questions|Page 1|Food groups|Drinks|Dietitian/.test(s)) && F.questions && F.questions.length > 1) { F.questions.pop(); F.more = (F.more || 0) + 1; return true; }
-  if (over.some((s) => /Points|Questions|Page 1|Food groups|Drinks|Dietitian/.test(s)) && F.points.length > 2) { F.points.pop(); return true; }
   return false;
 }
 
@@ -962,7 +1079,7 @@ export function painReportHtml(P) {
         const which = it.t === 'sec' ? it.s : it.t === 'word' ? 'words' : it.t === 'wk' ? 'weeks' : 'q';
         const cont = it.t !== 'sec';
         const title = which === 'words' ? 'Where it was, in ' + esc(P.patient) + "'s words" : which === 'weeks' ? 'Week by week' : 'Questions';
-        const note = which === 'words' ? (P.words.length ? 'Written under the pain scores, as logged.' + (P.wordsTotal > P.words.length ? ` The ${P.words.length} fullest of ${P.wordsTotal}; the rest are in Daybook.` : '') : 'Nothing was written under the pain scores in this period.') : which === 'weeks' ? 'Pain right now, days at 7 or more, the worst pain, the relief taken and the nights.' : 'Labelled Pain team in the app. Space under each to write the reply.';
+        const note = which === 'words' ? (P.words.length ? 'Written under the pain scores, as logged, in full.' + (P.wordsTotal > P.words.length ? ` Plain answers such as "none" or "nothing new" (${P.wordsTotal - P.words.length}) are left out.` : '') : 'Nothing was written under the pain scores in this period.') : which === 'weeks' ? 'Pain right now, days at 7 or more, the worst pain, the relief taken and the nights.' : 'Labelled Pain team in the app. Space under each to write the reply.';
         html += `<div class="wsec"><h2 class="sec"${cont ? '' : ` data-i="${i}"`}>${title}${cont ? ', continued' : ` <small>${note}</small>`}</h2>`;
         if (which === 'words') html += '<ul class="words">';
         if (which === 'weeks') html += '<div class="wkhead"><span>Week</span><span>Pain right now</span><span>Days at 7+</span><span>Worst pain</span><span>Pain relief</span><span>Nights</span></div>';
