@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '231';
+const APP_VERSION = '232';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -7731,8 +7731,25 @@ function renderQuestionRow() {
   const open = openQuestions();
   row.disabled = state.readOnly;
   sub.textContent = open.length
-    ? `${open.length} waiting for the next appointment${state.readOnly ? '' : ', tap to add another'}`
+    ? `${open.length} waiting for the next appointment${state.readOnly ? '' : ', tap to see them or add another'}`
     : (state.readOnly ? 'Nothing waiting' : 'Nothing waiting, tap to add one');
+}
+/* The row's list (v232, Mark: "five are waiting, but I can only add new ones"): every open question of every date and
+   team, so the count on Today can be checked and the answered ones ticked off. Mark as answered, Edit and Delete are the
+   ones on Notes for the team (questionCard). */
+function openQuestionsList() {
+  const body = h('div', { class: 'qlist' });
+  const draw = () => {
+    const open = sortQuestions(openQuestions()).map((q) => ({ id: q.id, team: teamOf(q), teamLabel: teamLabel(teamOf(q)), text: q.note, who: q.addedBy || 'unknown', day: q.day }));
+    body.replaceChildren(
+      h('p', { class: 'hint', text: open.length
+        ? `${plural(open.length, 'question')} not yet marked as answered, from any date. If the team has already dealt with one, tap Mark as answered and it leaves this list and the report.`
+        : 'Nothing waiting. Every question has been marked as answered.' }),
+      ...open.map((q) => questionCard(q, draw)),
+      h('button', { class: 'btn btn-primary', type: 'button', onclick: () => openAdd('question') }, 'Add a question'));
+  };
+  draw();
+  openSheet('Questions for the team', body);
 }
 $('checkin-morning').addEventListener('click', () => openCheckin('morning', state.selectedDay));
 $('checkin-evening').addEventListener('click', () => openCheckin('evening', state.selectedDay));
@@ -8646,7 +8663,7 @@ function renderWeekRow() {
 $('week-check').addEventListener('click', () => openWeekCheck($('week-check').dataset.day || state.selectedDay));
 
 /* Extra pain readings during the day: ordinary timestamped entries, separate from the check-in scores */
-$('question-now').addEventListener('click', () => openAdd('question'));
+$('question-now').addEventListener('click', () => (openQuestions().length ? openQuestionsList() : openAdd('question')));
 
 
 /* ------------------------------------------------------------------ */
