@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '238';
+const APP_VERSION = '239';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -6923,17 +6923,103 @@ async function openReportViewer(kind, printNow) {
   print.addEventListener('click', doPrint);
   const file = K.data().filename;
   save.addEventListener('click', () => savePdf(file, name, () => reportPdfBlob(res)));
-  body.replaceChildren(h('div', { class: 'btnrow viewer-btns' }, print, save), frame,
-    h('p', { class: 'hint', text: 'Exactly as it prints, ' + pagesWord + '. Pinch to zoom in.' }));
-  /* scaled to the sheet's width; the scale is for the screen only, so printing is full size */
-  const zoom = Math.min(1, Math.max(0.3, (body.clientWidth - 4) / 826));
-  frame.style.height = Math.ceil((1123 * nPages + (nPages + 1) * 16) * zoom + 8) + 'px';
+  /* v239 (Mark: pinching the preview zoomed the whole screen, and moving round it to read was hard): the
+     pages scroll inside their own box, and zoom there alone, with - and + and Fit, a pinch on the pages,
+     a double tap, or Ctrl and the wheel (a trackpad pinch) on a computer. The scale is for the screen only,
+     so printing is full size. */
+  const zoomOut = h('button', { class: 'btn btn-secondary viewer-zbtn', type: 'button', id: 'viewer-zoom-out', 'aria-label': 'Zoom out' }, '−');
+  const zoomIn = h('button', { class: 'btn btn-secondary viewer-zbtn', type: 'button', id: 'viewer-zoom-in', 'aria-label': 'Zoom in' }, '+');
+  const zoomFit = h('button', { class: 'btn btn-secondary viewer-zfit', type: 'button', id: 'viewer-zoom-fit' }, 'Fit to screen');
+  const zoomNow = h('span', { class: 'viewer-zlevel', id: 'viewer-zoom-level', 'aria-live': 'polite' }, '');
+  const zoomBar = h('div', { class: 'viewer-zoom', role: 'group', 'aria-label': 'Zoom the report' }, zoomOut, zoomNow, zoomIn, zoomFit);
+  body.replaceChildren(h('div', { class: 'btnrow viewer-btns' }, print, save), zoomBar, frame,
+    h('p', { class: 'hint', text: 'Exactly as it prints, ' + pagesWord + '. Pinch or double tap the pages to zoom in on the report alone.' }));
   frame.addEventListener('load', () => {
     /* Escape still closes the sheet when focus is inside the pages (after Print, say) */
     try { frame.contentDocument.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') { ev.preventDefault(); closeSheet(); } }); } catch (e) { /* same origin, so this does not happen */ }
+    try { viewerZoom(frame, { zoomOut, zoomIn, zoomFit, zoomNow }); } catch (e) { console.error(e); }
     if (printNow) setTimeout(doPrint, 400);
   }, { once: true });
-  frame.srcdoc = html.replace('</head>', `<style id="viewer-zoom">@media screen{html{zoom:${zoom.toFixed(3)};background:#E7ECEF}.page{margin:16px auto}}</style></head>`);
+  frame.srcdoc = html.replace('</head>', `<style id="viewer-zoom">@media screen{html,body{background:#E7ECEF;touch-action:pan-x pan-y}`
+    + `#viewer-box{width:var(--bw,auto);height:var(--bh,auto);margin:0 auto;overflow:hidden}`
+    + `#viewer-pages{width:${VIEWER_W}px;padding:1px 0;transform:scale(var(--z,1));transform-origin:0 0}.page{margin:16px auto}}</style></head>`);
+}
+/* The report's own width on screen: an A4 page (210 mm) with 16px either side */
+const VIEWER_W = 826;
+const VIEWER_MAX = 2.5;
+function viewerZoom(frame, ui) {
+  const d = frame.contentDocument, w = frame.contentWindow;
+  const box = d.createElement('div'); box.id = 'viewer-box';
+  const pages = d.createElement('div'); pages.id = 'viewer-pages';
+  while (d.body.firstChild) pages.append(d.body.firstChild);
+  box.append(pages); d.body.append(box);
+  const tall = pages.offsetHeight;
+  const fitZ = () => Math.min(1, Math.max(0.2, (frame.clientWidth - 2) / VIEWER_W));
+  let z = fitZ(), atFit = true;
+  const se = () => d.scrollingElement || d.documentElement;
+  /* cx, cy: the point in the box's window to keep still, so the words under the fingers stay put */
+  const apply = (nz, cx, cy) => {
+    const lo = Math.min(fitZ(), 0.4);
+    nz = Math.min(VIEWER_MAX, Math.max(lo, nz));
+    if (cx == null) { cx = frame.clientWidth / 2; cy = frame.clientHeight / 2; }
+    const s = se();
+    const px = (s.scrollLeft + cx - box.offsetLeft) / z, py = (s.scrollTop + cy - box.offsetTop) / z;
+    z = nz; atFit = Math.abs(z - fitZ()) < 0.005;
+    box.style.setProperty('--bw', (VIEWER_W * z) + 'px');
+    box.style.setProperty('--bh', (tall * z) + 'px');
+    pages.style.setProperty('--z', z.toFixed(4));
+    s.scrollLeft = px * z + box.offsetLeft - cx;
+    s.scrollTop = py * z + box.offsetTop - cy;
+    ui.zoomNow.textContent = Math.round(z * 100) + '%';
+    ui.zoomOut.disabled = z <= lo + 0.001;
+    ui.zoomIn.disabled = z >= VIEWER_MAX - 0.001;
+    ui.zoomFit.disabled = atFit;
+  };
+  apply(z, 0, 0);
+  ui.zoomIn.addEventListener('click', () => apply(z * 1.25));
+  ui.zoomOut.addEventListener('click', () => apply(z / 1.25));
+  ui.zoomFit.addEventListener('click', () => apply(fitZ(), 0, 0));
+  /* a pinch on the pages: the browser's own pinch is switched off there (touch-action), so the pages
+     zoom and the screen around them stays as it is */
+  let pinch = null, rafId = 0, last = null, tap = null;
+  const dist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+  const mid = (t) => [(t[0].clientX + t[1].clientX) / 2, (t[0].clientY + t[1].clientY) / 2];
+  d.addEventListener('touchstart', (ev) => {
+    if (ev.touches.length === 2) { ev.preventDefault(); pinch = { d0: dist(ev.touches) || 1, z0: z }; tap = null; return; }
+    if (ev.touches.length === 1) { const t = ev.touches[0]; tap = { x: t.clientX, y: t.clientY, at: Date.now(), moved: false }; }
+  }, { passive: false });
+  d.addEventListener('touchmove', (ev) => {
+    if (tap && ev.touches.length === 1) { const t = ev.touches[0]; if (Math.hypot(t.clientX - tap.x, t.clientY - tap.y) > 10) tap.moved = true; }
+    if (!pinch || ev.touches.length !== 2) return;
+    ev.preventDefault();
+    const nz = pinch.z0 * dist(ev.touches) / pinch.d0, [mx, my] = mid(ev.touches);
+    cancelAnimationFrame(rafId);
+    rafId = requestAnimationFrame(() => apply(nz, mx, my));
+  }, { passive: false });
+  d.addEventListener('touchend', (ev) => {
+    if (pinch) { if (ev.touches.length < 2) pinch = null; return; }
+    if (!tap || tap.moved || Date.now() - tap.at > 300) { tap = null; return; }
+    /* a double tap: in to full size where it was tapped, or back to fit */
+    const now = Date.now();
+    if (last && now - last.at < 350 && Math.hypot(tap.x - last.x, tap.y - last.y) < 30) {
+      ev.preventDefault();
+      if (atFit) apply(1, tap.x, tap.y); else apply(fitZ(), 0, 0);
+      last = null;
+    } else last = { x: tap.x, y: tap.y, at: now };
+    tap = null;
+  }, { passive: false });
+  /* Safari's own gesture events (a pinch on an iPhone, or on a Mac trackpad) */
+  let g0 = null;
+  d.addEventListener('gesturestart', (ev) => { ev.preventDefault(); g0 = z; }, { passive: false });
+  d.addEventListener('gesturechange', (ev) => { ev.preventDefault(); if (!pinch && g0 && ev.scale) apply(g0 * ev.scale, ev.clientX, ev.clientY); }, { passive: false });
+  d.addEventListener('gestureend', (ev) => { ev.preventDefault(); g0 = null; }, { passive: false });
+  /* Ctrl and the wheel, or a trackpad pinch in Chrome */
+  d.addEventListener('wheel', (ev) => {
+    if (!ev.ctrlKey) return;
+    ev.preventDefault();
+    apply(z * Math.exp(-ev.deltaY * 0.01), ev.clientX, ev.clientY);
+  }, { passive: false });
+  w.addEventListener('resize', () => { if (atFit) apply(fitZ(), 0, 0); });
 }
 $('notes-print').addEventListener('click', () => openReportViewer('notes', true));
 $('notes-pdf').addEventListener('click', () => { const n = state.notesPdf; if (n) savePdf(n.filename, n.title, notesReportBlob); });
