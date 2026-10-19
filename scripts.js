@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '232';
+const APP_VERSION = '233';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -8977,7 +8977,7 @@ async function renderMoodReport() {
   $('mood-questions').replaceChildren(...state.moodPdf.questions.map((q) => questionCard(q, renderMoodReport)));
   const W = buildMoodReport(state.moodPdf);
   $('mood-tiles').replaceChildren(...W.tiles.map((t) => h('div', { class: 'tile' + (t.tone ? ' is-' + t.tone : '') },
-    h('span', { class: 'tile-label', text: t.k }), h('span', { class: 'tile-value' }, t.v, t.unit ? h('small', { text: t.unit }) : null), h('span', { class: 'tile-sub', text: t.n }))));
+    h('span', { class: 'tile-label', text: t.k }), h('span', { class: 'tile-value' }, t.v, t.unit ? h('small', { text: t.unit }) : null), h('span', { class: 'tile-sub', text: t.full || t.n }))));
   /* the brief: Daybook Assistant's words for this range, editable, or the app's plain sentences */
   const ai = moodAi();
   $('mood-brief').hidden = !explainAvailable() || state.readOnly || state.viewer;
@@ -9118,7 +9118,10 @@ function buildMoodReport(n) {
   const tapAnswered = (k) => taps.filter((d) => d.wb[k] != null).length;
   const nights = daysFull.filter((d) => d.sleep != null).map((d) => d.sleep), shortN = nights.filter((v) => v < 5).length;
   const tiles = [
-    best ? { k: 'Best day', v: dayWord(best.day), unit: '', tone: 'green', n: moodWords(best) + '.' + (bestQuote ? ' “' + firstSentence(bestQuote[1], 90, 30) + '”' : '') }
+    /* v233: the quote was cut at 90 characters, which chopped a dictated note mid-sentence; the report tile now takes whole
+       sentences up to 260 characters and the screen shows the note whole (full) */
+    best ? { k: 'Best day', v: dayWord(best.day), unit: '', tone: 'green', n: moodWords(best) + '.' + (bestQuote ? ' “' + firstSentence(bestQuote[1], 500, 60) + '”' : ''),
+      full: moodWords(best) + '.' + (bestQuote ? ' “' + text(bestQuote[1]).replace(/\s+/g, ' ').trim() + '”' : '') }
       : { k: 'Best day', v: 'None', unit: '', tone: '', n: 'No mood scores in this period.' },
     worst ? { k: 'Hardest day', v: dayWord(worst.day), unit: '', tone: worst.mood <= 3 ? 'red' : worst.mood <= 5 ? 'amber' : 'green', n: moodWords(worst) + (worstWhy.length ? ', ' + worstWhy.join(', ') : '') + '.' }
       : { k: 'Hardest day', v: 'None', unit: '', tone: '', n: 'No mood scores in this period.' },
@@ -9237,7 +9240,7 @@ async function renderPainReport() {
   $('pain-questions').replaceChildren(...state.painPdf.questions.map((q) => questionCard(q, renderPainReport)));
   const P = buildPainReport(state.painPdf);
   $('pain-tiles').replaceChildren(...P.tiles.map((t) => h('div', { class: 'tile' + (t.tone ? ' is-' + t.tone : '') },
-    h('span', { class: 'tile-label', text: t.k }), h('span', { class: 'tile-value' }, t.v, t.unit ? h('small', { text: t.unit }) : null), h('span', { class: 'tile-sub', text: t.n }))));
+    h('span', { class: 'tile-label', text: t.k }), h('span', { class: 'tile-value' }, t.v, t.unit ? h('small', { text: t.unit }) : null), h('span', { class: 'tile-sub', text: t.full || t.n }))));
   /* the brief: Daybook Assistant's words for this range, editable, or the app's plain sentences */
   const ai = painAi();
   $('pain-brief').hidden = !explainAvailable() || state.readOnly || state.viewer;
