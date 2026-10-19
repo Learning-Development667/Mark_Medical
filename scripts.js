@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '237';
+const APP_VERSION = '238';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -511,6 +511,14 @@ function enhanceTextareas(root) {
     el.after(open);
   }
 }
+/* What a text box is for, in its own words: the field's label, the check-in question, or the box's own name */
+function boxLabelOf(el) {
+  const f = el.closest('.field');
+  if (f && f.firstElementChild && f.firstElementChild !== el && f.firstElementChild.textContent.trim()) return f.firstElementChild.textContent.trim();
+  const wf = el.closest('.weekfield'); if (wf && wf.querySelector('.taps-label')) return wf.querySelector('.taps-label').textContent.trim();
+  const q = document.querySelector('#sheet-body .wiz-q'); if (q && q.textContent.trim()) return q.textContent.trim();
+  return el.getAttribute('aria-label') || '';
+}
 function closeBigEdit() {
   const o = document.querySelector('.bigedit');
   if (!o) return;
@@ -524,10 +532,10 @@ function closeBigEdit() {
 function openBigEdit(el) {
   closeBigEdit();
   stopSpeech(); // the small box's listening would write where the writing space cannot see it; its own Tap to speak is at the top
-  const label = (el.closest('.field') && el.closest('.field').firstElementChild && el.closest('.field').firstElementChild !== el ? el.closest('.field').firstElementChild.textContent.trim() : '') || (document.querySelector('#sheet-body .wiz-q') && document.querySelector('#sheet-body .wiz-q').textContent.trim()) || 'Writing space';
+  const label = boxLabelOf(el) || 'Writing space';
   const big = h('textarea', { class: 'bigedit-text', 'aria-label': label, placeholder: el.placeholder || '' });
   big.value = el.value;
-  big.addEventListener('input', () => { el.value = big.value; el.dispatchEvent(new Event('input', { bubbles: true })); });
+  big.addEventListener('input', () => { if (big.dataset.spoken) markSpoken(el); el.value = big.value; el.dispatchEvent(new Event('input', { bubbles: true })); });
   const mini = h('button', { class: 'btn btn-secondary bigedit-done', type: 'button', 'aria-label': 'Minimise the writing space', onclick: closeBigEdit }, icon('shrink'), ' Minimise');
   const speak = speakButton(big);
   const bar = h('div', { class: 'bigedit-bar' }, speak || h('span', { class: 'bigedit-gap' }), mini);
@@ -2039,7 +2047,14 @@ function openSetup(kind) {
     { key: 'speak', title: 'Talk instead of type', hint: 'Under every note box there is a Tap to speak button.', next: 'Done',
       body: () => {
         const out = [para('Tap it once, say what you want, and tap it again to stop. You never need to tap in the box first: the words go in on their own, and they can be edited like typed text. Keyboards are hard on a bad day.')];
-        if (SpeechRec) { const ta = h('textarea', { rows: 2, placeholder: 'Try it here', 'aria-label': 'Try Tap to speak' }); out.push(h('div', { class: 'setup-try' }, field('Try it', ta), speakButton(ta))); }
+        if (SpeechRec) {
+          const ta = h('textarea', { rows: 2, placeholder: 'Try it here', 'aria-label': 'Try Tap to speak', 'data-nocheck': '1' });
+          out.push(h('div', { class: 'setup-try' }, field('Try it', ta), speakButton(ta)));
+          const tick = h('input', { type: 'checkbox', id: 'setup-speakcheck' }); tick.checked = speakCheckOn();
+          tick.addEventListener('change', () => setSpeakCheck(tick.checked));
+          out.push(h('label', { class: 'check settings-toggle' }, tick, h('span', { text: 'Show me what was heard before anything is saved' })),
+            para(SPEAK_CHECK_HINT));
+        }
         else out.push(para('This browser has no speech of its own; the microphone key on the keyboard still works.'));
         return out;
       } }
@@ -2256,6 +2271,7 @@ async function setWeekEnd(n) {
 }
 $('settings-week-end').addEventListener('change', (ev) => setWeekEnd(parseInt(ev.target.value, 10)));
 $('settings-week-treatment').addEventListener('click', () => { const tw = treatmentWeekday(); if (tw != null) setWeekEnd(tw); });
+$('settings-speakcheck').addEventListener('change', (ev) => { setSpeakCheck(ev.target.checked); toast(ev.target.checked ? 'Daybook will show what it heard before saving' : 'Words from Tap to speak go in as heard'); });
 $('settings-report-name').addEventListener('change', async (ev) => {
   const reportName = ev.target.value.trim().slice(0, 60) || null;
   if (state.demo) { state.profile = { ...state.profile, reportName }; toast(reportName ? 'Name on the report saved' : 'Name on the report cleared'); return; }
@@ -3139,7 +3155,7 @@ function speakButton(target) {
       if (!target.isConnected) { quietStop(); return; }
       let text = '';
       for (let i = 0; i < ev.results.length; i++) text += ev.results[i][0].transcript + (ev.results[i].isFinal ? ' ' : '');
-      if (text.trim()) { heard = true; dead = 0; everHeard = true; lastErr = ''; setState(true); }
+      if (text.trim()) { heard = true; dead = 0; everHeard = true; lastErr = ''; setState(true); markSpoken(target); }
       target.value = join(text);
       target.dispatchEvent(new Event('input', { bubbles: true }));
       if (text.trim()) speakHintsSet(SPEAK_HINT_TIMES);
@@ -3179,6 +3195,87 @@ function speakButton(target) {
   });
   return btn;
 }
+
+/* Check the words before saving (v238, Mark: "I have ended up sending some right drivel"). Optional, per phone, and off
+   unless switched on (More > Settings > Talking instead of typing, or the set-up's Talk instead of type step): for some
+   people, dyslexia and reading difficulties among them, a check on every save would get in the way, and trusting the words
+   as heard has to stay a perfectly good way to use Daybook. When it is on, a save, Next, Send or Finish (any primary button
+   in a sheet) with words from Tap to speak not yet looked at stops first and shows them, with Yes, carry on, Change the
+   words, and Read it out to me (the phone's own voice, so nobody has to read to check). A box is marked when speech
+   writes into it (data-spoken); Yes marks what was shown as seen (data-spokenOk); after Change the words, any typed
+   change counts as checked (data-spokenSeen); more speech marks it again. */
+const SPEAK_CHECK_KEY = 'daybook.speak.check';
+const SPEAK_CHECK_HINT = 'Optional. Before a note is saved, Daybook shows the words it heard, with a button to read them out, so a misheard word can be put right. Leave it off if you would rather trust the words as they come; you can always change them in the box.';
+function speakCheckOn() { try { return localStorage.getItem(SPEAK_CHECK_KEY) === '1'; } catch (e) { return false; } }
+function setSpeakCheck(on) { try { localStorage.setItem(SPEAK_CHECK_KEY, on ? '1' : '0'); } catch (e) { /* private window */ } syncSpeakCheck(); }
+function syncSpeakCheck() {
+  const box = $('settings-speakcheck'); if (box) box.checked = speakCheckOn();
+  const card = $('settings-speak'); if (card) card.hidden = !SpeechRec;
+}
+function markSpoken(t) { t.dataset.spoken = '1'; delete t.dataset.spokenSeen; }
+function uncheckedSpoken() {
+  return [...document.querySelectorAll('#sheet-body textarea[data-spoken="1"]')].filter((t) => !t.closest('[hidden]') && t.dataset.nocheck !== '1'
+    && t.value.trim() && t.dataset.spokenOk !== t.value && !(t.dataset.spokenSeen != null && t.dataset.spokenSeen !== t.value));
+}
+function closeSpeakCheck() {
+  const o = document.querySelector('.scheck');
+  if (!o) return;
+  try { if (window.speechSynthesis) speechSynthesis.cancel(); } catch (e) { /* ignore */ }
+  o.remove();
+  $('sheet').inert = false;
+}
+function openSpeakCheck(boxes, btn) {
+  closeSpeakCheck();
+  stopSpeech();
+  const canRead = typeof window.speechSynthesis !== 'undefined' && typeof window.SpeechSynthesisUtterance === 'function';
+  const words = boxes.map((t) => t.value.trim());
+  const shown = boxes.map((t, i) => h('div', { class: 'scheck-item' },
+    h('p', { class: 'scheck-label', text: boxLabelOf(t) || 'What you said' }),
+    h('p', { class: 'scheck-words', text: words[i] })));
+  const done = (go) => {
+    closeSpeakCheck();
+    if (go) { boxes.forEach((t) => { t.dataset.spokenOk = t.value; }); if (btn.isConnected) btn.click(); return; }
+    boxes.forEach((t) => { t.dataset.spokenSeen = t.value; });
+    const t = boxes[0];
+    if (t.isConnected) { t.scrollIntoView({ block: 'center' }); t.focus(); t.setSelectionRange(t.value.length, t.value.length); }
+  };
+  let reading = false;
+  const readBtn = canRead ? h('button', { class: 'btn btn-secondary btn-block scheck-read', type: 'button' }, icon('speaker'), h('span', { text: 'Read it out to me' })) : null;
+  if (readBtn) readBtn.addEventListener('click', () => {
+    try {
+      speechSynthesis.cancel();
+      if (reading) { reading = false; readBtn.lastChild.textContent = 'Read it out to me'; return; }
+      const u = new SpeechSynthesisUtterance(words.join('. '));
+      u.lang = 'en-GB'; u.rate = 0.95;
+      u.onend = u.onerror = () => { reading = false; if (readBtn.isConnected) readBtn.lastChild.textContent = 'Read it out to me'; };
+      reading = true; readBtn.lastChild.textContent = 'Stop reading';
+      speechSynthesis.speak(u);
+    } catch (e) { toast('The phone could not read it out.'); }
+  });
+  const yes = h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => done(true) }, icon('check'), ' Yes, carry on');
+  const change = h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => done(false) }, icon('edit'), ' Change the words');
+  const title = h('h2', { class: 'scheck-title', id: 'scheck-title', tabindex: '-1', text: boxes.length > 1 ? 'Are these what you said?' : 'Is this what you said?' });
+  const panel = h('div', { class: 'scheck-panel', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'scheck-title' },
+    title,
+    h('p', { class: 'hint', text: 'Speech to text sometimes mishears a word. Have a look' + (canRead ? ', or have it read out,' : '') + ' before it goes in.' }),
+    ...shown, readBtn || '', yes, change,
+    h('p', { class: 'hint hint-small', text: 'This check is optional. Switch it off in More, Settings, Talking instead of typing.' }));
+  const o = h('div', { class: 'scheck' }, h('div', { class: 'scheck-backdrop', onclick: () => done(false) }), panel);
+  o.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') { ev.stopPropagation(); done(false); } });
+  document.body.append(o);
+  $('sheet').inert = true;
+  title.focus();
+}
+/* Any primary button in a sheet: with the check on and words from Tap to speak not yet looked at, show them first */
+document.addEventListener('click', (ev) => {
+  const btn = ev.target && ev.target.closest ? ev.target.closest('#sheet .btn-primary') : null;
+  if (!btn || btn.disabled || !speakCheckOn()) return;
+  const boxes = uncheckedSpoken();
+  if (!boxes.length) return;
+  ev.preventDefault(); ev.stopImmediatePropagation();
+  openSpeakCheck(boxes, btn);
+}, true);
+syncSpeakCheck();
 
 /* Bowels (since v91). The Bristol Stool Chart, types 1 to 7, with the wording used on NHS charts;
    the extras are what the UKONS 24-hour triage tool and Macmillan ask about. Stored as
