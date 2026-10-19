@@ -1223,7 +1223,6 @@ body.is-med-dragging { overflow: hidden; }
 .opener-pre { display: block; margin-bottom: 8px; font-family: var(--font-body); font-weight: 600; font-size: clamp(15px, 4.4vw, 21px); letter-spacing: 0.22em; line-height: 1; color: var(--opener-teal); text-transform: uppercase; }
 .opener-strap { display: block; margin-top: 14px; color: var(--opener-slate); font-size: 18px; letter-spacing: 0.01em; }
 .opener-foot { display: flex; flex-direction: column; align-items: center; gap: var(--s-1); text-align: center; }
-.opener-skip { color: #FFFFFF; min-height: var(--tap); padding: 0 var(--s-4); font-size: 17px; margin-bottom: var(--s-2); }
 /* The company credit: the line-art mark on a small paper chip, with the company's name beside it */
 .opener-co { display: inline-flex; align-items: center; gap: 10px; padding: 7px 16px 7px 10px; border-radius: 999px; background: var(--opener-paper); color: var(--opener-ink); }
 .opener-co img { height: 30px; width: auto; display: block; }
