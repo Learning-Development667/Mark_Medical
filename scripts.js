@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '234';
+const APP_VERSION = '235';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -9181,7 +9181,7 @@ function buildMoodReport(n) {
     briefNote = 'Worked out by the app from the scores and the weekly check.';
     const cands = daysFull.flatMap((d) => d.notes.filter(([l]) => !/good thing/.test(l)).map(([l, t]) => ({ when: rDay(d.day) + (/morning/.test(l) ? ', morning' : ', evening'), text: t, low: d.mood != null && d.mood <= 4 })))
       .filter((q) => q.text.length > 25 && !isRoutineNote({ text: q.text })).sort((a, b) => b.text.length - a.text.length).slice(0, 3)
-      .map((q) => ({ ...q, text: firstSentence(q.text, 220, 60) }));
+      .map((q) => ({ ...q, text: firstSentence(q.text, 1500, 1000) }));
     quotes = cands.sort((a, b) => a.when.localeCompare(b.when));
     quotesNote = quotes.length ? 'Three of the notes from the period, as written.' : '';
     helped = wkChecks.filter((e) => text(e.helped)).map((e) => ({ head: weekBounds(e.day).from === from ? rDay(e.day) : rDay(weekBounds(e.day).from) + ' to ' + rDay(weekBounds(e.day).to), text: text(e.helped) }));
