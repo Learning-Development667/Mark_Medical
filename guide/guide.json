@@ -1,5 +1,5 @@
 {
- "made": "2026-10-18",
+ "made": "2026-10-20",
  "width": 390,
  "height": 844,
  "topics": [
@@ -63,7 +63,7 @@
     },
     {
      "file": "checkin-3.webp",
-     "caption": "A written answer has Tap to speak under it: tap, say it, tap again to stop. Skip is always there.",
+     "caption": "A written answer has Tap to speak under it: tap, say it, tap again to stop. To see what was heard before it is saved, switch that on in Settings. Skip is always there.",
      "tap": {
       "x": 0.675,
       "y": 0.944
@@ -71,10 +71,10 @@
     },
     {
      "file": "checkin-4.webp",
-     "caption": "Pain right now, with where it is in words underneath. The words go on Notes for the team and the Pain report.",
+     "caption": "Pain right now, from 0 no pain to 10 worst imaginable: as you slide it says mild, moderate or severe. Where it is goes in the box underneath.",
      "tap": {
-      "x": 0.675,
-      "y": 0.944
+      "x": 0.5,
+      "y": 0.456
      }
     },
     {
@@ -115,6 +115,14 @@
     },
     {
      "file": "meds-3.webp",
+     "caption": "The arrows at the foot of an open card, or holding the name for a second and sliding it, put the list in your own order.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.434
+     }
+    },
+    {
+     "file": "meds-4.webp",
      "caption": "From Today, the Medicine tile logs a dose without leaving the screen.",
      "tap": {
       "x": 0.813,
@@ -122,11 +130,11 @@
      }
     },
     {
-     "file": "meds-4.webp",
+     "file": "meds-5.webp",
      "caption": "Tap the medicine taken. When-needed ones come first, with whether they can be given now."
     },
     {
-     "file": "meds-5.webp",
+     "file": "meds-6.webp",
      "caption": "Manage medicines adds one, changes a dose, or sets reminder times. Reminders arrive as notifications once they are switched on under Settings.",
      "tap": {
       "x": 0.264,
@@ -134,8 +142,20 @@
      }
     },
     {
-     "file": "meds-6.webp",
-     "caption": "Every medicine on the list, with Edit. A finished course keeps its history under Medicine history."
+     "file": "meds-7.webp",
+     "caption": "Every medicine on the list, with what it is for and Edit. A finished course keeps its history under Medicine history.",
+     "tap": {
+      "x": 0.163,
+      "y": 0.862
+     }
+    },
+    {
+     "file": "meds-8.webp",
+     "caption": "Edit sets how it is taken, how many each time and the strength, so Log now records the right amount. Reminder times are further down.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.406
+     }
     }
    ]
   },
@@ -155,7 +175,7 @@
     },
     {
      "file": "question-2.webp",
-     "caption": "Type it, or Tap to speak, and say who it is for: Oncology, Gastro, General, Dietitian or the Pain team. It goes to the top of that report.",
+     "caption": "Type it, or Tap to speak, and say who it is for: Oncology, Gastro, General, Dietitian, Wellbeing or the Pain team. It goes to the top of that report.",
      "tap": {
       "x": 0.5,
       "y": 0.868
@@ -163,23 +183,91 @@
     },
     {
      "file": "question-3.webp",
+     "caption": "Saved. The row now says how many are waiting; tap it to see them all.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.524
+     }
+    },
+    {
+     "file": "question-4.webp",
+     "caption": "Every question still waiting, from any date. Mark one as answered once the team has dealt with it, or add another at the foot.",
+     "tap": {
+      "x": 0.275,
+      "y": 0.944
+     }
+    },
+    {
+     "file": "question-5.webp",
      "caption": "Every open question heads Notes for the team, with room under it for the answer in clinic. Record or write the answer, then mark it answered.",
      "tap": {
       "x": 0.406,
-      "y": 0.434
+      "y": 0.435
      }
+    }
+   ]
+  },
+  {
+   "key": "treatment",
+   "title": "Treatment days and side effects",
+   "sub": "The calendar, where you are in the cycle, and how the days after a session went.",
+   "intro": "The Treatment tab holds the sessions, the days after them, and how each cycle tends to go.",
+   "steps": [
+    {
+     "file": "treatment-1.webp",
+     "caption": "The Treatment tab: the next session at the top, then the calendar. Sessions carry a letter, C for chemo, and turn gold once ticked done.",
+     "tap": {
+      "x": 0.246,
+      "y": 0.516
+     }
+    },
+    {
+     "file": "treatment-2.webp",
+     "caption": "Add sessions puts a whole run in at once: the first date, how many and how often. A session that moves is moved from its own day.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.265
+     }
+    },
+    {
+     "file": "treatment-3.webp",
+     "caption": "Tap a day after a session to see how it went: the side effects rated in that day's check-ins, your own words, and anything logged.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.58
+     }
+    },
+    {
+     "file": "treatment-4.webp",
+     "caption": "On the three days after a session, the morning and evening check-ins ask about side effects: none, mild, moderate or severe for each.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.515
+     }
+    },
+    {
+     "file": "treatment-5.webp",
+     "caption": "Something between check-ins? Log a side effect here, or from a medicine's card, and say what caused it. Notes for the team lists them by cause.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.435
+     }
+    },
+    {
+     "file": "treatment-6.webp",
+     "caption": "How treatment goes: energy, sickness, appetite, pain, mood or sleep by day after each session, so the shape of a cycle shows after a few."
     }
    ]
   },
   {
    "key": "week",
    "title": "Your week",
-   "sub": "Five minutes, once a week, from Friday to Sunday.",
+   "sub": "Five minutes, once a week, over the last days of your week.",
    "intro": "The weekly check is what the Mood and wellbeing report builds its weeks from.",
    "steps": [
     {
      "file": "week-1.webp",
-     "caption": "From Friday to Sunday, Your week appears on Today: five minutes, once a week.",
+     "caption": "Over the last three days of the week, Your week appears on Today: five minutes, once a week.",
      "tap": {
       "x": 0.5,
       "y": 0.646
@@ -190,7 +278,7 @@
      "caption": "Four words for each question, then three boxes in your own words. Every tap is saved as you go.",
      "tap": {
       "x": 0.729,
-      "y": 0.417
+      "y": 0.613
      }
     },
     {
@@ -204,6 +292,14 @@
     {
      "file": "week-4.webp",
      "caption": "Done for the week. Tap the row again to change an answer."
+    },
+    {
+     "file": "week-5.webp",
+     "caption": "The week ends on Sunday unless you change it under More, Settings, Your week. With treatment on the calendar, one tap makes it end on your treatment day.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.435
+     }
     }
    ]
   },
@@ -243,7 +339,103 @@
     },
     {
      "file": "reports-5.webp",
-     "caption": "Preview shows the pages exactly as they print, with Print and Save as PDF above them."
+     "caption": "Preview shows the pages exactly as they print. Pinch, double tap, or use plus and minus to zoom in on the report alone. Print and Save as PDF are above.",
+     "tap": {
+      "x": 0.425,
+      "y": 0.298
+     }
+    }
+   ]
+  },
+  {
+   "key": "morereports",
+   "title": "Pain, food and mood reports",
+   "sub": "A report for the pain team, the dietitian, and whoever helps with how you feel.",
+   "intro": "Each report is made for one reader, from what is already logged.",
+   "steps": [
+    {
+     "file": "morereports-1.webp",
+     "caption": "Beside Notes for the team: Pain and pain relief for the pain team, the Food diary for the dietitian, Mood and wellbeing for a therapist or GP.",
+     "tap": {
+      "x": 0.265,
+      "y": 0.357
+     }
+    },
+    {
+     "file": "morereports-2.webp",
+     "caption": "Pain and pain relief: the scores morning and evening, the worst each day, every dose of pain relief and your own words on where it was. Send, Preview and Save as PDF, as on every report.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.293
+     }
+    },
+    {
+     "file": "morereports-3.webp",
+     "caption": "The Food diary: what was eaten and drunk each day, with the questions for the dietitian, on two pages.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.285
+     }
+    },
+    {
+     "file": "morereports-4.webp",
+     "caption": "Mood and wellbeing: the best and hardest days, how often you felt low, sleep and pain behind it, and the weeks, with a carer's view in its own area.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.293
+     }
+    }
+   ]
+  },
+  {
+   "key": "ibd",
+   "title": "Crohn's or colitis",
+   "sub": "Bowels, flares, injections, results and the report for the IBD team.",
+   "intro": "With Crohn's or colitis ticked in Settings, Daybook adds what an IBD team asks about.",
+   "steps": [
+    {
+     "file": "ibd-1.webp",
+     "caption": "With Crohn's or colitis set up, Today has I think I'm flaring under the check-ins.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.788
+     }
+    },
+    {
+     "file": "ibd-2.webp",
+     "caption": "A 7-day summary to read out or send to the advice line, what the team told you to do in their own words, and a log of your calls."
+    },
+    {
+     "file": "ibd-3.webp",
+     "caption": "Bowels logs each movement in a few taps.",
+     "tap": {
+      "x": 0.187,
+      "y": 0.435
+     }
+    },
+    {
+     "file": "ibd-4.webp",
+     "caption": "The Bristol chart as seven rows, then any blood and how long you could wait. Tap every type in a mixed one."
+    },
+    {
+     "file": "ibd-5.webp",
+     "caption": "The Treatment tab: your flare plan, flare days shaded on the calendar, injections or infusions with the next one due, and any steroid course.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.267
+     }
+    },
+    {
+     "file": "ibd-6.webp",
+     "caption": "Results: blood tests and calprotectin as the team gave them, charted against the lab's own range. Daybook never says whether one is good or bad."
+    },
+    {
+     "file": "ibd-7.webp",
+     "caption": "The Crohn's and colitis report: bowels against your usual, blood, urgency, flares, treatment and results, with your questions for the gastro team.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.293
+     }
     }
    ]
   },
@@ -286,23 +478,35 @@
   {
    "key": "carer",
    "title": "A carer's phone",
-   "sub": "Invited as a carer: the same Daybook, with your own view of the week and the day.",
+   "sub": "Invited as a carer: the same Daybook, with your own view of their mood, the week and the day.",
    "intro": "Someone invited as a carer logs and reads everything the same way, and adds their own view alongside.",
    "steps": [
     {
      "file": "carer-1.webp",
-     "caption": "A carer sees the same Today, and from Friday, Your week, as you see it: how the patient seemed, kept apart from their own answers.",
+     "caption": "A carer's Today has two more rows: their mood this morning and this evening, as you see it, at the patient's own times.",
      "tap": {
       "x": 0.5,
-      "y": 0.646
+      "y": 0.511
      }
     },
     {
      "file": "carer-2.webp",
-     "caption": "Four questions on how they seemed this week, then three in your own words. It goes on the Mood and wellbeing report as \"As Shelley saw it\"."
+     "caption": "Their mood on 1 to 10, then anything you noticed. It goes on the reports in its own area, as \"As Shelley saw it\", never mixed with the patient's own scores."
     },
     {
      "file": "carer-3.webp",
+     "caption": "Over the last days of the week, Your week, as you see it: how the patient seemed, kept apart from their own answers.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.813
+     }
+    },
+    {
+     "file": "carer-4.webp",
+     "caption": "Four questions on how they seemed this week, then three in your own words. It goes on the Mood and wellbeing report as \"As Shelley saw it\"."
+    },
+    {
+     "file": "carer-5.webp",
      "caption": "On the Treatment tab, the Carer's view: the day's energy, sickness, eating, pain and mood as you see it.",
      "tap": {
       "x": 0.5,
@@ -310,7 +514,7 @@
      }
     },
     {
-     "file": "carer-4.webp",
+     "file": "carer-6.webp",
      "caption": "The same sliders, worded as you see it. They are shown beside the patient's own scores on the treatment cycle chart, never mixed with them."
     }
    ]
@@ -394,7 +598,7 @@
      "caption": "Send to the team emails the PDF to the nurse, the dietitian or the oncologist, with a copy to you. One tap, and it is done.",
      "tap": {
       "x": 0.5,
-      "y": 0.844
+      "y": 0.873
      }
     }
    ]
