@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '246';
+const APP_VERSION = '247';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -2592,16 +2592,16 @@ function renderDayLabel() {
 function detailedNutritionOn() { return Boolean(state.profile && state.profile.detailedNutrition); }
 
 /* ---- Condition packs (v145) ----
-   What Daybook is set up for, household-wide in profile/main.packs { cancer, ibd, menopause }. A household
+   What Daybook is set up for, household-wide in profile/main.packs { cancer, ibd }. A household
    saved before v145 has no field and is the Cancer treatment pack, as Daybook always was. Each pack brings
    its own questions and its own limits on the reports: the chemo alert card wording and the UKONS triage
    limits for bowels belong to Cancer treatment (they would flag almost every day of active colitis), and
    Crohn's or colitis compares bowels with the person's own usual number a day, as IBD teams do. With
-   both on, the cancer limits win, being the treatment team's. Menopause is listed as coming later. */
+   both on, the cancer limits win, being the treatment team's. Menopause was listed as coming later until v247, when Mark took every mention
+   of it out of the app and the website (20 October 2026): not until the research is done. */
 const PACKS = [
   { key: 'cancer', name: 'Cancer treatment', hint: 'Chemotherapy, radiotherapy or immunotherapy: the treatment calendar, the chemo alert card wording and the triage limits for bowels on the reports.' },
-  { key: 'ibd', name: "Crohn's or colitis", hint: 'Bowels compared with your own usual number a day, blood, urgency and accidents, a stoma if you have one, and a weekly question about joints, eyes, skin and mouth.' },
-  { key: 'menopause', name: 'Menopause', hint: 'Coming later.', later: true }
+  { key: 'ibd', name: "Crohn's or colitis", hint: 'Bowels compared with your own usual number a day, blood, urgency and accidents, a stoma if you have one, and a weekly question about joints, eyes, skin and mouth.' }
 ];
 function packs() { const p = state.profile && state.profile.packs; return p && typeof p === 'object' ? p : { cancer: true }; }
 function packOn(k) { return Boolean(packs()[k]); }
@@ -2819,7 +2819,7 @@ document.querySelectorAll('.qa').forEach((b) => b.addEventListener('click', () =
 const FEEDBACK_EMAIL = 'support@mymedicaldaybook.co.uk';
 const FIRST_DAY_QUESTIONS = [
   { key: 'who', q: 'Are you the patient, a carer, or in the circle?', kind: 'one', options: ['The patient', 'A carer', 'Family or friend', 'A nurse or clinician'] },
-  { key: 'conditions', q: 'Which condition or conditions is Daybook for?', kind: 'many', options: ['Cancer treatment', 'Crohn\'s or colitis', 'Menopause', 'Something else'] },
+  { key: 'conditions', q: 'Which condition or conditions is Daybook for?', kind: 'many', options: ['Cancer treatment', 'Crohn\'s or colitis', 'Something else'] },
   { key: 'setup', q: 'How easy was setting up?', kind: 'one', options: ['1, hard', '2', '3', '4', '5, easy'] },
   { key: 'home', q: 'Did you add Daybook to your Home Screen?', kind: 'one', options: ['Yes', 'No', 'Did not know how'] },
   { key: 'first', q: 'What did you log first?', kind: 'text' },
@@ -4471,7 +4471,6 @@ function renderUsage() {
       h('dt', { text: 'Set-up completed' }), h('dd', { text: t.setup + ' of ' + t.circles }),
       h('dt', { text: 'Set up for cancer treatment' }), h('dd', { text: String(t.packCancer) }),
       h('dt', { text: "Set up for Crohn's or colitis" }), h('dd', { text: String(t.packIbd) }),
-      h('dt', { text: 'Set up for menopause' }), h('dd', { text: String(t.packMenopause) }),
       h('dt', { text: 'Feedback sent (all time)' }), h('dd', { text: String(t.feedback) })));
   const codes = Object.entries(t.codes || {}).sort((a, b) => b[1] - a[1]);
   const from = h('div', { class: 'card usage-card' },
@@ -4488,7 +4487,7 @@ function renderUsage() {
     bars,
     hist.length ? h('p', { class: 'muted usage-trend-line', text: fmtDayShort(hist[0][0]) + ': ' + hist[0][1].active7 + ' of ' + hist[0][1].circles + ' circles. ' + fmtDayShort(hist[hist.length - 1][0]) + ': ' + hist[hist.length - 1][1].active7 + ' of ' + hist[hist.length - 1][1].circles + '.' }) : null);
   const rows = Object.entries(u.circles || {}).sort((a, b) => String(b[1].last || '').localeCompare(String(a[1].last || '')));
-  const packWords = (p) => String(p || '').split(',').filter(Boolean).map((k) => ({ cancer: 'Cancer', ibd: 'Crohn\'s or colitis', menopause: 'Menopause' })[k] || k).join(', ');
+  const packWords = (p) => String(p || '').split(',').filter(Boolean).map((k) => ({ cancer: 'Cancer', ibd: 'Crohn\'s or colitis' })[k] || k).join(', ');
   const table = h('div', { class: 'card usage-card' },
     h('h3', { class: 'card-title', text: 'Each circle' }),
     h('p', { class: 'hint', text: 'A code per circle, never a name. This week\'s entries and check-ins (of 14), when something was last logged, Assistant requests this month, reports sent.' }),
@@ -7715,10 +7714,6 @@ const CHECKIN_QUESTIONS = {
     { key: 'wkTired', kind: 'scale', pack: ['cancer', 'ibd'], q: 'Tiredness got in the way?' },
     { key: 'wkGutOut', kind: 'scale', pack: 'ibd', q: 'Did your gut stop you going out or doing something?' },
     { key: 'wkToilet', kind: 'scale', pack: 'ibd', q: 'Worried about getting to a toilet?' },
-    { key: 'wkSwings', kind: 'scale', pack: 'menopause', q: 'Mood swings or irritability?' },
-    { key: 'wkAnxious', kind: 'scale', pack: 'menopause', q: 'Anxious or panicky?' },
-    { key: 'wkFog', kind: 'scale', pack: 'menopause', q: 'Brain fog, or memory letting you down?' },
-    { key: 'wkSweats', kind: 'scale', pack: 'menopause', q: 'Sleep broken by sweats?' },
     { key: 'helped', kind: 'text', q: 'What helped this week?', ph: 'e.g. the new pain plan, a walk with a friend' },
     { key: 'hardest', kind: 'text', q: 'What was hardest?', ph: 'e.g. the nights, waiting for results' },
     { key: 'sentence', kind: 'text', q: 'This week in a sentence', ph: 'e.g. steady, and the garden kept me going' }
