@@ -933,12 +933,34 @@ async function handleSendReport(request, env) {
   if (!me.hid || !me.role) return json({ error: 'unauthorised', message: 'This sign-in is not in a Daybook household.' }, 403);
   if (me.role !== 'family') return json({ error: 'unauthorised', message: 'Only a family member can send a report.' }, 403);
   if (!who.email || !EMAIL_RE.test(who.email)) return json({ error: 'no-email', message: 'This sign-in has no email address for replies to go to.' }, 400);
-  const body = await readJson(request); if (!body) return json({ error: 'bad-request', message: 'Could not read what was sent.' }, 400);
+  /* v246: the free plan allows about 10 ms of CPU a request, and parsing, checking and re-stringifying a report of several pages as
+     JSON took 20 to 50 ms, so Cloudflare stopped the request and the phone saw "No connection". The app now sends one line of JSON
+     (everything but the PDF), a newline, then the PDF's base64 as plain text. The PDF stays bytes in a Blob from the request to
+     Resend: never decoded into a string, parsed or encoded again, so its size costs next to no CPU. An app from before v246
+     still sends it all as JSON. */
+  let body = null, pdf = null; // pdf: a Blob of the base64's bytes, or a string from the old form
+  if (/^text\/plain/i.test(request.headers.get('Content-Type') || '')) {
+    let all = null;
+    try { all = await request.blob(); } catch (e) { all = null; }
+    const head = all ? await all.slice(0, 65536).text() : '';
+    const nl = head.indexOf('\n');
+    if (nl > 0) {
+      try { body = JSON.parse(head.slice(0, nl)); } catch (e) { body = null; }
+      pdf = all.slice(new TextEncoder().encode(head.slice(0, nl + 1)).length); // a byte offset: the first line may hold é or £
+    }
+  } else {
+    body = await readJson(request);
+    pdf = body && typeof body.pdf === 'string' ? body.pdf : null;
+  }
+  if (!body) return json({ error: 'bad-request', message: 'Could not read what was sent.' }, 400);
   const to = clean(body.to, 120).toLowerCase();
   if (!EMAIL_RE.test(to)) return json({ error: 'bad-request', message: 'Check the email address of the contact.' }, 400);
-  const pdf = typeof body.pdf === 'string' && /^[A-Za-z0-9+/=]+$/.test(body.pdf) ? body.pdf : '';
-  if (!pdf) return json({ error: 'bad-request', message: 'The PDF did not arrive. Try again.' }, 400);
-  if (pdf.length > SEND_PDF_CHARS) return json({ error: 'too-large', message: 'That PDF is too large to email. Use a shorter range.' }, 413);
+  /* base64 checked at both ends and by its length, not character by character (that alone cost several ms at this size) */
+  const B64 = /^[A-Za-z0-9+/=]*$/;
+  const pdfLen = pdf == null ? 0 : typeof pdf === 'string' ? pdf.length : pdf.size;
+  const ends = pdf == null ? ['', ''] : typeof pdf === 'string' ? [pdf.slice(0, 4096), pdf.slice(-4096)] : [await pdf.slice(0, 4096).text(), await pdf.slice(Math.max(0, pdf.size - 4096)).text()];
+  if (!pdfLen || pdfLen % 4 !== 0 || !B64.test(ends[0]) || !B64.test(ends[1])) return json({ error: 'bad-request', message: 'The PDF did not arrive. Try again.' }, 400);
+  if (pdfLen > SEND_PDF_CHARS) return json({ error: 'too-large', message: 'That PDF is too large to email. Use a shorter range.' }, 413);
   const toName = clean(body.toName, 80);
   const subject = clean(body.subject, 150) || 'Notes from My Medical Daybook';
   const text = String(body.text || '').replace(/\r/g, '').trim().slice(0, 6000);
@@ -954,8 +976,12 @@ async function handleSendReport(request, env) {
   const from = `${fromName.replace(/["<>]/g, '')} via My Medical Daybook <${env.SEND_FROM || SEND_FROM}>`;
   let r, data = null;
   try {
+    /* everything but the PDF through JSON.stringify, then the base64 (which needs no escaping) put in between as bytes, so the
+       megabytes are never walked by JavaScript */
+    const shell = JSON.stringify({ from, to: [toName ? `${toName.replace(/["<>,]/g, '')} <${to}>` : to], cc: [who.email], reply_to: who.email, subject, text, attachments: [{ filename, content: '__DAYBOOK_PDF__' }], headers: { 'X-Entity-Ref-ID': randomCode().slice(0, 16) } });
+    const at = shell.indexOf('"__DAYBOOK_PDF__"');
     r = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { Authorization: 'Bearer ' + env.RESEND_API_KEY, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from, to: [toName ? `${toName.replace(/["<>,]/g, '')} <${to}>` : to], cc: [who.email], reply_to: who.email, subject, text, attachments: [{ filename, content: pdf }], headers: { 'X-Entity-Ref-ID': randomCode().slice(0, 16) } }) });
+      body: new Blob([shell.slice(0, at) + '"', pdf, '"' + shell.slice(at + '"__DAYBOOK_PDF__"'.length)]) });
     try { data = await r.json(); } catch (e) { data = null; }
   } catch (e) {
     console.error('send-report: no reach', e && e.message);
