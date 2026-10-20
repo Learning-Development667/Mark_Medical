@@ -89,6 +89,7 @@ One at a time, each a few days with its sources checked, on the profile mechanis
 - An "AI used this month: about 12p" line under Settings, from the bridge's own token tally. Offered 4 October; build if wanted.
 
 ## Done
+- v246 Send to the team works for longer reports: the PDF goes through the bridge as bytes, inside the free plan's 10 ms of CPU (a five-page report took about 40 ms and was stopped, which showed as "No connection"). Tested in `bridge/send246_test.mjs`.
 - v245 Joining the Beta from the website: after a good code, Cancer treatment or Crohn's or colitis is chosen there, carried to the app, saved for the new circle, and the set-up does not ask again. Tested in `t/t52.mjs` and the website's test.
 - v244 The Symptom sheet's slider on the 0 to 10 scale with the same bands, and any symptom at 4 or more flagged on Notes for the team, like pain. Tested in `t/t51.mjs`.
 - v243 Pain flagged from 4, the NHS scale's moderate, on every report and table; sickness on the 0 to 10 scale with the same bands (no sickness, mild, moderate, severe). Tested in `t/t50.mjs`.

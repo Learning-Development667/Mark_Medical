@@ -17,6 +17,7 @@ def section(title, count, sub, rows, cls=''):
     return s + '<ul>' + ''.join(rows) + '</ul></section>'
 
 built = [
+ ('Send to the team works for longer reports, within the free plan', 'v246'),
  ('Join the Beta from the website: choose Cancer treatment or Crohn\'s or colitis there, and the set-up does not ask again', 'v245'),
  ('Symptoms on the 0 to 10 scale too, and flagged on Notes for the team from 4', 'v244'),
  ('Pain flagged from 4, as the NHS scale says; sickness on 0 to 10 with the same bands', 'v243'),
@@ -45,7 +46,7 @@ built = [
  ('The rebrand into the report look; given in hospital; weights that always save; reminders; households and sign-up', 'v75 to v122'),
  ('Check-ins, vitals, pain, food, drinks, sleep, notes, medicines, letters explained, the treatment plan, exercise, Apple Health', 'v4 to v74'),
 ]
-built_html = '<section class="built"><div class="stage-head"><h2>Already built</h2><span class="count">v4 to v245</span></div><ul>' + ''.join(
+built_html = '<section class="built"><div class="stage-head"><h2>Already built</h2><span class="count">v4 to v246</span></div><ul>' + ''.join(
     f'<li class="done"><span class="box">{CHECK}</span><span class="t">{E(t)}<small>{E(v)}</small></span></li>' for t, v in built) + '</ul></section>'
 
 s1 = [
