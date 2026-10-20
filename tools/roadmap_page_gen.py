@@ -17,6 +17,7 @@ def section(title, count, sub, rows, cls=''):
     return s + '<ul>' + ''.join(rows) + '</ul></section>'
 
 built = [
+ ('The Guide brought up to date: twelve walk-throughs, three of them new, and kept so', 'v242'),
  ('Pain on the NHS 0 to 10 scale: no pain, mild, moderate, severe shown as you slide', 'v241'),
  ("The calendar's day sheet shows how the days after a session went: side effects rated, your words, anything logged", 'v240'),
  ('Preview zooms the report alone: pinch, double tap, or + and - on the pages', 'v239'),
@@ -41,7 +42,7 @@ built = [
  ('The rebrand into the report look; given in hospital; weights that always save; reminders; households and sign-up', 'v75 to v122'),
  ('Check-ins, vitals, pain, food, drinks, sleep, notes, medicines, letters explained, the treatment plan, exercise, Apple Health', 'v4 to v74'),
 ]
-built_html = '<section class="built"><div class="stage-head"><h2>Already built</h2><span class="count">v4 to v241</span></div><ul>' + ''.join(
+built_html = '<section class="built"><div class="stage-head"><h2>Already built</h2><span class="count">v4 to v242</span></div><ul>' + ''.join(
     f'<li class="done"><span class="box">{CHECK}</span><span class="t">{E(t)}<small>{E(v)}</small></span></li>' for t, v in built) + '</ul></section>'
 
 s1 = [
@@ -64,7 +65,7 @@ s3 = [
  row('The set-up', 'Claude', 'Done in v164: what Daybook is for, your name, a contact, the Home Screen, Tap to speak.', 'done', '11'),
  row('Fresh-eyes trial', 'Mark', 'One or two people who have never seen it set up and log a day unaided; Claude fixes where they stall.', 'open', '11a'),
  row('Accessibility re-check', 'Claude', 'Every screen and sheet in both colour schemes, and the date on the App card renewed.', 'open', '12'),
- row('User guide', 'Claude', 'In the app since v167 (More > Guide, animated). Checked 20 Oct: six topics out of date and the Treatment, side effects, Crohn\'s and other reports missing. Now: retake and add those, then a rule that a changed screen means a retaken guide. Later: a PDF.', 'now', '13'),
+ row('User guide', 'Claude', 'Up to date in v242: twelve walk-throughs, with a rule that a changed screen means a retaken guide. Left: a PDF, and Apple Health, letters and Exercise topics.', 'now', '13'),
  row('Developer friends review it', 'Both', 'Claude writes the handover, Mark sends it, Claude fixes what they find.', 'open', '14'),
 ]
 s4 = [
