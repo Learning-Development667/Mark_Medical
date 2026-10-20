@@ -920,6 +920,14 @@ async function handleFood(request, env) {
    record in the household. SEND_A_DAY per household keeps a stuck finger off the free tier. Mark's ask of 13 October
    2026: one tap, the PDF attached, no Mail app hop (a web app cannot attach a file to a mailto: link, and the share
    sheet cannot fill in the recipient, which was why the old route took two hops). */
+/* The same words as a plain HTML part (bridge, 20 October 2026, after v246): mail-tester scored a text-only email down ("There is no html version of your
+   message"), and filters trust a message with both. Paragraphs at blank lines, line breaks kept, everything escaped; no
+   images, links, tracking or styling beyond a readable font, so it reads exactly as the person typed it. */
+function reportEmailHtml(text) {
+  const esc = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const paras = String(text || '').split(/\n{2,}/).map((p) => p.trim()).filter(Boolean).map((p) => '<p style="margin:0 0 14px">' + esc(p).replace(/\n/g, '<br>') + '</p>');
+  return '<!doctype html><html lang="en-GB"><head><meta charset="utf-8"></head><body style="margin:0;padding:16px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.5;color:#17263A">' + paras.join('') + '</body></html>';
+}
 const SEND_FROM = 'reporting@mymedicaldaybook.co.uk';
 const SEND_A_DAY = 20;
 const SEND_PDF_CHARS = 8000000; // about 6 MB of PDF; the reports are about 1 MB
@@ -978,7 +986,7 @@ async function handleSendReport(request, env) {
   try {
     /* everything but the PDF through JSON.stringify, then the base64 (which needs no escaping) put in between as bytes, so the
        megabytes are never walked by JavaScript */
-    const shell = JSON.stringify({ from, to: [toName ? `${toName.replace(/["<>,]/g, '')} <${to}>` : to], cc: [who.email], reply_to: who.email, subject, text, attachments: [{ filename, content: '__DAYBOOK_PDF__' }], headers: { 'X-Entity-Ref-ID': randomCode().slice(0, 16) } });
+    const shell = JSON.stringify({ from, to: [toName ? `${toName.replace(/["<>,]/g, '')} <${to}>` : to], cc: [who.email], reply_to: who.email, subject, text, html: reportEmailHtml(text), attachments: [{ filename, content: '__DAYBOOK_PDF__' }], headers: { 'X-Entity-Ref-ID': randomCode().slice(0, 16) } });
     const at = shell.indexOf('"__DAYBOOK_PDF__"');
     r = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { Authorization: 'Bearer ' + env.RESEND_API_KEY, 'Content-Type': 'application/json' },
       body: new Blob([shell.slice(0, at) + '"', pdf, '"' + shell.slice(at + '"__DAYBOOK_PDF__"'.length)]) });
