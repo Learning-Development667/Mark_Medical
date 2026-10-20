@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '244';
+const APP_VERSION = '245';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -769,6 +769,7 @@ const state = {
   account: null,
   household: null,
   pendingInvite: null,
+  pendingPacks: null, // { cancer, ibd } from ?for= on a Beta link: chosen on the website, so the set-up does not ask again (v245)
   name: '',
   selectedDay: todayStr(),
   medicines: [],
@@ -988,15 +989,20 @@ document.addEventListener('click', (ev) => {
   const code = String(new URLSearchParams(location.search).get('beta') || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 24);
   if (!code || !BRIDGE || !APP_STAGE) return;
   state.pendingBeta = code;
+  /* ?for=cancer or ?for=ibd (v245): what Daybook is for, chosen on the website after the code, so the set-up skips that question */
+  const want = String(new URLSearchParams(location.search).get('for') || '').toLowerCase();
+  const BETA_FOR = { cancer: 'cancer treatment', ibd: "Crohn's or colitis" }; // its own list: PACKS is declared further down and this runs on load
+  if (BETA_FOR[want]) state.pendingPacks = { [want]: true };
+  const forWords = BETA_FOR[want] ? ', for ' + BETA_FOR[want] + ',' : '';
   history.replaceState(null, '', location.pathname + location.hash);
   const banner = $('invite-banner');
-  banner.textContent = 'Your Beta code is filled in. Tap Create an account to start.';
+  banner.textContent = 'Your Beta code' + forWords + ' is filled in. Tap Create an account to start.';
   banner.hidden = false;
   try {
     const r = await fetch(BRIDGE.url.replace(/\/$/, '') + '/beta-info?code=' + encodeURIComponent(code));
     const info = await r.json();
-    if (info.valid) banner.textContent = 'Your Beta code' + (info.label ? ' from ' + info.label : '') + ' is filled in. Tap Create an account to start.';
-    else { banner.textContent = info.message || 'That Beta code is not right.'; state.pendingBeta = null; }
+    if (info.valid) banner.textContent = 'Your Beta code' + (info.label ? ' from ' + info.label : '') + forWords + ' is filled in. Tap Create an account to start.';
+    else { banner.textContent = info.message || 'That Beta code is not right.'; state.pendingBeta = null; state.pendingPacks = null; }
   } catch (e) { /* the banner already says enough */ }
 })();
 (async function readInviteLink() {
@@ -1091,7 +1097,17 @@ async function enterApp(user) {
     setTimeout(offerDraft, 1500);
     setTimeout(offerCircle, 2500);
     syncUsageRow();
-    if (state.setupPending && !state.readOnly && !state.viewer) { const kind = state.setupPending; state.setupPending = null; setTimeout(() => openSetup(kind), 700); }
+    if (state.setupPending && !state.readOnly && !state.viewer) {
+      const kind = state.setupPending; state.setupPending = null;
+      /* chosen on the website (v245): saved for the new circle at once, and the set-up does not ask again */
+      let chosen = null;
+      if (kind === 'full' && state.pendingPacks) {
+        const packs = PACKS.reduce((o, pk) => ({ ...o, [pk.key]: Boolean(state.pendingPacks[pk.key]) && !pk.later }), {});
+        state.pendingPacks = null;
+        if (await saveProfilePatch({ packs })) { chosen = packs; state.profile = { ...(state.profile || {}), packs }; syncSettings(); }
+      }
+      setTimeout(() => openSetup(kind, { packs: chosen }), 700);
+    }
   } else if (!state.demo) {
     stopData();
     state.user = null;
@@ -1944,10 +1960,10 @@ async function addMedicineByName(name, purpose) {
   if (state.demo) { state.medicines.push({ id: fakeId('med'), ...data }); renderMeds(); return; }
   try { await setDoc(doc(hcol('medicines')), data, { merge: true }); touchReminderPlan(); } catch (e) { console.error(e); toast('Could not save the medicine'); }
 }
-function openSetup(kind) {
+function openSetup(kind, opts = {}) {
   const full = kind !== 'phone';
   const p = state.profile || {};
-  const draft = { packs: p.packs && typeof p.packs === 'object' ? { ...p.packs } : {}, ibd: { ...ibdInfo() }, reportName: p.reportName || '', contact: { label: '', role: '', number: '', email: '' }, advice: { label: '', number: '' }, ibdMed: '' };
+  const draft = { packs: opts.packs ? { ...opts.packs } : p.packs && typeof p.packs === 'object' ? { ...p.packs } : {}, ibd: { ...ibdInfo() }, reportName: p.reportName || '', contact: { label: '', role: '', number: '', email: '' }, advice: { label: '', number: '' }, ibdMed: '' };
   const chipRow = (name, options, current, pick) => h('div', { class: 'presets', role: 'group', 'aria-label': name },
     ...options.map(([v, label]) => h('button', { class: 'preset' + (v === current ? ' is-active' : ''), type: 'button', text: label, 'aria-pressed': v === current ? 'true' : 'false', onclick: () => pick(v) })));
   const para = (text) => h('p', { class: 'setup-p', text });
@@ -1956,7 +1972,7 @@ function openSetup(kind) {
       body: () => full
         ? [para('A few short steps, about two minutes. Each one can be changed later under More, then Settings.'), para('Daybook keeps the readings, notes and questions from every day in between, and turns them into reports your team can read in a minute.')]
         : [para((patientFullName() ? 'You have joined ' + patientFullName().split(/\s+/)[0] + '\'s care circle.' : 'You have joined the care circle.') + ' Two short steps so it works well on this phone, then you are in.')] },
-    { key: 'packs', only: full, title: 'What is Daybook for?', hint: 'Tick what applies; more than one is fine. Each brings its own questions and its own limits on the reports. Shared by everyone in the circle.', noSkip: true,
+    { key: 'packs', only: full && !opts.packs, title: 'What is Daybook for?', hint: 'Tick what applies; more than one is fine. Each brings its own questions and its own limits on the reports. Shared by everyone in the circle.', noSkip: true,
       body: () => PACKS.map((pk) => h('div', { class: 'pack-row' },
         h('label', { class: 'check settings-toggle' },
           h('input', { type: 'checkbox', id: 'setup-pack-' + pk.key, disabled: !!pk.later, checked: Boolean(draft.packs[pk.key]) && !pk.later, onchange: (ev) => { draft.packs[pk.key] = ev.target.checked; } }),
