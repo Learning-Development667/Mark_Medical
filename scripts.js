@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '243';
+const APP_VERSION = '244';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -2629,7 +2629,7 @@ function entryTitle(e) {
     case 'sleep': return [h('span', { class: 'val', text: fmtHm(e.value) }), h('span', { text: ' asleep' })];
     case 'checkin': return [h('span', { text: checkinTitle(e.slot) })];
     case 'pain': return [h('span', { class: 'val', text: 'Pain ' + e.value + '/10' }), painBandWord(e.value) ? h('span', { text: ', ' + painBandWord(e.value).toLowerCase() }) : null];
-    case 'symptom': return [h('span', { class: 'val', text: symptomLevel(e) })];
+    case 'symptom': return [h('span', { class: 'val', text: symptomLevel(e) }), e.grade == null && painBandWord(e.value, '') ? h('span', { text: ', ' + painBandWord(e.value, '').toLowerCase() }) : null];
     case 'bowel': {
       if (e.none) return [h('span', { text: e.stoma ? 'No stoma output' : 'No bowel movement' })];
       if (e.stoma) return [h('span', { class: 'val', text: 'Stoma output' }), stomaWord(e) ? h('span', { text: ', ' + stomaWord(e) }) : null];
@@ -3850,7 +3850,7 @@ function openAdd(type, editEntry, preset) {
     };
     rmBtn.addEventListener('click', () => { rmPanel.hidden = !rmPanel.hidden; rmBtn.setAttribute('aria-expanded', String(!rmPanel.hidden)); });
     if (!state.readOnly && !state.viewer) { drawRemove(); chips.append(rmBtn, rmPanel); }
-    const sl = sliderBlock({ kind: 'pain', q: 'How bad right now', low: '1 mild', high: '10 severe' }, editEntry ? editEntry.value : null);
+    const sl = sliderBlock({ kind: 'pain', nrs: 'symptom', q: 'How bad right now', low: '0 none', high: '10 worst imaginable' }, editEntry ? editEntry.value : null);
     const symNote = h('textarea', { rows: '2', placeholder: 'What it is like, what helped (optional)' });
     if (editEntry && editEntry.note) symNote.value = editEntry.note;
     const cause = causeSelect(editEntry ? causeOf(editEntry) : (preset && preset.causeKind ? { kind: preset.causeKind, id: preset.causeId, name: preset.causeName || '' } : null));
@@ -7231,17 +7231,17 @@ function summaryRows(entries, from, to) {
     else fine.push(`eating (something every logged day${est ? ', ' + est : ''})`);
   }
 
-  /* Symptoms logged between check-ins: worst per symptom; 7 or more red, 5 or 6 amber, like pain */
+  /* Symptoms logged between check-ins: worst per symptom; 7 or more red, 4 to 6 amber (5 to 6 before v244), like pain */
   const symptoms = entries.filter((e) => e.type === 'symptom' && e.value != null);
   if (symptoms.length) {
     const byWhat = {};
     symptoms.forEach((e) => { const k = String(e.what || 'Symptom'); (byWhat[k] = byWhat[k] || []).push(e); });
     const items = Object.keys(byWhat).map((k) => { const w = maxBy(byWhat[k], (e) => Number(e.value)); return { what: k, worst: Number(w.value), day: w.day, n: byWhat[k].length, causes: [...new Set(byWhat[k].map((e) => e.causeName).filter(Boolean))] }; }).sort((a, b) => b.worst - a.worst);
     const worst = items[0];
-    if (worst.worst >= 5) {
-      const text = items.filter((i) => i.worst >= 5).map((i) => `${i.what.toLowerCase()}${i.causes.length ? ' (side effect of ' + i.causes.join(' and ') + ')' : ''} up to ${i.worst}/10 on ${fmtDayShort(i.day)}${i.n > 1 ? ' (' + plural(i.n, 'reading') + ')' : ''}`).join('; ');
-      push(worst.worst >= 7 ? 'red' : 'amber', 'Symptoms', `Symptoms logged between check-ins: ${text}.`, worst.worst < 7 && symptoms.filter((e) => Number(e.value) >= 5).length === 1 ? `${worst.what.toLowerCase()} ${worst.worst}/10 on ${fmtDayShort(worst.day)}` : null,
-        'Symptoms: ' + items.filter((i) => i.worst >= 5).map((i) => `${i.what.toLowerCase()} up to ${i.worst}/10`).join(', '));
+    if (worst.worst >= 4) {
+      const text = items.filter((i) => i.worst >= 4).map((i) => `${i.what.toLowerCase()}${i.causes.length ? ' (side effect of ' + i.causes.join(' and ') + ')' : ''} up to ${i.worst}/10 on ${fmtDayShort(i.day)}${i.n > 1 ? ' (' + plural(i.n, 'reading') + ')' : ''}`).join('; ');
+      push(worst.worst >= 7 ? 'red' : 'amber', 'Symptoms', `Symptoms logged between check-ins: ${text}.`, worst.worst < 7 && symptoms.filter((e) => Number(e.value) >= 4).length === 1 ? `${worst.what.toLowerCase()} ${worst.worst}/10 on ${fmtDayShort(worst.day)}` : null,
+        'Symptoms: ' + items.filter((i) => i.worst >= 4).map((i) => `${i.what.toLowerCase()} up to ${i.worst}/10`).join(', '));
     } else fine.push(`symptoms (${plural(symptoms.length, 'reading')}, none above ${worst.worst}/10)`);
   }
   /* Side effects (v173): every symptom with a cause, mild ones too, since a team wants to know what a treatment
@@ -7754,13 +7754,14 @@ function wbText(v) {
    slider gave no description). Every pain slider runs 0 (no pain) to 10 (worst imaginable), and the band shows as you slide:
    0 no pain, 1 to 3 mild, 4 to 6 moderate, 7 to 10 severe. Scores saved before v241 were 1 to 10 and read the same. Since v243
    (Mark: "4 as per the NHS guide") the reports flag pain from 4, the band's moderate, and red from 7; and sickness runs 0 (no
-   sickness) to 10 with the same bands (q.nrs 'sickness'), its report limit unchanged at 6. The Symptom sheet stays 1 to 10. */
+   sickness) to 10 with the same bands (q.nrs 'sickness'), its report limit unchanged at 6. Since v244 the Symptom sheet's slider
+   does too (q.nrs 'symptom', the bands said without a noun: "Moderate"), and a symptom is flagged from 4 like pain. */
 const PAIN_BANDS = [{ from: 0, to: 0, word: 'No pain', tone: 'none' }, { from: 1, to: 3, word: 'Mild', tone: 'mild' }, { from: 4, to: 6, word: 'Moderate', tone: 'moderate' }, { from: 7, to: 10, word: 'Severe', tone: 'severe' }];
 function painBandOf(v) { if (v == null || v === '' || isNaN(Number(v))) return null; const n = Number(v); return PAIN_BANDS.find((b) => n >= b.from && n <= b.to) || null; }
 /* "Moderate pain", "No pain": the band as words after a score */
-function painBandWord(v, noun) { const b = painBandOf(v), n = noun || 'pain'; return b ? (b.tone === 'none' ? 'No ' + n : b.word + ' ' + n) : ''; }
+function painBandWord(v, noun) { const b = painBandOf(v), n = noun == null ? 'pain' : noun; return !b ? '' : !n ? (b.tone === 'none' ? 'None' : b.word) : (b.tone === 'none' ? 'No ' + n : b.word + ' ' + n); }
 /* the noun a 0 to 10 slider's band is said with: "Moderate sickness", "No pain" */
-function nrsNoun(q) { return q && q.nrs === 'sickness' ? 'sickness' : 'pain'; }
+function nrsNoun(q) { return q && q.nrs === 'sickness' ? 'sickness' : q && q.nrs === 'symptom' ? '' : 'pain'; }
 /* The optional words under a pain slider (v128): where it is, what it is like. Stored beside the score as
    painNote / worstPainNote, shown after the score everywhere it shows, and in Notes for the team as a note. */
 const CHECKIN_NOTE_Q = 'Where is it, or anything else? Optional.';
