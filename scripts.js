@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '239';
+const APP_VERSION = '240';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -12868,6 +12868,49 @@ function renderCycleLines(ym) {
 }
 
 /* One sheet per calendar day: treatment session and its type, session done, mood, one good thing */
+/* v240 (Mark: tapping the day after chemo on the calendar showed nothing of what he had said): the day sheet
+   shows how that day went, the side effects rated in the morning and evening check-ins (the three days after
+   a session), the words the person wrote about symptoms, and any side effect logged from the Symptom sheet
+   with a cause. Only for a session day, or a day within FX_DAYS after one. The check-ins come from
+   cycleEntries() (already fetched, and cached a minute, for the chart on the same tab) and the logged ones from
+   loadSideEffects() (one single-field query), so a day sheet costs no more than the tab already did. */
+function daySideEffects(key) {
+  const info = state.days[key] || {};
+  const ses = sessionBefore(key);
+  if (key > todayStr() || (!ses && !info.chemo)) return null;
+  const box = h('section', { class: 'day-fx', 'aria-label': 'How the day went' });
+  const title = info.chemo && !ses ? 'How the day went' : 'How it went, day ' + ses.n + ' after '
+    + (isRepeat(ses.type) ? sessionLabel({ ...(state.days[ses.day] || {}), treatment: ses.type.key }) : ses.type.label.toLowerCase()) + ' on ' + fmtDayShort(ses.day);
+  box.append(h('p', { class: 'day-fx-title', text: title }), h('p', { class: 'hint', role: 'status', text: 'Looking for what you logged…' }));
+  (async () => {
+    let checks = null, logged = [];
+    try { [checks, logged] = await Promise.all([cycleEntries(), loadSideEffects()]); } catch (e) { console.error(e); }
+    if (!box.isConnected) return;
+    if (!checks) { box.replaceChildren(h('p', { class: 'day-fx-title', text: title }), h('p', { class: 'hint', text: 'Could not load the check-ins. Try again when you have signal.' })); return; }
+    const rows = [];
+    ['morning', 'evening'].forEach((slot) => {
+      const e = checks.find((c) => c.day === key && c.slot === slot);
+      if (!e) return;
+      const bits = [];
+      const rated = e.sidefx && e.sidefx.grades ? fxText(e.sidefx) : 'Skipped';
+      if (rated !== 'Skipped') bits.push(rated);
+      const words = String(e.symptoms || '').trim();
+      if (words && !ROUTINE_ANSWER.test(words)) bits.push('In your words: ' + words);
+      if (!bits.length) return;
+      rows.push(h('li', { class: 'day-fx-row' }, h('span', { class: 'day-fx-when', text: slotWord(slot) + ' check-in' }), ...bits.map((t) => h('span', { class: 'day-fx-what', text: t }))));
+    });
+    logged.filter((e) => e.day === key && !e.fromCheckin).sort((a, b) => entryDate(a) - entryDate(b)).forEach((e) => {
+      const c = causeOf(e);
+      rows.push(h('li', { class: 'day-fx-row' }, h('span', { class: 'day-fx-when', text: 'Logged at ' + fmtTime(entryDate(e)) }),
+        h('span', { class: 'day-fx-what', text: symptomLevel(e) + (c ? ', side effect of ' + c.name : '') }),
+        e.note ? h('span', { class: 'day-fx-what', text: e.note }) : null));
+    });
+    box.replaceChildren(h('p', { class: 'day-fx-title', text: title }),
+      rows.length ? h('ul', { class: 'day-fx-list' }, ...rows)
+        : h('p', { class: 'hint', text: ses ? 'Nothing logged for this day. The morning and evening check-ins ask about side effects on the three days after a session.' : 'Nothing logged for this day.' }));
+  })();
+  return box;
+}
 function openDaySheet(key) {
   const info = state.days[key] || {};
 
@@ -12877,6 +12920,7 @@ function openDaySheet(key) {
     openSheet(fmtDayLong(key), h('div', null,
       h('p', { text: chemoStatus }),
       moodInfo ? h('p', { class: 'hint', text: moodInfo }) : null,
+      daySideEffects(key),
       h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Close')
     ));
     return;
@@ -12946,6 +12990,7 @@ function openDaySheet(key) {
     doneRow,
     flareRow,
     h('p', { class: 'hint', text: (moodInfo ? moodInfo + ' ' : '') + 'Mood and one good thing come from the daily check-ins on Today.' }),
+    daySideEffects(key),
     h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
       const wasDone = !!info.chemoDone;
       const data = { chemo: cbChemo.checked, chemoDone: cbChemo.checked && cbDone.checked, treatment, updatedBy: state.name, updatedAt: serverTimestamp() };

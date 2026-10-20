@@ -17,6 +17,7 @@ def section(title, count, sub, rows, cls=''):
     return s + '<ul>' + ''.join(rows) + '</ul></section>'
 
 built = [
+ ("The calendar's day sheet shows how the days after a session went: side effects rated, your words, anything logged", 'v240'),
  ('Preview zooms the report alone: pinch, double tap, or + and - on the pages', 'v239'),
  ('Optional check of the words Tap to speak heard, before saving', 'v238'),
  ("The carer's mood and observations at the patient's two times, in their own area on the reports", 'v237'),
@@ -39,7 +40,7 @@ built = [
  ('The rebrand into the report look; given in hospital; weights that always save; reminders; households and sign-up', 'v75 to v122'),
  ('Check-ins, vitals, pain, food, drinks, sleep, notes, medicines, letters explained, the treatment plan, exercise, Apple Health', 'v4 to v74'),
 ]
-built_html = '<section class="built"><div class="stage-head"><h2>Already built</h2><span class="count">v4 to v239</span></div><ul>' + ''.join(
+built_html = '<section class="built"><div class="stage-head"><h2>Already built</h2><span class="count">v4 to v240</span></div><ul>' + ''.join(
     f'<li class="done"><span class="box">{CHECK}</span><span class="t">{E(t)}<small>{E(v)}</small></span></li>' for t, v in built) + '</ul></section>'
 
 s1 = [

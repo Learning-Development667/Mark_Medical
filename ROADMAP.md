@@ -88,6 +88,7 @@ One at a time, each a few days with its sources checked, on the profile mechanis
 - An "AI used this month: about 12p" line under Settings, from the bridge's own token tally. Offered 4 October; build if wanted.
 
 ## Done
+- v240 The Treatment calendar's day sheet shows how the days after a session went: the side effects rated in that day's morning and evening check-ins, the words written about symptoms, and any side effect logged with a cause, for a session day and the three days after one. Tested in `t/t47.mjs`.
 - v239 Preview zooms the report alone: the pages scroll inside their own box with a pinch, a double tap, or - and + and Fit to screen, so the screen around it no longer zooms. Tested in `t/t46.mjs`; the pinch's feel to be checked on a phone.
 - v238 An optional check of the words Tap to speak heard, before anything is saved (More > Settings > Talking instead of typing, off by default, per phone): the words shown large, read out loud on request, then Yes carry on or Change the words. Typed words are never checked. Tested in `t/t45.mjs`.
 - v237 The carer's mood and observations at the patient's morning and evening times: two new check-ins ("Morning, as you see it" and "Evening, as you see it"), kept out of every patient figure, in their own area, As Shelley saw it, on Notes for the team and the Mood and wellbeing report, with the patient's own score beside each. Tested in `t/t42.mjs` to `t/t44.mjs`.

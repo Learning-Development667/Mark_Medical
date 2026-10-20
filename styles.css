@@ -1953,3 +1953,12 @@ body[data-page="docs"] :is(.card, .checkin-row):not(.is-due) { background: color
 .scheck .btn .icon { width: 20px; height: 20px; }
 .scheck-read { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 @media (prefers-reduced-motion: reduce) { .scheck-panel { animation: none; } }
+
+/* v240: how the days after a session went, on the calendar's day sheet */
+.day-fx { background: var(--surface-sunken); border-radius: var(--r-sm); padding: var(--s-3); margin-top: var(--s-3); display: grid; gap: var(--s-2); }
+.day-fx-title { margin: 0; font-weight: 600; color: var(--text-primary); }
+.day-fx .hint { margin: 0; }
+.day-fx-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-3); }
+.day-fx-row { display: grid; gap: 2px; min-width: 0; }
+.day-fx-when { font-size: 14px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--teal); }
+.day-fx-what { overflow-wrap: anywhere; white-space: pre-wrap; color: var(--text-primary); }
