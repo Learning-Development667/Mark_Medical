@@ -89,6 +89,7 @@ One at a time, each a few days with its sources checked, on the profile mechanis
 - An "AI used this month: about 12p" line under Settings, from the bridge's own token tally. Offered 4 October; build if wanted.
 
 ## Done
+- v245 Joining the Beta from the website: after a good code, Cancer treatment or Crohn's or colitis is chosen there, carried to the app, saved for the new circle, and the set-up does not ask again. Tested in `t/t52.mjs` and the website's test.
 - v244 The Symptom sheet's slider on the 0 to 10 scale with the same bands, and any symptom at 4 or more flagged on Notes for the team, like pain. Tested in `t/t51.mjs`.
 - v243 Pain flagged from 4, the NHS scale's moderate, on every report and table; sickness on the 0 to 10 scale with the same bands (no sickness, mild, moderate, severe). Tested in `t/t50.mjs`.
 - v242 The Guide brought up to date: twelve walk-throughs (six retaken for v228 to v241, three new: Treatment days and side effects, Pain, food and mood reports, Crohn's or colitis), copied to the website, and a standing rule that the Guide follows the app. Tested in `t/t49.mjs`.
