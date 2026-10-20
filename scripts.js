@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '245';
+const APP_VERSION = '246';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -5952,7 +5952,8 @@ function openSendSheet(kind) {
       send.disabled = true; send.textContent = 'Sending';
       try {
         const pdf = await blobToB64(blob);
-        const res = await bridgeCall('/send-report', { kind, to: c.email, toName: c.label, subject: subj, text: note.value.trim(), filename: fname, pdf, fromName: emailSignOff().replace(/, for .*$/, '') });
+        const res = await bridgeCall('/send-report', { kind, to: c.email, toName: c.label, subject: subj, text: note.value.trim(), filename: fname, fromName: emailSignOff().replace(/, for .*$/, '') },
+          null, { raw: pdf, offline: 'Could not reach Daybook to send it. Check the connection and try again, or use Send from my own Mail app.' });
         const at = new Date();
         const rec = { type: 'sent', kind, report: REPORT_NAMES[kind] || 'Report', to: c.email, toName: c.label, subject: subj, filename: fname, copyTo: res.copyTo || myEmail, day: dayStr(at), at };
         await addEntry(rec);
@@ -10554,13 +10555,17 @@ const PUSH = window.DAYBOOK_PUSH && window.DAYBOOK_PUSH.publicKey ? window.DAYBO
    the bridge checks before spending anything (see worker/). Nothing is stored on the way. */
 function explainAvailable() { return !!BRIDGE && !!(auth && auth.currentUser); }
 /* One signed-in call to the bridge: the person's Firebase ID token, JSON in, JSON out, errors in the bridge's own words */
-async function bridgeCall(path, payload, fallbackMessage) {
+/* opts.raw (v246): a large piece of text (a PDF's base64) sent after one line of JSON as plain text, so the bridge passes it on
+   without parsing it, which on the free plan's 10 ms of CPU it cannot afford at a few megabytes. opts.offline: the words when
+   the request gets no answer at all (no signal, or the bridge stopped part-way, which a browser cannot tell apart). */
+async function bridgeCall(path, payload, fallbackMessage, opts = {}) {
   const user = auth && auth.currentUser;
   if (!BRIDGE || !user) throw new Error('Sign in first');
   const idToken = await user.getIdToken();
+  const raw = typeof opts.raw === 'string';
   let r;
-  try { r = await fetch(BRIDGE.url.replace(/\/$/, '') + path, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + idToken }, body: JSON.stringify(payload || {}) }); }
-  catch (e) { throw new Error('No connection to Daybook. Check the signal and try again.'); }
+  try { r = await fetch(BRIDGE.url.replace(/\/$/, '') + path, { method: 'POST', headers: { 'Content-Type': raw ? 'text/plain;charset=UTF-8' : 'application/json', Authorization: 'Bearer ' + idToken }, body: raw ? JSON.stringify(payload || {}) + '\n' + opts.raw : JSON.stringify(payload || {}) }); }
+  catch (e) { throw new Error(opts.offline || 'No connection to Daybook. Check the signal and try again.'); }
   let data = null;
   try { data = await r.json(); } catch (e) { data = null; }
   if (!r.ok || !data) {
