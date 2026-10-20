@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '240';
+const APP_VERSION = '241';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -2628,7 +2628,7 @@ function entryTitle(e) {
     case 'food': return [h('span', { text: e.note || 'Food' })];
     case 'sleep': return [h('span', { class: 'val', text: fmtHm(e.value) }), h('span', { text: ' asleep' })];
     case 'checkin': return [h('span', { text: checkinTitle(e.slot) })];
-    case 'pain': return [h('span', { class: 'val', text: 'Pain ' + e.value + '/10' })];
+    case 'pain': return [h('span', { class: 'val', text: 'Pain ' + e.value + '/10' }), painBandWord(e.value) ? h('span', { text: ', ' + painBandWord(e.value).toLowerCase() }) : null];
     case 'symptom': return [h('span', { class: 'val', text: symptomLevel(e) })];
     case 'bowel': {
       if (e.none) return [h('span', { text: e.stoma ? 'No stoma output' : 'No bowel movement' })];
@@ -3719,7 +3719,7 @@ function openAdd(type, editEntry, preset) {
   }
 
   if (type === 'pain') {
-    const sl = sliderBlock({ kind: 'pain', q: 'Pain right now', low: '1 none', high: '10 worst' }, editEntry ? editEntry.value : null);
+    const sl = sliderBlock({ kind: 'pain', nrs: true, q: 'Pain right now', low: '0 no pain', high: '10 worst imaginable' }, editEntry ? editEntry.value : null);
     const painNote = h('input', { type: 'text', placeholder: 'Where, or what helped (optional)', value: (editEntry && editEntry.note) || '' });
     body.append(h('p', { class: 'wiz-q', text: 'Pain right now' }), ...sl.nodes, field('Time', time), field('Note', painNote));
     getData = () => {
@@ -6154,7 +6154,7 @@ function twoPageCharts(entries, days) {
   ci.forEach((e) => { if (e.pain != null) painAll.push(Number(e.pain)); if (e.worstPain != null) painAll.push(Number(e.worstPain)); });
   entries.filter((e) => e.type === 'pain' && e.value != null).forEach((e) => painAll.push(Number(e.value)));
   const pv = vals(painDay), pAvg = pv.length ? pv.reduce((t, v) => t + v, 0) / pv.length : null, pWorst = painAll.length ? Math.max(...painAll) : null;
-  charts.push({ key: 'pain', title: 'Pain (1 to 10)', stat: pWorst == null ? 'No scores' : `Average ${(Math.round(pAvg * 10) / 10).toString()}, worst ${pWorst}`, tone: pWorst == null ? '' : toneOf(pWorst >= 7, pWorst >= 5),
+  charts.push({ key: 'pain', title: 'Pain (0 to 10)', stat: pWorst == null ? 'No scores' : `Average ${(Math.round(pAvg * 10) / 10).toString()}, worst ${pWorst}`, tone: pWorst == null ? '' : toneOf(pWorst >= 7, pWorst >= 5),
     min: 0, max: 10, ticks: [0, 5, 10], bands: [{ from: 7, to: 10, c: red }], series: [{ d: painDay, c: ink }] });
 
   const moodDay = days.map((d) => avgOf(ci.filter((e) => e.day === d && e.mood != null), (e) => Number(e.mood)));
@@ -7665,17 +7665,17 @@ const CHECKIN_QUESTIONS = {
     { key: 'nightToilet', kind: 'scale', pack: 'ibd', q: 'Up in the night for the toilet?', words: ['No', 'Once', 'Twice or more'], hint: 'One tap. Counts as a night on the Crohn\'s and colitis report.' },
     /* only on the three days after a treatment session (v189): how bad each usual side effect is */
     { key: 'sidefx', kind: 'sidefx', q: 'Any side effects since treatment?' },
-    { key: 'pain', kind: 'pain', q: 'Pain right now', low: '1 none', high: '10 worst', note: 'painNote' },
+    { key: 'pain', kind: 'pain', nrs: true, q: 'Pain right now', low: '0 no pain', high: '10 worst imaginable', note: 'painNote' },
     { key: 'mood', kind: 'slider', q: 'How is your mood?', low: '1 rough', high: '10 great', note: 'moodNote', noteQ: 'What is behind it? Optional.', notePh: 'e.g. a good night, a visitor coming, worried about tomorrow' },
     { key: 'lookingForward', kind: 'text', q: 'What are you looking forward to today?', ph: 'e.g. a walk in the garden, a visitor' }
   ],
   evening: [
     /* the body first, then the words, then mood as the last score beside one good thing (v147, as the morning in v146) */
-    { key: 'pain', kind: 'pain', q: 'Pain right now', low: '1 none', high: '10 worst', note: 'painNote' },
-    { key: 'worstPain', kind: 'pain', q: 'Worst pain today', low: '1 none', high: '10 worst', note: 'worstPainNote' },
+    { key: 'pain', kind: 'pain', nrs: true, q: 'Pain right now', low: '0 no pain', high: '10 worst imaginable', note: 'painNote' },
+    { key: 'worstPain', kind: 'pain', nrs: true, q: 'Worst pain today', low: '0 no pain', high: '10 worst imaginable', note: 'worstPainNote' },
     /* sickness belongs to chemo: with Crohn's or colitis alone it gives way to tummy pain (v221); with both packs both are asked */
     { key: 'sickness', kind: 'pain', q: 'Sickness today', low: '1 none', high: '10 severe', when: () => packOn('cancer') || !packOn('ibd') },
-    { key: 'gutPain', kind: 'pain', pack: 'ibd', q: 'Tummy pain or cramps today', low: '1 none', high: '10 worst' },
+    { key: 'gutPain', kind: 'pain', nrs: true, pack: 'ibd', q: 'Tummy pain or cramps today', low: '0 no pain', high: '10 worst imaginable' },
     { key: 'appetite', kind: 'slider', q: 'Appetite today', low: '1 nothing', high: '10 normal' },
     { key: 'energy', kind: 'slider', q: 'Energy today', low: '1 wiped out', high: '10 plenty' },
     { key: 'gutStop', kind: 'scale', pack: 'ibd', q: 'Did your gut stop you doing anything today?', hint: 'Going out, eating, work, sleep. One tap.' },
@@ -7723,7 +7723,7 @@ const CHECKIN_QUESTIONS = {
     { key: 'energy', kind: 'slider', q: 'Energy today, as you see it', low: '1 wiped out', high: '10 plenty' },
     { key: 'sickness', kind: 'pain', q: 'Sickness today, as you see it', low: '1 none', high: '10 severe' },
     { key: 'appetite', kind: 'slider', q: 'Eating today, as you see it', low: '1 nothing', high: '10 normal' },
-    { key: 'pain', kind: 'pain', q: 'Pain today, as you see it', low: '1 none', high: '10 worst' },
+    { key: 'pain', kind: 'pain', nrs: true, q: 'Pain today, as you see it', low: '0 no pain', high: '10 worst imaginable' },
     { key: 'mood', kind: 'slider', q: 'Mood today, as you see it', low: '1 rough', high: '10 great' },
     { key: 'noticed', kind: 'text', q: 'What did you notice today?', ph: 'e.g. slept most of the afternoon, colour better than yesterday' }
   ],
@@ -7750,6 +7750,15 @@ function wbText(v) {
   const bits = WB_ROWS.filter(([k]) => v[k] != null).map(([k, , label]) => label + ': ' + WB_WORDS[v[k]].toLowerCase());
   return bits.length ? bits.join(' \u00b7 ') : 'Skipped';
 }
+/* The pain scale (v241, Mark: "the NHS uses standard 0 to 10 Numerical Rating Scales and categorical breakdowns", and the
+   slider gave no description). Every pain slider runs 0 (no pain) to 10 (worst imaginable), and the band shows as you slide:
+   0 no pain, 1 to 3 mild, 4 to 6 moderate, 7 to 10 severe. Scores saved before v241 were 1 to 10 and read the same; the
+   report's own limits (amber from 5, red from 7) are unchanged. Sickness and the Symptom sheet are not pain scores and stay 1 to 10. */
+const PAIN_BANDS = [{ from: 0, to: 0, word: 'No pain', tone: 'none' }, { from: 1, to: 3, word: 'Mild', tone: 'mild' }, { from: 4, to: 6, word: 'Moderate', tone: 'moderate' }, { from: 7, to: 10, word: 'Severe', tone: 'severe' }];
+function painBandOf(v) { if (v == null || v === '' || isNaN(Number(v))) return null; const n = Number(v); return PAIN_BANDS.find((b) => n >= b.from && n <= b.to) || null; }
+/* "Moderate pain", "No pain": the band as words after a score */
+function painBandWord(v) { const b = painBandOf(v); return b ? (b.tone === 'none' ? 'No pain' : b.word + ' pain') : ''; }
+const NRS_KEYS = new Set(['pain', 'worstPain', 'gutPain']);
 /* The optional words under a pain slider (v128): where it is, what it is like. Stored beside the score as
    painNote / worstPainNote, shown after the score everywhere it shows, and in Notes for the team as a note. */
 const CHECKIN_NOTE_Q = 'Where is it, or anything else? Optional.';
@@ -7902,7 +7911,7 @@ function checkinCard(c, inEntry) {
     else {
       const empty = v == null;
       const words = (q.note && c[q.note]) || (q.legacyNote && c[q.legacyNote]) || '';
-      node = h('dd', { class: 'cc-v' + (empty ? ' is-empty' : ' is-num') }, empty ? 'Skipped' : v + '/10' + (q.kind === 'sleep' && c.sleepHours != null ? ' \u00b7 ' + c.sleepHours + ' h' : ''),
+      node = h('dd', { class: 'cc-v' + (empty ? ' is-empty' : ' is-num') }, empty ? 'Skipped' : v + '/10' + (q.nrs ? ' \u00b7 ' + painBandWord(v) : '') + (q.kind === 'sleep' && c.sleepHours != null ? ' \u00b7 ' + c.sleepHours + ' h' : ''),
         words ? h('span', { class: 'vnote', text: words }) : null);
     }
     return h('div', { class: 'cc-row' }, h('dt', { class: 'cc-k', text: CHECKIN_LABELS[q.key] || q.key }), node);
@@ -8030,11 +8039,25 @@ $('checkin-morning').addEventListener('click', () => openCheckin('morning', stat
 $('checkin-evening').addEventListener('click', () => openCheckin('evening', state.selectedDay));
 
 function sliderBlock(q, current, onChange) {
+  const lo = q.nrs ? 0 : 1;
   const num = h('div', { class: 'wiz-num' + (current == null ? ' is-unset' : ''), text: current == null ? 'Slide to answer' : String(current) });
-  const range = h('input', { type: 'range', class: 'slider' + (q.kind === 'pain' ? ' is-pain' : ''), min: '1', max: '10', step: '1', value: String(current == null ? 5 : current), 'aria-label': q.q });
+  const range = h('input', { type: 'range', class: 'slider' + (q.kind === 'pain' ? ' is-pain' : ''), min: String(lo), max: '10', step: '1', value: String(current == null ? 5 : current), 'aria-label': q.q });
   let touched = current != null;
-  range.addEventListener('input', () => { touched = true; num.textContent = range.value; num.classList.remove('is-unset'); if (onChange) onChange(); });
-  const nodes = [num, range, h('div', { class: 'wiz-anchors' }, h('span', { text: q.low }), h('span', { text: q.high }))];
+  /* a pain slider says its band as you slide (v241): the word under the number, the band lit in the key, and the same words read out */
+  const band = q.nrs ? h('p', { class: 'pain-band', 'aria-hidden': 'true' }) : null;
+  const key = q.nrs ? h('div', { class: 'pain-key', 'aria-hidden': 'true' }, ...PAIN_BANDS.map((b) => h('span', { class: 'pain-key-cell is-' + b.tone },
+    h('b', { text: b.tone === 'none' ? 'None' : b.word }), h('span', { text: b.from === b.to ? String(b.from) : b.from + ' to ' + b.to })))) : null;
+  const showBand = () => {
+    if (!q.nrs) return;
+    const b = touched ? painBandOf(range.value) : null;
+    band.textContent = b ? painBandWord(range.value) : '';
+    band.className = 'pain-band' + (b ? ' is-' + b.tone : ' is-unset');
+    [...key.children].forEach((c, i) => c.classList.toggle('is-on', Boolean(b) && PAIN_BANDS[i] === b));
+    if (b) range.setAttribute('aria-valuetext', range.value + ', ' + painBandWord(range.value).toLowerCase()); else range.removeAttribute('aria-valuetext');
+  };
+  showBand();
+  range.addEventListener('input', () => { touched = true; num.textContent = range.value; num.classList.remove('is-unset'); showBand(); if (onChange) onChange(); });
+  const nodes = [num, band, range, h('div', { class: 'wiz-anchors' }, h('span', { text: q.low }), h('span', { text: q.high })), key].filter(Boolean);
   return { nodes, value: () => (touched ? parseInt(range.value, 10) : null) };
 }
 
@@ -8245,7 +8268,7 @@ function openCheckin(slot, initialDay) {
       qs.forEach((q, i) => {
         const v = answers[q.key];
         let skipped = q.kind === 'text' ? !v : v == null;
-        let shown = skipped ? 'Skipped' : (q.kind === 'ticks' ? outsideText(v) : q.kind === 'taps' ? wbText(v) : q.kind === 'scale' ? scaleText(q, v) : q.kind === 'sidefx' ? fxText(v) : q.kind === 'text' ? v : String(v) + (q.kind === 'sleep' && answers.sleepHours != null ? ' · ' + answers.sleepHours + ' h' : ''));
+        let shown = skipped ? 'Skipped' : (q.kind === 'ticks' ? outsideText(v) : q.kind === 'taps' ? wbText(v) : q.kind === 'scale' ? scaleText(q, v) : q.kind === 'sidefx' ? fxText(v) : q.kind === 'text' ? v : String(v) + (q.nrs ? ' · ' + painBandWord(v) : '') + (q.kind === 'sleep' && answers.sleepHours != null ? ' · ' + answers.sleepHours + ' h' : ''));
         const words = q.note && answers[q.note] ? h('span', { class: 'vnote', text: answers[q.note] }) : null;
         list.append(h('li', null, h('button', { type: 'button', onclick: () => { dir = -1; step = i; fromReview = true; render(); } },
           h('span', { class: 'k', text: CHECKIN_LABELS[q.key] }),
@@ -9681,10 +9704,10 @@ function buildPainReport(n) {
   };
   const prnCounts = daysFull.map((d) => (d.prn ? d.prn : null)), prnMax = Math.max(4, ...prnCounts.map((k) => k || 0));
   const charts = [
-    painCfg('Morning pain (1 to 10)', daysFull.map((d) => d.pm), teal),
-    painCfg('Evening pain (1 to 10)', daysFull.map((d) => d.pe), teal),
-    painCfg('Worst pain today (1 to 10)', daysFull.map((d) => d.worst), warm),
-    painCfg('Between times (1 to 10)', daysFull.map((d) => (d.readings.length ? Math.max(...d.readings.map((r) => r.v)) : null)), ink),
+    painCfg('Morning pain (0 to 10)', daysFull.map((d) => d.pm), teal),
+    painCfg('Evening pain (0 to 10)', daysFull.map((d) => d.pe), teal),
+    painCfg('Worst pain today (0 to 10)', daysFull.map((d) => d.worst), warm),
+    painCfg('Between times (0 to 10)', daysFull.map((d) => (d.readings.length ? Math.max(...d.readings.map((r) => r.v)) : null)), ink),
     { title: 'When-needed pain relief (doses a day)', stat: prnDoses.length ? plural(prnDoses.length, 'dose') + ' on ' + plural(prnDays, 'day') : 'None logged', tone: relief.some((r) => r.hitMax) ? 'amber' : '', type: 'bars', min: 0, max: prnMax, ticks: prnMax > 6 ? [0, Math.round(prnMax / 2), prnMax] : [0, 2, 4].filter((t) => t <= prnMax), series: [{ d: prnCounts, c: warm }] },
     { title: 'Hours asleep', stat: nights.length ? `Average ${avg(nights.map((d) => d.sleep))} h` + (shortN.length ? `, ${plural(shortN.length, 'short night')}` : '') : 'No sleep logged', tone: nights.length ? (shortN.length ? 'amber' : 'green') : '', type: 'bars', flagBelow: 5, min: 0, max: Math.max(10, ...nights.map((d) => Math.ceil(d.sleep))), ticks: [0, 5, 10], series: [{ d: daysFull.map((d) => d.sleep), c: teal }] }
   ];

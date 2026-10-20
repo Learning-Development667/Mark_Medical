@@ -671,6 +671,18 @@ body.is-readonly #calls-edit, body.is-readonly .calls-actions { display: none; }
 .wiz-num { font-family: var(--font-head); font-weight: 600; font-size: 72px; line-height: 1; text-align: center; color: var(--teal); letter-spacing: 0.02em; margin: 6px 0 2px; min-height: 84px; transition: color var(--t-base) ease; }
 .wiz-num.is-unset { color: var(--text-secondary); font-size: 30px; font-family: var(--font-body); font-weight: 500; padding-top: 28px; }
 .wiz-anchors { display: flex; justify-content: space-between; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin: var(--s-1) 2px 14px; }
+/* The pain bands (v241): the NHS 0 to 10 scale's words under the number, and the four bands as a key under the slider */
+.pain-band { margin: 0 0 var(--s-2); min-height: 26px; text-align: center; font-size: 19px; font-weight: 600; color: var(--teal); }
+.pain-band.is-moderate { color: var(--warning-ink); }
+.pain-band.is-severe { color: var(--danger); }
+.pain-key { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin: 0 0 14px; }
+.pain-key-cell { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 6px 2px; border-radius: var(--r-sm); background: var(--surface-sunken); color: var(--text-secondary); font-size: 14px; line-height: 1.2; text-align: center; }
+.pain-key-cell b { font-weight: 600; color: var(--text-primary); }
+.pain-key-cell.is-on { box-shadow: inset 0 0 0 2px currentColor; }
+.pain-key-cell.is-none.is-on, .pain-key-cell.is-mild.is-on { background: var(--teal-light); color: var(--teal); }
+.pain-key-cell.is-moderate.is-on { background: var(--warning-light); color: var(--warning-ink); }
+.pain-key-cell.is-severe.is-on { background: var(--danger-light); color: var(--danger); }
+.pain-key-cell.is-on b { color: inherit; }
 .wiz-buttons { display: flex; gap: 10px; margin-top: var(--s-4); align-items: center; }
 .wiz-buttons .btn { margin-top: 0; }
 .wiz-buttons .btn-back { flex: 0 0 auto; padding: var(--s-3) var(--s-4); }
