@@ -109,11 +109,15 @@ const QUALITY = 0.8;
   await shot('Tap the medicine taken. When-needed ones come first, with whether they can be given now.');
   await closeSheet();
   await tab('meds');
-  await shot('Manage medicines adds one, changes a dose, or sets reminder times. Reminders arrive as notifications once they are switched on under Settings.', '#meds-manage');
+  await shot('Manage medicines adds one, changes a dose or the times it is taken. Reminders arrive as notifications once they are switched on under Settings.', '#meds-manage');
   await page.click('#meds-manage'); await page.waitForSelector('#sheet:not([hidden])');
   await shot('Add a medicine sits at the top. Under it, every medicine on the list, with what it is for and Edit. A finished course keeps its history under Medicine history.', '#sheet-body .medrow:has-text("Diazepam") button');
   await page.click('#sheet-body .medrow:has-text("Diazepam") button'); await settle(700);
-  await shot('Edit says whether it is regular or when needed, then how it is taken (tablets, gel in pumps and the rest), how many each time and the strength, so Log now records the right amount. Reminder times are further down.', '#sheet-body [aria-label="Regular or when needed?"]');
+  await shot('Edit says whether it is regular or when needed, then how it is taken (tablets, gel in pumps and the rest), how many each time and the strength, so Log now records the right amount.', '#sheet-body [aria-label="Regular or when needed?"]');
+  await closeSheet();
+  await page.click('#meds-manage'); await page.waitForSelector('#sheet:not([hidden])');
+  await page.click('#sheet-body .medrow:has-text("Senna") button'); await settle(700);
+  await shot('A regular medicine then asks when you take it: tap Morning, Midday, Teatime or Night, or add any other time. One in the morning and one at night is Morning and Night. The same times are its reminders.', '#sheet-body .med-when-block .preset:has-text("Night")');
   await closeSheet();
 
   /* 4. a question */
