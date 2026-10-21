@@ -117,7 +117,7 @@ const QUALITY = 0.8;
   await closeSheet();
   await page.click('#meds-manage'); await page.waitForSelector('#sheet:not([hidden])');
   await page.click('#sheet-body .medrow:has-text("Senna") button'); await settle(700);
-  await shot('A regular medicine then asks when you take it: tap Morning, Midday, Teatime or Night, or add any other time. One in the morning and one at night is Morning and Night. The same times are its reminders.', '#sheet-body .med-when-block .preset:has-text("Night")');
+  await shot('A regular medicine then asks when you take it: tick Morning, Midday, Teatime or Night and set each time. One in the morning and one at night is Morning and Night. The same times are its reminders.', '#sheet-body .when-row[data-slot="night"] input[type=checkbox]');
   await closeSheet();
 
   /* 4. a question */
