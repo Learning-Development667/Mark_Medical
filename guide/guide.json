@@ -1,5 +1,5 @@
 {
- "made": "2026-10-20",
+ "made": "2026-10-21",
  "width": 390,
  "height": 844,
  "topics": [
@@ -14,7 +14,7 @@
      "caption": "On Today, tap Vitals. The other tiles log pain, a drink, food, a note, sleep, bowels, a symptom or a dose the same way.",
      "tap": {
       "x": 0.187,
-      "y": 0.248
+      "y": 0.284
      }
     },
     {
@@ -106,7 +106,7 @@
      "caption": "The Meds tab lists today's medicines, each with how many doses are done. Tap Log now when one is taken.",
      "tap": {
       "x": 0.772,
-      "y": 0.381
+      "y": 0.353
      }
     },
     {
@@ -118,7 +118,7 @@
      "caption": "The arrows at the foot of an open card, or holding the name for a second and sliding it, put the list in your own order.",
      "tap": {
       "x": 0.5,
-      "y": 0.434
+      "y": 0.835
      }
     },
     {
@@ -143,10 +143,10 @@
     },
     {
      "file": "meds-7.webp",
-     "caption": "Every medicine on the list, with what it is for and Edit. A finished course keeps its history under Medicine history.",
+     "caption": "Add a medicine sits at the top. Under it, every medicine on the list, with what it is for and Edit. A finished course keeps its history under Medicine history.",
      "tap": {
       "x": 0.163,
-      "y": 0.862
+      "y": 0.945
      }
     },
     {

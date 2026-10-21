@@ -950,6 +950,8 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 .editrow .field { margin-bottom: 0; }
 .editrow .iconbtn { box-shadow: none; background: var(--danger-light); color: var(--danger); font-size: 24px; }
 .medlist { display: flex; flex-direction: column; gap: var(--s-2); }
+.sheet-body .btn-block.medlist-add { margin-top: 0; margin-bottom: var(--s-4); }
+.sheet-body .medlist + .btn-block { margin-top: var(--s-4); }
 .medrow { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; background: var(--surface-sunken); border-radius: var(--r-sm); padding: 10px var(--s-3); min-height: 56px; }
 .medrow .medrow-name { flex: 1 1 120px; min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
 .medrow .pill { white-space: nowrap; }
