@@ -132,9 +132,11 @@ if (action === 'create') {
   for (const hid of hids) {
     const ms = await fs.list(`households/${hid}/members`);
     console.log(`=== circle ${hid}, members: ${ms.map((m) => fieldString(m.fields, 'name') + ' (' + fieldString(m.fields, 'role') + ')').join(', ')}`);
-    const es = (await fs.list(`households/${hid}/entries`)).filter((e) => fieldString(e.fields, 'day') >= since);
+    const all = await fs.list(`households/${hid}/entries`);
+    const es = all.filter((e) => fieldString(e.fields, 'day') >= since || tsv(e.fields, 'createdAt').slice(0, 10) >= since);
+    console.log(`${all.length} entries in the circle in all; food entries on any day: ${all.filter((e) => fieldString(e.fields, 'type') === 'food').map((e) => fieldString(e.fields, 'day')).sort().join(', ') || 'none'}`);
     es.sort((a, b) => tsv(a.fields, 'createdAt').localeCompare(tsv(b.fields, 'createdAt')));
-    console.log(`Entries from ${since}, in the order they reached the database (type | day | time logged | saved at | by):`);
+    console.log(`Entries dated or saved from ${since}, in the order they reached the database (type | day | time logged | saved at | by):`);
     for (const e of es) {
       const f = e.fields;
       console.log(`  ${fieldString(f, 'type').padEnd(9)} | ${fieldString(f, 'day')} | ${london(tsv(f, 'at'))} | ${london(tsv(f, 'createdAt'))} | ${fieldString(f, 'addedBy')}${tsv(f, 'updatedAt') ? ' | updated ' + london(tsv(f, 'updatedAt')) : ''}`);
