@@ -13,7 +13,11 @@
    ACTION=list        every household with its members, and the Beta code and "who told you" it came in on.
    ACTION=beta-code   CODE (letters and digits, say BINCEY or SCRI), LABEL (where it goes: "Bincey's patients"),
                       OFF=yes to switch an existing code off (a leaked one), otherwise made or switched on.
-   ACTION=beta-codes  every Beta code with its label, state and uses. */
+   ACTION=beta-codes  every Beta code with its label, state and uses.
+   ACTION=unseed-check / unseed  (v248) until v248 every new circle was given the app's starter medicines list,
+                      which was Mark's own from September 2026. These list (unseed-check) or delete (unseed) those
+                      copies in every circle that came in on a Beta code (Mark's own circle has none), keeping any
+                      the circle has renamed or changed the dose of, or logged a dose of. */
 import { loadServiceAccount, connect, str, ts, fieldString, newId, newKey, sha256Hex } from './lib/firestore_rest.mjs';
 
 const action = (process.env.ACTION || '').trim();
@@ -78,6 +82,24 @@ if (action === 'create') {
   const codes = await fs.list('betaCodes');
   for (const c of codes) console.log(`${c.id}  ${fieldString(c.fields, 'label')}  ${c.fields.active && c.fields.active.booleanValue === false ? 'off' : 'on'}  used ${(c.fields.uses && c.fields.uses.integerValue) || 0} times`);
   if (!codes.length) console.log('No Beta codes yet. Make one with beta-code.');
+} else if (action === 'unseed-check' || action === 'unseed') {
+  const SEED = { dalteparin: 'Dalteparin injection', 'co-amoxiclav': 'Co-amoxiclav 500/125mg', creon: 'Creon 25000', oramorph: 'Oramorph 10mg/5ml', diazepam: 'Diazepam', metoclopramide: 'Metoclopramide', chlorphenamine: 'Chlorphenamine', 'menthol-cream': 'Menthol 2% cream', macrogol: 'Macrogol sachets', senna: 'Senna' };
+  const apply = action === 'unseed';
+  let total = 0;
+  for (const h of await fs.list('households')) {
+    const code = fieldString(h.fields, 'betaCode');
+    if (!code) { console.log(`${h.id}  ${fieldString(h.fields, 'name')}: no Beta code, left alone`); continue; }
+    const meds = await fs.list(`households/${h.id}/medicines`);
+    const copies = meds.filter((m) => SEED[m.id] && fieldString(m.fields, 'name') === SEED[m.id]);
+    if (!copies.length) { console.log(`${h.id}  ${fieldString(h.fields, 'name')} (${code}): none`); continue; }
+    const dosed = new Set((await fs.list(`households/${h.id}/entries`)).filter((e) => fieldString(e.fields, 'type') === 'med').map((e) => fieldString(e.fields, 'medId')));
+    const go = copies.filter((m) => !dosed.has(m.id));
+    const kept = copies.filter((m) => dosed.has(m.id)).map((m) => m.id);
+    console.log(`${h.id}  ${fieldString(h.fields, 'name')} (${code}): ${go.length} starter medicines to ${apply ? 'delete' : 'remove'}${kept.length ? '; kept, doses logged: ' + kept.join(', ') : ''}`);
+    if (apply && go.length) await fs.deleteMany(go.map((m) => `${fs.root}/households/${h.id}/medicines/${m.id}`));
+    total += go.length;
+  }
+  console.log(apply ? `Deleted ${total}.` : `${total} would be deleted. Run unseed to delete them.`);
 } else if (action === 'list') {
   const hs = await fs.list('households');
   for (const h of hs) {
@@ -87,6 +109,6 @@ if (action === 'create') {
   }
   if (!hs.length) console.log('No households yet.');
 } else {
-  console.error('ACTION must be create, add-member, remove-member, new-key, beta-code, beta-codes or list');
+  console.error('ACTION must be create, add-member, remove-member, new-key, beta-code, beta-codes, unseed-check, unseed or list');
   process.exit(1);
 }

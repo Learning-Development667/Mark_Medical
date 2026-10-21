@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '247';
+const APP_VERSION = '248';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -39,7 +39,9 @@ const CDN = {
   html2canvas: 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'
 };
 
-const SEED_MEDICINES = [
+/* The medicines of the cancer preview and the shared demo only (v248). Until v248 every new real circle was given this list
+   too (seedMedicinesIfEmpty), so Beta circles opened with somebody else's medicines; a new circle now starts with none. */
+const DEMO_MEDICINES = [
   { id: 'dalteparin', name: 'Dalteparin injection', dose: '7,500 units', how: 'Twice a day, morning and evening', purpose: 'Blood clots in lungs', kind: 'scheduled', perDay: 2 },
   { id: 'co-amoxiclav', name: 'Co-amoxiclav 500/125mg', dose: '1 tablet', how: 'Three times a day, 5-day course', purpose: 'Infection', kind: 'scheduled', perDay: 3, courseEnd: '2026-09-23' },
   { id: 'creon', name: 'Creon 25000', dose: '2 capsules', how: 'With each meal', purpose: 'Helps digest food', kind: 'scheduled', perDay: 3 },
@@ -1278,7 +1280,7 @@ async function seedDemoIfEmpty() {
   if (!snap.empty) { await topUpDemo(); return; }
   const fixture = buildDemoFixture();
   const writes = [];
-  SEED_MEDICINES.forEach((m, i) => { const { id, ...data } = m; writes.push(['medicines', id, { ...data, active: true, order: i + 1 }]); });
+  DEMO_MEDICINES.forEach((m, i) => { const { id, ...data } = m; writes.push(['medicines', id, { ...data, active: true, order: i + 1 }]); });
   fixture.entries.forEach((e) => { const { id, ...data } = e; writes.push(['entries', id, data]); });
   fixture.documents.forEach((d) => { const { id, ...data } = d; writes.push(['documents', id, { ...data, pageCount: 0 }]); });
   Object.entries(fixture.days).forEach(([k, d]) => writes.push(['days', k, d]));
@@ -1323,7 +1325,6 @@ async function startData() {
   watchDay();
   watchDays();
   if (state.viewer) return; // Meds, Chemo (via watchDays above) and Trends only, nothing else, no writes
-  if (!state.readOnly) await seedMedicinesIfEmpty(); // a write; read-only sees whatever is already there
   watchDocuments();
   watchProfile();
   watchExercise();
@@ -1752,7 +1753,7 @@ function startDemoData(pack) {
   window.daybookPreview = { state, addEntry, renderExercise, exerciseLogFor, syncUsageRow, openUsage };
   state.previewPack = pack === 'ibd' ? 'ibd' : 'cancer';
   const fixture = state.previewPack === 'ibd' ? buildIbdFixture() : buildDemoFixture();
-  const seed = state.previewPack === 'ibd' ? IBD_MEDICINES : SEED_MEDICINES;
+  const seed = state.previewPack === 'ibd' ? IBD_MEDICINES : DEMO_MEDICINES;
   state.medicines = seed.map((m, i) => ({ ...m, active: true, order: i + 1 }));
   if (state.previewPack === 'ibd') {
     /* the steroid course sits around today: started with the flare, four weeks in all */
@@ -1783,21 +1784,6 @@ function startDemoData(pack) {
   setTimeout(offerDraft, 4200); // after the welcome line has had its four seconds
   renderCalls();
   syncSettings();
-}
-
-async function seedMedicinesIfEmpty() {
-  try {
-    const snap = await getDocs(hcol('medicines'));
-    if (!snap.empty) return;
-    const batch = writeBatch(db);
-    SEED_MEDICINES.forEach((m, i) => {
-      const { id, ...data } = m;
-      batch.set(hdoc('medicines', id), { ...data, active: true, order: i + 1 });
-    });
-    await batch.commit();
-  } catch (e) {
-    console.warn('Seed skipped', e);
-  }
 }
 
 function watchMedicines() {
@@ -9108,6 +9094,10 @@ function renderMeds() {
   const day = state.selectedDay;
   const sched = activeScheduled(day).filter((m) => !hospitalHidden(m));
   const prn = activePrn().filter((m) => !hospitalHidden(m));
+  /* No medicines at all yet (a new circle starts empty since v248): one clear way in, not two bare lines */
+  const none = !state.medicines.some((m) => m.active !== false);
+  $('meds-first').hidden = !none;
+  $('meds-lists').hidden = none;
   $('meds-scheduled').replaceChildren(...sched.map((m) => medCard(m, day, sched)));
   if (!sched.length) $('meds-scheduled').append(h('p', { class: 'empty', 'data-art': 'pill', text: 'No scheduled medicines.' }));
   $('meds-prn').replaceChildren(...prn.map((m) => medCard(m, day, prn)));
@@ -10496,6 +10486,7 @@ async function logMedAtTime(m) {
 
 /* Manage medicines */
 $('meds-manage').addEventListener('click', openManageMeds);
+$('meds-first-add').addEventListener('click', () => openEditMed(null));
 $('meds-history').addEventListener('click', openMedHistoryList);
 $('meds-hospital-add').addEventListener('click', () => openHospitalDose(null));
 
