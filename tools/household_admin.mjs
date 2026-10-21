@@ -17,7 +17,10 @@
    ACTION=unseed-check / unseed  (v248) until v248 every new circle was given the app's starter medicines list,
                       which was Mark's own from September 2026. These list (unseed-check) or delete (unseed) those
                       copies in every circle that came in on a Beta code (Mark's own circle has none), keeping any
-                      the circle has renamed or changed the dose of, or logged a dose of. */
+                      the circle has renamed or changed the dose of, or logged a dose of.
+                      ALL=yes (v253) checks every circle, Beta code or not, naming its members, and leaves alone
+                      only HOUSEHOLD_ID (Mark's own, whose medicines are real); unseed with ALL=yes refuses to run
+                      without HOUSEHOLD_ID. */
 import { loadServiceAccount, connect, str, ts, fieldString, newId, newKey, sha256Hex } from './lib/firestore_rest.mjs';
 
 const action = (process.env.ACTION || '').trim();
@@ -85,11 +88,19 @@ if (action === 'create') {
 } else if (action === 'unseed-check' || action === 'unseed') {
   const SEED = { dalteparin: 'Dalteparin injection', 'co-amoxiclav': 'Co-amoxiclav 500/125mg', creon: 'Creon 25000', oramorph: 'Oramorph 10mg/5ml', diazepam: 'Diazepam', metoclopramide: 'Metoclopramide', chlorphenamine: 'Chlorphenamine', 'menthol-cream': 'Menthol 2% cream', macrogol: 'Macrogol sachets', senna: 'Senna' };
   const apply = action === 'unseed';
+  const all = env('ALL') === 'yes', keep = env('HOUSEHOLD_ID');
+  if (all && apply && !keep) { console.error('unseed with ALL=yes needs HOUSEHOLD_ID: the circle to leave alone (Mark\'s own)'); process.exit(1); }
   let total = 0;
   for (const h of await fs.list('households')) {
-    const code = fieldString(h.fields, 'betaCode');
+    const code = fieldString(h.fields, 'betaCode') || (all ? 'no Beta code' : '');
+    if (all) {
+      const who = (await fs.list(`households/${h.id}/members`)).map((m) => `${fieldString(m.fields, 'name')} (${fieldString(m.fields, 'role')}${fieldString(m.fields, 'relation') ? ', ' + fieldString(m.fields, 'relation') : ''})`);
+      console.log(`--- ${h.id}  ${fieldString(h.fields, 'name')}  members: ${who.join(', ') || 'none'}`);
+      if (h.id === keep) { console.log(`${h.id}: left alone (HOUSEHOLD_ID)`); continue; }
+    }
     if (!code) { console.log(`${h.id}  ${fieldString(h.fields, 'name')}: no Beta code, left alone`); continue; }
     const meds = await fs.list(`households/${h.id}/medicines`);
+    if (all) console.log(`   medicines in this circle: ${meds.map((m) => fieldString(m.fields, 'name') + (SEED[m.id] ? ' [starter id ' + m.id + ']' : '')).join('; ') || 'none'}`);
     const copies = meds.filter((m) => SEED[m.id] && fieldString(m.fields, 'name') === SEED[m.id]);
     if (!copies.length) { console.log(`${h.id}  ${fieldString(h.fields, 'name')} (${code}): none`); continue; }
     const dosed = new Set((await fs.list(`households/${h.id}/entries`)).filter((e) => fieldString(e.fields, 'type') === 'med').map((e) => fieldString(e.fields, 'medId')));
