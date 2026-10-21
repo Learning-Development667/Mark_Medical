@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '254';
+const APP_VERSION = '255';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -2883,7 +2883,7 @@ const WHATS_NEW = [
     { text: 'Regular or when needed is now the first thing to choose when you add or change a medicine, straight under its name.' },
     { text: 'Gel is now a dose type, counted in pumps, for medicines like Oestrogel.' },
     { text: 'Water you take a medicine in, like a Macrogol sachet in 250 ml, now counts in your drinks for the day by itself.' },
-    { text: 'When you add or change a regular medicine, choose when you take it: Morning, Midday, Teatime, Night or any other time. One in the morning and one at night is Morning and Night, and the same times are its reminders.' },
+    { text: 'When you add or change a regular medicine, tick when you take it, Morning, Midday, Teatime or Night, and set the time for each. One in the morning and one at night is Morning and Night, and the same times are its reminders.' },
     { text: 'A medicine with a Course starts date waits under Starting soon on the Meds tab, and is not counted or reminded about until that day.' }
   ] }
 ];
@@ -11102,35 +11102,47 @@ function openEditMed(m, prefill) {
      Night toggle 08:00, 12:00, 17:00 and 22:00, any other time can be added, the number a day follows the
      times chosen, and the same times are the reminders unless Remind me is unticked. Saved as takenAt (the
      times it is taken), times (the reminder times, the bridge's field, empty when unticked) and perDay. */
-  const SLOTS = [['08:00', 'Morning'], ['12:00', 'Midday'], ['17:00', 'Teatime'], ['22:00', 'Night']];
-  const times = (m.takenAt && m.takenAt.length ? m.takenAt : m.times || []).slice().sort();
+  /* v255 (Mark): no extra times, just Morning and Night with their own time each. Midday and Teatime stay for a
+     medicine taken three or four times a day. Each row is a tick and its own time box (defaults 08:00, 12:00,
+     17:00, 22:00); changing the time ticks the row. A saved time goes to the row its hour falls in (before 11
+     morning, before 15 midday, before 20 teatime, else night), the earliest when two fall in one. */
+  const SLOTS = [['morning', 'Morning', '08:00'], ['midday', 'Midday', '12:00'], ['teatime', 'Teatime', '17:00'], ['night', 'Night', '22:00']];
+  const slotOfTime = (t) => { const hr = parseInt(t, 10); return hr >= 4 && hr < 11 ? 'morning' : hr >= 11 && hr < 15 ? 'midday' : hr >= 15 && hr < 20 ? 'teatime' : 'night'; };
+  const saved = {};
+  (m.takenAt && m.takenAt.length ? m.takenAt : m.times || []).slice().sort().forEach((t) => { const k = slotOfTime(t); if (!saved[k]) saved[k] = t; });
   const remind = h('input', { type: 'checkbox' });
   remind.checked = !(m.takenAt && m.takenAt.length && !(m.times && m.times.length));
-  const timeChips = h('div', { class: 'presets timechips', role: 'group', 'aria-label': 'When do you take it?' });
-  const timeInputEl = h('input', { type: 'time', 'aria-label': 'Another time to add' });
   const whenLine = h('p', { class: 'med-dose-preview', role: 'status' });
   const perDayField = field('How many times a day', perDay);
   const perDayHint = h('p', { class: 'hint', text: 'Or, if the times vary, just say how many times a day.' });
   const remindField = h('div', null, h('label', { class: 'check' }, remind, h('span', { text: 'Remind me at these times' })),
     h('p', { class: 'hint', text: 'A notification on each phone that has reminders switched on (More > Settings). Nothing is sent if the dose is already logged.' }));
-  const toggleTime = (t) => { const i = times.indexOf(t); if (i >= 0) times.splice(i, 1); else times.push(t); times.sort(); drawTimes(); };
+  const slotRows = SLOTS.map(([key, word, def]) => {
+    const tick = h('input', { type: 'checkbox', 'aria-label': word });
+    tick.checked = !!saved[key];
+    const time = h('input', { type: 'time', value: saved[key] || def, 'aria-label': word + ' time' });
+    return { key, word, tick, time, el: h('div', { class: 'when-row', 'data-slot': key }, h('label', { class: 'check when-tick' }, tick, h('span', { text: word })), time) };
+  });
+  const chosen = () => slotRows.filter((r) => r.tick.checked && r.time.value).map((r) => r.time.value).sort();
+  let times = chosen();
   const drawTimes = () => {
-    const slotTimes = SLOTS.map(([t]) => t);
-    timeChips.replaceChildren(
-      ...SLOTS.map(([t, word]) => { const on = times.includes(t); return h('button', { class: 'preset' + (on ? ' is-active' : ''), type: 'button', 'aria-pressed': on ? 'true' : 'false', onclick: () => toggleTime(t) }, word + ' ' + t); }),
-      ...times.filter((t) => !slotTimes.includes(t)).map((t) => h('button', { class: 'preset is-active', type: 'button', 'aria-pressed': 'true', 'aria-label': 'Remove ' + t, onclick: () => toggleTime(t) }, t + ' \u00d7')));
+    times = chosen();
+    slotRows.forEach((r) => r.el.classList.toggle('is-on', r.tick.checked));
     whenLine.textContent = times.length ? (times.length === 1 ? 'Once a day, at ' + times[0] + '.' : times.length + ' times a day, at ' + joinAnd(times) + '.') : '';
     perDayField.hidden = perDayHint.hidden = !!times.length;
     remindField.hidden = !times.length;
     if (times.length) perDay.value = String(times.length);
   };
+  slotRows.forEach((r) => {
+    r.tick.addEventListener('change', drawTimes);
+    r.time.addEventListener('input', () => { if (r.time.value) r.tick.checked = true; drawTimes(); });
+    r.time.addEventListener('change', () => { if (r.time.value) r.tick.checked = true; drawTimes(); });
+  });
   drawTimes();
-  const addTime = h('button', { class: 'btn btn-secondary btn-small', type: 'button', onclick: () => { const v = timeInputEl.value; if (!v) return; if (!times.includes(v)) times.push(v); times.sort(); timeInputEl.value = ''; drawTimes(); } }, 'Add a time');
   const whenBlock = h('div', { class: 'med-when-block' },
     h('p', { class: 'fieldlabel', text: 'When do you take it?' }),
-    h('p', { class: 'hint', text: 'Tap each time of day. For one in the morning and one at night, tap Morning and Night.' }),
-    timeChips,
-    h('div', { class: 'field-row timeadd' }, timeInputEl, addTime),
+    h('p', { class: 'hint', text: 'Tick each time of day and set the time. For one in the morning and one at night, tick Morning and Night.' }),
+    h('div', { class: 'when-rows', role: 'group', 'aria-label': 'When do you take it?' }, ...slotRows.map((r) => r.el)),
     whenLine, perDayField, perDayHint, remindField);
   const withMeals = h('input', { type: 'checkbox' });
   withMeals.checked = medWithMeals(m);
@@ -11189,6 +11201,7 @@ function openEditMed(m, prefill) {
       /* a dose typed on a medicine no longer taken is what the person wants shown for it (v216): shownDose() keeps it */
       if (!isNew && !stillTaken && data.dose !== oldDose) data.doseSet = true;
       if (kind.value === 'scheduled') {
+        times = chosen();
         data.perDay = hospital.checked ? null : (times.length || Math.max(1, parseInt(perDay.value, 10) || 1));
         data.takenAt = hospital.checked ? [] : times.slice();
         data.courseEnd = courseEnd.value || null;
