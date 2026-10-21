@@ -106,7 +106,7 @@
      "caption": "The Meds tab lists today's medicines, each with how many doses are done. Tap Log now when one is taken.",
      "tap": {
       "x": 0.772,
-      "y": 0.353
+      "y": 0.406
      }
     },
     {
@@ -118,7 +118,7 @@
      "caption": "The arrows at the foot of an open card, or holding the name for a second and sliding it, put the list in your own order.",
      "tap": {
       "x": 0.5,
-      "y": 0.835
+      "y": 0.434
      }
     },
     {
@@ -138,7 +138,7 @@
      "caption": "Manage medicines adds one, changes a dose or the times it is taken. Reminders arrive as notifications once they are switched on under Settings.",
      "tap": {
       "x": 0.264,
-      "y": 0.193
+      "y": 0.206
      }
     },
     {
@@ -249,7 +249,7 @@
      "file": "treatment-4.webp",
      "caption": "On the three days after a session, the morning and evening check-ins ask about side effects: none, mild, moderate or severe for each.",
      "tap": {
-      "x": 0.536,
+      "x": 0.5,
       "y": 0.515
      }
     },

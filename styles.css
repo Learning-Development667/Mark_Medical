@@ -1621,6 +1621,10 @@ h1, h2, h3 { font-weight: 600; }
 .pill-muted { background: var(--surface-sunken); color: var(--text-secondary); }
 .meds-top { margin-top: 0; }
 .meds-top .btn { min-width: 0; }
+/* v257: the two Meds tab buttons as tinted tiles with an icon over the words, like the Reports cards, and a proper gap above Scheduled (the first child of #meds-lists, so the first-child rule took its gap away) */
+.meds-top .btn { flex-direction: column; gap: var(--s-1); min-height: 76px; padding: var(--s-3) var(--s-2); line-height: 1.2; text-align: center; }
+.meds-top .btn .icon { width: 26px; height: 26px; }
+#meds-lists > .section-title:first-child { margin-top: var(--s-6); }
 .medhist-head { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-1); }
 .medhist-head p { margin: 0; }
 .medhist-dose { font-weight: 600; }
