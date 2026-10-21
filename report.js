@@ -151,6 +151,8 @@ export function renderChart(cfg, days) {
   });
   /* small marks under the plot for the days passed in cfg.marks (treatment sessions on the mood chart, v155) */
   (cfg.marks || []).forEach((i) => { if (i >= 0 && i < n) s += `<path d="M${(x(i) - 1.6).toFixed(1)} ${(T + ph + 2.2).toFixed(1)} L${(x(i) + 1.6).toFixed(1)} ${(T + ph + 2.2).toFixed(1)} L${x(i).toFixed(1)} ${(T + ph - 0.4).toFixed(1)} Z" fill="${C.ink}"/>`; });
+  /* small teal dots below those for the days in cfg.dots (fasting days on the Crohn's bowel chart, v258) */
+  (cfg.dots || []).forEach((i) => { if (i >= 0 && i < n) s += `<circle cx="${x(i).toFixed(1)}" cy="${(T + ph + 4.6).toFixed(1)}" r="1.15" fill="${C.teal}"/>`; });
   const any = cfg.series.some((se) => se.d.some((v) => v != null));
   if (!any) {
     s += `<text x="${L + pw / 2}" y="${T + ph / 2 + 2}" font-size="7" fill="${C.slate}" text-anchor="middle">No readings in this period</text>`;
@@ -858,7 +860,10 @@ async function paginate(frame, M, render, opts = {}) {
       const idx = M.pages[p];
       let at = idx.indexOf(Number(bad.dataset.i));
       while (at > 0 && /^(sec|grp)$/.test(M.items[idx[at - 1]].t)) at -= 1; // keep headings with their first row
-      if (at <= 0) return { ok: false, over: ['Page ' + (p + 1)], R: M, doc }; // one row taller than a page
+      /* page 1 has its masthead, tiles and charts above the first item, so that item can still start page 2 (v258: the
+         Crohn's report's brief, with a fasting paragraph, no longer fitted under the charts and the report failed) */
+      if (at <= 0 && p > 0) return { ok: false, over: ['Page ' + (p + 1)], R: M, doc }; // one row taller than a page
+      if (at < 0) at = 0;
       const rest = idx.splice(at);
       if (M.pages[p + 1]) M.pages[p + 1].unshift(...rest); else M.pages.push(rest);
       moved = true;

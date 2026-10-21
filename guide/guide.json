@@ -427,6 +427,14 @@
     },
     {
      "file": "ibd-5.webp",
+     "caption": "The morning check-in asks whether you are fasting today, and which kind. One tap; it goes on the Food diary and the reports.",
+     "tap": {
+      "x": 0.675,
+      "y": 0.944
+     }
+    },
+    {
+     "file": "ibd-6.webp",
      "caption": "The Treatment tab: your flare plan, flare days shaded on the calendar, injections or infusions with the next one due, and any steroid course.",
      "tap": {
       "x": 0.5,
@@ -434,11 +442,11 @@
      }
     },
     {
-     "file": "ibd-6.webp",
+     "file": "ibd-7.webp",
      "caption": "Results: blood tests and calprotectin as the team gave them, charted against the lab's own range. Daybook never says whether one is good or bad."
     },
     {
-     "file": "ibd-7.webp",
+     "file": "ibd-8.webp",
      "caption": "The Crohn's and colitis report: bowels against your usual, blood, urgency, flares, treatment and results, with your questions for the gastro team.",
      "tap": {
       "x": 0.5,
