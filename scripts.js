@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '248';
+const APP_VERSION = '249';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -1750,7 +1750,7 @@ function buildIbdFixture() {
 
 function startDemoData(pack) {
   /* a hook for the Playwright harness, preview only: nothing here can reach Firestore */
-  window.daybookPreview = { state, addEntry, renderExercise, exerciseLogFor, syncUsageRow, openUsage };
+  window.daybookPreview = { state, addEntry, renderExercise, exerciseLogFor, syncUsageRow, openUsage, logMed, deleteEntry, doseWaterMl, syncMedWater };
   state.previewPack = pack === 'ibd' ? 'ibd' : 'cancer';
   const fixture = state.previewPack === 'ibd' ? buildIbdFixture() : buildDemoFixture();
   const seed = state.previewPack === 'ibd' ? IBD_MEDICINES : DEMO_MEDICINES;
@@ -2323,7 +2323,7 @@ function watchMeals() {
 }
 
 const lastExerciseWrite = new Map();   // "exId|who" -> { at, id }
-async function addEntry(data) {
+async function addEntry(data, fixedId) {
   const at = data.at instanceof Date ? data.at : new Date();
   /* safety net: the same exercise by the same person within seconds is one tap counted twice, so return the first id and write nothing */
   const dupKey = data.type === 'exercise' ? (data.exId || data.note) + '|' + state.name : null;
@@ -2340,7 +2340,7 @@ async function addEntry(data) {
     createdAt: state.demo ? demoTs(new Date()) : serverTimestamp()
   };
   if (state.demo) {
-    const id = fakeId('entry');
+    const id = fixedId || fakeId('entry');
     state.recentEntries.push({ id, ...entry });
     sortEntries(state.recentEntries);
     state.dayEntries = state.recentEntries.filter((e) => e.day === state.selectedDay);
@@ -2349,7 +2349,7 @@ async function addEntry(data) {
     if (!$('view-vitals').hidden) renderVitals();
     return remember(id);
   }
-  const ref = doc(hcol('entries'));
+  const ref = fixedId ? hdoc('entries', fixedId) : doc(hcol('entries'));
   setDoc(ref, entry).catch((e) => { console.error(e); toast('Could not save. It will retry when online.'); });
   return remember(ref.id);
 }
@@ -2375,6 +2375,9 @@ async function updateEntry(id, data) {
 }
 
 function deleteEntry(id) {
+  /* a dose taken in water goes with its drink (v249) */
+  const water = medWaterOf(id);
+  if (water) deleteEntry(water.id);
   if (state.demo) {
     state.recentEntries = state.recentEntries.filter((e) => e.id !== id);
     state.dayEntries = state.dayEntries.filter((e) => e.id !== id);
@@ -2383,6 +2386,41 @@ function deleteEntry(id) {
     return Promise.resolve();
   }
   return deleteDoc(hdoc('entries', id));
+}
+
+/* Water taken with a medicine counts as a drink (v249, Mark: "when medications include fluids add
+   those fluids to the drinks for that day, for example the macrogol. We have been doing it manually").
+   A dose whose amount says "in 250 ml water" (or whose how-and-when does, "each in 125 ml water" times
+   the number taken) writes a drink beside it, `entries/{doseId}_water` { type "drink", value, note
+   "Water with Macrogol", fromMed, medId }, so every drinks total, chart and report counts it. A liquid
+   medicine's own ml ("10 ml") is a dose, not a drink, and a drip is not drunk, so neither counts.
+   Undo, Delete and Change the time or note keep the two together. Doses logged before v249 are left
+   alone, since those drinks were already typed in by hand. */
+const WATER_RE = /([\d,]*\.?\d+)\s*ml\s+(?:of\s+)?(?:water|fluid|liquid)\b/i;
+function doseWaterMl(dose, how) {
+  const d = String(dose || ''), hw = String(how || '');
+  let src = d, w = d.match(WATER_RE);
+  if (!w) { src = hw; w = hw.match(WATER_RE); }
+  if (!w) return 0;
+  let ml = parseFloat(w[1].replace(/,/g, ''));
+  /* "each in 125 ml water" is per sachet: times the number taken ("2 sachets") */
+  if (/\beach\b/i.test(src)) {
+    const c = d.trim().match(/^(\d+(?:\.\d+)?|\u00bd)\s+[a-z]/i);
+    if (c) ml *= c[1] === '\u00bd' ? 0.5 : parseFloat(c[1]);
+  }
+  ml = Math.round(ml);
+  return ml >= 10 && ml <= 3000 ? ml : 0;
+}
+function medWaterOf(doseId) {
+  if (!doseId || String(doseId).endsWith('_water')) return null;
+  return state.recentEntries.find((e) => e.fromMed === doseId) || state.dayEntries.find((e) => e.fromMed === doseId) || null;
+}
+function addMedWater(doseId, m, dose, at) {
+  if (!doseId || m.hospital) return 0;
+  const ml = doseWaterMl(dose, m.how);
+  if (!ml) return 0;
+  addEntry({ type: 'drink', value: ml, note: 'Water with ' + m.name, fromMed: doseId, medId: m.id, at }, doseId + '_water');
+  return ml;
 }
 
 /* ------------------------------------------------------------------ */
@@ -10422,8 +10460,10 @@ async function logMed(m, at, note, doseText) {
   }
   const dose = doseText || m.dose;
   const hosp = m.hospital ? { hospital: true, route: m.route || null } : {};
-  const id = await addEntry({ type: 'med', medId: m.id, medName: m.name, dose, note: note || '', ...hosp, at: at || new Date() });
-  toast(m.name + (dose ? ', ' + dose + ',' : '') + (m.hospital ? ' logged as given in hospital' : ' logged'), { label: 'Undo', onClick: () => deleteEntry(id) });
+  const when = at || new Date();
+  const id = await addEntry({ type: 'med', medId: m.id, medName: m.name, dose, note: note || '', ...hosp, at: when });
+  const ml = addMedWater(id, m, dose, when);
+  toast(m.name + (dose ? ', ' + dose + ',' : '') + (m.hospital ? ' logged as given in hospital' : ' logged') + (ml ? ', and ' + ml + ' ml added to drinks' : ''), { label: 'Undo', onClick: () => deleteEntry(id) });
 }
 
 /* Change a logged dose's date, time, amount or note (since v137): Mark logged diazepam with the
@@ -10449,11 +10489,23 @@ function openDoseEdit(e) {
       closeSheet();
       try {
         await updateEntry(e.id, { day: dateIn.value, dose: amount.value.trim(), note: note.value.trim(), at });
+        syncMedWater(e, amount.value.trim(), dateIn.value, at);
         toast((e.medName || 'Dose') + ' now at ' + fmtTime(at) + (dateIn.value === todayStr() ? '' : ' on ' + fmtDayShort(dateIn.value)));
       } catch (err) { console.error(err); toast('Could not save'); }
     } }, 'Save changes'),
     h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Cancel'));
   openSheet('Change ' + (e.medName || 'the dose'), body);
+}
+
+/* After a dose is changed, its drink follows: the new day and time, the new amount of water, or gone
+   when the amount no longer has any. A dose from before v249 gains one only when its amount changed. */
+function syncMedWater(e, dose, day, at) {
+  const water = medWaterOf(e.id);
+  const m = state.medicines.find((x) => x.id === e.medId) || { id: e.medId, name: e.medName || 'medicine' };
+  const ml = m.hospital ? 0 : doseWaterMl(dose, m.how);
+  if (water && ml) updateEntry(water.id, { day, value: ml, at });
+  else if (water) deleteEntry(water.id);
+  else if (ml && dose !== (e.dose || '')) addMedWater(e.id, m, dose, at);
 }
 
 async function logMedAtTime(m) {
@@ -10513,7 +10565,8 @@ function promptMealMeds(mealAt) {
       h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
         block.remove(); finish();
         const id = await addEntry({ type: 'med', medId: m.id, medName: m.name, dose: m.dose || '', note: '', at: mealAt });
-        toast(`${m.name} logged at ${fmtTime(mealAt)}`, { label: 'Undo', onClick: () => deleteEntry(id) });
+        const ml = addMedWater(id, m, m.dose, mealAt);
+        toast(`${m.name} logged at ${fmtTime(mealAt)}` + (ml ? `, and ${ml} ml added to drinks` : ''), { label: 'Undo', onClick: () => deleteEntry(id) });
       } }, `Yes, ${m.dose || 'taken'} at ${fmtTime(mealAt)}`),
       state.pushEnabled ? h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: async () => {
         block.remove(); finish();
