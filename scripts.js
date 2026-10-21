@@ -355,6 +355,7 @@ function openSheet(title, body, onClose) {
   /* Runs (fire-and-forget, same as the rest of the app's save calls) however the sheet is
      closed: Done, the round X, tapping the backdrop or Escape, not just a screen's own Save button. */
   state.sheetOnClose = onClose || null;
+  state.sheetGuard = null; // a sheet may set one to stop the X, the backdrop or Escape throwing away something not saved (v259)
   /* A dialog for everyone (WCAG 2.4.3): the page behind is inert while it is open, focus moves
      into it, and goes back to whatever opened it when it closes. On phones focus lands on the
      title rather than the first field, so the keyboard does not pop up uninvited. */
@@ -364,7 +365,10 @@ function openSheet(title, body, onClose) {
   if (first && first.type !== 'file' && window.matchMedia('(min-width: 700px)').matches) first.focus();
   else $('sheet-title').focus({ preventScroll: true });
 }
-function closeSheet() {
+function closeSheet(opts) {
+  /* opts.force: closed on purpose (Save, Cancel, Don't save). Anything else (the X, the backdrop, Escape) asks the sheet's guard first. */
+  if (state.sheetGuard && !(opts && opts.force === true) && state.sheetGuard() === false) return;
+  state.sheetGuard = null;
   stopSpeech();
   closeBigEdit();
   clearSheetDrafts();
@@ -2355,7 +2359,10 @@ async function addEntry(data, fixedId) {
     return remember(id);
   }
   const ref = fixedId ? hdoc('entries', fixedId) : doc(hcol('entries'));
-  setDoc(ref, entry).catch((e) => { console.error(e); toast('Could not save. It will retry when online.'); });
+  /* Offline, a write waits on the phone and goes when the signal is back; it only fails when the database refuses it
+     (or the data cannot be written at all, which throws at once). Either way say so: a save is never lost silently (v259). */
+  try { setDoc(ref, entry).catch((e) => { console.error(e); toast('Not saved (' + errText(e) + '). Please add it again.'); }); }
+  catch (e) { console.error(e); toast('Not saved (' + errText(e) + '). Please try again.'); return null; }
   return remember(ref.id);
 }
 
@@ -3508,6 +3515,8 @@ function openAdd(type, editEntry, preset) {
   let getData;
   let dateIn = null; // set by sheets that show their own Date box (Vitals), which then decides the day saved
   let editId = editEntry ? editEntry.id : null;
+  let foodGuard = null; // Food: asks before the X, the backdrop or Escape throws away a food not yet saved
+  let onSaveReady = null; // a sheet that relabels its Save button (Food: Next on the first step) gets the button once it exists
 
   if (type === 'drink') {
     const whatDefault = (editEntry && editEntry.note) || 'Water';
@@ -3534,7 +3543,6 @@ function openAdd(type, editEntry, preset) {
     loadFoodTable();
     const warn = h('div', { class: 'nudge' });
     warn.hidden = true;
-    let nudged = false;
     const amountDefault = (editEntry && editEntry.amount) || 'About half';
     const what = h('input', { type: 'text', placeholder: 'What was eaten?', required: true, autocomplete: 'off', value: (editEntry && editEntry.note) || '' });
     const parts = h('input', { type: 'text', placeholder: 'e.g. peas, mash, gravy', value: (editEntry && editEntry.detail) || '' });
@@ -3679,11 +3687,25 @@ function openAdd(type, editEntry, preset) {
       h('span', { class: 'pickrow-main' }, h('span', { class: 'pickrow-title', text: title }), sub ? h('span', { class: 'pickrow-sub', text: sub }) : null),
       icon('chevron'));
     let pickedRawName = null; // a saved meal chosen under an old name with a number in it, renamed on save
+    /* Simpler saving (v259, after Helen's lunch went unsaved): the button says Next on the first step and Save on the
+       second, so a tap that only moves on never looks like a save; a food the table does not know is saved on the first
+       tap, with a line saying tags need what is in it, never a second tap; and closing with a food not yet saved asks. */
+    let saveBtn = null;
+    const syncFood = () => {
+      if (saveBtn) saveBtn.textContent = editEntry ? 'Save changes' : details.hidden ? 'Next' : 'Save';
+      const name = what.value.trim();
+      warn.hidden = details.hidden || !foodIndex || !name || Boolean(parts.value.trim()) || entryNutrition(foodIndex, { note: name }).matches.length > 0;
+      if (!warn.hidden) warn.replaceChildren(h('p', { text: `"${name}" is not in the UK food table yet, so the diary cannot add nutrition tags for it. It saves either way; add what is in it above for a better match.` }));
+    };
+    onSaveReady = (b) => { saveBtn = b; syncFood(); };
+    parts.addEventListener('input', syncFood);
     const showDetails = () => {
       chosenName.textContent = what.value.trim();
       pick.hidden = true;
       details.hidden = false;
       rebuildRows();
+      syncFood();
+      if (saveBtn) saveBtn.scrollIntoView({ block: 'nearest' });
     };
     const choose = (rawName, meal) => {
       const parsed = parseQuantityName(rawName);
@@ -3763,7 +3785,7 @@ function openAdd(type, editEntry, preset) {
     };
     what.addEventListener('input', renderPick);
     what.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' && what.value.trim()) { ev.preventDefault(); choose(what.value.trim(), findMeal(what.value) || findMeal(cleanName(what.value))); } });
-    loadFoodTable().then(() => { if (!pick.hidden) renderPick(); });
+    loadFoodTable().then(() => { if (!pick.hidden) renderPick(); syncFood(); });
     const scanControl = scanAvailable() ? foodScanControl((r) => {
       const label = r.name + (r.hasFigures ? ': ' + (r.per100.kcal != null ? Math.round(r.per100.kcal) + ' kcal' : '') + (r.per100.prot != null ? ', ' + r.per100.prot + ' g protein' : '') + ' per 100 g' : '');
       if (r.hasFigures) saveCustomFood(r.name, r.per100, { barcode: r.code, source: r.source });
@@ -3782,7 +3804,7 @@ function openAdd(type, editEntry, preset) {
     timeLine.hidden = Boolean(editEntry);
     details.append(
       h('div', { class: 'chosen' }, chosenName,
-        h('button', { class: 'btn btn-link btn-small', type: 'button', onclick: () => { details.hidden = true; pick.hidden = false; renderPick(); what.focus(); } }, 'Change')),
+        h('button', { class: 'btn btn-link btn-small', type: 'button', onclick: () => { details.hidden = true; pick.hidden = false; renderPick(); syncFood(); what.focus(); } }, 'Change')),
       field('What is in it (optional)', parts),
       rowsWrap,
       amountBlock,
@@ -3792,6 +3814,22 @@ function openAdd(type, editEntry, preset) {
     );
     body.append(pick, details);
     if (editEntry) showDetails(); else renderPick();
+    const unsaved = h('div', { class: 'nudge food-unsaved', role: 'alert' });
+    unsaved.hidden = true;
+    details.after(unsaved);
+    foodGuard = () => {
+      if (editEntry || !what.value.trim()) return true;
+      const onDetails = !details.hidden;
+      unsaved.replaceChildren(
+        h('p', { text: onDetails ? `${what.value.trim()} is not saved yet.` : `${what.value.trim()} is not saved yet. Tap Carry on to say how much was eaten, then Save.` }),
+        h('div', { class: 'btnrow' },
+          h('button', { class: 'btn btn-primary', type: 'button', onclick: () => { unsaved.hidden = true; saveBtn.click(); } }, onDetails ? 'Save it' : 'Carry on'),
+          h('button', { class: 'btn btn-secondary', type: 'button', onclick: () => closeSheet({ force: true }) }, "Don't save"))
+      );
+      unsaved.hidden = false;
+      unsaved.scrollIntoView({ block: 'nearest' });
+      return false;
+    };
 
     getData = () => {
       if (details.hidden) { /* still on the pick stage: take what was typed */
@@ -3802,30 +3840,19 @@ function openAdd(type, editEntry, preset) {
       const name = what.value.trim();
       if (!name) return null;
       const detail = parts.value.trim();
-      /* Something vague like "picky lunch" cannot be broken down: ask once for what was in it */
-      if (foodIndex && !detail && !nudged && !entryNutrition(foodIndex, { note: name }).matches.length) {
-        nudged = true;
-        warn.replaceChildren(
-          h('p', { text: `"${name}" is not in the food table yet, so the diary can't add nutrition tags for it. That's fine, it still saves either way.` }),
-          h('p', { class: 'hint', text: 'Add what is in it above for a better match, or save it as it is.' }),
-          h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => save.click() }, 'Save without tags')
-        );
-        warn.hidden = false;
-        parts.focus();
-        return { hold: true };
-      }
       /* Only the components still on screen are kept. Pieces and grams are stored whatever the setting;
          sizes and overrides only mean something with it on, so with it off only rows with a quantity are kept. */
       const kept = lastComponents.map((c) => [c.key, portionsState[c.key]]).filter(([, p]) => p && (macroOn || (p.qty && p.qty.n > 0)));
       const portions = kept.length ? Object.fromEntries(kept.map(([k, p]) => [k, { size: p.size || 'M', override: p.override || null, qty: p.qty || null }])) : null;
       if (amountBlock.hidden) amount.value = 'All of it';
       /* Every meal is remembered, with when it is usually eaten; a meal chosen under an old
-         name with a number in it ("2 x kiwi") is renamed to the clean one */
+         name with a number in it ("2 x kiwi") is renamed to the clean one. Remembered only once the
+         entry itself is written (v259: a meal was remembered for Helen while her lunch was not). */
       const existing = findMeal(name) || (pickedRawName ? findMeal(pickedRawName) : null);
-      saveMeal(existing ? existing.id : null, name, detail, portions, mealSlot(time.value), existing);
       const data = { type: 'food', note: name, amount: amount.value };
       if (detail) data.detail = detail;
       if (portions) data.portions = portions;
+      if (!editEntry) data._remember = () => saveMeal(existing ? existing.id : null, name, detail, portions, mealSlot(time.value), existing);
       return data;
     };
   }
@@ -4252,7 +4279,8 @@ function openAdd(type, editEntry, preset) {
     if (!saveDay || saveDay > todayStr()) { toast('Please choose a date up to today'); return; }
     const at = atFromInputs(saveDay, time.value);
     const list = Array.isArray(data) ? data : [data];
-    closeSheet();
+    const after = list.map((d) => { const f = d._remember; delete d._remember; return f; }).filter(Boolean);
+    if (editId) closeSheet({ force: true });
     if (editId) {
       try { await updateEntry(editId, { ...list[0], at, ...(dateIn ? { day: saveDay } : {}) }); toast(titles[type] + ' updated'); }
       catch (e) { console.error(e); toast('Could not save'); }
@@ -4273,19 +4301,30 @@ function openAdd(type, editEntry, preset) {
         } catch (e) { console.error(e); toast('Could not save the weight'); }
         continue;
       }
-      ids.push(await addEntry(d));
+      const id = await addEntry(d);
+      if (!id) return; // refused at once: addEntry has said so, and the sheet stays open with everything still in it
+      ids.push(id);
     }
+    closeSheet({ force: true });
+    after.forEach((f) => f());
     const whenSaved = saveDay === todayStr() ? '' : ' for ' + fmtDayShort(saveDay);
-    const what = type === 'vitals' ? ': ' + savedVitalsText(list) : '';
-    toast(titles[type] + ' saved' + whenSaved + what, { label: 'Undo', onClick: () => { ids.forEach((id) => deleteEntry(id)); restore.forEach((f) => f()); } });
+    /* Food says what was saved and when, and has no Undo: one stray tap on Undo at the top of the screen lost a lunch
+       (v259). A food is changed or deleted from its "..." on the timeline. */
+    if (type === 'food') toast(`Saved: ${list[0].note} at ${fmtTime(at)}${whenSaved}. It is on the timeline.`);
+    else {
+      const what = type === 'vitals' ? ': ' + savedVitalsText(list) : '';
+      toast(titles[type] + ' saved' + whenSaved + what, { label: 'Undo', onClick: () => { ids.forEach((id) => deleteEntry(id)); restore.forEach((f) => f()); } });
+    }
     if (!$('view-food').hidden) renderFoodDiary();
     if (type === 'food') promptMealMeds(at);
   });
-  body.append(save, h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Cancel'));
+  body.append(save, h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => closeSheet({ force: true }) }, 'Cancel'));
   if (editId) save.textContent = 'Save changes';
+  if (onSaveReady) onSaveReady(save);
   body.dataset.draft = editId || 'new';
   if (!editId && (type === 'note' || type === 'question' || type === 'vitals')) body.dataset.reopen = type;
   openSheet(editId && type === 'vitals' ? (editEntry.type === 'temp' ? 'Edit temperature' : 'Edit vitals') : editId && type === 'pain' ? 'Edit pain' : titles[type], body);
+  if (foodGuard) state.sheetGuard = foodGuard;
 }
 
 /* The weight already logged for a day (the latest, typed or from Apple Health), or null: the Vitals sheet asks once a day */
