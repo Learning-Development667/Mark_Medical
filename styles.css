@@ -270,7 +270,7 @@ code { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-s
   line-height: 1;
 }
 .section-title:first-child { margin-top: 0; }
-#meds-docs-section .section-title, #meds-done-section .section-title, #meds-hospital-section .section-title { margin-top: var(--s-6); } /* first children of their own wrappers, so the usual first-child rule would remove the gap above them (v218: Finished courses and Given in hospital sat hard on the card above) */
+#meds-docs-section .section-title, #meds-upcoming-section .section-title, #meds-done-section .section-title, #meds-hospital-section .section-title { margin-top: var(--s-6); } /* first children of their own wrappers, so the usual first-child rule would remove the gap above them (v218: Finished courses and Given in hospital sat hard on the card above) */
 .error { color: var(--danger); font-weight: 500; }
 .hint { color: var(--text-secondary); font-size: var(--fs-md); margin: var(--s-2) 0 0; }
 
@@ -1996,3 +1996,11 @@ body[data-page="docs"] :is(.card, .checkin-row):not(.is-due) { background: color
 .meds-first { display: grid; gap: var(--s-3); margin-top: var(--s-4); }
 .meds-first-title { font-family: var(--font-head); font-weight: 600; font-size: 22px; letter-spacing: -0.01em; margin: 0; color: var(--text-primary); }
 .meds-first .hint { margin: 0; }
+
+/* When do you take it? (v254) and Starting soon */
+.med-when-block { margin: var(--s-4) 0; }
+.med-when-block .timechips { flex-wrap: wrap; }
+.med-when { color: var(--text-primary); font-weight: 600; }
+.card.med.is-upcoming .med-status { margin-top: var(--s-2); }
+.card.med.is-upcoming .med-actions { margin-top: var(--s-3); }
+.card.med.is-upcoming .med-name { font-family: var(--font-head); font-weight: 600; font-size: 19px; }

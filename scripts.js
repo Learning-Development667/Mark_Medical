@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '253';
+const APP_VERSION = '254';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -2882,7 +2882,9 @@ const WHATS_NEW = [
     { text: 'Remove a medicine: on the Meds tab, open its card with the small arrow and tap Remove. A medicine with doses already logged is kept in your history.' },
     { text: 'Regular or when needed is now the first thing to choose when you add or change a medicine, straight under its name.' },
     { text: 'Gel is now a dose type, counted in pumps, for medicines like Oestrogel.' },
-    { text: 'Water you take a medicine in, like a Macrogol sachet in 250 ml, now counts in your drinks for the day by itself.' }
+    { text: 'Water you take a medicine in, like a Macrogol sachet in 250 ml, now counts in your drinks for the day by itself.' },
+    { text: 'When you add or change a regular medicine, choose when you take it: Morning, Midday, Teatime, Night or any other time. One in the morning and one at night is Morning and Night, and the same times are its reminders.' },
+    { text: 'A medicine with a Course starts date waits under Starting soon on the Meds tab, and is not counted or reminded about until that day.' }
   ] }
 ];
 const BETA_WELCOME = 'Daybook is in Beta, so it is improved most days. Updates arrive by themselves when you open it, and anything new for you is shown here once. Tell Mark what you think any time with Provide feedback at the top of Today.';
@@ -8639,7 +8641,7 @@ function flareSummaryLines(day) {
   if (outside) lines.push('Outside the gut: ' + (outside.outside.length ? outsideText(outside.outside).toLowerCase() : 'none of the usual') + ' (' + fmtDayShort(outside.day) + ').');
   const eating = es.filter((e) => e.type === 'food').length;
   lines.push(eating ? eating + (eating === 1 ? ' meal or snack' : ' meals or snacks') + ' logged.' : 'No food logged.');
-  const meds = (state.medicines || []).filter((m) => m.active !== false && !(m.courseEnd && m.courseEnd < day));
+  const meds = (state.medicines || []).filter((m) => m.active !== false && !(m.courseEnd && m.courseEnd < day) && !notStarted(m, day));
   const latestRes = latestResultsText((state.recentEntries || []).filter((e) => e.type === 'result'));
   if (latestRes) lines.push('Latest results, as given: ' + latestRes + '.');
   if (meds.length) lines.push('Medicines: ' + meds.map((m) => m.name + (m.dose ? ' ' + m.dose : '')).join('; ') + '.');
@@ -9075,8 +9077,33 @@ $('question-now').addEventListener('click', () => (openQuestions().length ? open
 /* Medicines                                                            */
 /* ------------------------------------------------------------------ */
 
+/* A course that has not started yet (v254): Mark added Apixaban to start next Monday and it was counted from the
+   day he added it, since only the end date was ever read. Until its first day it is listed under Starting soon,
+   is never owed, never asked about with a meal and sends no reminder (the bridge reads courseStart too). */
+function notStarted(m, day) { return !!(m.courseStart && m.courseStart > day); }
 function activeScheduled(day) {
-  return state.medicines.filter((m) => m.active !== false && m.kind === 'scheduled' && (!m.courseEnd || m.courseEnd >= day));
+  return state.medicines.filter((m) => m.active !== false && m.kind === 'scheduled' && (!m.courseEnd || m.courseEnd >= day) && !notStarted(m, day));
+}
+function upcomingCourses(day) {
+  return state.medicines.filter((m) => m.active !== false && m.kind === 'scheduled' && notStarted(m, day))
+    .sort((a, b) => a.courseStart.localeCompare(b.courseStart));
+}
+function upcomingCard(m) {
+  return h('div', { class: 'card med is-upcoming', 'data-med': m.id },
+    h('div', { class: 'med-head' },
+      h('div', null,
+        h('div', { class: 'med-name', text: m.name }),
+        h('div', { class: 'med-dose', text: [medDoseLabel(m), medFrequency(m)].filter(Boolean).join(' · ') }),
+        medWhenText(m) ? h('div', { class: 'med-how', text: medWhenText(m) }) : null),
+      m.purpose ? h('span', { class: 'med-purpose', text: m.purpose }) : null),
+    h('div', { class: 'med-status' }, h('span', { class: 'pill pill-teal', text: 'Starts ' + fmtDayLong(m.courseStart) })),
+    h('div', { class: 'med-actions' },
+      h('button', { class: 'btn btn-secondary', type: 'button', 'aria-label': 'Edit ' + m.name, onclick: () => openEditMed(m) }, 'Edit')));
+}
+/* "Taken at 08:00 and 22:00" from the times chosen in Edit medicine (v254) */
+function medWhenText(m) {
+  const t = (m.takenAt && m.takenAt.length ? m.takenAt : m.times || []).slice().sort();
+  return t.length ? 'Taken at ' + joinAnd(t) : '';
 }
 function activePrn() {
   return state.medicines.filter((m) => m.active !== false && m.kind === 'prn');
@@ -9211,6 +9238,9 @@ function renderMeds() {
   const done = finishedCourses(day).filter((m) => m.courseEnd >= addDays(day, -FINISHED_SHOW_DAYS));
   $('meds-done').replaceChildren(...done.map((m) => finishedCard(m)));
   $('meds-done-section').hidden = !done.length;
+  const soon = upcomingCourses(day);
+  $('meds-upcoming').replaceChildren(...soon.map((m) => upcomingCard(m)));
+  $('meds-upcoming-section').hidden = !soon.length;
   renderHospitalDoses();
 }
 
@@ -10388,7 +10418,8 @@ function medCard(m, day, section) {
       m.hospital ? h('span', { class: 'pill pill-hosp med-hosp', text: 'Given in hospital' }) : null,
       h('div', { class: 'med-dose', text: [medDoseLabel(m), m.hospital && m.route ? ROUTE_WORDS[m.route] : ''].filter(Boolean).join(' · ') }),
       recentDoseChange(m) && !why ? h('div', { class: 'med-was', text: doseChangeText(recentDoseChange(m)) }) : null,
-      m.how ? h('div', { class: 'med-how', text: m.how }) : null),
+      m.how ? h('div', { class: 'med-how', text: m.how }) : null,
+      m.kind === 'scheduled' && !m.hospital && medWhenText(m) ? h('div', { class: 'med-how med-when', text: medWhenText(m) }) : null),
     m.purpose ? h('span', { class: 'med-purpose', text: m.purpose }) : null));
   const status = h('div', { class: 'med-status' });
   if (!m.hospital && m.kind === 'scheduled') {
@@ -10623,7 +10654,7 @@ const MEAL_MED_WINDOW_MS = 45 * 60 * 1000;
 function promptMealMeds(mealAt) {
   if (state.readOnly || state.viewer) return;
   const day = dayStr(mealAt);
-  const due = state.medicines.filter((m) => m.active !== false && m.kind !== 'prn' && !m.hospital && medWithMeals(m) && (!m.courseEnd || m.courseEnd >= day))
+  const due = state.medicines.filter((m) => m.active !== false && m.kind !== 'prn' && !m.hospital && medWithMeals(m) && (!m.courseEnd || m.courseEnd >= day) && !notStarted(m, day))
     .filter((m) => !state.recentEntries.some((e) => e.type === 'med' && e.medId === m.id && Math.abs(entryDate(e) - mealAt) <= MEAL_MED_WINDOW_MS));
   if (!due.length) return;
   const blocks = h('div', null);
@@ -11065,32 +11096,58 @@ function openEditMed(m, prefill) {
   routeChips.setAttribute('role', 'group'); routeChips.setAttribute('aria-label', 'How it is given');
   const hospFields = h('div', null, h('p', { class: 'fieldlabel', text: 'How it is given' }), routeChips);
 
-  /* Reminder times (a push notification at each, from the bridge) and the with-meals prompt */
-  const times = (m.times || []).slice().sort();
-  const timeChips = h('div', { class: 'presets timechips' });
-  const timeInputEl = h('input', { type: 'time', 'aria-label': 'Reminder time to add' });
-  const drawTimes = () => timeChips.replaceChildren(...times.map((t) => h('button', { class: 'preset is-active', type: 'button', 'aria-label': 'Remove ' + t, onclick: () => { times.splice(times.indexOf(t), 1); drawTimes(); } }, t + ' \u00d7')),
-    ...(times.length ? [] : [h('span', { class: 'hint', text: 'No reminders yet' })]));
+  /* When it is taken (v254). Mark added Apixaban, one in the morning and one at night, and found no way to
+     say so: Doses per day was a bare number under the course dates, and the times were a separate, optional
+     reminder list. Now the times of day come first, straight under the dose: Morning, Midday, Teatime and
+     Night toggle 08:00, 12:00, 17:00 and 22:00, any other time can be added, the number a day follows the
+     times chosen, and the same times are the reminders unless Remind me is unticked. Saved as takenAt (the
+     times it is taken), times (the reminder times, the bridge's field, empty when unticked) and perDay. */
+  const SLOTS = [['08:00', 'Morning'], ['12:00', 'Midday'], ['17:00', 'Teatime'], ['22:00', 'Night']];
+  const times = (m.takenAt && m.takenAt.length ? m.takenAt : m.times || []).slice().sort();
+  const remind = h('input', { type: 'checkbox' });
+  remind.checked = !(m.takenAt && m.takenAt.length && !(m.times && m.times.length));
+  const timeChips = h('div', { class: 'presets timechips', role: 'group', 'aria-label': 'When do you take it?' });
+  const timeInputEl = h('input', { type: 'time', 'aria-label': 'Another time to add' });
+  const whenLine = h('p', { class: 'med-dose-preview', role: 'status' });
+  const perDayField = field('How many times a day', perDay);
+  const perDayHint = h('p', { class: 'hint', text: 'Or, if the times vary, just say how many times a day.' });
+  const remindField = h('div', null, h('label', { class: 'check' }, remind, h('span', { text: 'Remind me at these times' })),
+    h('p', { class: 'hint', text: 'A notification on each phone that has reminders switched on (More > Settings). Nothing is sent if the dose is already logged.' }));
+  const toggleTime = (t) => { const i = times.indexOf(t); if (i >= 0) times.splice(i, 1); else times.push(t); times.sort(); drawTimes(); };
+  const drawTimes = () => {
+    const slotTimes = SLOTS.map(([t]) => t);
+    timeChips.replaceChildren(
+      ...SLOTS.map(([t, word]) => { const on = times.includes(t); return h('button', { class: 'preset' + (on ? ' is-active' : ''), type: 'button', 'aria-pressed': on ? 'true' : 'false', onclick: () => toggleTime(t) }, word + ' ' + t); }),
+      ...times.filter((t) => !slotTimes.includes(t)).map((t) => h('button', { class: 'preset is-active', type: 'button', 'aria-pressed': 'true', 'aria-label': 'Remove ' + t, onclick: () => toggleTime(t) }, t + ' \u00d7')));
+    whenLine.textContent = times.length ? (times.length === 1 ? 'Once a day, at ' + times[0] + '.' : times.length + ' times a day, at ' + joinAnd(times) + '.') : '';
+    perDayField.hidden = perDayHint.hidden = !!times.length;
+    remindField.hidden = !times.length;
+    if (times.length) perDay.value = String(times.length);
+  };
   drawTimes();
-  const addTime = h('button', { class: 'btn btn-secondary btn-small', type: 'button', onclick: () => { const v = timeInputEl.value; if (!v) return; if (!times.includes(v)) times.push(v); times.sort(); timeInputEl.value = ''; drawTimes(); } }, 'Add time');
+  const addTime = h('button', { class: 'btn btn-secondary btn-small', type: 'button', onclick: () => { const v = timeInputEl.value; if (!v) return; if (!times.includes(v)) times.push(v); times.sort(); timeInputEl.value = ''; drawTimes(); } }, 'Add a time');
+  const whenBlock = h('div', { class: 'med-when-block' },
+    h('p', { class: 'fieldlabel', text: 'When do you take it?' }),
+    h('p', { class: 'hint', text: 'Tap each time of day. For one in the morning and one at night, tap Morning and Night.' }),
+    timeChips,
+    h('div', { class: 'field-row timeadd' }, timeInputEl, addTime),
+    whenLine, perDayField, perDayHint, remindField);
   const withMeals = h('input', { type: 'checkbox' });
   withMeals.checked = medWithMeals(m);
-  const schedFields = h('div', null, field('Doses per day', perDay), h('div', { class: 'field-row' }, field('Course starts', courseStart), field('Course ends', courseEnd)),
+  const mealBits = [h('label', { class: 'check' }, withMeals, h('span', { text: 'Ask after every meal' })),
+    h('p', { class: 'hint', text: 'After food is logged, Daybook asks whether this was taken with it.' })];
+  const schedFields = h('div', null, h('div', { class: 'field-row' }, field('Course starts', courseStart), field('Course ends', courseEnd)),
+    h('p', { class: 'hint', text: 'Both dates are optional. A course starting later is listed under Starting soon on the Meds tab, and is not counted or reminded about until its first day.' }),
     h('label', { class: 'check' }, steroid, h('span', { text: 'A steroid course (prednisolone, budesonide, dexamethasone)' })),
-    h('p', { class: 'hint', text: 'Both dates are optional. With them, a steroid course is shaded on the Treatment calendar and counted there as a course in the last 12 months.' }),
-    h('p', { class: 'fieldlabel', text: 'Reminder times (optional)' }), timeChips,
-    h('div', { class: 'field-row timeadd' }, timeInputEl, addTime),
-    h('p', { class: 'hint', text: 'A notification on each phone that has reminders on (More > Settings). Nothing is sent if the dose is already logged.' }),
-    h('label', { class: 'check' }, withMeals, h('span', { text: 'Ask after every meal' })),
-    h('p', { class: 'hint', text: 'After food is logged, Daybook asks whether this was taken with it.' }));
+    h('p', { class: 'hint', text: 'Ticked, the course is shaded on the Treatment calendar and counted there as a course in the last 12 months.' }),
+    ...mealBits);
   const prnFields = h('div', null, field('Minimum hours between doses', minGap), field('Maximum doses per day', maxPerDay));
-  /* reminder times and the after-meal prompt do not apply to a medicine the nurses give */
-  const remindBits = [...schedFields.children].slice(4);
+  /* when it is taken, the reminders and the after-meal prompt do not apply to a medicine the nurses give */
   const sync = () => {
     schedFields.hidden = kind.value !== 'scheduled'; prnFields.hidden = kind.value !== 'prn';
     hospFields.hidden = !hospital.checked;
-    remindBits.forEach((el) => { el.hidden = hospital.checked; });
-    schedFields.children[0].hidden = hospital.checked; // doses per day: the nurses decide, each one is counted
+    whenBlock.hidden = kind.value !== 'scheduled' || hospital.checked;
+    mealBits.forEach((el) => { el.hidden = hospital.checked; });
   };
   kindChips.addEventListener('click', () => setTimeout(sync, 0));
   hospital.addEventListener('change', sync);
@@ -11103,7 +11160,7 @@ function openEditMed(m, prefill) {
     h('p', { class: 'fieldlabel', text: 'Regular or when needed?' }), kindChips,
     h('p', { class: 'hint med-kind-hint', text: 'When needed is for one taken only some days, like a painkiller or a migraine tablet. It is never counted as missed.' }),
     h('p', { class: 'fieldlabel', text: 'How is it taken?' }), formChips,
-    countField, doseField, dosePreview, ivHint, askField,
+    countField, doseField, dosePreview, ivHint, askField, whenBlock,
     isNew ? null : h('p', { class: 'hint med-dose-hint', text: medStatus(m).text === 'Taking now'
       ? 'Changing the dose? Change it here and save. It stays the same medicine: the doses already logged keep the amount they were taken at, and the change is noted in its history. There is no need to add it again or end this one.'
       : 'This medicine is no longer being taken. The dose typed here is what its card and the Medicine history show for it, so if it was put up before the course ended, type the dose it was really taken at. The doses already logged keep their own amounts.' }),
@@ -11132,18 +11189,19 @@ function openEditMed(m, prefill) {
       /* a dose typed on a medicine no longer taken is what the person wants shown for it (v216): shownDose() keeps it */
       if (!isNew && !stillTaken && data.dose !== oldDose) data.doseSet = true;
       if (kind.value === 'scheduled') {
-        data.perDay = hospital.checked ? null : Math.max(1, parseInt(perDay.value, 10) || 1);
+        data.perDay = hospital.checked ? null : (times.length || Math.max(1, parseInt(perDay.value, 10) || 1));
+        data.takenAt = hospital.checked ? [] : times.slice();
         data.courseEnd = courseEnd.value || null;
         data.courseStart = courseStart.value || null;
         data.steroid = steroid.checked;
         data.minGapHours = null; data.maxPerDay = null;
-        data.times = hospital.checked ? [] : times.slice();
+        data.times = hospital.checked || !remind.checked ? [] : times.slice();
         data.withMeals = hospital.checked ? false : withMeals.checked;
       } else {
         data.minGapHours = parseFloat(minGap.value) || null;
         data.maxPerDay = parseInt(maxPerDay.value, 10) || null;
         data.perDay = null; data.courseEnd = null; data.courseStart = null; data.steroid = false;
-        data.times = []; data.withMeals = false;
+        data.times = []; data.takenAt = []; data.withMeals = false;
       }
       closeSheet();
       if (state.demo) {

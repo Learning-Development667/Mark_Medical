@@ -448,7 +448,7 @@ function payloadFor(sub, payload, privateBody) { return privateBody && isPrivate
    was sent. A phone on an older app still works: its changes are picked up at the daily rebuild. */
 const PLAN_PATH = 'bridge/reminderPlan';
 function planEntryFromDocs(subs, profile, medicines, oneOffs, day) {
-  const active = medicines.filter((m) => f(m.fields, 'active') !== false && f(m.fields, 'kind') !== 'prn' && f(m.fields, 'hospital') !== true && (!f(m.fields, 'courseEnd') || f(m.fields, 'courseEnd') >= day));
+  const active = medicines.filter((m) => f(m.fields, 'active') !== false && f(m.fields, 'kind') !== 'prn' && f(m.fields, 'hospital') !== true && (!f(m.fields, 'courseEnd') || f(m.fields, 'courseEnd') >= day) && !(f(m.fields, 'courseStart') && f(m.fields, 'courseStart') > day));
   const times = [];
   active.forEach((m) => (f(m.fields, 'times') || []).map(toMinutes).filter((t) => t != null).forEach((t) => times.push({ medId: m.id, t, name: f(m.fields, 'name') || 'Medicine', dose: f(m.fields, 'dose') || '' })));
   return { phones: subs.length, nudge: !!(profile && f(profile.fields, 'stretchNudge') === true), oneOff: oneOffs.some((r) => f(r.fields, 'sent') !== true), times };

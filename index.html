@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=253">
+  <link rel="stylesheet" href="styles.css?v=254">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -344,6 +344,11 @@
         <div id="meds-scheduled" class="cards"></div>
         <h2 class="section-title">When needed</h2>
         <div id="meds-prn" class="cards"></div>
+        </div>
+        <div id="meds-upcoming-section" hidden>
+          <h2 class="section-title">Starting soon</h2>
+          <p class="hint">Not counted in the day's doses, and no reminders, until the course starts.</p>
+          <div id="meds-upcoming" class="cards"></div>
         </div>
         <div id="meds-done-section" hidden>
           <h2 class="section-title">Finished courses</h2>
@@ -1208,6 +1213,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=253"></script>
+  <script type="module" src="scripts.js?v=254"></script>
 </body>
 </html>
