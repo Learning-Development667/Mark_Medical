@@ -2012,3 +2012,12 @@ body[data-page="docs"] :is(.card, .checkin-row):not(.is-due) { background: color
 .card.med.is-upcoming .med-status { margin-top: var(--s-2); }
 .card.med.is-upcoming .med-actions { margin-top: var(--s-3); }
 .card.med.is-upcoming .med-name { font-family: var(--font-head); font-weight: 600; font-size: 19px; }
+
+/* Fasting today, Crohn's or colitis (v258): three across; For faith takes two cells and may wrap */
+.fast-chips { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: var(--s-3); }
+.fast-chips .preset:nth-last-child(2) { grid-column: span 2; white-space: normal; line-height: 1.25; }
+.fast-own { margin-top: var(--s-3); }
+.fast-yesterday { color: var(--teal); font-weight: 600; }
+.fast-care { margin-top: var(--s-4); }
+.diary-fast { margin: var(--s-1) 0 0; }
+.pill-fast { background: var(--teal-light); color: var(--teal); }

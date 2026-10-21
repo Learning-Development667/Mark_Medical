@@ -296,6 +296,14 @@ const QUALITY = 0.8;
   await page.click('.qa[data-add="bowel"]'); await page.waitForSelector('#sheet:not([hidden])'); await settle();
   await shot('The Bristol chart as seven rows, then any blood and how long you could wait. Tap every type in a mixed one.');
   await closeSheet();
+  /* fasting today, in the morning check-in (v258): on a day with no check-in yet, skipped through to the question */
+  await page.evaluate(() => { for (let i = 0; i < 20; i++) document.getElementById('day-prev').click(); }); await settle(400);
+  await page.click('#checkin-morning'); await page.waitForSelector('#sheet:not([hidden])'); await settle();
+  for (let i = 0; i < 10; i++) { const t = await page.$$eval('#sheet-body .wiz-q', (e) => (e.length ? e[e.length - 1].textContent : '')); if (t === 'Fasting today?') break; await page.click('#sheet-body .wiz-skip'); await page.waitForTimeout(150); }
+  await page.click('#sheet-body .fast-chips .preset:text-is("16:8")'); await settle(300);
+  await shot('The morning check-in asks whether you are fasting today, and which kind. One tap; it goes on the Food diary and the reports.', '#sheet-body .btn-next');
+  await closeSheet();
+  await page.evaluate(() => { for (let i = 0; i < 20; i++) document.getElementById('day-next').click(); }); await settle(400);
   await tab('chemo');
   await shot('The Treatment tab: your flare plan, flare days shaded on the calendar, injections or infusions with the next one due, and any steroid course.', '#flare-card');
   await tab('vitals'); await page.click('#rep-results'); await page.waitForSelector('#view-results:not([hidden])'); await settle(1200);

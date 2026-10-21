@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '257';
+const APP_VERSION = '258';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -1745,6 +1745,8 @@ function buildIbdFixture() {
     if (e.type !== 'checkin') return;
     if (e.slot === 'evening') { delete e.sickness; const p = e.worstPain != null ? Number(e.worstPain) : e.pain != null ? Number(e.pain) : null; if (p != null) { e.gutPain = p; e.gutStop = p >= 6 ? 3 : p >= 4 ? 2 : p >= 2 ? 1 : 0; } }
     if (e.slot === 'morning') { const prev = addDays(e.day, -1); const n = entries.filter((b) => b.type === 'bowel' && b.day === prev && b.night).length; e.nightToilet = n >= 2 ? 2 : n; }
+    /* fasting (v258): 16:8 while settled, none through the flare, back to 14:10 as it eases */
+    if (e.slot === 'morning') { const off = dayGap(todayStr(), e.day); e.fast = off <= -11 ? '16:8' : off <= -4 ? 'no' : '14:10'; }
   });
   return { entries, documents, days, exercise, profile, meals };
 }
@@ -5743,9 +5745,11 @@ async function renderFoodDiary() {
       const entryMacroText = (i) => (macros[i] && macros[i].any ? 'About ' + fmtMacroLine(macros[i].totals) : '');
       dayCount++;
       Object.keys(counts).forEach((t) => { daysWith[t] = (daysWith[t] || 0) + 1; });
+      const fast = fastOn(entries, day);
       sections.push(h('section', { class: 'diary-day' },
         h('h3', { class: 'diary-title' }, fmtDayLong(day), h('small', { text: day === today ? 'Today' : fmtDayNum(day) })),
         h('p', { class: 'diary-sum', text: sum }),
+        fast ? h('p', { class: 'diary-fast' }, h('span', { class: 'pill pill-fast', text: fastText(fast) })) : null,
         gradient ? h('div', { class: 'diary-donut-row' },
           h('div', { class: 'diary-donut', style: 'background: ' + gradient + ';', 'aria-hidden': 'true' }),
           h('div', { class: 'diary-legend' }, ...NUTRI_GROUP_ORDER.filter((g) => groups[g]).map((g) =>
@@ -6679,7 +6683,7 @@ function foodDaysFor(entries, from, to, index) {
     if (index) foods.forEach((e) => { const n = entryNutrition(index, e); if (n) n.tags.forEach((x) => tags.add(x)); });
     out.push({ day: d, foods, l: ml ? Math.round(ml / 10) / 100 : null, drinks: ml > 0, e: foods.length, u: source === 'estimate' ? est.excluded : 0,
       p: t ? Math.round(t.prot) : null, k: t ? Math.round(t.kcal) : null, c: t ? Math.round(t.carb || 0) : null, f: t ? Math.round(t.fat || 0) : null,
-      partial: d === today, leftOut, source, tags });
+      partial: d === today, leftOut, source, tags, fast: fastOn(entries, d) });
   }
   return { days: out, first, last };
 }
@@ -6770,6 +6774,7 @@ function buildFoodReport(n) {
   if (noFood.length) points.push(`Nothing eaten was logged on ${plural(noFood.length, 'day')}: ${joinAnd(noFood.map((d) => rDay(d.day)))}.`);
   if (uDays.length) points.push(`Totals may be low on ${plural(uDays.length, 'day')}, where some items had no nutrition data.`);
   leftOut.forEach((d) => points.push(d.leftOut));
+  { const ft = fastTally(D.filter((d) => d.fast).map((d) => ({ day: d.day, fast: d.fast }))); if (ft.n) points.push(`Fasting on ${plural(ft.n, 'day')}: ${ft.text}. Each day's line says which.`); }
   if (!points.length) points.push(D.length ? "Nothing stood out in the app's simple checks." : 'Nothing was logged in this period.');
 
   /* Page 2 charts */
@@ -6793,6 +6798,7 @@ function buildFoodReport(n) {
     if (d.partial) parts.push(`Day in progress. ${d.e === 1 ? 'One entry' : capFirst(numberWord(d.e)) + ' entries'} so far${d.p != null ? ', ' + d.p + ' g protein' : ''}.`);
     else if (d.leftOut) parts.push('Totals left out (see Points to discuss).');
     else if (d.p != null) parts.push(d === low ? `Lowest protein of the week at ${d.p} g.` : d === high ? `Highest protein at ${d.p} g.` : `Protein ${d.p} g.`);
+    if (d.fast) parts.push(fastText(d.fast) + '.');
     const names = foodNames(d.foods, 99); // every meal named, none left as "and 3 more items" (v236)
     parts.push(names ? names + '.' : 'No food logged.');
     if (d.u > 0 && !d.partial) parts.push(`${d.u === 1 ? 'One item' : capFirst(numberWord(d.u)) + ' items'} not counted.`);
@@ -7283,6 +7289,11 @@ function summaryRows(entries, from, to) {
       const text = 'Gut and nights: ' + parts.join('; ') + '.';
       if (level === 'green') fine.push('the gut in the way (not much)'); else push(level, 'Gut and nights', text, null, 'Gut and nights: ' + shorts.join(', '));
     }
+  }
+  /* fasting (v258): context for the team, never a level */
+  {
+    const ft = fastTally(checkins.filter((e) => e.slot === 'morning'));
+    if (ft.n) push('teal', 'Fasting', `Fasting on ${ft.n} of the ${plural(ft.asked, 'morning')} asked: ${ft.text}.`, null, `Fasting on ${plural(ft.n, 'day')}: ${ft.text.replace(/ on (\d+) days?/g, ' ($1)')}`);
   }
   scale('appetite', 'Appetite', 3, true, { bad: 'Little appetite (3 or under)', short: 'Little appetite', worse: 'has dropped' });
   scale('energy', 'Energy', 3, true, { bad: 'Energy very low (3 or under)', short: 'Very low energy', worse: 'has dropped' });
@@ -7777,6 +7788,8 @@ const CHECKIN_QUESTIONS = {
     { key: 'sidefx', kind: 'sidefx', q: 'Any side effects since treatment?' },
     { key: 'pain', kind: 'pain', nrs: true, q: 'Pain right now', low: '0 no pain', high: '10 worst imaginable', note: 'painNote' },
     { key: 'mood', kind: 'slider', q: 'How is your mood?', low: '1 rough', high: '10 great', note: 'moodNote', noteQ: 'What is behind it? Optional.', notePh: 'e.g. a good night, a visitor coming, worried about tomorrow' },
+    /* with Crohn's or colitis (v258): fasting today and which kind, one tap; asked about the day ahead, before what it holds */
+    { key: 'fast', kind: 'fast', pack: 'ibd', q: 'Fasting today?' },
     { key: 'lookingForward', kind: 'text', q: 'What are you looking forward to today?', ph: 'e.g. a walk in the garden, a visitor' }
   ],
   evening: [
@@ -7851,6 +7864,26 @@ const WB_ROWS = [['low', 'Feel low?', 'Felt low'], ['worried', 'Feel worried or 
 /* A one-tap scale question in the daily check-ins (v221): four wellbeing words unless the question brings its own */
 function scaleWords(q) { return Array.isArray(q.words) ? q.words : WB_WORDS; }
 function scaleText(q, v) { return v == null ? 'Skipped' : (scaleWords(q)[Number(v)] || String(v)); }
+/* Fasting (v258, Helen, a Crohn's Beta circle: being able to track fasting would be really useful). With Crohn's or colitis
+   the morning check-in asks "Fasting today?": one tap on No, a time-restricted pattern (hours without food : hours to eat),
+   For faith (Ramadan and other fasts), or Other with the person's own words. Stored on the morning check-in as fast: 'no',
+   '16:8' and the like, 'faith', the words typed for Other ('other' with none), null when skipped. A fact as logged: Daybook
+   never says whether fasting helps, and the line under the question is the same every time, never set off by what is logged. */
+const FAST_PATTERNS = ['12:12', '14:10', '16:8', '18:6', '20:4'];
+const FAST_CHIPS = [['no', 'No'], ...FAST_PATTERNS.map((k) => [k, k]), ['faith', 'For faith (e.g. Ramadan)'], ['other', 'Other']];
+function fastKind(v) { if (v == null || v === '') return null; return v === 'no' || v === 'faith' || FAST_PATTERNS.includes(v) ? v : 'other'; }
+function isFasting(v) { const k = fastKind(v); return k != null && k !== 'no'; }
+/* the kind alone, for lists: "16:8", "for faith", or the person's own words */
+function fastWords(v) { const k = fastKind(v); return !k || k === 'no' ? '' : k === 'faith' ? 'for faith' : k === 'other' ? (v === 'other' ? 'another kind' : String(v)) : k; }
+function fastText(v) { const k = fastKind(v); return !k ? 'Skipped' : k === 'no' ? 'Not fasting' : k === 'faith' ? 'Fasting for faith' : k === 'other' ? (v === 'other' ? 'Fasting, another kind' : 'Fasting: ' + v) : 'Fasting ' + k; }
+/* a day's fast from its morning check-in, among the entries given */
+function fastOn(entries, day) { const c = entries.find((e) => e.type === 'checkin' && e.slot === 'morning' && e.day === day && isPatientCheckin(e)); return c && isFasting(c.fast) ? c.fast : null; }
+/* how the mornings answered: { asked, n (fasting), days, text "16:8 on 7 days, 14:10 on 2 days" } */
+function fastTally(mornings) {
+  const asked = mornings.filter((e) => fastKind(e.fast) != null), fasting = asked.filter((e) => isFasting(e.fast));
+  const by = new Map(); fasting.forEach((e) => { const w = fastWords(e.fast); by.set(w, (by.get(w) || 0) + 1); });
+  return { asked: asked.length, n: fasting.length, days: fasting.map((e) => e.day).sort(), text: [...by].sort((a, b) => b[1] - a[1]).map(([w, n]) => w + ' on ' + plural(n, 'day')).join(', ') };
+}
 function wbText(v) {
   if (!v || typeof v !== 'object') return 'Skipped';
   const bits = WB_ROWS.filter(([k]) => v[k] != null).map(([k, , label]) => label + ': ' + WB_WORDS[v[k]].toLowerCase());
@@ -7953,7 +7986,7 @@ const CHECKIN_LABELS = {
   sleep: 'Sleep', sleepHours: 'Hours slept', pain: 'Pain now', mood: 'Mood', symptoms: 'New or worse symptoms',
   lookingForward: 'Looking forward to', worstPain: 'Worst pain', sickness: 'Sickness', appetite: 'Appetite',
   energy: 'Energy', settled: 'Settled since yesterday', goodThing: 'One good thing', noticed: 'What you noticed', outside: 'Outside the gut, last week',
-  wb: 'How much', journal: 'How was today', gutPain: 'Tummy pain or cramps', gutStop: 'Gut got in the way', nightToilet: 'Up in the night for the toilet', wkResults: 'Worried about results or scans', wkCutOff: 'Felt cut off from people', wkTired: 'Tiredness got in the way',
+  wb: 'How much', journal: 'How was today', gutPain: 'Tummy pain or cramps', gutStop: 'Gut got in the way', nightToilet: 'Up in the night for the toilet', fast: 'Fasting today', wkResults: 'Worried about results or scans', wkCutOff: 'Felt cut off from people', wkTired: 'Tiredness got in the way',
   wkGutOut: 'Gut stopped me going out', wkToilet: 'Worried about getting to a toilet', wkSwings: 'Mood swings or irritability', wkAnxious: 'Anxious or panicky',
   wkFog: 'Brain fog or memory', wkSweats: 'Sleep broken by sweats', helped: 'What helped', hardest: 'What was hardest', sentence: 'The week in a sentence',
   wkcTired: 'Tiredness got in the way', wkcLow: 'Seemed low or withdrawn', wkcSymptoms: 'Pain or symptoms got in the way', wkcHelp: 'Needed more help than usual'
@@ -7988,6 +8021,7 @@ function checkinSummary(e) {
   if (e.worstPain != null) bits.push('Worst pain ' + e.worstPain);
   if (e.sickness != null) bits.push('Sickness ' + e.sickness);
   if (e.gutPain != null) bits.push('Tummy pain ' + e.gutPain);
+  if (isFasting(e.fast)) bits.push(fastText(e.fast));
   if (e.appetite != null) bits.push('Appetite ' + e.appetite);
   if (e.energy != null) bits.push('Energy ' + e.energy);
   return bits.join(' · ');
@@ -8003,6 +8037,7 @@ function whenText(d) { return d ? (dayStr(d) === todayStr() ? '' : fmtDayShort(d
 function checkinSubmittedAt(c) { return tsDate(c.createdAt) || entryDate(c); }
 function checkinLine(c) {
   const bits = ['pain', 'mood'].filter((k) => c[k] != null).map((k) => k + ' ' + c[k]);
+  if (isFasting(c.fast)) bits.push('fasting ' + fastWords(c.fast));
   return checkinTitle(c.slot, c) + (c.done === false ? ' started ' : ' done ') + fmtTime(checkinSubmittedAt(c)) + (bits.length ? ', ' + bits.join(', ') : '');
 }
 function checkinOpenSet() { if (!state.openCheckins) state.openCheckins = new Set(); return state.openCheckins; }
@@ -8016,6 +8051,7 @@ function checkinCard(c, inEntry) {
     else if (q.kind === 'taps') node = h('dd', { class: 'cc-v' + (v == null ? ' is-empty' : ''), text: wbText(v) });
     else if (q.kind === 'sidefx') node = h('dd', { class: 'cc-v' + (v == null ? ' is-empty' : ''), text: fxText(v) });
     else if (q.kind === 'scale') node = h('dd', { class: 'cc-v' + (v == null ? ' is-empty' : ''), text: scaleText(q, v) });
+    else if (q.kind === 'fast') node = h('dd', { class: 'cc-v' + (fastKind(v) == null ? ' is-empty' : ''), text: fastText(v) });
     else if (q.kind === 'text') node = h('dd', { class: 'cc-v' + (v ? '' : ' is-empty'), text: v ? v : 'Nothing added' });
     else {
       const empty = v == null;
@@ -8336,6 +8372,27 @@ function openCheckin(slot, initialDay) {
         } }, w)));
         wrap.append(h('p', { class: 'wiz-hint', text: q.hint || 'One tap.' }), chips);
         getVal = () => cur;
+      } else if (q.kind === 'fast') {
+        /* one tap (v258); Other opens a box for the person's own words */
+        let cur = fastKind(answers[q.key]);
+        const own = h('input', { type: 'text', class: 'input', maxlength: '40', placeholder: 'e.g. one meal a day, or 5:2' });
+        own.value = cur === 'other' && answers[q.key] !== 'other' ? answers[q.key] : '';
+        const ownWrap = h('div', { class: 'fast-own' }, field('What kind of fast?', own));
+        ownWrap.hidden = cur !== 'other';
+        const chips = h('div', { class: 'chips taps-chips fast-chips', role: 'group', 'aria-label': q.q });
+        FAST_CHIPS.forEach(([k, w]) => chips.append(h('button', { class: 'preset' + (cur === k ? ' is-active' : ''), type: 'button', 'aria-pressed': cur === k ? 'true' : 'false', onclick: () => {
+          cur = cur === k ? null : k;
+          [...chips.children].forEach((b, j) => { const on = cur === FAST_CHIPS[j][0]; b.classList.toggle('is-active', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+          ownWrap.hidden = cur !== 'other';
+          if (cur === 'other') own.focus();
+        } }, w)));
+        const prev = findCheckin(addDays(day, -1), 'morning');
+        const prevFast = prev && fastKind(prev.fast) ? fastText(prev.fast) : '';
+        wrap.append(h('p', { class: 'wiz-hint', text: 'One tap. The first number is the hours without food, the second the hours to eat in: 16:8 is 16 hours without food and an 8-hour window to eat.' }),
+          prevFast ? h('p', { class: 'wiz-hint fast-yesterday', text: 'Yesterday: ' + prevFast + '.' }) : '',
+          chips, ownWrap,
+          h('p', { class: 'wiz-hint fast-care', text: 'If you take medicines with food or during the day, agree fasting with your IBD team or dietitian first.' }));
+        getVal = () => (cur === 'other' ? (own.value.trim() || 'other') : cur);
       } else if (q.kind === 'text') {
         const ta = h('textarea', { rows: '3', placeholder: q.ph || '' });
         ta.value = answers[q.key] || '';
@@ -8377,11 +8434,11 @@ function openCheckin(slot, initialDay) {
       qs.forEach((q, i) => {
         const v = answers[q.key];
         let skipped = q.kind === 'text' ? !v : v == null;
-        let shown = skipped ? 'Skipped' : (q.kind === 'ticks' ? outsideText(v) : q.kind === 'taps' ? wbText(v) : q.kind === 'scale' ? scaleText(q, v) : q.kind === 'sidefx' ? fxText(v) : q.kind === 'text' ? v : String(v) + (q.nrs ? ' · ' + painBandWord(v, nrsNoun(q)) : '') + (q.kind === 'sleep' && answers.sleepHours != null ? ' · ' + answers.sleepHours + ' h' : ''));
+        let shown = skipped ? 'Skipped' : (q.kind === 'ticks' ? outsideText(v) : q.kind === 'taps' ? wbText(v) : q.kind === 'scale' ? scaleText(q, v) : q.kind === 'fast' ? fastText(v) : q.kind === 'sidefx' ? fxText(v) : q.kind === 'text' ? v : String(v) + (q.nrs ? ' · ' + painBandWord(v, nrsNoun(q)) : '') + (q.kind === 'sleep' && answers.sleepHours != null ? ' · ' + answers.sleepHours + ' h' : ''));
         const words = q.note && answers[q.note] ? h('span', { class: 'vnote', text: answers[q.note] }) : null;
         list.append(h('li', null, h('button', { type: 'button', onclick: () => { dir = -1; step = i; fromReview = true; render(); } },
           h('span', { class: 'k', text: CHECKIN_LABELS[q.key] }),
-          h('span', { class: 'v' + (skipped ? ' is-skipped' : (q.kind === 'text' || q.kind === 'ticks' || q.kind === 'taps' || q.kind === 'scale' || q.kind === 'sidefx' ? '' : ' is-num')) }, shown, words))));
+          h('span', { class: 'v' + (skipped ? ' is-skipped' : (q.kind === 'text' || q.kind === 'ticks' || q.kind === 'taps' || q.kind === 'scale' || q.kind === 'fast' || q.kind === 'sidefx' ? '' : ' is-num')) }, shown, words))));
       });
       wrap.append(list);
       if (slot === 'morning' && !state.readOnly) wrap.append(h('p', { class: 'wiz-signpost', text: 'Gentle exercises and stretches are on the Exercise tab, for when you are up and ready. Optional.' }));
@@ -9998,6 +10055,7 @@ function buildIbdReport(n) {
   const gutStops = ci.filter((e) => e.slot === 'evening' && e.gutStop != null), gutStopBad = gutStops.filter((e) => Number(e.gutStop) >= 2);
   const nightAsked = ci.filter((e) => e.slot === 'morning' && e.nightToilet != null), nightUp = nightAsked.filter((e) => Number(e.nightToilet) >= 1), nightTwice = nightAsked.filter((e) => Number(e.nightToilet) >= 2);
   const outside = ci.filter((e) => e.slot === 'evening' && Array.isArray(e.outside)).sort((a, b) => a.day.localeCompare(b.day));
+  const fasts = fastTally(ci.filter((e) => e.slot === 'morning' && e.day >= from && e.day <= to));
   /* treatment: injections or infusions, steroid courses, the IBD medicines */
   const sessions = Object.keys(state.days || {}).filter((d) => state.days[d].chemo && isRepeat(treatmentOf(state.days[d]))).sort();
   const inRangeSessions = sessions.filter((d) => d >= from && d <= to);
@@ -10036,12 +10094,12 @@ function buildIbdReport(n) {
   const wNums = wVals.filter((v) => v != null);
   const wLo = wNums.length ? Math.floor(Math.min(...wNums) - 1) : 0, wHi = wNums.length ? Math.max(Math.ceil(Math.max(...wNums) + 1), wLo + 4) : 4;
   const charts = [
-    { title: (stoma ? 'Bag emptied' : 'Bowel movements') + ' a day', stat: logged.length ? `Average ${one(mean)}${usual ? ', usual ' + usual : ''}, most ${most}` : 'None logged', tone: above ? 'amber' : logged.length ? 'green' : '', type: 'bars', min: 0, max: cMax, ticks: [0, Math.round(cMax / 2), cMax], bands: usual ? [{ from: 0, to: usual, c: teal }] : [], series: [{ d: countSeries, c: teal }], marks: flareMarks },
+    { title: (stoma ? 'Bag emptied' : 'Bowel movements') + ' a day', stat: logged.length ? `Average ${one(mean)}${usual ? ', usual ' + usual : ''}, most ${most}` : 'None logged', tone: above ? 'amber' : logged.length ? 'green' : '', type: 'bars', min: 0, max: cMax, ticks: [0, Math.round(cMax / 2), cMax], bands: usual ? [{ from: 0, to: usual, c: teal }] : [], series: [{ d: countSeries, c: teal }], marks: flareMarks, dots: days.map((d, i) => (fasts.days.includes(d) ? i : -1)).filter((i) => i >= 0) },
     { title: 'Blood (0 none to 3 mostly blood)', stat: bloodDays.length ? `On ${plural(bloodDays.length, 'day')}, worst ${bloodWord(worstBlood)}` : 'No blood logged', tone: worstBlood >= 3 ? 'red' : bloodDays.length ? 'amber' : logged.length ? 'green' : '', min: 0, max: 3, ticks: [0, 1, 2, 3], bands: [{ from: 2, to: 3, c: red }], series: [{ d: bloodSeries, c: red }], marks: flareMarks },
     { title: 'Temperature (°C)', stat: temps.length ? `Highest ${Number(tempHi.value).toFixed(1)} on ${rDay(tempHi.day)}` : 'No readings', tone: temps.length ? (Number(tempHi.value) >= 38 ? 'red' : Number(tempHi.value) >= 37.5 ? 'amber' : 'green') : '', min: 35, max: Math.max(40, ...tempVals.filter((v) => v != null)), ticks: [35, 37.5, 40], bands: [{ from: 37.5, to: 38, c: REPORT_AMBER }, { from: 38, to: 45, c: red }], series: [{ d: tempVals, c: ink }], marks: sessionMarks },
     { title: 'Weight (kg)', stat: ws.length ? `${fmtKg(wLast.value)}${wChange != null && Math.abs(wChange) >= 0.1 ? (wChange < 0 ? ', down ' : ', up ') + Math.abs(wChange) + ' kg' : ''}` : 'No readings', tone: wChange != null && wChange <= -2 ? (wChange <= -4 ? 'red' : 'amber') : ws.length ? 'green' : '', min: wLo, max: wHi, ticks: [wLo, Math.round((wLo + wHi) / 2), wHi], series: [{ d: wVals, c: teal }], marks: sessionMarks }
   ];
-  const key = `<b>Bars</b> ${stoma ? 'times the bag was emptied' : 'bowel movements'} a day as logged${usual ? ', the shaded band up to the usual ' + usual : ''}. <b>Blood</b> the worst grade that day, as logged; shaded from mixed in. <b>Triangles</b> flare days on the first two charts, injections or infusions on the others. <b>Temperature</b> shaded 37.5 to 37.9 and from 38.0.`;
+  const key = `<b>Bars</b> ${stoma ? 'times the bag was emptied' : 'bowel movements'} a day as logged${usual ? ', the shaded band up to the usual ' + usual : ''}. <b>Blood</b> the worst grade that day, as logged; shaded from mixed in. <b>Triangles</b> flare days on the first two charts, injections or infusions on the others. <b>Temperature</b> shaded 37.5 to 37.9 and from 38.0.${fasts.n ? ' <b>Dots</b> under the first chart, the days marked as fasting in the morning check-in.' : ''}`;
   /* the strip: treatment, the flare plan, results */
   const strip = [];
   const medLine = ibdMeds.map((m) => m.name + (m.dose ? ' ' + m.dose : '') + (m.kind === 'prn' ? ' (when needed)' : '')).join('; ');
@@ -10059,6 +10117,7 @@ function buildIbdReport(n) {
   brief.push({ head: 'Blood and urgency', text: logged.length ? [bloodDays.length ? `Blood on ${plural(bloodDays.length, 'day')}, ${bloodWord(worstBlood)} at worst` : 'No blood logged', blackDays.length ? `black or tarry on ${plural(blackDays.length, 'day')}` : '', rush ? `had to go straight away ${plural(rush, 'time')} on ${plural(rushDays.length, 'day')}` : 'never had to go straight away', accidents ? plural(accidents, stoma ? 'bag leak' : 'accident or leak') : '', nightN ? `up at night ${plural(nightN, 'time')}` : ''].filter(Boolean).join('; ') + '.' + (twDays.length ? ` Six or more with blood on ${twDays.map(rDay).join(', ')}.` : '') : 'Nothing logged.' });
   brief.push({ head: 'Flares and treatment', text: (flareDays.length ? `Marked as flaring on ${plural(flareDays.length, 'day')}${runs.length === 1 ? ` (${rDay(runs[0].from)}${runs[0].to !== runs[0].from ? ' to ' + rDay(runs[0].to) : ''})` : ''}.` : 'No flare days marked.') + (calls.length ? ` ${plural(calls.length, 'call')} to the advice line, listed below.` : '') + (steroids.length ? ` On ${steroids.map((m) => m.name).join(' and ')} in this period.` : '') + (sessLine ? ' ' + sessLine.charAt(0).toUpperCase() + sessLine.slice(1) : '') });
   brief.push({ head: 'Body', text: [ws.length ? `Weight ${fmtKg(wLast.value)} on ${rDay(wLast.day)}` + (wChange != null && Math.abs(wChange) >= 0.1 ? `, ${wChange < 0 ? 'down' : 'up'} ${Math.abs(wChange)} kg since ${rDay(wFirst.day)}` : '') : 'No weight logged', temps.length ? `temperature highest ${Number(tempHi.value).toFixed(1)} °C on ${rDay(tempHi.day)}` : '', gutPains.length ? `tummy pain or cramps averaged ${avg(gutPains)}/10, up to ${Math.max(...gutPains)}` : '', pains.length ? `pain up to ${Math.max(...pains)}/10` : '', gutStops.length ? `the gut stopped ${patient.split(/\s+/)[0]} doing something quite a bit or a lot on ${gutStopBad.length} of ${plural(gutStops.length, 'evening')}` : '', nightAsked.length ? `up in the night for the toilet on ${nightUp.length} of ${plural(nightAsked.length, 'morning')}${nightTwice.length ? ', twice or more on ' + nightTwice.length : ''}` : '', energy.length ? `energy averaged ${avg(energy)}/10 in the evening check-ins` : '', outside.length ? `outside the gut: ${outside.map((e) => (e.outside.length ? outsideText(e.outside).toLowerCase() : 'none of the usual') + ' (week to ' + rDay(e.day) + ')').join('; ')}` : ''].filter(Boolean).join('; ') + '.' });
+  if (fasts.n) brief.push({ head: 'Fasting', text: `Fasting on ${fasts.n} of the ${plural(fasts.asked, 'morning')} asked: ${fasts.text}. The days are marked under the first chart.` });
   /* week by week */
   const weeks = reportWeeks(from, to).map((w) => {
     const wd = days.filter((d) => d >= w.from && d <= w.to);
@@ -10070,7 +10129,8 @@ function buildIbdReport(n) {
     const wws = ws.filter((e) => e.day >= w.from && e.day <= w.to);
     const fl = wd.filter(isFlareDay).length, cl = calls.filter((e) => e.day >= w.from && e.day <= w.to).length;
     const ste = wd.some((d) => steroidOn(d).length), inj = inRangeSessions.filter((d) => d >= w.from && d <= w.to).length;
-    const other = [fl ? plural(fl, 'flare day') : '', cl ? plural(cl, 'call') : '', ste ? 'on steroids' : '', inj ? plural(inj, 'injection or infusion') : ''].filter(Boolean).join(', ');
+    const fd = fasts.days.filter((d) => d >= w.from && d <= w.to).length;
+    const other = [fl ? plural(fl, 'flare day') : '', cl ? plural(cl, 'call') : '', ste ? 'on steroids' : '', inj ? plural(inj, 'injection or infusion') : '', fd ? 'fasting ' + plural(fd, 'day') : ''].filter(Boolean).join(', ');
     return { label: rDay(w.from) + ' to ' + rDay(w.to), aDay: cs.length ? one(avg(cs)) : 'None', aDaySub: cs.length ? `most ${Math.max(...cs)}, ${plural(lg.length, 'day')} logged` : 'nothing logged',
       blood: bl.length ? `${plural(bl.length, 'day')}, ${bloodWord(wb)}` : 'none', urgency: [ru ? ru + ' straight away' : '', ac ? plural(ac, 'accident') : '', ni ? ni + ' at night' : ''].filter(Boolean).join(', ') || 'none',
       weight: wws.length ? fmtKg(wws[wws.length - 1].value) : 'none', other: other || '' };
