@@ -111,6 +111,40 @@ if (action === 'create') {
     total += go.length;
   }
   console.log(apply ? `Deleted ${total}.` : `${total} would be deleted. Run unseed to delete them.`);
+} else if (action === 'food-check') {
+  /* Read only, with the person's agreement (Helen, 21 October 2026: a lunch missing from her timeline).
+     Prints when things were saved and by whom, never what was eaten: entry types, days, times, the
+     author, and for saved meals only their dates and counts. NAME finds the circle by a member's
+     first name, or HOUSEHOLD_ID names it. */
+  const want = env('NAME').toLowerCase(), days = 3;
+  const london = (v) => v ? new Date(v).toLocaleString('en-GB', { timeZone: 'Europe/London', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '-';
+  const tsv = (f, k) => (f && f[k] && f[k].timestampValue) || '';
+  let hids = env('HOUSEHOLD_ID') ? [env('HOUSEHOLD_ID')] : [];
+  if (!hids.length) {
+    if (!want) { console.error('Give NAME (a member\'s first name) or HOUSEHOLD_ID'); process.exit(1); }
+    for (const h of await fs.list('households')) {
+      const ms = await fs.list(`households/${h.id}/members`);
+      if (ms.some((m) => fieldString(m.fields, 'name').toLowerCase().startsWith(want))) hids.push(h.id);
+    }
+  }
+  if (!hids.length) { console.log('No circle with a member called ' + want); process.exit(0); }
+  const since = new Date(Date.now() - days * 864e5).toISOString().slice(0, 10);
+  for (const hid of hids) {
+    const ms = await fs.list(`households/${hid}/members`);
+    console.log(`=== circle ${hid}, members: ${ms.map((m) => fieldString(m.fields, 'name') + ' (' + fieldString(m.fields, 'role') + ')').join(', ')}`);
+    const es = (await fs.list(`households/${hid}/entries`)).filter((e) => fieldString(e.fields, 'day') >= since);
+    es.sort((a, b) => tsv(a.fields, 'createdAt').localeCompare(tsv(b.fields, 'createdAt')));
+    console.log(`Entries from ${since}, in the order they reached the database (type | day | time logged | saved at | by):`);
+    for (const e of es) {
+      const f = e.fields;
+      console.log(`  ${fieldString(f, 'type').padEnd(9)} | ${fieldString(f, 'day')} | ${london(tsv(f, 'at'))} | ${london(tsv(f, 'createdAt'))} | ${fieldString(f, 'addedBy')}${tsv(f, 'updatedAt') ? ' | updated ' + london(tsv(f, 'updatedAt')) : ''}`);
+    }
+    console.log('Saved meals (no names: created | last logged | updated | uses):');
+    for (const m of await fs.list(`households/${hid}/meals`)) {
+      const f = m.fields;
+      console.log(`  ${london(tsv(f, 'createdAt'))} | ${london(tsv(f, 'lastAt'))} | ${london(tsv(f, 'updatedAt'))} | ${(f.uses && (f.uses.integerValue || f.uses.doubleValue)) || 0} | by ${fieldString(f, 'addedBy')}`);
+    }
+  }
 } else if (action === 'list') {
   const hs = await fs.list('households');
   for (const h of hs) {
@@ -120,6 +154,6 @@ if (action === 'create') {
   }
   if (!hs.length) console.log('No households yet.');
 } else {
-  console.error('ACTION must be create, add-member, remove-member, new-key, beta-code, beta-codes, unseed-check, unseed or list');
+  console.error('ACTION must be create, add-member, remove-member, new-key, beta-code, beta-codes, unseed-check, unseed, food-check or list');
   process.exit(1);
 }

@@ -22,6 +22,7 @@ on:
           - beta-codes
           - unseed-check
           - unseed
+          - food-check
       code:
         description: "Beta code to make or switch off (beta-code): letters and digits, e.g. BINCEY"
         required: false
