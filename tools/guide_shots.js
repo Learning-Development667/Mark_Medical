@@ -111,7 +111,7 @@ const QUALITY = 0.8;
   await tab('meds');
   await shot('Manage medicines adds one, changes a dose, or sets reminder times. Reminders arrive as notifications once they are switched on under Settings.', '#meds-manage');
   await page.click('#meds-manage'); await page.waitForSelector('#sheet:not([hidden])');
-  await shot('Every medicine on the list, with what it is for and Edit. A finished course keeps its history under Medicine history.', '#sheet-body .medrow:has-text("Diazepam") button');
+  await shot('Add a medicine sits at the top. Under it, every medicine on the list, with what it is for and Edit. A finished course keeps its history under Medicine history.', '#sheet-body .medrow:has-text("Diazepam") button');
   await page.click('#sheet-body .medrow:has-text("Diazepam") button'); await settle(700);
   await shot('Edit sets how it is taken, how many each time and the strength, so Log now records the right amount. Reminder times are further down.', '#sheet-body [aria-label="How is it taken?"]');
   await closeSheet();
