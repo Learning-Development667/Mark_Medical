@@ -135,7 +135,7 @@
     },
     {
      "file": "meds-6.webp",
-     "caption": "Manage medicines adds one, changes a dose, or sets reminder times. Reminders arrive as notifications once they are switched on under Settings.",
+     "caption": "Manage medicines adds one, changes a dose or the times it is taken. Reminders arrive as notifications once they are switched on under Settings.",
      "tap": {
       "x": 0.264,
       "y": 0.193
@@ -151,10 +151,18 @@
     },
     {
      "file": "meds-8.webp",
-     "caption": "Edit says whether it is regular or when needed, then how it is taken (tablets, gel in pumps and the rest), how many each time and the strength, so Log now records the right amount. Reminder times are further down.",
+     "caption": "Edit says whether it is regular or when needed, then how it is taken (tablets, gel in pumps and the rest), how many each time and the strength, so Log now records the right amount.",
      "tap": {
       "x": 0.5,
       "y": 0.373
+     }
+    },
+    {
+     "file": "meds-9.webp",
+     "caption": "A regular medicine then asks when you take it: tap Morning, Midday, Teatime or Night, or add any other time. One in the morning and one at night is Morning and Night. The same times are its reminders.",
+     "tap": {
+      "x": 0.601,
+      "y": 0.619
      }
     }
    ]
@@ -286,7 +294,7 @@
      "caption": "Finish when it is done. Close it instead and Today says it is not finished yet, with everything kept.",
      "tap": {
       "x": 0.5,
-      "y": 0.934
+      "y": 0.871
      }
     },
     {
