@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '251';
+const APP_VERSION = '252';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -1750,7 +1750,7 @@ function buildIbdFixture() {
 
 function startDemoData(pack) {
   /* a hook for the Playwright harness, preview only: nothing here can reach Firestore */
-  window.daybookPreview = { state, addEntry, renderExercise, exerciseLogFor, syncUsageRow, openUsage, logMed, deleteEntry, doseWaterMl, syncMedWater };
+  window.daybookPreview = { state, addEntry, renderExercise, exerciseLogFor, syncUsageRow, openUsage, logMed, deleteEntry, doseWaterMl, syncMedWater, renderDocsList };
   state.previewPack = pack === 'ibd' ? 'ibd' : 'cancer';
   const fixture = state.previewPack === 'ibd' ? buildIbdFixture() : buildDemoFixture();
   const seed = state.previewPack === 'ibd' ? IBD_MEDICINES : DEMO_MEDICINES;
@@ -11620,6 +11620,11 @@ function renderMedsDocs() {
   const docs = state.documents.filter((d) => d.category === 'exemption');
   $('meds-docs').replaceChildren(...docs.map((d, i) => h('li', null, docItem(d, i))));
   $('meds-docs-empty').hidden = docs.length > 0;
+  /* once one is saved there is nothing to add (v252, Mark): the button goes and the line says how to show it */
+  $('meds-doc-add').hidden = docs.length > 0;
+  $('meds-docs-hint').textContent = docs.length
+    ? 'Tap it to show at the pharmacy. When it is renewed, delete the old one and add the new one.'
+    : 'Your NHS prescription exemption certificate, ready to show at the pharmacy.';
 }
 
 function renderDocsList() {
