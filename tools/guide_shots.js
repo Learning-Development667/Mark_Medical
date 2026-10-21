@@ -101,7 +101,7 @@ const QUALITY = 0.8;
   await shot('The Meds tab lists today\'s medicines, each with how many doses are done. Tap Log now when one is taken.', '#meds-scheduled .med-log');
   await page.click('#meds-scheduled .med-log'); await settle(700);
   await page.click('#meds-scheduled .med-toggle'); await settle(500);
-  await shot('Logged: the line counts it, and the name opens the card with the time of each dose, Other time and Log a side effect. A when-needed medicine says when the next dose can be given.');
+  await shot('Logged: the line counts it, and the name opens the card with the time of each dose, Other time, Remove and Log a side effect. A when-needed medicine says when the next dose can be given.');
   await shot('The arrows at the foot of an open card, or holding the name for a second and sliding it, put the list in your own order.', '#meds-scheduled .med-order');
   await tab('today');
   await shot('From Today, the Medicine tile logs a dose without leaving the screen.', '.qa[data-add="medicine"]');
@@ -113,7 +113,7 @@ const QUALITY = 0.8;
   await page.click('#meds-manage'); await page.waitForSelector('#sheet:not([hidden])');
   await shot('Add a medicine sits at the top. Under it, every medicine on the list, with what it is for and Edit. A finished course keeps its history under Medicine history.', '#sheet-body .medrow:has-text("Diazepam") button');
   await page.click('#sheet-body .medrow:has-text("Diazepam") button'); await settle(700);
-  await shot('Edit sets how it is taken, how many each time and the strength, so Log now records the right amount. Reminder times are further down.', '#sheet-body [aria-label="How is it taken?"]');
+  await shot('Edit says whether it is regular or when needed, then how it is taken (tablets, gel in pumps and the rest), how many each time and the strength, so Log now records the right amount. Reminder times are further down.', '#sheet-body [aria-label="Regular or when needed?"]');
   await closeSheet();
 
   /* 4. a question */

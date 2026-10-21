@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '250';
+const APP_VERSION = '251';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -10345,7 +10345,8 @@ function medCard(m, day, section) {
     more.append(status);
   }
   more.append(h('div', { class: 'med-actions' },
-    isToday ? h('button', { class: 'btn btn-secondary', type: 'button', onclick: () => logMedAtTime(m) }, 'Other time') : null));
+    isToday ? h('button', { class: 'btn btn-secondary', type: 'button', onclick: () => logMedAtTime(m) }, 'Other time') : null,
+    h('button', { class: 'btn btn-secondary med-remove', type: 'button', 'aria-label': 'Remove ' + m.name + ' from my medicines', onclick: () => removeMedicine(m) }, 'Remove')));
   more.append(h('div', { class: 'med-side' },
     h('button', { class: 'btn btn-link btn-small med-sidefx', type: 'button', 'aria-label': 'Log a side effect of ' + m.name, onclick: () => logSideEffect({ kind: 'med', id: m.id, name: m.name }) }, 'Log a side effect')));
   /* its place in this section, with up and down (v217); a hold on the name drags it instead */
@@ -10728,6 +10729,7 @@ const DOSE_FORMS = [
   { key: 'ml', label: 'Liquid (ml)', one: 'ml', many: 'ml' },
   { key: 'puff', label: 'Puffs', one: 'puff', many: 'puffs' },
   { key: 'drop', label: 'Drops', one: 'drop', many: 'drops' },
+  { key: 'gel', label: 'Gel (pumps)', one: 'pump', many: 'pumps' }, // v251, Mark: Oestrogel and the like are counted in pumps
   { key: 'iv', label: 'Drip or injection' },   // v214, Mark: "Why isn't IV an option at the top?"; uncounted, the dose as typed
   { key: 'none', label: 'Not counted' }
 ];
@@ -10772,8 +10774,8 @@ function splitDose(m) {
   if (m && m.doseForm) return { form: m.doseForm, count: m.doseCount || 1, strength: m.strength || '' };
   const dose = String((m && m.dose) || '').trim();
   const words = { half: 0.5, 'half a': 0.5, 'half an': 0.5, one: 1, two: 2, three: 3, four: 4 };
-  const t = dose.match(/^(\d+(?:\.\d+)?|\u00bd|half an?|half|one|two|three|four)\s+(tablet|capsule|sachet|puff|drop)s?(?:\s*\(([^()]+)\)|\s*,\s*(each\b.+))?$/i);
-  if (t) return { form: t[2].toLowerCase(), count: t[1] === '\u00bd' ? 0.5 : words[t[1].toLowerCase()] || parseFloat(t[1]), strength: (t[3] || t[4] || '').trim() };
+  const t = dose.match(/^(\d+(?:\.\d+)?|\u00bd|half an?|half|one|two|three|four)\s+(tablet|capsule|sachet|puff|drop|pump)s?(?:\s*\(([^()]+)\)|\s*,\s*(each\b.+))?$/i);
+  if (t) return { form: t[2].toLowerCase() === 'pump' ? 'gel' : t[2].toLowerCase(), count: t[1] === '\u00bd' ? 0.5 : words[t[1].toLowerCase()] || parseFloat(t[1]), strength: (t[3] || t[4] || '').trim() };
   const l = dose.match(/^(\d+(?:\.\d+)?)\s*ml(?:\s*\(([^()]+)\))?$/i);
   if (l) return { form: 'ml', count: parseFloat(l[1]), strength: (l[2] || '').trim() };
   /* a drip or an injection saved before v214 opens on that chip: the hospital route, or the words in the name or how */
@@ -10873,6 +10875,35 @@ function renderHospitalDoses() {
   if (section) section.hidden = !list.length && !state.viewer;
 }
 
+/* Remove a medicine from the list (v251, Mark: Helen put a medicine in the wrong section, added it again and could not
+   get rid of the first). One with no dose ever logged is deleted; one with doses is marked not in use, so its history,
+   the Medicine history report and every report keep the doses, and it moves to Stopped (Undo puts it back). */
+async function removeMedicine(m, after) {
+  if (state.readOnly || state.viewer) return;
+  let doses = [];
+  try { doses = await loadMedDoses(m); } catch (e) { console.error(e); toast('Could not reach Daybook. Check the signal and try again.'); return; }
+  const n = doses.length;
+  const ok = await confirmSheet('Remove ' + m.name + '?', n
+    ? `It comes off your list and its reminders stop. The ${n === 1 ? 'dose' : n + ' doses'} already logged stay in Medicine history and on the reports, under Stopped. To take it again, tick Currently in use in Manage medicines.`
+    : 'No dose of it has been logged, so it is deleted from your list and its reminders stop.', 'Remove', true);
+  if (!ok) { if (after) after(); return; }
+  const done = () => { renderMeds(); if (after) after(); };
+  if (state.demo) {
+    if (n) Object.assign(state.medicines.find((x) => x.id === m.id) || {}, { active: false });
+    else state.medicines = state.medicines.filter((x) => x.id !== m.id);
+    done();
+    toast(m.name + ' removed', n ? { label: 'Undo', onClick: () => { Object.assign(state.medicines.find((x) => x.id === m.id) || {}, { active: true }); renderMeds(); } } : undefined);
+    return;
+  }
+  try {
+    if (n) await setDoc(hdoc('medicines', m.id), { active: false }, { merge: true });
+    else await deleteDoc(hdoc('medicines', m.id));
+    touchReminderPlan();
+    done();
+    toast(m.name + ' removed', n ? { label: 'Undo', onClick: async () => { await setDoc(hdoc('medicines', m.id), { active: true }, { merge: true }); touchReminderPlan(); } } : undefined);
+  } catch (e) { console.error(e); toast('Could not remove it. Try again.'); }
+}
+
 function openManageMeds() {
   const list = h('div', { class: 'medlist' });
   sortMedicines(state.medicines).forEach((m) => {
@@ -10919,7 +10950,7 @@ function doseControls(parts, opts = {}) {
     countField.querySelector('.fieldlabel').textContent = f && f.key === 'ml' ? 'How many ml each time' : 'How many each time';
     ivHint.hidden = formIn.value !== 'iv';
     doseLabel.textContent = !f ? 'Dose' : f.key === 'ml' ? 'Strength (optional, as on the bottle)' : `Strength of one ${f.one} (optional, as on the box)`;
-    dose.placeholder = formIn.value === 'iv' ? 'e.g. 260 mg, 7,500 units or 1000 ml' : !f ? 'e.g. apply to skin, or 1 patch' : f.key === 'ml' ? 'e.g. 10 mg in 5 ml' : f.key === 'sachet' ? 'e.g. in 250 ml water' : 'e.g. 500 mg';
+    dose.placeholder = formIn.value === 'iv' ? 'e.g. 260 mg, 7,500 units or 1000 ml' : !f ? 'e.g. apply to skin, or 1 patch' : f.key === 'ml' ? 'e.g. 10 mg in 5 ml' : f.key === 'sachet' ? 'e.g. in 250 ml water' : f.key === 'gel' ? 'e.g. 0.75 mg' : 'e.g. 500 mg';
     const text = composeDose(count.value(), formIn.value, dose.value);
     dosePreview.textContent = text ? 'Each dose is logged as ' + text + '.' : '';
   };
@@ -10942,8 +10973,10 @@ function openEditMed(m, prefill) {
   const { formIn, formChips, count, countField, dose, doseField, dosePreview, ivHint, askField, askBox } = doseControls(splitDose(m), { ask: m.askCount !== false });
   const how = h('input', { type: 'text', value: m.how || '' });
   const purpose = h('input', { type: 'text', value: m.purpose || '' });
-  const kind = h('select', null, h('option', { value: 'scheduled', text: 'Scheduled (regular doses)' }), h('option', { value: 'prn', text: 'When needed' }));
-  kind.value = m.kind || 'scheduled';
+  /* Regular or when needed, as two chips under the name (v251): a select at the foot of the sheet was missed (Helen) */
+  const kind = h('input', { type: 'hidden', value: m.kind === 'prn' ? 'prn' : 'scheduled' });
+  const kindChips = presets([{ value: 'scheduled', label: 'Regular, on a schedule' }, { value: 'prn', label: 'When needed' }], kind, kind.value);
+  kindChips.setAttribute('role', 'group'); kindChips.setAttribute('aria-label', 'Regular or when needed?');
   const perDay = h('input', { type: 'number', inputmode: 'numeric', min: '1', max: '12', value: m.perDay || 1 });
   const courseEnd = h('input', { type: 'date', value: m.courseEnd || '' });
   /* a course with a start as well as an end, and whether it is a steroid course (v204): the calendar shades the days
@@ -10991,7 +11024,7 @@ function openEditMed(m, prefill) {
     remindBits.forEach((el) => { el.hidden = hospital.checked; });
     schedFields.children[0].hidden = hospital.checked; // doses per day: the nurses decide, each one is counted
   };
-  kind.addEventListener('change', sync);
+  kindChips.addEventListener('click', () => setTimeout(sync, 0));
   hospital.addEventListener('change', sync);
   sync();
 
@@ -10999,6 +11032,8 @@ function openEditMed(m, prefill) {
     isNew && explainAvailable() ? h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => readMedicinePhoto((data) => openEditMed(null, data), () => openEditMed(null, pf)) }, 'Read it from a photo') : null,
     isNew && explainAvailable() ? h('p', { class: 'hint', text: "A photo of the box or the pharmacy label. Daybook Assistant (AI from Anthropic, in the US) reads it, and the details fill in below. It can misread a label, so check the name and dose before adding." }) : null,
     field('Name', name),
+    h('p', { class: 'fieldlabel', text: 'Regular or when needed?' }), kindChips,
+    h('p', { class: 'hint med-kind-hint', text: 'When needed is for one taken only some days, like a painkiller or a migraine tablet. It is never counted as missed.' }),
     h('p', { class: 'fieldlabel', text: 'How is it taken?' }), formChips,
     countField, doseField, dosePreview, ivHint, askField,
     isNew ? null : h('p', { class: 'hint med-dose-hint', text: medStatus(m).text === 'Taking now'
@@ -11008,7 +11043,7 @@ function openEditMed(m, prefill) {
     h('label', { class: 'check' }, hospital, h('span', { text: 'Given by the hospital (hospital monitored)' })),
     h('p', { class: 'hint', text: 'Tick this for a drip, an injection or anything the nurses give. Its doses are marked as given in hospital, and Daybook sends no reminders for it.' }),
     hospFields,
-    field('Type', kind), schedFields, prnFields,
+    schedFields, prnFields,
     isNew ? null : h('label', { class: 'check' }, active, h('span', { text: 'Currently in use' })),
     h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
       if (!name.value.trim()) { toast('Please enter a name'); return; }
@@ -11057,7 +11092,8 @@ function openEditMed(m, prefill) {
         toast(isNew ? 'Medicine added' : 'Medicine updated');
       } catch (e) { console.error(e); toast('Could not save medicine'); }
     } }, isNew ? 'Add medicine' : 'Save changes'),
-    h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: openManageMeds }, 'Back')
+    h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: openManageMeds }, 'Back'),
+    isNew ? null : h('button', { class: 'btn btn-link btn-block med-remove-link', type: 'button', onclick: () => { closeSheet(); removeMedicine(m, openManageMeds); } }, 'Remove this medicine')
   );
   openSheet(isNew ? 'Add medicine' : 'Edit medicine', body);
 }
