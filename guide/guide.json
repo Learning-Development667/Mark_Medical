@@ -159,10 +159,10 @@
     },
     {
      "file": "meds-9.webp",
-     "caption": "A regular medicine then asks when you take it: tap Morning, Midday, Teatime or Night, or add any other time. One in the morning and one at night is Morning and Night. The same times are its reminders.",
+     "caption": "A regular medicine then asks when you take it: tick Morning, Midday, Teatime or Night and set each time. One in the morning and one at night is Morning and Night. The same times are its reminders.",
      "tap": {
-      "x": 0.601,
-      "y": 0.619
+      "x": 0.126,
+      "y": 0.705
      }
     }
    ]
@@ -249,7 +249,7 @@
      "file": "treatment-4.webp",
      "caption": "On the three days after a session, the morning and evening check-ins ask about side effects: none, mild, moderate or severe for each.",
      "tap": {
-      "x": 0.5,
+      "x": 0.536,
       "y": 0.515
      }
     },
