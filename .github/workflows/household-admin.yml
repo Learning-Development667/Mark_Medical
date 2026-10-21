@@ -74,6 +74,11 @@ on:
         required: false
         type: boolean
         default: false
+      all_circles:
+        description: "unseed-check / unseed: every circle, not only those with a Beta code (give Mark's circle as household_id to leave it alone)"
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   run:
@@ -100,4 +105,5 @@ jobs:
           CODE: ${{ inputs.code }}
           LABEL: ${{ inputs.label }}
           OFF: ${{ inputs.switch_off && 'yes' || 'no' }}
+          ALL: ${{ inputs.all_circles && 'yes' || 'no' }}
         run: node tools/household_admin.mjs
