@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '252';
+const APP_VERSION = '253';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -1341,6 +1341,7 @@ function stopData() {
   state.recentFrom = null;
   state.recentEntries = [];
   state.dayEntries = [];
+  state.profileLoaded = false;
 }
 
 /* ------------------------------------------------------------------ */
@@ -1845,10 +1846,12 @@ function watchDocuments() {
 function watchProfile() {
   state.unsub.profile = onSnapshot(hdoc('profile', 'main'), (snap) => {
     state.profile = snap.exists() ? snap.data() : { calls: [] };
+    state.profileLoaded = true;
     renderCalls();
     renderExercise();
     syncSettings();
     renderMeds();
+    renderWhatsNew();
   }, (e) => console.error(e));
 }
 
@@ -2647,6 +2650,7 @@ function ensureFoodIndexForToday() {
 function renderToday() {
   ensureFoodIndexForToday();
   renderFeedbackRow();
+  renderWhatsNew();
   renderTiles();
   renderCheckins();
   renderMeds();
@@ -2866,6 +2870,70 @@ function renderFeedbackRow() {
     : 'Tell Mark what you think: anything confusing, wrong or not what you expected. ' + (sent.length ? sent.length + ' sent so far.' : '');
 }
 $('feedback-row').addEventListener('click', () => openFeedbackSheet());
+
+/* What's new (v253). Mark approves each batch's words. A batch is a date and its items; an item with
+   packs shows only to a circle with one of those packs on, one without is for everyone. Bundle the
+   changes about twice a week, only things a person would notice, newest batch first. Kept per phone in
+   localStorage: when it first saw this (batches before that day are never shown as new), which batches
+   it has seen, and the Beta welcome. Nothing is stored in the circle. */
+const WHATS_NEW = [
+  { id: '2026-10-21', items: [
+    { text: 'Add a medicine is now at the top of Manage medicines, so you do not have to scroll past the list to find it.' },
+    { text: 'Remove a medicine: on the Meds tab, open its card with the small arrow and tap Remove. A medicine with doses already logged is kept in your history.' },
+    { text: 'Regular or when needed is now the first thing to choose when you add or change a medicine, straight under its name.' },
+    { text: 'Gel is now a dose type, counted in pumps, for medicines like Oestrogel.' },
+    { text: 'Water you take a medicine in, like a Macrogol sachet in 250 ml, now counts in your drinks for the day by itself.' }
+  ] }
+];
+const BETA_WELCOME = 'Daybook is in Beta, so it is improved most days. Updates arrive by themselves when you open it, and anything new for you is shown here once. Tell Mark what you think any time with Provide feedback at the top of Today.';
+const WN_KEY = 'daybook.whatsnew';
+function wnRead() { try { return JSON.parse(localStorage.getItem(WN_KEY) || 'null') || {}; } catch (e) { return {}; } }
+function wnWrite(v) { try { localStorage.setItem(WN_KEY, JSON.stringify(v)); } catch (e) { /* private browsing: shown again next time */ } }
+function wnItems(b) { return b.items.map((it, i) => ({ ...it, key: b.id + ':' + i })).filter((it) => !it.packs || it.packs.some(packOn)); }
+function whatsNewShown() { return !!(auth && auth.currentUser) && !state.demo && !state.viewer; }
+// Seen is kept per item, so an item for a pack switched on later (or before the profile has loaded) still shows once
+function unseenItems() {
+  const s = wnRead();
+  const seen = new Set(s.seen || []);
+  return WHATS_NEW.filter((b) => b.id >= (s.since || todayStr())).flatMap(wnItems).filter((it) => !seen.has(it.key));
+}
+function wnList(items) { return h('ul', { class: 'whatsnew-list' }, items.map((it) => h('li', { text: it.text }))); }
+function renderWhatsNew() {
+  const box = $('whatsnew'); if (!box) return;
+  // Waits for the circle's profile, so the condition filter never guesses
+  if (!whatsNewShown() || !state.profileLoaded) { box.hidden = true; return; }
+  const s = wnRead();
+  if (!s.since) { s.since = todayStr(); wnWrite(s); }
+  const welcome = !!APP_STAGE && !s.welcome;
+  const items = unseenItems();
+  if (!welcome && !items.length) { box.hidden = true; return; }
+  $('whatsnew-title').textContent = welcome ? 'Welcome to the Daybook ' + APP_STAGE : 'New in Daybook';
+  $('whatsnew-body').replaceChildren(
+    welcome ? h('p', { class: 'whatsnew-p', text: BETA_WELCOME }) : null,
+    items.length && welcome ? h('p', { class: 'whatsnew-sub', text: 'New this time:' }) : null,
+    items.length ? wnList(items) : null,
+    items.length ? h('p', { class: 'whatsnew-more', text: 'Every change is listed under More, What\'s new.' }) : null);
+  box.hidden = false;
+}
+$('whatsnew-ok').addEventListener('click', () => {
+  const s = wnRead();
+  s.welcome = true;
+  s.seen = [...new Set([...(s.seen || []), ...unseenItems().map((it) => it.key)])];
+  wnWrite(s);
+  $('whatsnew').hidden = true;
+  $('day-label').focus({ preventScroll: true });
+});
+function openWhatsNewSheet() {
+  const batches = WHATS_NEW.map((b) => ({ b, items: wnItems(b) })).filter((x) => x.items.length);
+  const body = h('div', { class: 'whatsnew-sheet' },
+    APP_STAGE ? h('p', { class: 'hint', text: BETA_WELCOME }) : null,
+    batches.length ? batches.map(({ b, items }) => h('section', { class: 'whatsnew-batch' },
+      h('h3', { class: 'whatsnew-date', text: parseDay(b.id).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) }),
+      wnList(items))) : h('p', { class: 'hint', text: 'Nothing listed yet.' }),
+    h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => closeSheet() }, 'Close'));
+  openSheet('What\'s new', body);
+}
+$('more-whatsnew').addEventListener('click', openWhatsNewSheet);
 function openFeedbackSheet() {
   const screen = document.title;
   const draft = fbRead('draft', {});

@@ -1647,6 +1647,16 @@ h1, h2, h3 { font-weight: 600; }
 .feedback-row { background: var(--surface); box-shadow: var(--elev-raised); border-left: 6px solid var(--warm); margin-bottom: var(--s-4); }
 .feedback-row .checkin-icon { color: var(--warm); }
 .feedback-row:active { transform: translateY(1px); box-shadow: var(--elev-flat); }
+/* What's new (v253): a calm card at the top of Today, shown once per batch */
+.whatsnew { background: var(--surface); box-shadow: var(--elev-raised); border-radius: var(--r-md); border-top: 4px solid var(--teal-fill, var(--teal)); padding: var(--s-4) var(--s-4) var(--s-4); margin-bottom: var(--s-4); }
+.whatsnew-title { font-family: var(--font-head); font-weight: 600; font-size: 21px; margin: 0 0 var(--s-2); color: var(--text-primary); }
+.whatsnew-p { margin: 0 0 var(--s-3); }
+.whatsnew-sub { margin: 0 0 var(--s-1); font-weight: 600; }
+.whatsnew-list { margin: 0 0 var(--s-3); padding-left: 1.2em; }
+.whatsnew-list li { margin-bottom: var(--s-2); }
+.whatsnew-more { margin: 0 0 var(--s-3); color: var(--text-secondary); }
+.whatsnew-batch { margin-bottom: var(--s-4); }
+.whatsnew-date { font-family: var(--font-head); font-weight: 600; font-size: 19px; margin: var(--s-3) 0 var(--s-2); }
 .fb { display: grid; gap: var(--s-4); }
 .fb-survey { background: var(--surface-sunken); border-radius: var(--r-md); padding: var(--s-4); display: grid; gap: var(--s-4); }
 .fb-survey h3 { margin: 0; font-family: var(--font-head); font-weight: 600; font-size: 20px; }
