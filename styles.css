@@ -858,8 +858,12 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 .med-more[hidden] { display: none; }
 .med-why { margin: 0; font-size: 15px; color: var(--teal); font-weight: 600; overflow-wrap: anywhere; }
 .med-more .med-actions .btn { flex: 0 1 auto; min-width: 140px; }
+.med-more .med-actions { flex-wrap: wrap; }
+.med-kind-hint { margin-bottom: var(--s-4); }
 @media (prefers-reduced-motion: reduce) { .med-chev { transition: none; } }
 .med-actions .btn { flex: 1; margin-top: var(--s-1); }
+.med-actions .btn-secondary.med-remove, .med-remove-link { color: var(--danger); }
+.med-actions .btn-secondary.med-remove { border-color: var(--danger); }
 .med.is-complete { box-shadow: var(--elev-raised), inset 0 0 0 2px var(--success-light); }
 .med.is-ended { opacity: 0.6; }
 

@@ -111,7 +111,7 @@
     },
     {
      "file": "meds-2.webp",
-     "caption": "Logged: the line counts it, and the name opens the card with the time of each dose, Other time and Log a side effect. A when-needed medicine says when the next dose can be given."
+     "caption": "Logged: the line counts it, and the name opens the card with the time of each dose, Other time, Remove and Log a side effect. A when-needed medicine says when the next dose can be given."
     },
     {
      "file": "meds-3.webp",
@@ -151,10 +151,10 @@
     },
     {
      "file": "meds-8.webp",
-     "caption": "Edit sets how it is taken, how many each time and the strength, so Log now records the right amount. Reminder times are further down.",
+     "caption": "Edit says whether it is regular or when needed, then how it is taken (tablets, gel in pumps and the rest), how many each time and the strength, so Log now records the right amount. Reminder times are further down.",
      "tap": {
       "x": 0.5,
-      "y": 0.406
+      "y": 0.373
      }
     }
    ]
@@ -286,7 +286,7 @@
      "caption": "Finish when it is done. Close it instead and Today says it is not finished yet, with everything kept.",
      "tap": {
       "x": 0.5,
-      "y": 0.871
+      "y": 0.934
      }
     },
     {
