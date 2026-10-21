@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '255';
+const APP_VERSION = '256';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -2883,7 +2883,7 @@ const WHATS_NEW = [
     { text: 'Regular or when needed is now the first thing to choose when you add or change a medicine, straight under its name.' },
     { text: 'Gel is now a dose type, counted in pumps, for medicines like Oestrogel.' },
     { text: 'Water you take a medicine in, like a Macrogol sachet in 250 ml, now counts in your drinks for the day by itself.' },
-    { text: 'When you add or change a regular medicine, tick when you take it, Morning, Midday, Teatime or Night, and set the time for each. One in the morning and one at night is Morning and Night, and the same times are its reminders.' },
+    { text: 'You can now choose what time you take each medicine, if needed.' },
     { text: 'A medicine with a Course starts date waits under Starting soon on the Meds tab, and is not counted or reminded about until that day.' }
   ] }
 ];
