@@ -500,6 +500,7 @@ body.is-readonly .qa,
 body.is-readonly #food-nutrition-row,
 body.is-readonly #food-totals,
 body.is-readonly #meds-manage,
+body.is-readonly #meds-first-add,
 body.is-readonly #meds-hospital-add,
 body.is-readonly .med-actions, body.is-readonly .med-log,
 body.is-readonly #meds-doc-add,
@@ -1974,3 +1975,8 @@ body[data-page="docs"] :is(.card, .checkin-row):not(.is-due) { background: color
 .day-fx-row { display: grid; gap: 2px; min-width: 0; }
 .day-fx-when { font-size: 14px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--teal); }
 .day-fx-what { overflow-wrap: anywhere; white-space: pre-wrap; color: var(--text-primary); }
+
+/* A circle with no medicines yet (v248): one clear way in */
+.meds-first { display: grid; gap: var(--s-3); margin-top: var(--s-4); }
+.meds-first-title { font-family: var(--font-head); font-weight: 600; font-size: 22px; letter-spacing: -0.01em; margin: 0; color: var(--text-primary); }
+.meds-first .hint { margin: 0; }

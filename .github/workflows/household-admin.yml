@@ -20,6 +20,8 @@ on:
           - new-key
           - beta-code
           - beta-codes
+          - unseed-check
+          - unseed
       code:
         description: "Beta code to make or switch off (beta-code): letters and digits, e.g. BINCEY"
         required: false
