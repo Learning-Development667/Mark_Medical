@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '276';
+const APP_VERSION = '277';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -6487,7 +6487,13 @@ function twoPageTiles(entries, from, to, f) {
   if (!bps.length) tiles.push(none('Blood pressure', 'readings'));
   else {
     const sy = Math.round(avg(bps.map((e) => Number(e.systolic)))), di = Math.round(avg(bps.map((e) => Number(e.diastolic))));
-    tiles.push({ k: 'Blood pressure', v: sy + '/' + di, unit: 'average', note: nRead(bps.length), tone: toneOf(sy >= 160 || di >= 100, sy >= 140 || di >= 90 || sy <= 90) });
+    /* the average, coloured by it, with any very high or very low reading named (v277, Mark) */
+    const bpText = (e) => Math.round(e.systolic) + '/' + Math.round(e.diastolic) + ' on ' + rDay(e.day);
+    const byTime = bps.slice().sort((a, b) => entryDate(a) - entryDate(b));
+    const vHigh = byTime.filter((e) => e.systolic >= 160 || e.diastolic >= 100), vLow = byTime.filter((e) => e.systolic <= 90);
+    const named = (list) => list.slice(0, 3).map(bpText).join(', ') + (list.length > 3 ? ' and ' + (list.length - 3) + ' more' : '');
+    const extra = [vHigh.length ? 'Very high: ' + named(vHigh) + '.' : '', vLow.length ? 'Very low: ' + named(vLow) + '.' : ''].filter(Boolean).join(' ');
+    tiles.push({ k: 'Blood pressure', v: sy + '/' + di, unit: 'average', note: nRead(bps.length) + (extra ? ' ' + extra : ''), tone: toneOf(sy >= 160 || di >= 100, sy >= 140 || di >= 90 || sy <= 90) });
   }
   const oxs = entries.filter((e) => e.type === 'vitals' && Number(e.oxygen) > 0).map((e) => Number(e.oxygen));
   if (!oxs.length) tiles.push(none('Oxygen', 'readings'));
@@ -6496,7 +6502,11 @@ function twoPageTiles(entries, from, to, f) {
   if (f.pAvg == null) tiles.push(none('Pain', 'pain scores'));
   else { const a = r1(f.pAvg); tiles.push({ k: 'Pain', v: String(a), unit: '/10 average', note: 'Average of ' + plural(f.pDays || 0, 'day') + ' scored.', tone: toneOf(a >= 7, a >= 4) }); }
   if (!f.nights.length) tiles.push(none('Sleep', 'nights logged'));
-  else { const m = avg(f.nights.map((e) => Number(e.value))); tiles.push({ k: 'Sleep', v: String(Math.round(m / 6) / 10), unit: 'h a night', note: 'Average of ' + plural(f.nights.length, 'night') + ' logged.', tone: m < 300 ? 'amber' : 'green' }); }
+  /* Sleep is a count of short nights (v277, Mark: "sleep how many under 5 hours"), with the average under it */
+  else {
+    const m = avg(f.nights.map((e) => Number(e.value)));
+    tiles.push({ k: 'Sleep', v: String(f.shortN), unit: 'of ' + plural(f.nights.length, 'night') + ' under 5 h', note: `Average ${fmtHm(m)} a night.`, tone: f.shortN ? 'amber' : 'green' });
+  }
   /* Protein: the same food-day calculation as the Food diary (v119) */
   const target = proteinTarget();
   const protDays = foodDaysFor(entries, from, to, foodIndex).days.filter((d) => !d.partial && d.p != null).map((d) => ({ prot: d.p, logged: d.source !== 'estimate' }));
