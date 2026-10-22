@@ -857,7 +857,11 @@ async function paginate(frame, M, render, opts = {}) {
     let moved = false;
     const pages = [...doc.querySelectorAll('.page')];
     for (let p = 0; p < pages.length && !moved; p++) {
-      const limit = pages[p].querySelector('.foot').getBoundingClientRect().top - 1;
+      /* the page's own bottom too, not only the footer's top (v275): on an overfull page the footer is pushed past the
+         paper in some layouts, and every item then sat above it, so a Mood report printed as one page with its last
+         weeks cut off */
+      const foot = pages[p].querySelector('.foot'), pr = pages[p].getBoundingClientRect(), pcs = doc.defaultView.getComputedStyle(pages[p]);
+      const limit = Math.min(foot.getBoundingClientRect().top, pr.top + pages[p].clientHeight - parseFloat(pcs.paddingBottom || 0) - foot.offsetHeight - 6) - 1;
       const els = [...pages[p].querySelectorAll('[data-i]')].filter((e) => e.dataset.i !== '');
       /* the notes panel stretches to fill its page, so it is judged by its smallest height */
       const bottom = (e) => (e.classList.contains('mnotes') ? e.getBoundingClientRect().top + parseFloat(doc.defaultView.getComputedStyle(e).minHeight) : e.getBoundingClientRect().bottom);
