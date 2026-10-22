@@ -72,12 +72,19 @@ const QUALITY = 0.8;
 
   /* 2. the check-ins */
   begin('checkin', 'The morning and evening check-ins', 'A minute each: sleep, symptoms, pain and mood, one question a screen.', 'The check-ins are what the reports are built from. A minute each, twice a day.');
-  await page.evaluate((today) => { const st = window.daybookPreview.state; st.recentEntries = st.recentEntries.filter((e) => !(e.type === 'checkin' && e.day === today && (e.slot === 'morning' || e.slot === 'evening'))); st.dayEntries = st.recentEntries.filter((e) => e.day === st.selectedDay); }, today);
+  /* the simple night (v260): no tracker night this morning, so the step asks for the times */
+  await page.evaluate((today) => { const st = window.daybookPreview.state; st.recentEntries = st.recentEntries.filter((e) => !(e.day === today && ((e.type === 'checkin' && (e.slot === 'morning' || e.slot === 'evening')) || e.type === 'sleep'))); st.dayEntries = st.recentEntries.filter((e) => e.day === st.selectedDay); }, today);
   await refresh();
   await shot('Twice a day, a morning check-in and an evening one. Tap the row when it says Due now.', '#checkin-morning');
   await page.click('#checkin-morning'); await page.waitForSelector('#sheet:not([hidden])'); await settle();
   await slider('#sheet-body input[type="range"]', 7);
-  await shot('One question a screen. Slide to the score, 1 to 10. Hours slept come from Apple Health when it is connected.', '#sheet-body .btn-next');
+  await page.fill('#night-bed', '23:10'); await page.fill('#night-woke', '06:50'); await settle(200);
+  await shot('One question a screen. Slide to the score, then when you went to bed and woke up: Daybook works out the hours. With Apple Health connected, the night fills itself in.', '#night-woke');
+  await page.click('[aria-label="Do you feel rested"] .preset:text-is("A bit")');
+  await page.click('[aria-label="Was your sleep broken"] .preset:text-is("Once or twice")');
+  await page.click('[aria-label="What broke it"] .preset:text-is("Pain")');
+  await page.click('[aria-label="Roughly how long were you awake"] .preset:text-is("30 minutes to an hour")'); await settle(200);
+  await shot('Rested, and whether the night was broken: if it was, what broke it and roughly for how long. It goes on the Sleep chart and the reports.', '#sheet-body .btn-next');
   await page.click('#sheet-body .btn-next'); await settle();
   await page.fill('#sheet-body textarea', 'Nothing new overnight.');
   await shot('A written answer has Tap to speak under it: tap, say it, tap again to stop. To see what was heard before it is saved, switch that on in Settings. Skip is always there.', '#sheet-body .btn-next');

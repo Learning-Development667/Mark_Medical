@@ -2021,3 +2021,18 @@ body[data-page="docs"] :is(.card, .checkin-row):not(.is-due) { background: color
 .fast-care { margin-top: var(--s-4); }
 .diary-fast { margin: var(--s-1) 0 0; }
 .pill-fast { background: var(--teal-light); color: var(--teal); }
+
+/* ---------- The night, asked simply (v260) ---------- */
+.night-block { display: grid; gap: var(--s-2); margin-top: var(--s-3); }
+.night-block .fieldlabel { margin: var(--s-2) 0 0; }
+.night-total { color: var(--teal); font-weight: 600; margin: 0; }
+.night-tracker { display: flex; gap: var(--s-2); align-items: flex-start; color: var(--teal); font-weight: 600; margin: 0; }
+.night-tracker .icon { flex: none; width: 20px; height: 20px; margin-top: 2px; }
+.night-chips { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.night-chips .preset { white-space: normal; line-height: 1.25; }
+.night-sub { display: grid; gap: var(--s-2); }
+.night-sub .night-chips { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.night-other { margin-top: var(--s-1); }
+.sleep-tracker { margin: var(--s-4) 0; border-radius: var(--r-md); background: var(--surface-sunken); padding: var(--s-3) var(--s-4); }
+.sleep-tracker > summary { cursor: pointer; font-weight: 600; color: var(--teal); min-height: 44px; display: flex; align-items: center; }
+.sleep-tracker[open] > summary { margin-bottom: var(--s-2); }

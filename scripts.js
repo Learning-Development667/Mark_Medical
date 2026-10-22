@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '259';
+const APP_VERSION = '260';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -1377,9 +1377,9 @@ function buildDemoFixture() {
     e(-9, '08:00', 'Shelley', { type: 'temp', value: 36.9 }),
     e(-6, '07:40', 'Mark', { type: 'sleep', value: 410 }),
     e(-5, '07:45', 'Mark', { type: 'sleep', value: 430, deep: 65, rem: 50, core: 290, awake: 25 }),
-    e(-4, '08:05', 'Mark', { type: 'sleep', value: 275, note: 'Up twice with back pain' }),
-    e(-3, '07:30', 'Mark', { type: 'sleep', value: 395 }),
-    e(-1, '07:50', 'Mark', { type: 'sleep', value: 440 }),
+    e(-4, '08:05', 'Mark', { type: 'sleep', value: 275, note: 'Up twice with back pain', bedAt: '22:30', wokeAt: '08:05', awake: 90, rested: 'no', broken: 'lots', brokenWhy: ['pain', 'toilet'], brokenOther: '', awakeFor: '1to2' }),
+    e(-3, '07:30', 'Mark', { type: 'sleep', value: 395, rested: 'yes', broken: 'no', brokenWhy: [], brokenOther: '', awakeFor: null }),
+    e(-1, '07:50', 'Mark', { type: 'sleep', value: 440, rested: 'bit', broken: 'some', brokenWhy: ['toilet'], brokenOther: '', awakeFor: '30to60' }),
     e(0, '07:55', 'Mark', { type: 'sleep', value: 428, deep: 70, rem: 53, core: 305, awake: 25, bedAt: '22:10', wokeAt: '07:05' }),
     e(-9, '09:00', 'Mark', { type: 'vitals', heartRate: 76 }),
     e(-9, '07:30', 'Mark', { type: 'weight', value: 78.8 }),
@@ -1955,6 +1955,7 @@ async function addMedicineByName(name, purpose) {
   if (state.demo) { state.medicines.push({ id: fakeId('med'), ...data }); renderMeds(); return; }
   try { await setDoc(doc(hcol('medicines')), data, { merge: true }); touchReminderPlan(); } catch (e) { console.error(e); toast('Could not save the medicine'); }
 }
+const HEALTH_SOURCES = [['apple', 'Apple Health (iPhone)'], ['android', 'Health Connect (Android)'], ['none', 'No']];
 function openSetup(kind, opts = {}) {
   const full = kind !== 'phone';
   const p = state.profile || {};
@@ -2038,6 +2039,24 @@ function openSetup(kind, opts = {}) {
         if (draft.contactAt != null && calls[draft.contactAt]) calls[draft.contactAt] = c; else { draft.contactAt = calls.length; calls.push(c); }
         return saveProfilePatch({ calls });
       } },
+    /* v260: which health app, if any. The starting point only: Daybook switches to a night's own figures by itself
+       whenever Apple Health sends one, and asks the simple questions on any night without them. */
+    { key: 'health', only: full, title: 'Do you use a watch or health app?', hint: 'For sleep, steps and the like. Either way Daybook works in full.',
+      body: () => {
+        const box = h('div');
+        const words = {
+          apple: 'Sleep, steps, workouts, weight and food totals can come in by themselves through the Health Auto Export app. It can be set up any time under More, then Settings, Apple Health. Until a night arrives, the morning check-in asks a few simple questions about it.',
+          android: 'Daybook cannot read Health Connect yet; that comes with the app store version. Until then the morning check-in asks when you went to bed, when you woke and how the night was, and works out the hours.',
+          none: 'No problem. Each morning the check-in asks when you went to bed, when you woke and how the night was, and works out the hours.'
+        };
+        const redraw = () => box.replaceChildren(
+          chipRow('Do you use a watch or health app', HEALTH_SOURCES, draft.health || '', (v) => { draft.health = v; redraw(); }),
+          draft.health ? para(words[draft.health]) : '');
+        if (draft.health === undefined) draft.health = p.healthSource || '';
+        redraw();
+        return [box];
+      },
+      save: async () => (draft.health ? saveProfilePatch({ healthSource: draft.health }) : true) },
     { key: 'home', title: 'Put Daybook on your Home Screen', hint: 'It then opens like any other app, works full screen, and medicine reminders can be switched on.',
       body: () => {
         if (isStandalone()) {
@@ -4029,67 +4048,52 @@ function openAdd(type, editEntry, preset) {
   }
 
   if (type === 'sleep') {
-    /* Hours and minutes pairs, read straight off the Apple Health sleep screen */
+    /* v260: simple first (when to bed, when up, how it felt), the tracker's own figures tucked under a details row.
+       Hours and minutes pairs, read straight off the Apple Health sleep screen */
     const hm = (label) => {
       const hh = h('input', { type: 'number', inputmode: 'numeric', min: '0', max: '24', placeholder: '0' });
       const mm = h('input', { type: 'number', inputmode: 'numeric', min: '0', max: '59', placeholder: '0' });
       const row = h('div', null, h('span', { class: 'fieldlabel', text: label }), h('div', { class: 'field-row' }, field('Hours', hh), field('Minutes', mm)));
       const minutes = () => (hh.value === '' && mm.value === '') ? null : (parseInt(hh.value, 10) || 0) * 60 + (parseInt(mm.value, 10) || 0);
-      const onChange = (fn) => { hh.addEventListener('input', fn); mm.addEventListener('input', fn); };
       const set = (mins) => { const m = Math.max(0, Math.round(Number(mins) || 0)); hh.value = String(Math.floor(m / 60)); mm.value = String(m % 60); };
-      return { row, minutes, onChange, set };
+      return { row, minutes, set };
     };
     const asleep = hm('Time asleep');
     const stages = { awake: hm('Awake'), rem: hm('REM'), core: hm('Core'), deep: hm('Deep') };
-    const stagesWrap = h('div', { class: 'stages' }, ...Object.values(stages).map((s) => s.row));
     /* If this morning already has a sleep entry (Apple Health sends one automatically), edit it rather than add a second */
     const existing = state.dayEntries.find((e) => e.type === 'sleep') || null;
-    const last = existing || state.recentEntries.find((e) => e.type === 'sleep');
-    const bed = h('input', { type: 'time', value: (last && last.bedAt) || '' });
-    const woke = h('input', { type: 'time', value: (existing && existing.wokeAt) || '' });
+    const tracked = isTrackerNight(existing);
     if (existing) {
       editId = existing.id;
-      asleep.set(existing.value);
-      Object.keys(stages).forEach((k) => { if (existing[k]) stages[k].set(existing[k]); });
+      if (tracked) { asleep.set(existing.value); Object.keys(stages).forEach((k) => { if (existing[k]) stages[k].set(existing[k]); }); }
       note.value = existing.note || '';
-      if (woke.value) time.value = woke.value;
     }
-    const wokeHint = h('p', { class: 'hint', text: 'Worked out from bedtime plus time asleep (and any time awake). Change it if it is wrong.' });
-    /* Woke at fills itself in from bedtime plus the night's sleep until it is typed in by hand */
-    let wokeByHand = Boolean(existing && existing.wokeAt);
-    const workOutWoke = () => {
-      if (wokeByHand || !bed.value) return;
-      const slept = asleep.minutes();
-      if (slept === null || slept <= 0) return;
-      const [bh, bm] = bed.value.split(':').map(Number);
-      const total = (bh * 60 + bm + slept + (stages.awake.minutes() || 0)) % (24 * 60);
-      woke.value = pad2(Math.floor(total / 60)) + ':' + pad2(total % 60);
-      time.value = woke.value;
-    };
-    bed.addEventListener('input', workOutWoke);
-    asleep.onChange(workOutWoke);
-    stages.awake.onChange(workOutWoke);
-    /* The entry's own time is the wake-up time, so the timeline shows it where the night ended */
-    woke.addEventListener('input', () => { wokeByHand = !!woke.value; if (woke.value) time.value = woke.value; });
+    /* a tracker night opens on its figures, editable; a simple night on the block, with its times */
+    const block = nightBlock(nightFrom(existing), { ibd: packOn('ibd') });
+    const details = h('details', { class: 'sleep-tracker' }, h('summary', { text: 'Add details from a tracker' }),
+      h('p', { class: 'hint', text: 'For a watch or health app. Leave it shut if you do not have one: the times above are enough.' }),
+      asleep.row, h('span', { class: 'fieldlabel', text: 'The four stages, in the order Apple Health lists them' }),
+      h('div', { class: 'stages' }, ...Object.values(stages).map((st) => st.row)));
+    details.open = tracked;
     body.append(
       h('p', { class: 'hint', text: existing && existing.addedBy === 'Apple Health'
-        ? 'This night came in from Apple Health through the Health Auto Export app. Change anything that is wrong and save.'
-        : existing ? 'Editing the sleep already logged for this morning.' : 'Last night, logged against this morning. Type in what Apple Health shows.' }),
-      field('In bed at', bed),
-      asleep.row,
-      h('span', { class: 'fieldlabel', text: 'The four stages, in the order Apple Health lists them' }),
-      stagesWrap,
-      field('Woke at', woke),
-      wokeHint,
-      field('Note', note)
-    );
+        ? 'This night came in from Apple Health. Change anything that is wrong and save.'
+        : existing ? 'Editing the sleep already logged for this morning.' : 'Last night, logged against this morning.' }),
+      block.el, details, field('Note', note));
     getData = () => {
-      const v = asleep.minutes();
-      if (v === null || v <= 0 || v > 24 * 60) return null;
+      const n = block.value();
+      const typed = asleep.minutes();
+      const v = typed != null && typed > 0 ? typed : nightAsleep(n) || (tracked ? Number(existing.value) : null);
+      if (!v || v > 24 * 60) { toast('Add when you went to bed and when you woke up'); const b = $('night-bed'); if (b) b.focus(); return { hold: true }; }
       const data = { type: 'sleep', value: v, note: note.value.trim() };
       Object.keys(stages).forEach((k) => { const m = stages[k].minutes(); if (m !== null && m > 0) data[k] = m; });
-      if (bed.value) data.bedAt = bed.value;
-      if (woke.value) data.wokeAt = woke.value;
+      if (!data.awake && n && n.broken && n.broken !== 'no' && nightAwakeMin(n) && !(typed > 0)) data.awake = nightAwakeMin(n);
+      if (n) {
+        if (n.bedAt) data.bedAt = n.bedAt;
+        if (n.wokeAt) { data.wokeAt = n.wokeAt; time.value = n.wokeAt; }
+        Object.assign(data, { rested: n.rested || null, broken: n.broken || null, brokenWhy: n.brokenWhy || [], brokenOther: n.brokenOther || '', awakeFor: n.awakeFor || null });
+      } else if (existing && existing.wokeAt) time.value = existing.wokeAt;
+      if (!editId) data._id = state.selectedDay + '_sleep'; // the night's own document, where Apple Health would merge too
       return data;
     };
   }
@@ -4282,6 +4286,7 @@ function openAdd(type, editEntry, preset) {
     const after = list.map((d) => { const f = d._remember; delete d._remember; return f; }).filter(Boolean);
     if (editId) closeSheet({ force: true });
     if (editId) {
+      delete list[0]._id;
       try { await updateEntry(editId, { ...list[0], at, ...(dateIn ? { day: saveDay } : {}) }); toast(titles[type] + ' updated'); }
       catch (e) { console.error(e); toast('Could not save'); }
       if (!$('view-food').hidden) renderFoodDiary();
@@ -4301,7 +4306,8 @@ function openAdd(type, editEntry, preset) {
         } catch (e) { console.error(e); toast('Could not save the weight'); }
         continue;
       }
-      const id = await addEntry(d);
+      const fid = d._id; delete d._id;
+      const id = await addEntry(d, fid);
       if (!id) return; // refused at once: addEntry has said so, and the sheet stays open with everything still in it
       ids.push(id);
     }
@@ -4328,6 +4334,145 @@ function openAdd(type, editEntry, preset) {
 }
 
 /* The weight already logged for a day (the latest, typed or from Apple Health), or null: the Vitals sheet asks once a day */
+/* ---------- The night, asked simply (v260) ----------
+   Mark, 22 October 2026: "a very simple version for those not using a health tracker": when they went to bed, when
+   they woke (Daybook works out the hours), whether they feel rested, whether the sleep was broken, and if so why and
+   for roughly how long. Asked in the morning check-in's sleep step and on the Sleep tile, the same block in both.
+   A night that came from Apple Health (or carries the stages) is a tracker night: its times and hours are shown as
+   a line, and only rested, broken and why are asked. Saved on the night's sleep entry (`{day}_sleep` for a new one,
+   so Apple Health's later merge lands on the same document), so every chart and report reads one place. */
+const NIGHT_RESTED = [['yes', 'Yes'], ['bit', 'A bit'], ['no', 'No']];
+const NIGHT_BROKEN = [['no', 'No'], ['some', 'Once or twice'], ['lots', 'Lots']];
+const NIGHT_WHY = [['toilet', 'Toilet'], ['pain', 'Pain'], ['sick', 'Feeling sick'], ['worry', 'Worry or racing mind'], ['hot', 'Too hot or night sweats'], ['other', 'Other']];
+const NIGHT_AWAKE = [['lt30', 'Under 30 minutes', 15], ['30to60', '30 minutes to an hour', 45], ['1to2', '1 to 2 hours', 90], ['gt2', 'More than 2 hours', 150]];
+const NIGHT_KEYS = ['bedAt', 'wokeAt', 'rested', 'broken', 'brokenWhy', 'brokenOther', 'awakeFor', 'toilet'];
+function minutesInBed(bed, woke) {
+  if (!/^\d\d:\d\d$/.test(bed || '') || !/^\d\d:\d\d$/.test(woke || '')) return null;
+  const [bh, bm] = bed.split(':').map(Number), [wh, wm] = woke.split(':').map(Number);
+  const m = ((wh * 60 + wm) - (bh * 60 + bm) + 1440) % 1440;
+  return m > 0 ? m : null;
+}
+function isTrackerNight(e) { return Boolean(e && (e.addedBy === 'Apple Health' || e.source === 'health-auto-export' || e.deep || e.rem || e.core)); }
+function nightAwakeMin(n) { const a = n && NIGHT_AWAKE.find((x) => x[0] === n.awakeFor); return a ? a[2] : null; }
+/* the night's answers held on a sleep entry or a check-in, or null when there are none */
+function nightFrom(e) {
+  if (!e) return null;
+  const src = e.night || e;
+  const n = {};
+  NIGHT_KEYS.forEach((k) => { if (src[k] != null && src[k] !== '') n[k] = Array.isArray(src[k]) ? [...src[k]] : src[k]; });
+  return Object.keys(n).length ? n : null;
+}
+function nightWhyText(n) {
+  const why = ((n && n.brokenWhy) || []).map((k) => k === 'other' ? (n.brokenOther ? '"' + n.brokenOther + '"' : 'something else') : (NIGHT_WHY.find((x) => x[0] === k) || [k, k])[1].toLowerCase());
+  return why.length > 1 ? why.slice(0, -1).join(', ') + ' and ' + why[why.length - 1] : why.join('');
+}
+/* "In bed 23:10 to 06:50 · Rested: a bit · Broken once or twice, by pain and toilet · Awake 30 minutes to an hour" */
+function nightSummary(n) {
+  if (!n) return '';
+  const bits = [];
+  if (n.bedAt && n.wokeAt) bits.push('In bed ' + n.bedAt + ' to ' + n.wokeAt);
+  if (n.rested) bits.push('Rested: ' + (NIGHT_RESTED.find((x) => x[0] === n.rested) || ['', n.rested])[1].toLowerCase());
+  if (n.broken === 'no') bits.push('Not broken');
+  else if (n.broken) bits.push('Broken ' + (n.broken === 'lots' ? 'lots' : 'once or twice') + (nightWhyText(n) ? ', by ' + nightWhyText(n) : ''));
+  const aw = NIGHT_AWAKE.find((x) => x[0] === n.awakeFor);
+  if (aw && n.broken && n.broken !== 'no') bits.push('Awake ' + aw[1].toLowerCase());
+  return bits.join(' \u00b7 ');
+}
+/* one row of chips, one choice or several, tap again to clear */
+function nightChips(label, options, current, multi, onChange) {
+  let cur = multi ? new Set(current || []) : (current == null ? null : current);
+  const wrap = h('div', { class: 'chips taps-chips night-chips', role: 'group', 'aria-label': label });
+  const sync = () => [...wrap.children].forEach((b, i) => { const on = multi ? cur.has(options[i][0]) : cur === options[i][0]; b.classList.toggle('is-active', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+  options.forEach(([v, w]) => wrap.append(h('button', { class: 'preset', type: 'button', 'aria-pressed': 'false', dataset: { v: String(v) }, onclick: () => {
+    if (multi) { if (cur.has(v)) cur.delete(v); else cur.add(v); } else cur = cur === v ? null : v;
+    sync(); onChange && onChange(multi ? [...cur] : cur);
+  } }, w)));
+  sync();
+  return { el: wrap, get: () => (multi ? options.map((o) => o[0]).filter((v) => cur.has(v)) : cur) };
+}
+/* The block itself: init holds the night's answers; opts.tracker the tracker night to show as a line; opts.ibd adds
+   "how many times for the toilet" when Toilet is ticked (it answers the Crohn's night question too). */
+function nightBlock(init, opts = {}) {
+  const n0 = init || {};
+  const tracker = opts.tracker || null;
+  const box = h('div', { class: 'night-block' });
+  let bed = null, woke = null;
+  const total = h('p', { class: 'wiz-hint night-total', 'aria-live': 'polite' });
+  const awakeWrap = h('div', { class: 'night-sub' });
+  const whyWrap = h('div', { class: 'night-sub' });
+  const toiletWrap = h('div', { class: 'night-sub' });
+  const other = h('input', { type: 'text', class: 'input', maxlength: '60', placeholder: 'e.g. the dog, or a phone call', value: n0.brokenOther || '' });
+  const otherWrap = h('div', { class: 'night-other' }, field('What else?', other));
+  let rested, broken, why, awake, toilet;
+  const showTotal = () => {
+    if (tracker) return;
+    const inBed = minutesInBed(bed.value, woke.value);
+    const aw = (broken.get() && broken.get() !== 'no') ? nightAwakeMin({ awakeFor: awake.get() }) : null;
+    total.textContent = inBed ? 'That is ' + fmtHm(inBed) + ' in bed' + (aw ? ', about ' + fmtHm(Math.max(1, inBed - aw)) + ' asleep.' : '.') : 'Daybook works out the hours.';
+  };
+  const showSubs = () => {
+    const isBroken = broken.get() === 'some' || broken.get() === 'lots';
+    whyWrap.hidden = !isBroken;
+    awakeWrap.hidden = !isBroken || Boolean(tracker);
+    otherWrap.hidden = !(isBroken && why.get().includes('other'));
+    toiletWrap.hidden = !(isBroken && opts.ibd && why.get().includes('toilet'));
+    showTotal();
+  };
+  if (tracker) {
+    const asleep = Number(tracker.value) > 0 ? fmtHm(Number(tracker.value)) + ' asleep' : '';
+    const from = tracker.addedBy === 'Apple Health' ? 'From Apple Health' : 'From the night logged';
+    box.append(h('p', { class: 'wiz-hint night-tracker' }, icon('check'), from + ': ' + [tracker.bedAt && tracker.wokeAt ? 'in bed ' + tracker.bedAt + ' to ' + tracker.wokeAt : '', asleep].filter(Boolean).join(', ') + '.'));
+  } else {
+    bed = h('input', { type: 'time', id: 'night-bed', value: n0.bedAt || '' });
+    woke = h('input', { type: 'time', id: 'night-woke', value: n0.wokeAt || '' });
+    bed.addEventListener('input', showTotal); woke.addEventListener('input', showTotal);
+    box.append(h('div', { class: 'field-row' }, field('Went to bed', bed), field('Woke up', woke)), total);
+  }
+  rested = nightChips('Do you feel rested', NIGHT_RESTED, n0.rested, false);
+  broken = nightChips('Was your sleep broken', NIGHT_BROKEN, n0.broken, false, showSubs);
+  why = nightChips('What broke it', NIGHT_WHY, n0.brokenWhy, true, showSubs);
+  awake = nightChips('Roughly how long were you awake', NIGHT_AWAKE.map((a) => [a[0], a[1]]), n0.awakeFor, false, showTotal);
+  toilet = nightChips('How many times for the toilet', [[1, 'Once'], [2, 'Twice or more']], n0.toilet != null ? Number(n0.toilet) : null, false);
+  whyWrap.append(h('p', { class: 'fieldlabel', text: 'What broke it? Tick any that apply.' }), why.el, otherWrap);
+  toiletWrap.append(h('p', { class: 'fieldlabel', text: 'How many times for the toilet?' }), toilet.el);
+  awakeWrap.append(h('p', { class: 'fieldlabel', text: 'Roughly how long were you awake?' }), awake.el);
+  box.append(
+    h('p', { class: 'fieldlabel', text: 'Do you feel rested?' }), rested.el,
+    h('p', { class: 'fieldlabel', text: 'Was your sleep broken?' }), broken.el,
+    whyWrap, toiletWrap, awakeWrap);
+  showSubs();
+  const value = () => {
+    const b = broken.get(), isBroken = b === 'some' || b === 'lots';
+    const w = isBroken ? why.get() : [];
+    const n = {
+      bedAt: bed && bed.value ? bed.value : null,
+      wokeAt: woke && woke.value ? woke.value : null,
+      rested: rested.get(), broken: b,
+      brokenWhy: w, brokenOther: isBroken && w.includes('other') ? other.value.trim() : '',
+      awakeFor: isBroken && !tracker ? awake.get() : null,
+      toilet: isBroken && opts.ibd && w.includes('toilet') ? toilet.get() : null
+    };
+    return (n.bedAt || n.wokeAt || n.rested || n.broken) ? n : null;
+  };
+  return { el: box, value, tracker };
+}
+/* the night's minutes asleep from the simple answers: time in bed less roughly how long awake */
+function nightAsleep(n) { const inBed = n ? minutesInBed(n.bedAt, n.wokeAt) : null; if (!inBed) return null; const aw = n.broken && n.broken !== 'no' ? nightAwakeMin(n) : null; return Math.max(1, inBed - (aw || 0)); }
+/* the night written onto its sleep entry: a tracker night takes only how it felt; a simple night its times and hours too */
+async function saveNightEntry(day, n, entry) {
+  if (!n || state.readOnly || state.viewer) return;
+  const fields = { rested: n.rested || null, broken: n.broken || null, brokenWhy: n.brokenWhy || [], brokenOther: n.brokenOther || '', awakeFor: n.awakeFor || null };
+  if (entry && isTrackerNight(entry)) return updateEntry(entry.id, fields);
+  const inBed = minutesInBed(n.bedAt, n.wokeAt);
+  if (inBed) {
+    const aw = n.broken && n.broken !== 'no' ? nightAwakeMin(n) : null;
+    Object.assign(fields, { bedAt: n.bedAt, wokeAt: n.wokeAt, value: nightAsleep(n), awake: aw || null });
+  }
+  if (entry) return updateEntry(entry.id, { ...fields, ...(inBed ? { at: atFromInputs(day, n.wokeAt) } : {}) });
+  if (!inBed) return; // how it felt but no times: kept on the check-in alone
+  return addEntry({ type: 'sleep', note: '', ...fields, at: atFromInputs(day, n.wokeAt) }, day + '_sleep');
+}
+
 /* The night's sleep entry for a morning (the day is the wake-up date), the latest if there are two */
 function sleepOnDay(d) {
   const seen = new Set();
@@ -7344,6 +7489,23 @@ function summaryRows(entries, from, to) {
     if (short.length) { const lo = minBy(short, (e) => Number(e.value)); push('amber', 'Sleep', `Short nights: under 5 hours on ${short.length} of ${plural(sleeps.length, 'night')}, shortest ${fmtHm(lo.value)} before ${when(lo)}; averaging ${fmtHm(mean)}.`, short.length === 1 ? `a short night (${fmtHm(lo.value)}) before ${when(lo)}` : null, `Short nights (under 5 h): ${short.length} of ${sleeps.length}`); }
     else fine.push(`sleep (${fmtHm(mean)} a night)`);
   }
+  /* how the nights felt (v260): broken sleep and what broke it, as facts, never judged */
+  {
+    const byDay = new Map();
+    entries.filter((e) => e.type === 'checkin' && e.slot === 'morning' && e.night && e.day >= from && e.day <= to).forEach((e) => byDay.set(e.day, e.night));
+    entries.filter((e) => e.type === 'sleep' && (e.broken || e.rested) && e.day >= from && e.day <= to).forEach((e) => byDay.set(e.day, nightFrom(e)));
+    const nights = [...byDay.values()].filter(Boolean);
+    const asked = nights.filter((n) => n.broken);
+    const broke = asked.filter((n) => n.broken !== 'no');
+    const notRested = nights.filter((n) => n.rested === 'no').length;
+    if (broke.length) {
+      const counts = {};
+      broke.forEach((n) => (n.brokenWhy || []).forEach((k) => { counts[k] = (counts[k] || 0) + 1; }));
+      const reasons = Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([k, c]) => (k === 'other' ? 'something else' : (NIGHT_WHY.find((x) => x[0] === k) || [k, k])[1].toLowerCase()) + ' ' + c);
+      push('teal', 'Sleep', `Broken sleep on ${broke.length} of the ${plural(asked.length, 'night')} answered` + (reasons.length ? ` (${reasons.join(', ')})` : '') + '.' + (notRested ? ` Not rested on ${plural(notRested, 'morning')}.` : ''), null,
+        `Broken sleep: ${broke.length} of ${asked.length} nights` + (reasons.length ? ` (${reasons.slice(0, 3).join(', ')})` : ''));
+    } else if (asked.length) fine.push('sleep not broken');
+  }
 
   const weights = entries.filter((e) => e.type === 'weight' && Number(e.value) > 0).sort((a, b) => entryDate(a) - entryDate(b));
   if (weights.length >= 2) {
@@ -7819,7 +7981,7 @@ async function renderNotesReport() {
 const CHECKIN_QUESTIONS = {
   morning: [
     /* the night, then right now, then the day ahead (v146): symptoms overnight sit beside sleep, mood is the last score */
-    { key: 'sleep', kind: 'sleep', q: 'How did you sleep?', low: '1 terribly', high: '10 brilliantly', note: 'sleepNote', noteQ: 'How rested do you feel? Optional.', notePh: 'e.g. slept for ages but still not rested, or a bad night but woke with some energy' },
+    { key: 'sleep', kind: 'sleep', q: 'How did you sleep?', low: '1 terribly', high: '10 brilliantly', note: 'sleepNote', noteQ: 'Anything else about the night? Optional.', notePh: 'e.g. slept for ages but still not rested, or a bad night but woke with some energy' },
     { key: 'symptoms', kind: 'text', q: 'Any new or worse symptoms overnight?', ph: 'e.g. more sick than usual, a new ache' },
     /* with Crohn's or colitis (v221): one tap, counted as nights on the report beside the bowel log */
     { key: 'nightToilet', kind: 'scale', pack: 'ibd', q: 'Up in the night for the toilet?', words: ['No', 'Once', 'Twice or more'], hint: 'One tap. Counts as a night on the Crohn\'s and colitis report.' },
@@ -8095,7 +8257,9 @@ function checkinCard(c, inEntry) {
     else {
       const empty = v == null;
       const words = (q.note && c[q.note]) || (q.legacyNote && c[q.legacyNote]) || '';
-      node = h('dd', { class: 'cc-v' + (empty ? ' is-empty' : ' is-num') }, empty ? 'Skipped' : v + '/10' + (q.nrs ? ' \u00b7 ' + painBandWord(v, nrsNoun(q)) : '') + (q.kind === 'sleep' && c.sleepHours != null ? ' \u00b7 ' + c.sleepHours + ' h' : ''),
+      const nightLine = q.kind === 'sleep' ? nightSummary(c.night) : '';
+      node = h('dd', { class: 'cc-v' + (empty && !nightLine ? ' is-empty' : ' is-num') }, empty ? (nightLine ? '' : 'Skipped') : v + '/10' + (q.nrs ? ' \u00b7 ' + painBandWord(v, nrsNoun(q)) : '') + (q.kind === 'sleep' && c.sleepHours != null ? ' \u00b7 ' + c.sleepHours + ' h' : ''),
+        nightLine ? h('span', { class: 'vnote', text: nightLine }) : null,
         words ? h('span', { class: 'vnote', text: words }) : null);
     }
     return h('div', { class: 'cc-row' }, h('dt', { class: 'cc-k', text: CHECKIN_LABELS[q.key] || q.key }), node);
@@ -8271,7 +8435,7 @@ function openCheckin(slot, initialDay) {
   { const saved = findCheckin(initialDay > today ? today : initialDay, slot); if (saved && !ownsCheckin(saved)) { toast(checkinOwnerWords(saved)); return; } }
   let day = initialDay > today ? today : initialDay;
   const qs = checkinSteps(slot, day, findCheckin(day, slot));
-  let answers = {}, existing = null, step = 0, dir = 1, sleepFrom = null, restored = null, restoredNote = false;
+  let answers = {}, existing = null, step = 0, dir = 1, sleepFrom = null, nightEntry = null, restored = null, restoredNote = false;
   state.checkinProgress = new Set();
 
   const load = () => {
@@ -8284,10 +8448,13 @@ function openCheckin(slot, initialDay) {
     answers.sleepHours = existing && existing.sleepHours != null ? existing.sleepHours : null;
     /* a new morning check-in takes the hours from the night's sleep entry (Apple Health or typed), to the nearest half hour, still changeable (v146) */
     sleepFrom = null;
+    nightEntry = slot === 'morning' ? sleepOnDay(day) : null;
     if (slot === 'morning' && !existing) {
-      const night = sleepOnDay(day);
+      const night = nightEntry;
       if (night) { answers.sleepHours = Math.round(Number(night.value) / 30) / 2; sleepFrom = night; }
     }
+    /* the night asked simply (v260): what this check-in said, else what the night's sleep entry already holds */
+    if (slot === 'morning') answers.night = nightFrom(existing && existing.night ? existing : null) || nightFrom(nightEntry);
     checkinNoteKeys(slot).forEach((k) => { answers[k] = existing && existing[k] ? String(existing[k]) : ''; });
     /* an unfinished check-in for this day comes back whole, on the step it was left at (v160) */
     restored = null;
@@ -8315,7 +8482,7 @@ function openCheckin(slot, initialDay) {
   const dirty = () => {
     if (!existing) return false;
     if (capture) capture();
-    return [...qs.map((q) => q.key), ...checkinNoteKeys(slot), 'sleepHours'].some((k) => JSON.stringify(norm(answers[k])) !== JSON.stringify(norm(existing[k])));
+    return [...qs.map((q) => q.key), ...checkinNoteKeys(slot), 'sleepHours', 'night'].some((k) => JSON.stringify(norm(answers[k])) !== JSON.stringify(norm(existing[k])));
   };
   /* Cancel on an edit with an unsaved change asks first, so a changed answer is never thrown away by a stray tap (v169) */
   const cancelLink = () => {
@@ -8440,11 +8607,10 @@ function openCheckin(slot, initialDay) {
       } else {
         const sl = sliderBlock(q, answers[q.key]);
         wrap.append(...sl.nodes);
-        let hours = null, noteBox = null;
+        let night = null, noteBox = null;
         if (q.kind === 'sleep') {
-          hours = h('input', { type: 'number', inputmode: 'decimal', min: '0', max: '24', step: '0.5', placeholder: 'e.g. 7', value: answers.sleepHours != null ? String(answers.sleepHours) : '' });
-          wrap.append(field('Roughly how many hours (optional)', hours));
-          if (sleepFrom && answers.sleepHours != null) wrap.append(h('p', { class: 'wiz-hint wiz-sleepfrom', text: 'From the sleep logged for last night' + (sleepFrom.addedBy === 'Apple Health' ? ' by Apple Health' : '') + ': ' + fmtHm(Number(sleepFrom.value)) + ' asleep. Change it if it is wrong.' }));
+          night = nightBlock(answers.night, { tracker: isTrackerNight(nightEntry) ? nightEntry : null, ibd: packOn('ibd') });
+          wrap.append(night.el);
         }
         if (q.note) {
           noteBox = h('textarea', { rows: '2', placeholder: q.notePh || CHECKIN_NOTE_PH, 'aria-label': q.noteQ || CHECKIN_NOTE_Q });
@@ -8452,13 +8618,20 @@ function openCheckin(slot, initialDay) {
           wrap.append(h('div', { class: 'wiz-note' }, h('p', { class: 'wiz-hint', text: q.noteQ || CHECKIN_NOTE_Q }), noteBox, speakButton(noteBox) || ''));
         }
         getVal = () => {
-          if (hours) { const hv = parseFloat(hours.value); answers.sleepHours = isNaN(hv) ? null : hv; }
+          if (night) {
+            answers.night = night.value();
+            const mins = night.tracker ? Number(night.tracker.value) : nightAsleep(answers.night);
+            if (mins > 0 && (!night.tracker || !existing || answers.sleepHours == null)) answers.sleepHours = Math.round(mins / 30) / 2;
+            /* with Crohn's or colitis the night answers "Up in the night for the toilet?", so it is not asked again */
+            if (packOn('ibd') && answers.night && (answers.night.toilet != null || answers.night.broken === 'no')) answers.nightToilet = answers.night.broken === 'no' ? 0 : Number(answers.night.toilet);
+          }
           if (noteBox) answers[q.note] = noteBox.value.trim();
           return sl.value();
         };
       }
       capture = () => { answers[q.key] = getVal(); };
-      const go = (n, d) => { dir = d; step = n; clearTimeout(keepTimer); keep(); render(); };
+      const nightSaysToilet = () => Boolean(answers.night && (answers.night.toilet != null || answers.night.broken === 'no'));
+      const go = (n, d) => { while (qs[n] && qs[n].key === 'nightToilet' && nightSaysToilet()) n += d < 0 ? -1 : 1; if (n < 0) n = 0; dir = d; step = n; clearTimeout(keepTimer); keep(); render(); };
       const back = h('button', { class: 'btn btn-secondary btn-back', type: 'button', disabled: step === 0, onclick: () => { answers[q.key] = getVal(); go(step - 1, -1); } }, 'Back');
       const skip = h('button', { class: 'btn-link wiz-skip', type: 'button', onclick: () => { if (q.kind === 'sleep' || q.note) getVal(); answers[q.key] = q.kind === 'text' ? '' : null; const r = fromReview; fromReview = false; go(r ? qs.length : step + 1, r ? -1 : 1); } }, fromReview ? 'Clear this answer' : 'Skip');
       const next = h('button', { class: 'btn btn-primary btn-next', type: 'button', onclick: () => { answers[q.key] = getVal(); const r = fromReview; fromReview = false; go(r ? qs.length : step + 1, r ? -1 : 1); } }, fromReview ? 'Done, back to the review' : (step === qs.length - 1 ? 'Review' : 'Next'));
@@ -8475,15 +8648,18 @@ function openCheckin(slot, initialDay) {
         let skipped = q.kind === 'text' ? !v : v == null;
         let shown = skipped ? 'Skipped' : (q.kind === 'ticks' ? outsideText(v) : q.kind === 'taps' ? wbText(v) : q.kind === 'scale' ? scaleText(q, v) : q.kind === 'fast' ? fastText(v) : q.kind === 'sidefx' ? fxText(v) : q.kind === 'text' ? v : String(v) + (q.nrs ? ' · ' + painBandWord(v, nrsNoun(q)) : '') + (q.kind === 'sleep' && answers.sleepHours != null ? ' · ' + answers.sleepHours + ' h' : ''));
         const words = q.note && answers[q.note] ? h('span', { class: 'vnote', text: answers[q.note] }) : null;
+        const nightLine = q.kind === 'sleep' && nightSummary(answers.night) ? h('span', { class: 'vnote', text: nightSummary(answers.night) }) : null;
+        if (nightLine && skipped) { skipped = false; shown = ''; }
         list.append(h('li', null, h('button', { type: 'button', onclick: () => { dir = -1; step = i; fromReview = true; render(); } },
           h('span', { class: 'k', text: CHECKIN_LABELS[q.key] }),
-          h('span', { class: 'v' + (skipped ? ' is-skipped' : (q.kind === 'text' || q.kind === 'ticks' || q.kind === 'taps' || q.kind === 'scale' || q.kind === 'fast' || q.kind === 'sidefx' ? '' : ' is-num')) }, shown, words))));
+          h('span', { class: 'v' + (skipped ? ' is-skipped' : (q.kind === 'text' || q.kind === 'ticks' || q.kind === 'taps' || q.kind === 'scale' || q.kind === 'fast' || q.kind === 'sidefx' ? '' : ' is-num')) }, shown, nightLine, words))));
       });
       wrap.append(list);
       if (slot === 'morning' && !state.readOnly) wrap.append(h('p', { class: 'wiz-signpost', text: 'Gentle exercises and stretches are on the Exercise tab, for when you are up and ready. Optional.' }));
       const save = h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
         save.disabled = true;
         await saveCheckin(slot, day, answers, existing);
+        if (slot === 'morning' && answers.night) { try { await saveNightEntry(day, answers.night, nightEntry); } catch (e) { console.error(e); toast('The check-in is saved, but not the night on the Sleep chart. Add it from the Sleep tile.'); } }
         finished = true; clearTimeout(keepTimer); clearProgress(slot, day);
         closeSheet();
       } }, existing ? 'Save changes' : 'Save check-in');
@@ -8512,13 +8688,13 @@ async function saveCheckin(slot, day, answers, existing, opts = {}) {
   const at = existing ? entryDate(existing) : atFromInputs(day, day === today ? fmtTime(new Date()) : (slot === 'morning' || slot === 'carermorning' ? '09:00' : slot === 'carer' ? '20:00' : '21:00'));
   const data = { type: 'checkin', slot, day, addedBy: existing && existing.addedBy ? existing.addedBy : state.name };
   CHECKIN_QUESTIONS[slot].forEach((q) => { if (q.key in answers) data[q.key] = answers[q.key]; });
-  if (slot === 'morning') data.sleepHours = answers.sleepHours;
+  if (slot === 'morning') { data.sleepHours = answers.sleepHours; if ('night' in answers) data.night = answers.night || null; }
   checkinNoteKeys(slot).forEach((k) => { data[k] = answers[k] || ''; });
   if ('done' in opts) data.done = Boolean(opts.done);
   const inProgress = Boolean(existing && existing.done === false);
   if (existing) {
     /* nothing changed: no second write, and no "edited" stamp for a look and a tap on Save */
-    const keys = CHECKIN_QUESTIONS[slot].map((q) => q.key).filter((k) => k in data).concat(slot === 'morning' ? ['sleepHours'] : [], checkinNoteKeys(slot), 'done' in data ? ['done'] : []);
+    const keys = CHECKIN_QUESTIONS[slot].map((q) => q.key).filter((k) => k in data).concat(slot === 'morning' ? ['sleepHours', 'night'] : [], checkinNoteKeys(slot), 'done' in data ? ['done'] : []);
     const same = keys.every((k) => { const a = data[k] == null ? null : data[k], b = existing[k] == null ? null : existing[k]; if (Array.isArray(a) || Array.isArray(b) || (a && typeof a === 'object') || (b && typeof b === 'object')) return JSON.stringify(a) === JSON.stringify(b); return typeof a === 'string' || typeof b === 'string' ? String(a == null ? '' : a) === String(b == null ? '' : b) : a === b; });
     if (same) { if (!opts.quiet) toast('No changes to save'); return null; }
     if (!inProgress) data.editedBy = state.name;
