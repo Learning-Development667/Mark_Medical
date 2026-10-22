@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '265';
+const APP_VERSION = '266';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -790,7 +790,7 @@ const state = {
   foodRange: 14,
   notesRange: 14,
   moodRange: 28,
-  painRange: 28,
+  painRange: 14, // two weeks by default (Mark, 22 October 2026)
   ibdRange: 28,
   foodRangeMode: 'preset',
   notesRangeMode: 'preset',
@@ -10139,7 +10139,7 @@ function buildPainReport(n) {
   /* "Pain right now" is the check-in's question, not something anyone enters as such (Mark, 22 October 2026): the tile is the average of every score */
   const tiles = [
     mean != null ? { k: 'Average pain', v: String(mean), unit: 'out of 10', tone: mean >= 7 ? 'red' : mean >= 4 ? 'amber' : 'green',
-      n: `From ${plural(nowAll.length, 'score')}: morning check-in ${avg(mornings) ?? 'none'}, evening check-in ${avg(evenings) ?? 'none'}${readingsAll.length ? ', logged in between ' + avg(readingsAll) : ''}.` }
+      n: `From ${plural(nowAll.length, 'score')} over the ${days.length} days: morning check-in ${avg(mornings) ?? 'none'}, evening check-in ${avg(evenings) ?? 'none'}${readingsAll.length ? ', logged in between ' + avg(readingsAll) : ''}.` }
       : { k: 'Average pain', v: 'None', unit: '', tone: '', n: 'No pain scores in this period. The check-ins ask morning and evening.' },
     scored.length ? { k: 'Days at 7 or more', v: String(bad.length), unit: 'of ' + plural(scored.length, 'day') + ' scored', tone: bad.length ? (bad.length * 2 >= scored.length ? 'red' : 'amber') : 'green',
       n: bad.length ? `Highest ${peak.max} on ${rDay(peak.day)}.` + (worsts.length ? ` Worst pain of the day averaged ${avg(worsts)}.` : '') : `No day at 7 or more. Highest ${peak.max} on ${rDay(peak.day)}.` }
@@ -10188,7 +10188,7 @@ function buildPainReport(n) {
     { title: 'When-needed pain relief (doses a day)', stat: prnDoses.length ? plural(prnDoses.length, 'dose') + ' on ' + plural(prnDays, 'day') : 'None logged', tone: relief.some((r) => r.hitMax) ? 'amber' : '', type: 'bars', min: 0, max: prnMax, ticks: prnMax > 6 ? [0, Math.round(prnMax / 2), prnMax] : [0, 2, 4].filter((t) => t <= prnMax), series: [{ d: prnCounts, c: warm }] },
     { title: 'Hours asleep', stat: nights.length ? `Average ${avg(nights.map((d) => d.sleep))} h` + (shortN.length ? `, ${plural(shortN.length, 'short night')}` : '') : 'No sleep logged', tone: nights.length ? (shortN.length ? 'amber' : 'green') : '', type: 'bars', flagBelow: 5, min: 0, max: Math.max(10, ...nights.map((d) => Math.ceil(d.sleep))), ticks: [0, 5, 10], series: [{ d: daysFull.map((d) => d.sleep), c: teal }] }
   ];
-  const key = `<b>Shaded 7 to 10</b> the level Notes for the team flags. <b>Dots</b> the scores, joined day to day. <b>Logged in between</b> a score from the Pain tile on Today, outside the check-ins; the day's highest is drawn.${sessions.length ? ' <b>Triangles</b> treatment sessions.' : ''}${painNights.length ? ' <b>Small dots</b> under the morning chart: a night broken by pain.' : ''} <b>Amber bars</b> nights under 5 hours.`;
+  const key = `<b>Each chart</b> one point a day over the ${days.length} days, ${rRange(from, to)}. <b>Shaded 7 to 10</b> the level Notes for the team flags. <b>Dots</b> the scores, joined day to day. <b>Logged in between</b> a score from the Pain tile on Today, outside the check-ins; the day's highest is drawn.${sessions.length ? ' <b>Triangles</b> treatment sessions.' : ''}${painNights.length ? ' <b>Small dots</b> under the morning chart: a night broken by pain.' : ''} <b>Amber bars</b> nights under 5 hours.`;
   const dayLabels = days.map((d, i) => (i === 0 || i === days.length - 1 || parseDay(d).getDate() === 1 ? rDay(d) : String(parseDay(d).getDate())));
   /* every note written under a pain score, for the screen (each can be fixed there); the report carries key points only (v263, Mark: "way too long") */
   const allNotes = daysFull.flatMap((d) => d.notes);
@@ -10245,7 +10245,7 @@ function buildPainReport(n) {
   items.push({ t: 'sec', s: 'weeks' }); weeks.forEach((_, r) => items.push({ t: 'wk', r }));
   if (questions.length) { items.push({ t: 'sec', s: 'q' }); questions.forEach((_, q) => items.push({ t: 'q', q })); }
   const period = rPeriod(from, to);
-  return { patient, period, prepared: rDay(todayStr()) + ' ' + parseDay(todayStr()).getFullYear(), tiles, charts, key, days: dayLabels, daysFull, points, said, briefNote, saidNote, ai: !!ai, relief, hourly, timing, prnTotal: prnDoses.length, nightLine, painNights, words, wordsTotal, weeks, questions, items, pages: [], docTitle: `Pain and pain relief, ${patient}, ${period}` };
+  return { patient, period, prepared: rDay(todayStr()) + ' ' + parseDay(todayStr()).getFullYear(), tiles, charts, key, days: dayLabels, daysFull, points, said, briefNote, saidNote, ai: !!ai, relief, spanDays: days.length, spanDates: rRange(from, to), hourly, timing, prnTotal: prnDoses.length, nightLine, painNights, words, wordsTotal, weeks, questions, items, pages: [], docTitle: `Pain and pain relief, ${patient}, ${period}` };
 }
 function fittedPainReport() {
   return memoFit('pain', async () => {

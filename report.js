@@ -1099,9 +1099,9 @@ const PAIN_CSS = `
    v264: the notes panel gave way to When the top-up doses were taken (Mark).
    Key points since v263 (Mark: the notes in full were "way too long"); By time of day went (pain is scored at the two check-ins). */
 /* 24 bars, one an hour, the night, morning, afternoon and evening shaded in turn (v264) */
-function hourBars(h) {
+function hourBars(h, span) {
   const W = 700, H = 118, L = 22, R = 690, T = 16, B = 84, max = Math.max(1, ...h), bw = (R - L) / 24;
-  let s = `<svg viewBox="0 0 ${W} ${H}" class="hours" role="img" aria-label="When-needed doses by hour of the day">`;
+  let s = `<svg viewBox="0 0 ${W} ${H}" class="hours" role="img" aria-label="When-needed doses by hour of the day, ${span} days added together">`;
   ['Night', 'Morning', 'Afternoon', 'Evening'].forEach((q, k) => {
     const x = L + k * 6 * bw;
     if (k % 2 === 0) s += `<rect x="${x}" y="${T - 6}" width="${6 * bw}" height="${B - T + 6}" fill="#EEF3F6"/>`;
@@ -1110,6 +1110,7 @@ function hourBars(h) {
   });
   s += `<text x="${R}" y="${B + 13}" text-anchor="end" font-size="10.5" fill="#4B5B6B">24:00</text>`;
   s += `<line x1="${L}" y1="${B}" x2="${R}" y2="${B}" stroke="#D5DEE5"/>`;
+  s += `<text x="${L + 4}" y="${T + 6}" font-size="10.5" fill="#4B5B6B">Doses in each hour, ${span} days added together</text>`;
   h.forEach((n, i) => {
     if (!n) return;
     const bh = (B - T) * n / max, x = L + i * bw + 2;
@@ -1128,19 +1129,19 @@ export function painReportHtml(P) {
       if (it.t === 'keys') {
         close();
         const li = (l) => (l || []).map((x) => `<li>${esc(x)}</li>`).join('');
-        html += `<div class="wsec" data-i="${i}"><h2 class="sec">Key points <small>${esc(P.briefNote || '')}</small></h2><div class="keys"><div><h3>From the scores and doses</h3><ul>${li(P.points)}</ul></div><div class="said"><h3>In ${esc(P.patient)}'s words${P.saidNote ? ` <small>${esc(P.saidNote)}</small>` : ''}</h3><ul>${li(P.said)}</ul></div></div></div>`;
+        html += `<div class="wsec" data-i="${i}"><h2 class="sec">Key points <small>Over the ${P.spanDays} days, ${esc(P.spanDates)}. ${esc(P.briefNote || '')}</small></h2><div class="keys"><div><h3>From the scores and doses</h3><ul>${li(P.points)}</ul></div><div class="said"><h3>In ${esc(P.patient)}'s words${P.saidNote ? ` <small>${esc(P.saidNote)}</small>` : ''}</h3><ul>${li(P.said)}</ul></div></div></div>`;
         return;
       }
       if (it.t === 'relief') {
         close();
         const rows = P.relief.length ? P.relief.map((r) => `<div class="rrow"><span><span class="pill${r.kind === 'When needed' ? ' prn' : ''}">${esc(r.kind)}</span><br>${esc(r.name)}<span class="sm">${esc(r.dose)}${r.how ? ' · ' + esc(r.how) : ''}${r.uses ? ' · for ' + esc(r.uses.toLowerCase()) : ''}</span></span><span class="n">${r.n ? `<b>${esc(String(r.n))}</b> ${r.n === 1 ? 'dose' : 'doses'}<span class="sm">on ${r.days} of the days${r.most > 1 ? ', up to ' + r.most + ' a day' : ''}${r.hitMax ? ' (the maximum)' : ''}${r.usesNote ? '; ' + esc(r.usesNote) : ''}</span>` : 'None<span class="sm">in this period</span>'}</span><span>${r.last ? 'Last ' + esc(r.last) : ''}${r.maxPerDay ? `<span class="sm">At most ${r.maxPerDay} a day</span>` : ''}</span></div>`).join('') : '<p class="sm" style="font-size:7.7pt;color:var(--slate)">No pain relief medicine on the list, or none logged.</p>';
-        html += `<div class="wsec" data-i="${i}"><h2 class="sec">Pain relief <small>Every dose as logged.</small></h2><div class="rhead"><span>Medicine</span><span>Doses</span><span>Last</span></div>${rows}</div>`;
+        html += `<div class="wsec" data-i="${i}"><h2 class="sec">Pain relief <small>Every dose logged over the ${P.spanDays} days, ${esc(P.spanDates)}.</small></h2><div class="rhead"><span>Medicine</span><span>Doses</span><span>Last</span></div>${rows}</div>`;
         return;
       }
       if (it.t === 'when') {
         close();
         const lines = (P.timing || []).length ? P.timing.map((t) => `<li>${esc(t.text)}</li>`).join('') : '<li>No when-needed pain relief logged in this period.</li>';
-        html += `<div class="wsec" data-i="${i}"><h2 class="sec">When the top-up doses were taken <small>All ${P.daysFull ? P.daysFull.length : ''} days added together: each bar is how many doses fell in that hour across the whole period, not in one day.</small></h2><div class="when">${hourBars(P.hourly || [])}<ul>${lines}<li class="nights"><b>Nights.</b> ${esc(P.nightLine || '')}</li></ul></div></div>`;
+        html += `<div class="wsec" data-i="${i}"><h2 class="sec">When the top-up doses were taken, over the ${P.spanDays} days <small>${esc(P.spanDates)} added together: each bar is how many doses fell in that hour across all ${P.spanDays} days, not in one day.</small></h2><div class="when">${hourBars(P.hourly || [], P.spanDays)}<ul>${lines}<li class="nights"><b>Nights.</b> ${esc(P.nightLine || '')}</li></ul></div></div>`;
         return;
       }
       if (it.t === 'notes') {
@@ -1171,7 +1172,7 @@ export function painReportHtml(P) {
     const charts = (P.charts || []).map((c) => `<div class="c"><div class="h"><h3>${esc(c.title)}</h3><span class="stat ${esc(c.tone || '')}">${esc(c.stat)}</span></div>${renderChart(c, P.days)}</div>`).join('');
     const key = `<div class="c key">${P.key || ''}</div>`;
     const first = p === 0
-      ? `<div class="masthead"><div><div class="titlerow"><h1>Pain and pain relief</h1><span class="madeby">Created with <b>My Medical Daybook</b></span></div><div class="sub">Pain scores from the morning and evening check-ins, key points from ${esc(P.patient)}'s own words, and the pain relief taken, for the pain nurse or team.</div></div><div class="who"><strong>${esc(P.patient)}</strong>Period: ${esc(P.period)}<br>Prepared: ${esc(P.prepared)}</div></div>`
+      ? `<div class="masthead"><div><div class="titlerow"><h1>Pain and pain relief</h1><span class="madeby">Created with <b>My Medical Daybook</b></span></div><div class="sub">Over the ${P.spanDays} days, ${esc(P.spanDates)}: pain scores from the morning and evening check-ins, key points from ${esc(P.patient)}'s own words, and the pain relief taken, for the pain nurse or team.</div></div><div class="who"><strong>${esc(P.patient)}</strong>Period: ${esc(P.period)}<br>Prepared: ${esc(P.prepared)}</div></div>`
         + `<div class="tiles pain">${P.tiles.map((t) => `<div class="tile ${esc(t.tone || '')}"><div class="k">${esc(t.k)}</div><div class="v">${esc(t.v)}${t.unit ? `<em>${esc(t.unit)}</em>` : ''}</div><div class="n">${esc(t.n)}</div></div>`).join('')}</div>`
         + `<div class="cgrid pain">${charts}${key}</div>`
       : `<div class="runner"><h2>Pain and pain relief</h2><span>${esc(P.patient)} · ${esc(P.period)}</span></div>`;
