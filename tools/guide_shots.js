@@ -11,7 +11,7 @@ const CLOCK = '2026-10-16T09:30:00Z'; // a Friday morning in London (10:30 BST),
 const QUALITY = 0.8;
 
 (async () => {
-  const browser = await chromium.launch({ executablePath: process.env.CHROME || undefined, args: ['--no-sandbox', '--lang=en-GB'] }); // --lang: the date and time boxes are drawn by the browser in its own language
+  const browser = await chromium.launch({ executablePath: process.env.CHROME || undefined, args: ['--no-sandbox', '--lang=en-GB'], env: { ...process.env, LANG: 'en_GB.UTF-8', LC_ALL: 'en_GB.UTF-8', LANGUAGE: 'en_GB' } }); // --lang and LANG: the date and time boxes are drawn in the computer's own language; without LANG a time read 11:10 PM
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, colorScheme: 'light', locale: 'en-GB', timezoneId: 'Europe/London', serviceWorkers: 'block', hasTouch: true, isMobile: true });
   const page = await context.newPage();
   page.on('pageerror', (e) => console.error('page error:', e.message));
