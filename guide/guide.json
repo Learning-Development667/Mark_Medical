@@ -1,5 +1,5 @@
 {
- "made": "2026-10-21",
+ "made": "2026-10-22",
  "width": 390,
  "height": 844,
  "topics": [
@@ -55,14 +55,22 @@
     },
     {
      "file": "checkin-2.webp",
-     "caption": "One question a screen. Slide to the score, 1 to 10. Hours slept come from Apple Health when it is connected.",
+     "caption": "One question a screen. Slide to the score, then when you went to bed and woke up: Daybook works out the hours. With Apple Health connected, the night fills itself in.",
      "tap": {
-      "x": 0.675,
-      "y": 0.968
+      "x": 0.731,
+      "y": 0.55
      }
     },
     {
      "file": "checkin-3.webp",
+     "caption": "Rested, and whether the night was broken: if it was, what broke it and roughly for how long. It goes on the Sleep chart and the reports.",
+     "tap": {
+      "x": 0.675,
+      "y": 0.945
+     }
+    },
+    {
+     "file": "checkin-4.webp",
      "caption": "A written answer has Tap to speak under it: tap, say it, tap again to stop. To see what was heard before it is saved, switch that on in Settings. Skip is always there.",
      "tap": {
       "x": 0.675,
@@ -70,7 +78,7 @@
      }
     },
     {
-     "file": "checkin-4.webp",
+     "file": "checkin-5.webp",
      "caption": "Pain right now, from 0 no pain to 10 worst imaginable: as you slide it says mild, moderate or severe. Where it is goes in the box underneath.",
      "tap": {
       "x": 0.5,
@@ -78,15 +86,15 @@
      }
     },
     {
-     "file": "checkin-5.webp",
+     "file": "checkin-6.webp",
      "caption": "The review: every answer, tap one to change it, then Save.",
      "tap": {
       "x": 0.5,
-      "y": 0.968
+      "y": 0.868
      }
     },
     {
-     "file": "checkin-6.webp",
+     "file": "checkin-7.webp",
      "caption": "Done. The check-in is a card on Today: tap it to open it, and Edit to change an answer later.",
      "tap": {
       "x": 0.5,
@@ -146,7 +154,7 @@
      "caption": "Add a medicine sits at the top. Under it, every medicine on the list, with what it is for and Edit. A finished course keeps its history under Medicine history.",
      "tap": {
       "x": 0.163,
-      "y": 0.945
+      "y": 0.706
      }
     },
     {
@@ -154,7 +162,7 @@
      "caption": "Edit says whether it is regular or when needed, then how it is taken (tablets, gel in pumps and the rest), how many each time and the strength, so Log now records the right amount.",
      "tap": {
       "x": 0.5,
-      "y": 0.373
+      "y": 0.161
      }
     },
     {
@@ -294,7 +302,7 @@
      "caption": "Finish when it is done. Close it instead and Today says it is not finished yet, with everything kept.",
      "tap": {
       "x": 0.5,
-      "y": 0.871
+      "y": 0.934
      }
     },
     {
@@ -554,7 +562,7 @@
      "caption": "How you slept, anything new overnight, pain and mood. Slide to the score, or Tap to speak for the words.",
      "tap": {
       "x": 0.675,
-      "y": 0.944
+      "y": 0.945
      }
     },
     {
@@ -570,7 +578,7 @@
      "caption": "A dose is one tap on the medicine. When-needed ones say whether the next can be given yet.",
      "tap": {
       "x": 0.5,
-      "y": 0.38
+      "y": 0.329
      }
     },
     {
