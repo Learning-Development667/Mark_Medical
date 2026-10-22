@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '270';
+const APP_VERSION = '271';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -10129,7 +10129,7 @@ function buildPainReport(n) {
     const last = mine.slice().sort((a, b) => entryDate(b) - entryDate(a))[0];
     const hitMax = m.kind === 'prn' && m.maxPerDay && most >= m.maxPerDay;
     const dual = isDualUse(m), said = mine.filter((e) => e.forUse).length, other = allMed.filter((e) => e.medId === m.id && !doseForPain(e)).length;
-    const uses = dual ? (said && said < mine.length ? `${said} said for pain, ${mine.length - said} not said` : said ? 'all said for pain' : 'what each was for not said') + (other ? `; ${other} for ${medUses(m).find((u) => !PAIN_PURPOSE_RE.test(u)) || 'something else'} left out` : '') : '';
+    const uses = dual ? (said && said < mine.length ? `${said} said for pain, ${mine.length - said} not said` : said ? 'all said for pain' : 'what each was for not said') + (other ? `; ${other} ${other === 1 ? "dose" : "doses"} marked as ${(medUses(m).find((u) => !PAIN_PURPOSE_RE.test(u)) || 'something else').toLowerCase()}` : '') : '';
     const line = !mine.length ? 'None logged in this period.' : `${plural(mine.length, 'dose')} on ${plural(dayList.length, 'day')} of ${days.length}` + (most > 1 ? `, up to ${most} a day${hitMax ? ' (the maximum)' : m.maxPerDay ? ` (at most ${m.maxPerDay})` : ''}` : '') + `. Last ${rDay(last.day)}, ${fmtTime(entryDate(last))}.` + (uses ? ' ' + uses[0].toUpperCase() + uses.slice(1) + '.' : '');
     return { id: m.id, name: m.name, dose: m.dose || '', how: m.how || medFrequency(m) || '', uses: medUses(m).join(' and '), kind: m.kind === 'prn' ? 'When needed' : 'Regular', n: mine.length, days: dayList.length, most, maxPerDay: m.maxPerDay || null, hitMax, last: last ? rDay(last.day) + ', ' + fmtTime(entryDate(last)) : '', line, usesNote: uses, active: m.active !== false };
   }).filter((r) => r.n || r.active).sort((a, b) => (a.kind === b.kind ? b.n - a.n : a.kind === 'When needed' ? -1 : 1));
