@@ -152,8 +152,7 @@ if (action === 'create') {
   /* (v267) Mark, 22 October 2026: "Every diazepam I have taken between 2100hrs and 0100hrs has been for sleep. The rest
      has been pain." Marks each logged dose of one medicine with what it was for (forUse, v263) by the London time it
      was taken. DOSE_USE is "Medicine | 21:00-01:00 | use inside | use outside". dose-use-check lists and changes
-     nothing; dose-use saves it, and sets the medicine's What it is for and Also used for to the two uses so the app
-     asks between them from then on. NAME (a member's first name) must find one circle, or give HOUSEHOLD_ID. */
+     nothing; dose-use saves it, and gives the medicine the second use only when it has none (never over what the person set). NAME (a member's first name) must find one circle, or give HOUSEHOLD_ID. */
   const apply = action === 'dose-use';
   const parts = env('DOSE_USE').split('|').map((x) => x.trim());
   const m = (parts[1] || '').match(/^(\d{1,2}):?(\d{2})?\s*-\s*(\d{1,2}):?(\d{2})?$/);
@@ -194,8 +193,10 @@ if (action === 'create') {
   console.log(`${doses.length} doses: ${useIn} ${counts[useIn]}, ${useOut} ${counts[useOut]}. ${writes.length} to ${apply ? 'save' : 'change'}.`);
   if (apply) {
     for (const [id, use] of writes) await fs.merge(`households/${hid}/entries/${id}`, { forUse: str(use), updatedAt: ts() });
-    for (const x of meds) await fs.merge(`households/${hid}/medicines/${x.id}`, { purpose: str(useIn), alsoFor: str(useOut) });
-    console.log(`Saved ${writes.length} doses, and set ${meds.length} medicine${meds.length === 1 ? '' : 's'} to "${useIn}", also "${useOut}".`);
+    /* the medicine's two uses are only filled in when it has none yet: never write over what the person set */
+    const unset = meds.filter((x) => !fieldString(x.fields, 'alsoFor'));
+    for (const x of unset) await fs.merge(`households/${hid}/medicines/${x.id}`, { purpose: str(fieldString(x.fields, 'purpose') || useIn), alsoFor: str(useOut) });
+    console.log(`Saved ${writes.length} doses.` + (unset.length ? ` Gave ${unset.length} medicine${unset.length === 1 ? '' : 's'} "${useOut}" as a second use.` : ' The medicine\'s own uses were left as they are.'));
   } else console.log('Nothing changed. Run dose-use to save it.');
 } else if (action === 'list') {
   const hs = await fs.list('households');
