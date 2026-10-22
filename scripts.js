@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '267';
+const APP_VERSION = '268';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -10017,7 +10017,7 @@ function painAiText(P, n) {
     const f = [];
     if (d.pm != null) f.push('morning check-in ' + d.pm);
     if (d.pe != null) f.push('evening check-in ' + d.pe);
-    if (d.readings.length) f.push('logged in between ' + d.readings.map((r) => fmtTime(r.at) + ' ' + r.v).join(', '));
+    if (d.readings.length) f.push('between check-ins ' + d.readings.map((r) => fmtTime(r.at) + ' ' + r.v).join(', '));
     if (d.worst != null) f.push('worst pain of the day ' + d.worst);
     if (d.doseList.length) f.push('pain relief: ' + d.doseList.join(', '));
     if (d.sleep != null) f.push('slept ' + d.sleep + ' h');
@@ -10139,7 +10139,7 @@ function buildPainReport(n) {
   /* "Pain right now" is the check-in's question, not something anyone enters as such (Mark, 22 October 2026): the tile is the average of every score */
   const tiles = [
     mean != null ? { k: 'Average pain', v: String(mean), unit: 'out of 10', tone: mean >= 7 ? 'red' : mean >= 4 ? 'amber' : 'green',
-      n: `From ${plural(nowAll.length, 'score')} over the ${days.length} days: morning check-in ${avg(mornings) ?? 'none'}, evening check-in ${avg(evenings) ?? 'none'}${readingsAll.length ? ', logged in between ' + avg(readingsAll) : ''}.` }
+      n: `From ${plural(nowAll.length, 'score')} over the ${days.length} days: morning check-in ${avg(mornings) ?? 'none'}, evening check-in ${avg(evenings) ?? 'none'}${readingsAll.length ? ', between check-ins ' + avg(readingsAll) : ''}.` }
       : { k: 'Average pain', v: 'None', unit: '', tone: '', n: 'No pain scores in this period. The check-ins ask morning and evening.' },
     scored.length ? { k: 'Days at 7 or more', v: String(bad.length), unit: 'of ' + plural(scored.length, 'day') + ' scored', tone: bad.length ? (bad.length * 2 >= scored.length ? 'red' : 'amber') : 'green',
       n: bad.length ? `Highest ${peak.max} on ${rDay(peak.day)}.` + (worsts.length ? ` Worst pain of the day averaged ${avg(worsts)}.` : '') : `No day at 7 or more. Highest ${peak.max} on ${rDay(peak.day)}.` }
@@ -10184,11 +10184,11 @@ function buildPainReport(n) {
     { ...painCfg('Morning check-in pain (0 to 10)', daysFull.map((d) => d.pm), teal), dots: painNights.map((d) => days.indexOf(d)).filter((i) => i >= 0) },
     painCfg('Evening check-in pain (0 to 10)', daysFull.map((d) => d.pe), teal),
     painCfg('Worst pain of the day (0 to 10)', daysFull.map((d) => d.worst), warm),
-    painCfg('Logged in between (0 to 10)', daysFull.map((d) => (d.readings.length ? Math.max(...d.readings.map((r) => r.v)) : null)), ink),
+    painCfg('Pain between check-ins (0 to 10)', daysFull.map((d) => (d.readings.length ? Math.max(...d.readings.map((r) => r.v)) : null)), ink),
     { title: 'When-needed pain relief (doses a day)', stat: prnDoses.length ? plural(prnDoses.length, 'dose') + ' on ' + plural(prnDays, 'day') : 'None logged', tone: relief.some((r) => r.hitMax) ? 'amber' : '', type: 'bars', min: 0, max: prnMax, ticks: prnMax > 6 ? [0, Math.round(prnMax / 2), prnMax] : [0, 2, 4].filter((t) => t <= prnMax), series: [{ d: prnCounts, c: warm }] },
     { title: 'Hours asleep', stat: nights.length ? `Average ${avg(nights.map((d) => d.sleep))} h` + (shortN.length ? `, ${plural(shortN.length, 'short night')}` : '') : 'No sleep logged', tone: nights.length ? (shortN.length ? 'amber' : 'green') : '', type: 'bars', flagBelow: 5, min: 0, max: Math.max(10, ...nights.map((d) => Math.ceil(d.sleep))), ticks: [0, 5, 10], series: [{ d: daysFull.map((d) => d.sleep), c: teal }] }
   ];
-  const key = `<b>Each chart</b> one point a day over the ${days.length} days, ${rRange(from, to)}. <b>Shaded 7 to 10</b> the level Notes for the team flags. <b>Dots</b> the scores, joined day to day. <b>Logged in between</b> a score from the Pain tile on Today, outside the check-ins; the day's highest is drawn.${sessions.length ? ' <b>Triangles</b> treatment sessions.' : ''}${painNights.length ? ' <b>Small dots</b> under the morning chart: a night broken by pain.' : ''} <b>Amber bars</b> nights under 5 hours.`;
+  const key = `<b>Each chart</b> one point a day over the ${days.length} days, ${rRange(from, to)}. <b>Shaded 7 to 10</b> the level Notes for the team flags. <b>Dots</b> the scores, joined day to day. <b>Pain between check-ins</b> scores logged with the Pain tile on Today, outside the morning and evening check-ins; the day's highest is shown.${sessions.length ? ' <b>Triangles</b> treatment sessions.' : ''}${painNights.length ? ' <b>Small dots</b> under the morning chart: a night broken by pain.' : ''} <b>Amber bars</b> nights under 5 hours.`;
   const dayLabels = days.map((d, i) => (i === 0 || i === days.length - 1 || parseDay(d).getDate() === 1 ? rDay(d) : String(parseDay(d).getDate())));
   /* every note written under a pain score, for the screen (each can be fixed there); the report carries key points only (v263, Mark: "way too long") */
   const allNotes = daysFull.flatMap((d) => d.notes);
@@ -10219,7 +10219,7 @@ function buildPainReport(n) {
       const half = Math.floor(scored.length / 2), a1 = avg(scored.slice(0, half).flatMap((d) => d.now)), a2 = avg(scored.slice(half).flatMap((d) => d.now));
       if (scored.length >= 6 && a1 != null && a2 != null) points.push(Math.abs(a2 - a1) < 0.5 ? `Much the same through the period: ${a1} in the first half, ${a2} in the second.` : `${a2 > a1 ? 'Higher' : 'Lower'} in the second half of the period: ${a2} against ${a1}.`);
       const parts = [mornings.length ? 'mornings ' + avg(mornings) : '', evenings.length ? 'evenings ' + avg(evenings) : '', worsts.length ? 'worst of the day ' + avg(worsts) : ''].filter(Boolean);
-      if (parts.length) points.push(`At the check-ins: ${parts.join(', ')}.` + (readingsAll.length ? ` ${plural(readingsAll.length, 'score')} logged in between averaged ${avg(readingsAll)}.` : ''));
+      if (parts.length) points.push(`At the check-ins: ${parts.join(', ')}.` + (readingsAll.length ? ` ${plural(readingsAll.length, 'score')} between check-ins averaged ${avg(readingsAll)}.` : ''));
     } else points.push('No pain scores were logged in this period. The check-ins ask morning and evening.');
     if (painMeds.length) points.push(doses.length ? (prnDoses.length ? `When-needed relief on ${plural(prnDays, 'day')} of ${days.length}: ${relief.filter((r) => r.n && r.kind === 'When needed').map((r) => r.name.split(/\s+/)[0] + ' ' + plural(r.days, 'day') + (r.most > 1 ? ' (up to ' + r.most + ' a day)' : '')).join(', ')}.` : `${plural(doses.length, 'dose')} of regular pain relief.`) + (relief.some((r) => r.hitMax) ? ' The daily maximum was reached.' : '') : 'No pain relief logged in this period.');
     if (nights.length) points.push(`Sleep ${avg(nights.map((d) => d.sleep))} h a night; ${shortN.length ? plural(shortN.length, 'night') + ' under 5 hours' + (shortBad ? `, ${shortBad} beside a day at 7 or more` : '') : 'no night under 5 hours'}.`);

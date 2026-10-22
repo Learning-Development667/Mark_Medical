@@ -1093,7 +1093,7 @@ const PAIN_CSS = `
 .mnotes .lines{flex:1;margin-top:1.4mm;position:relative;overflow:hidden}
 .mnotes .lines i{position:absolute;left:0;right:0;height:0;border-top:1px solid rgba(30,127,134,.35)}
 `;
-/* P: { patient, period, prepared, tiles[], charts[renderChart configs, six of them: morning check-in, evening check-in, worst pain of the day, logged in between, doses a day, hours asleep], key, days[],
+/* P: { patient, period, prepared, tiles[], charts[renderChart configs, six of them: morning check-in, evening check-in, worst pain of the day, pain between check-ins, doses a day, hours asleep], key, days[],
    points[string], said[string], briefNote, saidNote, ai, relief[{ name, dose, how, uses, kind, n, days, most, maxPerDay, hitMax, last, usesNote }], weeks[{ label, pain, painSub, bad, worst, worstSub, relief, nights }],
    questions[{ team, text, by }], items[{ t: 'keys'|'relief'|'when'|'sec'|'wk'|'q', s, r, q }], pages[[item index]], hourly[24], timing[{ text }], nightLine }
    v264: the notes panel gave way to When the top-up doses were taken (Mark).
