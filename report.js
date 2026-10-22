@@ -316,7 +316,7 @@ ${bar}
   </div>
   ${R.latest && !R.latestMoved ? `<div class="latest" data-sec="Latest"><div class="when">${esc(R.latest.when1)}<br>${esc(R.latest.when2)}</div><div><b>${esc(R.latest.title)}</b>${esc(R.latest.text)}</div></div>` : ''}
   <div data-sec="At a glance">
-    <h2 class="sec" style="margin-bottom:2.4mm">At a glance <small>Highlights from simple checks by the app. Not medical advice.</small></h2>
+    <h2 class="sec" style="margin-bottom:2.4mm">At a glance <small>Averages for the period. Every reading is on the charts on page 2. Not medical advice.</small></h2>
     <div class="tiles">${R.tiles.map(tileHtml).join('')}</div>
   </div>
   <div class="strip${strip.length === 1 ? ' one' : ''}">${strip.join('')}</div>
