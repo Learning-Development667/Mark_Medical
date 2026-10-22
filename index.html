@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=272">
+  <link rel="stylesheet" href="styles.css?v=273">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -336,7 +336,7 @@
 
         <div id="meds-first" class="card meds-first" hidden>
           <h2 class="meds-first-title">Add your medicines</h2>
-          <p class="hint">Add each medicine once: its name, dose and when you take it. Then log a dose with one tap, set reminders, and every dose goes on your reports. A photo of the box or the pharmacy label can fill it in for you.</p>
+          <p class="hint">Add each medicine once. Then each dose is one tap.</p>
           <button id="meds-first-add" class="btn btn-primary btn-block" type="button">Add your first medicine</button>
         </div>
         <div id="meds-lists">
@@ -501,21 +501,6 @@
             </div>
           </div>
           <p class="muted ibd-courses" id="ibd-courses" hidden></p>
-          <div class="checkins" id="carer-card">
-            <button class="checkin-row" id="checkin-carer" type="button" data-slot="carer">
-              <svg class="icon checkin-icon" aria-hidden="true"><use href="#i-eye"/></svg>
-              <span class="checkin-main"><span class="checkin-title">Carer's view</span><span class="checkin-sub" id="checkin-carer-sub"></span></span>
-              <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
-            </button>
-            <div id="carer-mood-chemo"></div>
-          </div>
-          <div class="card" id="sidefx-card">
-            <h2 class="section-title">Side effects</h2>
-            <p class="hint">What the treatment or a medicine is doing to you. Each one goes on the timeline and into Notes for the team, with what caused it. You can also log one from a medicine's card.</p>
-            <button id="sidefx-add" class="btn btn-primary btn-block" type="button">Log a side effect</button>
-            <ul id="sidefx-list" class="sidefx-list"></ul>
-            <p id="sidefx-empty" class="empty" data-art="note" hidden>No side effects logged yet.</p>
-          </div>
           <div class="card chart-card" id="cycle-card">
             <h2 class="section-title">How treatment goes</h2>
             <div class="segmented cycle-views" role="group" aria-label="Look at" id="cycle-views"></div>
@@ -604,7 +589,7 @@
             <button id="doc-share" class="btn btn-secondary" type="button">Send to my AI app</button>
             <button id="doc-copy" class="btn btn-secondary" type="button">Copy for my AI app</button>
           </div>
-          <p class="hint" id="doc-explain-hint">Two ways to get a plain English explanation. <b>Explain with Daybook Assistant</b> sends the letter (its text, or up to 8 page photos) to Daybook Assistant, Daybook's AI helper, which runs on Claude, an AI made by Anthropic, a US company. You do not need an AI account of your own. The explanation is saved with this letter, and you can change or delete it. Anthropic does not train its models on it, and the bridge keeps only a count of words used. <b>Send to my AI app</b> opens the share sheet for Claude, ChatGPT, Copilot or Gemini; paste the reply below. Either way the letter leaves Daybook and goes to an AI company's servers, so leave out anything you would not want sent. AI can get things wrong: check anything that matters with your care team.</p>
+          <p class="hint" id="doc-explain-hint"><b>Explain with Daybook Assistant</b> sends the letter to Daybook Assistant (AI from Anthropic, in the US); <b>Send to my AI app</b> sends it to your own AI app. Either way it leaves Daybook, and AI can get things wrong: check anything that matters with your team.</p>
           <button id="doc-paste-summary" class="btn btn-secondary btn-block" type="button">Paste summary</button>
           <textarea id="doc-explanation" rows="8" placeholder="Paste the explanation here, or use Paste summary above"></textarea>
           <p class="hint">This explanation is for context only. It is not medical advice. Always check changes with the medical team.</p>
@@ -641,7 +626,7 @@
         <p class="hint">Send by email puts the diary in an email from your own Mail app, to a contact with an email address, such as the dietitian.</p>
         <div id="food-questions-section" hidden>
           <h3 class="section-title">Questions for the dietitian</h3>
-          <p class="hint">Asked from Today with "Question for the team" and labelled Dietitian. They go on the first page of the report, and stay until marked as answered.</p>
+          <p class="hint">They go on the first page of the report.</p>
           <div id="food-questions" class="cards"></div>
         </div>
         <label id="food-nutrition-row" class="check food-toggle">
@@ -649,7 +634,7 @@
           <span>Show calorie and macro estimates</span>
         </label>
         <button id="food-totals" class="btn btn-secondary btn-block" type="button">Day totals from your food app</button>
-        <p class="hint">Each food gets simple tags from the UK food table (McCance and Widdowson), matched on the words typed in and following UK food label rules per 100 g. They say what a food is like, not how much was eaten. A guide for the conversation, not medical advice.</p>
+        <p class="hint">Tags from the UK food table say what a food is like, not how much was eaten. A guide, not medical advice.</p>
         <div id="food-overview" class="status food-overview" role="group" aria-label="Days with each kind of food" hidden></div>
         <div id="food-days"></div>
         <p id="food-empty" class="empty" data-art="food" hidden>No food or drink logged in this period yet.</p>
@@ -680,7 +665,7 @@
           <button id="mood-preview" class="btn btn-tint tint-plum" type="button"><svg class="icon" aria-hidden="true"><use href="#i-eye"/></svg>Preview</button>
           <button id="mood-pdf" class="btn btn-tint tint-warm" type="button"><svg class="icon" aria-hidden="true"><use href="#i-download"/></svg>Save as PDF</button>
         </div>
-        <p class="hint">How the period has felt, for a therapist, counsellor or GP: your best and hardest days, how often you felt low, one chart of mood with pain and sleep behind it, a written brief, your weeks, and your questions labelled Wellbeing. Your notes themselves stay in Daybook; only the brief and a few chosen quotes go on the report.</p>
+        <p class="hint">For a therapist, counsellor or GP. Your notes stay in Daybook; only the brief and a few quotes go on the report.</p>
         <div id="mood-questions-section" hidden>
           <h3 class="section-title">Questions for the therapist</h3>
           <p class="hint">Asked from Today with "Question for the team" and labelled Wellbeing. They go on the report, and stay until marked as answered.</p>
@@ -727,7 +712,7 @@
           <button id="pain-preview" class="btn btn-tint tint-plum" type="button"><svg class="icon" aria-hidden="true"><use href="#i-eye"/></svg>Preview</button>
           <button id="pain-pdf" class="btn btn-tint tint-warm" type="button"><svg class="icon" aria-hidden="true"><use href="#i-download"/></svg>Save as PDF</button>
         </div>
-        <p class="hint">For the pain nurse or team: your pain scores from the check-ins, the worst pain each day, key points from what you wrote, every dose of pain relief, your nights, and your questions labelled Pain team. Everything comes from the check-ins, the Pain tile and the Meds tab as logged.</p>
+        <p class="hint">For the pain nurse or team.</p>
         <div id="pain-questions-section" hidden>
           <h3 class="section-title">Questions for the pain team</h3>
           <p class="hint">Asked from Today with "Question for the team" and labelled Pain team. They go on the report, and stay until marked as answered.</p>
@@ -747,7 +732,7 @@
         <h3 class="section-title">Pain relief</h3>
         <div id="pain-relief"></div>
         <h3 class="section-title">When the top-up doses were taken</h3>
-        <p class="hint">When-needed pain relief by time of day, and the nights broken by pain. The report adds up every dose in the range chosen above, hour by hour, so a bar of 3 at 03:00 over 14 days means three doses at that time across the 14 days, not three in one night.</p>
+        <p class="hint">Every dose in the period added together, hour by hour: a bar of 3 at 03:00 means three doses at that hour across the period, not in one night.</p>
         <div id="pain-when"></div>
         <h3 class="section-title">Week by week</h3>
         <div id="pain-weeks"></div>
@@ -781,7 +766,7 @@
           <button id="ibd-preview" class="btn btn-tint tint-plum" type="button"><svg class="icon" aria-hidden="true"><use href="#i-eye"/></svg>Preview</button>
           <button id="ibd-pdf" class="btn btn-tint tint-warm" type="button"><svg class="icon" aria-hidden="true"><use href="#i-download"/></svg>Save as PDF</button>
         </div>
-        <p class="hint">For the IBD nurse or gastro team: your bowels against your usual number a day, blood and urgency, flare days and your calls to the advice line, injections, infusions and steroid courses, weight and temperature, the results you were given, and your questions labelled Gastro. Facts as logged, against your own usual. It never says whether something is a flare: that is the team's call.</p>
+        <p class="hint">For the IBD nurse or gastro team. Facts as logged; it never says whether something is a flare.</p>
         <div id="ibd-questions-section" hidden>
           <h3 class="section-title">Questions for the gastro team</h3>
           <p class="hint">Asked from Today with "Question for the team" and labelled Gastro. They go on this report, and stay until marked as answered.</p>
@@ -831,7 +816,7 @@
           <button id="notes-share" class="btn btn-tint tint-blue" type="button">Send to my AI app</button>
           <button id="notes-copy" class="btn btn-tint tint-blue" type="button">Copy for my AI app</button>
         </div>
-        <p class="hint">A4 pages (two, or more when there is more to say) to hand over or email: what is new, eight readings at a glance, your medicines and your questions with room to write the answers, then the charts and the notes week by week. Every figure comes from what was logged. <b>Preview</b> shows the pages and prints them; <b>Send to the team</b> emails them to a contact with an email address, with the PDF attached, from reporting@mymedicaldaybook.co.uk in your name and with your own address as the reply address (or through your own Mail app where Daybook cannot send). <b>Summarise with Daybook Assistant</b> sends these notes and your questions to Daybook Assistant (AI from Anthropic, in the US) to write each week up in a few lines and tidy the spelling; without it the report shows the most telling note of each day. <b>Suggest questions to ask</b> sends them too, and offers questions you can add with one tap. Send or copy does the same through your own AI app. Any of these sends the notes to an AI company's servers, so leave out anything you would not want sent.</p>
+        <p class="hint"><b>Suggest questions to ask</b> and <b>Summarise with Daybook Assistant</b> send your notes to Daybook Assistant (AI from Anthropic, in the US); the two <b>my AI app</b> buttons send them to your own AI app. Leave out anything you would not want sent.</p>
         <h3 class="section-title">Questions for the team</h3>
         <button id="notes-record" class="recbtn recbtn-appt" type="button"><svg class="icon" aria-hidden="true"><use href="#i-mic"/></svg><span>Record the appointment</span></button>
         <p id="notes-record-hint" class="hint">One recording for the whole appointment. Tap a question as they start answering it, so each answer is easy to find later.</p>
@@ -841,7 +826,7 @@
         <p class="hint">Simple checks on the readings by the app, worst first. Not medical advice. Anything that worries you, call the team.</p>
         <div id="notes-flags" class="flags"></div>
         <h3 class="section-title">Notes</h3>
-        <p class="hint">Week by week, seven days at a time back from the last day: the longest written notes, and how many more are in Daybook, or each week in a few lines once Daybook Assistant has summarised them (it can miss or misread things).</p>
+        <p class="hint">The most telling notes of each week.</p>
         <button id="notes-weekly-undo" class="btn btn-link btn-small" type="button" hidden>Show the notes instead</button>
         <div id="notes-days"></div>
         <p id="notes-empty" class="empty" data-art="note" hidden>No notes, moods or readings in this period yet.</p>
@@ -906,7 +891,7 @@
         <div class="diary-head">
           <button id="results-back" class="btn btn-link" type="button">&#8249; Back</button>
         </div>
-        <p class="hint">As the team gave them: the number, the unit and the lab's own range where it was printed. Daybook keeps them and charts them. It never says whether a result is good or bad: that is the team's call, so ask them what each one means for you.</p>
+        <p class="hint">As the team gave them, with the lab's own range. Daybook never says whether a result is good or bad: ask the team.</p>
         <div id="results-body"></div>
       </section>
 
@@ -963,7 +948,7 @@
             <input id="settings-nutrition" type="checkbox">
             <span>Show calorie and macro estimates</span>
           </label>
-          <p class="hint">Adds typical portion sizes to the Food sheet, and rough calorie, protein, carb and fat figures to Today, the Food diary and Notes for the team. Estimates only, shared by everyone on this account, not medical advice.</p>
+          <p class="hint">Rough calorie, protein, carb and fat figures from typical portions. Estimates only, not medical advice.</p>
           <label class="field settings-target">
             <span>Daily protein target in grams, from the dietitian (optional)</span>
             <input id="settings-protein" type="number" inputmode="numeric" min="0" step="5" placeholder="e.g. 100">
@@ -976,7 +961,7 @@
             <span>Name on the report</span>
             <input id="settings-report-name" type="text" autocomplete="name" maxlength="60">
           </label>
-          <p class="hint">Your full name, as the hospital has it. It goes at the top of every report and in the subject and sign-off of the covering email, so the team can file them against your records. Left empty, the reports use the first name of the circle's patient and the email is signed with your first name.</p>
+          <p class="hint">Your full name, as the hospital has it, so the team can file the reports against your records.</p>
         </div>
         <h2 class="section-title">Your week</h2>
         <div id="settings-week" class="card settings-group">
@@ -987,7 +972,7 @@
             </select>
           </label>
           <button id="settings-week-treatment" class="btn btn-secondary btn-block" type="button" hidden>Use my treatment day</button>
-          <p class="hint">The weekly Your week check-in asks about the week up to this day, and offers itself over the last three days of it. If you have treatment on the same day each week, ending your week there makes each one a treatment week.</p>
+          <p class="hint">The weekly check-in covers the week up to this day.</p>
         </div>
         <div id="settings-speak">
           <h2 class="section-title">Talking instead of typing</h2>
@@ -996,7 +981,7 @@
               <input id="settings-speakcheck" type="checkbox">
               <span>Show me what was heard before anything is saved</span>
             </label>
-            <p class="hint">Optional, and on this phone only. After you use Tap to speak, Daybook shows the words it heard before a note, answer or check-in is saved, with a button to read them out, so a misheard word can be put right. Leave it off if you would rather trust the words as they come; you can always change them in the box.</p>
+            <p class="hint">Optional, this phone only. Shows the words it heard before anything is saved, so a misheard word can be put right.</p>
           </div>
         </div>
         <h2 class="section-title">Reminders</h2>
@@ -1033,7 +1018,7 @@
         <div id="settings-health" hidden>
           <h2 class="section-title">Apple Health</h2>
           <div class="card settings-group">
-            <p class="hint">Optional. Steps, sleep, workouts, weight and BMI, and food totals can arrive automatically through the Health Auto Export app (iPhone only; the automatic sending needs its paid version, a one-off purchase). Everything can be typed in instead, so Daybook works in full without it. Its automation posts to the address below with this circle's inbox key in the X-Care-Log-Key header (Care Log was Daybook's first name). The key is this circle's alone.</p>
+            <p class="hint">Optional. Steps, sleep, workouts, weight and food totals can arrive through the Health Auto Export app (iPhone, paid version). Its automation posts to the address below with this key in the X-Care-Log-Key header.</p>
             <p class="mono keybox" id="settings-health-url"></p>
             <button id="settings-health-key" class="btn btn-secondary btn-block" type="button">Show the inbox key</button>
             <p class="mono keybox" id="settings-health-keytext" hidden></p>
@@ -1219,6 +1204,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=272"></script>
+  <script type="module" src="scripts.js?v=273"></script>
 </body>
 </html>

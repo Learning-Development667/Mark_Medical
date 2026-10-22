@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '272';
+const APP_VERSION = '273';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -2978,7 +2978,7 @@ function openFeedbackSheet() {
     } catch (e) { toast(e.message || 'Could not send. Try again in a moment.'); }
   };
   const saveDraft = (patch) => { const d = { ...fbRead('draft', {}), ...patch, at: Date.now() }; for (const k of Object.keys(d)) if (d[k] == null || d[k] === '' || (Array.isArray(d[k]) && !d[k].length)) delete d[k]; fbWrite('draft', Object.keys(d).length > 1 ? d : null); renderFeedbackRow(); };
-  body.append(h('p', { class: 'hint', text: 'Anything confusing, wrong or simply not what you expected, in your own time. Save keeps it on this phone to add to later; Send gives it to Mark, who reads every one himself. This is for the app, not for your care: nothing here reaches your team.' }));
+  body.append(h('p', { class: 'hint', text: 'Anything confusing, wrong or not what you expected. Mark reads every one. Nothing here reaches your care team.' }));
   /* the getting-started questions, until sent once from this phone; no clock on them */
   if (!fbRead('survey', null)) {
     const was = draft.answers || {};
@@ -6279,7 +6279,7 @@ function openSendSheet(kind) {
       h('p', { class: 'sendpdf' }, h('b', { text: K.attached(range) }), K.check),
       direct
         ? h('p', { class: 'hint', id: 'send-direct-hint', text: 'Daybook sends it for you, from reporting@mymedicaldaybook.co.uk in your name, with the PDF attached. Your own address' + (myEmail ? ', ' + myEmail + ',' : '') + ' is the reply address and gets a copy, so a reply comes straight to you.' })
-        : h('p', { class: 'hint', text: 'Your Mail app opens with the PDF and this message, sent from your own email address. The address is copied, to paste into To. iPhone Mail leaves the subject empty, so the subject is also the first line of the message, to copy into Subject.' }),
+        : h('p', { class: 'hint', text: 'Your Mail app opens with the PDF and this message. The address is copied: paste it into To.' }),
       send,
       /* spread, never a bare null: replaceChildren() writes a null as the word "null" (v230) */
       ...(direct ? [h('button', { class: 'btn btn-link btn-block', type: 'button', id: 'send-other', onclick: share }, 'Send from my own Mail app instead')] : []),
@@ -7973,7 +7973,7 @@ async function renderNotesReport() {
     olderList.append(...report.older.map((q) => questionCard(q, renderNotesReport)));
     const toggle = h('button', { class: 'btn btn-link btn-small', type: 'button', 'aria-expanded': state.notesOlderOpen ? 'true' : 'false', onclick: () => { state.notesOlderOpen = !state.notesOlderOpen; olderList.hidden = !state.notesOlderOpen; toggle.setAttribute('aria-expanded', state.notesOlderOpen ? 'true' : 'false'); toggle.textContent = state.notesOlderOpen ? 'Hide them' : 'Show them'; } }, state.notesOlderOpen ? 'Hide them' : 'Show them');
     $('notes-questions').append(h('div', { class: 'answered-line' },
-      h('p', { class: 'muted', text: `${plural(report.older.length, 'older question')} still open, asked before ${fmtDayShort(from)}. Not printed on this report: mark ${report.older.length === 1 ? 'it' : 'them'} as answered if the team has dealt with ${report.older.length === 1 ? 'it' : 'them'}, or add ${report.older.length === 1 ? 'it' : 'one'} again to ask this time.` }),
+      h('p', { class: 'muted', text: `${plural(report.older.length, 'older question')} still open, asked before ${fmtDayShort(from)}, not printed on this report.` }),
       toggle), olderList);
   }
   if (report.dietitian) $('notes-questions').append(h('p', { class: 'muted', text: `${plural(report.dietitian, 'question')} for the dietitian ${report.dietitian === 1 ? 'is' : 'are'} on the Food diary, with its report.` }));
@@ -10009,7 +10009,7 @@ async function renderPainReport() {
   $('pain-relief').replaceChildren(...(P.relief.length ? P.relief.map((r) => h('div', { class: 'card reliefcard' },
     h('div', { class: 'wk-head' }, h('span', { text: r.name }), h('span', { class: 'muted', text: r.kind })),
     h('p', { class: 'wk-sub', text: r.dose + (r.how ? ' · ' + r.how : '') + (r.uses ? ' · for ' + r.uses.toLowerCase() : '') }),
-    h('p', { class: 'wk-sentence', text: r.line }))) : [h('p', { class: 'hint', text: 'No pain relief medicine on the list, or none logged in this period. A medicine counts as pain relief when "What it is for" or "Also used for" says pain, or its name is a known painkiller.' })]));
+    h('p', { class: 'wk-sentence', text: r.line }))) : [h('p', { class: 'hint', text: 'No pain relief logged in this period.' })]));
   $('pain-when').replaceChildren(h('div', { class: 'card' },
     ...(P.timing.length ? P.timing.map((t) => h('p', { class: 'wk-sentence', text: t.text })) : [h('p', { class: 'wk-sentence', text: 'No when-needed pain relief logged in this period.' })]),
     h('p', { class: 'wk-sub', text: P.nightLine })));
@@ -11458,7 +11458,7 @@ function doseControls(parts, opts = {}) {
   const askBox = h('input', { type: 'checkbox' });
   askBox.checked = opts.ask != null ? !!opts.ask : true;
   const askField = h('div', null, h('label', { class: 'check' }, askBox, h('span', { text: 'Ask how many each time I log it' })),
-    h('p', { class: 'hint', text: 'Ticked, Log now asks how many each time, starting on the number above. Untick it for a medicine always taken the same way (Creon\'s 2 capsules with a meal, say), so it logs in one tap.' }));
+    h('p', { class: 'hint', text: 'Untick it for a medicine always taken the same way, so it logs in one tap.' }));
   const syncDose = () => {
     const f = doseFormOf(formIn.value);
     countField.hidden = !f;
@@ -11597,7 +11597,7 @@ function openEditMed(m, prefill) {
       : 'This medicine is no longer being taken. The dose typed here is what its card and the Medicine history show for it, so if it was put up before the course ended, type the dose it was really taken at. The doses already logged keep their own amounts.' }),
     field('How and when', how), field('What it is for', purpose),
     field('Also used for (optional)', alsoFor),
-    h('p', { class: 'hint', text: 'For a medicine with two uses, such as diazepam for anxiety and for pain. Each time a dose is logged, Daybook asks which it was for, and the Pain report counts the doses for pain.' }),
+    h('p', { class: 'hint', text: 'Each dose then asks which it was for.' }),
     h('label', { class: 'check' }, hospital, h('span', { text: 'Given by the hospital (hospital monitored)' })),
     h('p', { class: 'hint', text: 'Tick this for a drip, an injection or anything the nurses give. Its doses are marked as given in hospital, and Daybook sends no reminders for it.' }),
     hospFields,
@@ -13326,7 +13326,7 @@ function renderCarerRow() {
   } else if (new Date().getHours() >= 15) { row.classList.add('is-due'); sub.textContent = state.readOnly ? 'Due this evening' : 'Due this evening, about a minute'; }
   else sub.textContent = state.readOnly ? 'Not filled in yet' : 'Later today, or tap to fill in yesterday';
 }
-$('checkin-carer').addEventListener('click', () => openCheckin('carer', todayStr()));
+if ($('checkin-carer')) $('checkin-carer').addEventListener('click', () => openCheckin('carer', todayStr()));
 
 /* ---- By day after chemo: every check-in score averaged by its day in the cycle, across every cycle ---- */
 const CYCLE_MEASURES = [
@@ -13791,7 +13791,7 @@ function openAddSessions() {
   countIn.addEventListener('input', draw);
   draw();
   const body = h('div', null,
-    h('p', { class: 'hint', text: 'Put in a run of sessions in one go: three weekly chemo sessions, or the next six injections. Hospital sessions skip weekends; an injection at home keeps its day. Any one can be moved or removed later by tapping its day.' }),
+    h('p', { class: 'hint', text: 'A run of sessions in one go. Tap any day later to move or remove it.' }),
     h('p', { class: 'field-label', text: 'What is it?' }), typeRow,
     nameRow,
     field('First session', firstIn),
@@ -14117,7 +14117,7 @@ function openExercisePicker() {
   const body = h('div', { class: 'expicker' },
     exWarningBox(),
     filterBox,
-    h('p', { class: 'hint', text: 'Tick the ones you want on the Exercise tab. All optional. If you are new to this, the three marked Gentle start in each group are a place to begin, if your care team agrees.' }),
+    h('p', { class: 'hint', text: 'Tick the ones you want. Gentle start ones are a place to begin, if your care team agrees.' }),
     list,
     ownBox(),
     h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: closeSheet }, 'Done'));
@@ -14559,7 +14559,7 @@ function openProgrammeSheet() {
     h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => openItemSheet({ id: newItemId(), name: '', section: 'stretch', kind: 'seconds', amount: 30 }, true, () => openProgrammeSheet()) }, 'Add a stretch'),
 
     explainAvailable() ? h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => importPlanPhotos() }, 'Add from a photo or PDF of the plan') : null,
-    explainAvailable() ? h('p', { class: 'hint', text: 'Photograph the exercise sheet or physio plan, or choose the PDF or Word file if it was emailed, and Daybook Assistant (AI from Anthropic, in the US) reads it into the list for you to check. The bridge keeps nothing of the file. It can misread a sheet, so check each exercise before adding it.' }) : null,
+    explainAvailable() ? h('p', { class: 'hint', text: 'Daybook Assistant (AI from Anthropic, in the US) reads the sheet or file into the list. It can misread, so check each one before adding it.' }) : null,
     h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => openPhysioDetailsSheet() }, (plan.from || plan.notes) ? 'Physio plan details' : 'Add physio plan details'),
     h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: closeSheet }, 'Done')
   );
@@ -14641,7 +14641,7 @@ function openItemSheet(item, isNew, after) {
     field('Name', name), h('p', { class: 'hint', text: 'Where it belongs' }), sectionRow,
     h('p', { class: 'hint', text: 'How it is counted' }), kindRow, amountField, unitRow, setsField, poolField, timeField,
     h('p', { class: 'hint', text: 'Which days' }), dayRow,
-    matchHint, matchRow, h('p', { class: 'hint hint-small', text: 'When a walk, swim, run or ride recorded on the phone or watch reaches the target, it ticks itself, if the Apple Health feed is set up under Settings. You can still untick it.' }),
+    matchHint, matchRow, h('p', { class: 'hint hint-small', text: 'Ticks itself when Apple Health records a matching workout that reaches the target.' }),
     field('Note (optional)', note),
     saveBtn,
     h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => { if (after) after(); else closeSheet(); } }, 'Cancel'));
@@ -14819,7 +14819,7 @@ function openContactsSheet(addNew) {
   saved.forEach((c) => addRow(c));
   if (!saved.length) addRow(null, addNew);
   const body = h('div', null,
-    h('p', { class: 'hint', text: 'A phone number, an email address, or both. Email opens your own Mail app. If the line asks you to press an option or an extension, put it in its own box; it shows under the number.' }),
+    h('p', { class: 'hint', text: 'A phone number, an email address, or both.' }),
     h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => addRow(null, true) }, 'Add a new contact'),
     rows,
     h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {

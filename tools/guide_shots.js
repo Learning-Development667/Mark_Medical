@@ -174,7 +174,6 @@ const QUALITY = 0.8;
   await closeSheet();
   await page.evaluate(() => { try { Object.keys(localStorage).filter((k) => k.startsWith('daybook.checkin.')).forEach((k) => localStorage.removeItem(k)); } catch (e) {} const p = window.daybookPreview.state.profile; if (p) p.checkinDrafts = {}; });
   await tab('chemo');
-  await shot('Something between check-ins? Log a side effect here, or from a medicine\'s card, and say what caused it. Notes for the team lists them by cause.', '#sidefx-add');
   /* the page clock is fixed for the pictures, so Chart.js's draw-in never moves on: move the clock a few seconds so the lines finish */
   for (let i = 1; i <= 3; i++) { await page.clock.setFixedTime(new Date(Date.parse(CLOCK) + i * 4000)); await settle(250); }
   await page.evaluate(() => { const hd = [...document.querySelectorAll('#view-chemo .section-title')].find((x) => /How treatment goes/.test(x.textContent)); if (hd) { hd.scrollIntoView({ block: 'start' }); window.scrollBy(0, -64); } }); await settle(900);
@@ -242,16 +241,11 @@ const QUALITY = 0.8;
   await tab('today'); await refresh();
   await shot('A carer\'s Today has two more rows: their mood this morning and this evening, as you see it, at the patient\'s own times.', '#carer-carermorning');
   await page.click('#carer-carermorning'); await page.waitForSelector('#sheet:not([hidden])'); await settle();
-  await shot('Their mood on 1 to 10, then anything you noticed. It goes on the reports in its own area, as "As Shelley saw it", never mixed with the patient\'s own scores.');
+  await shot('Their mood on 1 to 10, then anything you noticed. It goes on the timeline and the Mood and wellbeing report, never mixed with the patient\'s own scores.');
   await closeSheet();
   await shot('Over the last days of the week, Your week, as you see it: how the patient seemed, kept apart from their own answers.', '#week-check');
   await page.click('#week-check'); await page.waitForSelector('#sheet:not([hidden])'); await settle();
-  await shot('Four questions on how they seemed this week, then three in your own words. It goes on the Mood and wellbeing report as "As Shelley saw it".');
-  await closeSheet();
-  await tab('chemo');
-  await shot('On the Treatment tab, the Carer\'s view: the day\'s energy, sickness, eating, pain and mood as you see it.', '#checkin-carer');
-  await page.click('#checkin-carer'); await page.waitForSelector('#sheet:not([hidden])'); await settle();
-  await shot('The same sliders, worded as you see it. They are shown beside the patient\'s own scores on the treatment cycle chart, never mixed with them.');
+  await shot('Four questions on how they seemed this week, then three in your own words. It goes on Notes for the team and the Mood and wellbeing report as "As Shelley saw it".');
   await closeSheet();
 
   /* 9. the whole story, for the website (v230): a day's logging, a question, then the report made and sent */
