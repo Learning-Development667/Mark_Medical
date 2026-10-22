@@ -278,9 +278,8 @@ export function reportHtml(R) {
   if (R.results) strip.push(`<div data-sec="Results"><b>Results, as the team gave them.</b> ${esc(R.results)}</div>`);
   if (R.steady) strip.push(`<div class="steady" data-sec="Steady"><b>Steady.</b> ${esc(R.steady)}</div>`);
   const qs = R.questions.map((q, i) => questionHtml({ ...q, i: i + 1, lines: R.lines }, false));
-  const other = questionHtml({ text: 'Other points from today', by: R.otherBy || 'For anything raised in the appointment', lines: R.lines }, true);
-  /* An odd number of questions leaves the Other points card the empty half; otherwise it takes the full width */
-  const otherCard = R.questions.length % 2 ? other : other.replace('class="q extra"', 'class="q extra wide"');
+  /* No "Other points from today" card since v272 (Mark: not needed); an odd last question takes the full width */
+  if (qs.length % 2) qs[qs.length - 1] = qs[qs.length - 1].replace('class="q"', 'class="q wide"');
   /* Pages after the second (v207, v236): whatever pages 1 and 2 cannot hold is laid out after them, never cut.
      Questions moved there keep their numbers on from page 1. */
   const tail = tailPagesOf(R);
@@ -323,7 +322,7 @@ ${bar}
   <div class="strip${strip.length === 1 ? ' one' : ''}">${strip.join('')}</div>
   <div class="qwrap" data-sec="Questions">
     <h2 class="sec" style="margin-bottom:2.4mm">Questions for the team <small>Space is left under each one to write the reply.</small></h2>
-    ${noneLine}<div class="qgrid">${qs.join('')}${otherCard}</div>
+    ${noneLine}<div class="qgrid">${qs.join('')}</div>
     ${extraN ? `<p class="more">${esc(extraN === 1 ? 'One more question' : extraN + ' more questions')} on page 3.</p>` : ''}
     ${R.latestMoved ? '<p class="more">The latest note is in full on page 3.</p>' : ''}
     ${olderLine}
