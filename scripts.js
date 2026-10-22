@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '260';
+const APP_VERSION = '261';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -10635,6 +10635,10 @@ function prnStatus(m) {
 const MED_OPEN_SOON_DAYS = 3;
 function medOpenSet() { if (!state.openMeds) state.openMeds = new Set(); return state.openMeds; }
 function medClosedSet() { if (!state.closedMeds) state.closedMeds = new Set(); return state.closedMeds; }
+/* v261: a card opens by itself once per reason on this phone, not on every visit */
+const MED_SEEN_KEY = 'daybook.meds.autoOpened';
+function medSeenWhy() { try { return JSON.parse(localStorage.getItem(MED_SEEN_KEY) || '{}') || {}; } catch (e) { return {}; } }
+function markMedSeen(id, why) { try { const s = medSeenWhy(); s[id] = why; localStorage.setItem(MED_SEEN_KEY, JSON.stringify(s)); } catch (e) {} }
 function medAutoOpenWhy(m, day) {
   const isToday = day === todayStr();
   const ch = recentDoseChange(m);
@@ -10647,8 +10651,12 @@ function medCard(m, day, section) {
   const isToday = day === todayStr();
   const count = countMedOnDay(m.id, day);
   const last = lastMedEntry(m.id);
-  const why = medClosedSet().has(m.id) ? '' : medAutoOpenWhy(m, day);
-  const open = medOpenSet().has(m.id) || !!why;
+  let why = medClosedSet().has(m.id) ? '' : medAutoOpenWhy(m, day);
+  if (why && !medOpenSet().has(m.id)) {
+    if (medSeenWhy()[m.id] === why) why = '';
+    else { markMedSeen(m.id, why); medOpenSet().add(m.id); }
+  }
+  const open = medOpenSet().has(m.id);
   const card = h('div', { class: 'card med' + (m.hospital ? ' is-hospital' : '') + (open ? ' is-open' : ''), 'data-med': m.id });
 
   /* the one status line on the compact card */
