@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '273';
+const APP_VERSION = '274';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -6464,87 +6464,51 @@ function twoPageCharts(entries, days) {
   charts.push({ key: 'mood', title: 'Mood (1 to 10)', stat: !vals(moodDay).length && !lowMood.length ? 'No scores' : lowMood.length ? 'Low on ' + plural(lowMood.length, 'day') : 'Steady',
     tone: !vals(moodDay).length && !lowMood.length ? '' : lowMood.length ? 'amber' : 'green', min: 0, max: 10, ticks: [0, 5, 10], series: [{ d: moodDay, c: teal }] });
 
-  return { charts, facts: { tv, tPeak, hv, hPeak, bpAll, bpRed, bpAmber, ov, oLow, wSorted, wDrop, nights, shortN, pAvg, pWorst, painAll, lowMood, moodDay } };
+  return { charts, facts: { tv, tPeak, hv, hPeak, bpAll, bpRed, bpAmber, ov, oLow, wSorted, wDrop, nights, shortN, pAvg, pDays: pv.length, pWorst, painAll, lowMood, moodDay } };
 }
 const REPORT_INK = '#17263A', REPORT_TEAL = '#1E7F86', REPORT_AMBER = '#E0A030', REPORT_RED = '#C8453B';
 
 /* The eight tiles: vitals on the first row, then pain, sleep, protein and mood */
 function twoPageTiles(entries, from, to, f) {
-  const latestOf = (list, valueText) => { const e = list.slice().sort((a, b) => entryDate(a) - entryDate(b)).pop(); return e ? `Latest ${valueText(e)} on ${rDay(e.day)}.` : ''; };
-  const daysWith = (list) => new Set(list.map((e) => e.day)).size;
+  /* Every tile is the period's average, and its colour follows that average (v274, Mark: "all the at a glance need to
+     be an average for that week"; any high single reading is on the charts on page 2). The limits are the app's own. */
+  const avg = (list) => list.reduce((t, v) => t + v, 0) / list.length;
+  const r1 = (n) => Math.round(n * 10) / 10;
+  const nRead = (n, w = 'reading') => 'Average of ' + plural(n, w) + '.';
+  const none = (k, what) => ({ k, v: 'None', note: 'No ' + what + ' in this period.', tone: '' });
   const tiles = [];
-  const temps = entries.filter((e) => e.type === 'temp' && Number(e.value) > 0);
-  if (!temps.length) tiles.push({ k: 'Temperature', v: 'None', note: 'No readings in this period.', tone: '' });
-  else {
-    const high = temps.filter((e) => Number(e.value) >= 38), raised = temps.filter((e) => Number(e.value) >= 37.5), low = temps.filter((e) => Number(e.value) < 36);
-    const peakE = temps.reduce((a, b) => (Number(b.value) > Number(a.value) ? b : a));
-    const latest = latestOf(temps, (e) => Number(e.value).toFixed(1) + ' °C');
-    const note = high.length ? `High on ${plural(daysWith(high), 'day')}, peak on ${rDay(peakE.day)}. ${latest}` : raised.length ? `Raised on ${plural(daysWith(raised), 'day')}, never 38.0. ${latest}` : `Steady. Never 37.5 or over.${low.length ? ' Under 36.0 on ' + plural(daysWith(low), 'day') + '.' : ''} ${latest}`;
-    tiles.push({ k: 'Temperature', v: Number(peakE.value).toFixed(1), unit: '°C peak', note: note.trim(), tone: toneOf(high.length, raised.length || low.length) });
-  }
-  const hrs = entries.filter((e) => e.type === 'vitals' && Number(e.heartRate) > 0);
-  if (!hrs.length) tiles.push({ k: 'Heart rate', v: 'None', note: 'No readings in this period.', tone: '' });
-  else {
-    const fast = hrs.filter((e) => e.heartRate >= 120), high = hrs.filter((e) => e.heartRate >= 100), slow = hrs.filter((e) => e.heartRate <= 50);
-    const times = (n) => (n === 1 ? 'once' : n === 2 ? 'twice' : n + ' times');
-    const latest = latestOf(hrs, (e) => Math.round(e.heartRate) + ' bpm');
-    const note = fast.length ? `120 or over ${times(fast.length)}. ${latest}` : high.length ? `100 or over ${times(high.length)}. ${latest}` : slow.length ? `50 or under ${times(slow.length)}. ${latest}` : `Steady. ${latest}`;
-    tiles.push({ k: 'Heart rate', v: String(Math.round(f.hPeak)), unit: 'bpm peak', note, tone: toneOf(fast.length, high.length || slow.length) });
-  }
+  const temps = entries.filter((e) => e.type === 'temp' && Number(e.value) > 0).map((e) => Number(e.value));
+  if (!temps.length) tiles.push(none('Temperature', 'readings'));
+  else { const a = r1(avg(temps)); tiles.push({ k: 'Temperature', v: a.toFixed(1), unit: '°C average', note: nRead(temps.length), tone: toneOf(a >= 38, a >= 37.5 || a < 36) }); }
+  const hrs = entries.filter((e) => e.type === 'vitals' && Number(e.heartRate) > 0).map((e) => Number(e.heartRate));
+  if (!hrs.length) tiles.push(none('Heart rate', 'readings'));
+  else { const a = Math.round(avg(hrs)); tiles.push({ k: 'Heart rate', v: String(a), unit: 'bpm average', note: nRead(hrs.length), tone: toneOf(a >= 120, a >= 100 || a <= 50) }); }
   const bps = f.bpAll;
-  const bpText = (e) => Math.round(e.systolic) + '/' + Math.round(e.diastolic);
-  if (!bps.length) tiles.push({ k: 'Blood pressure', v: 'None', note: 'No readings in this period.', tone: '' });
+  if (!bps.length) tiles.push(none('Blood pressure', 'readings'));
   else {
-    const latest = latestOf(bps, bpText);
-    /* Each reading named as it was taken: "over 160/100" means either number crossed its line */
-    const listed = (list) => list.length <= 3 ? ': ' + list.slice().sort((a, b) => entryDate(a) - entryDate(b)).map((e) => bpText(e) + ' on ' + rDay(e.day)).join(', ') : '';
-    if (f.bpRed.length) tiles.push({ k: 'Blood pressure', v: String(f.bpRed.length), unit: f.bpRed.length === 1 ? 'reading' : 'readings', note: `Over 160/100${listed(f.bpRed)}. ${latest}`, tone: 'red' });
-    else if (f.bpAmber.length) tiles.push({ k: 'Blood pressure', v: String(f.bpAmber.length), unit: f.bpAmber.length === 1 ? 'reading' : 'readings', note: `Over 140/90${listed(f.bpAmber)}. ${latest}`, tone: 'amber' });
-    else {
-      const lowBp = bps.filter((e) => e.systolic <= 90);
-      const lo = bps.reduce((a, b) => (Number(b.systolic) < Number(a.systolic) ? b : a)), hi = bps.reduce((a, b) => (Number(b.systolic) > Number(a.systolic) ? b : a));
-      tiles.push({ k: 'Blood pressure', v: bpText(bps.slice().sort((a, b) => entryDate(a) - entryDate(b)).pop()), unit: 'latest', note: lowBp.length ? `Systolic 90 or under ${plural(lowBp.length, 'time')}, lowest ${bpText(lo)}.` : `Steady. Range ${bpText(lo)} to ${bpText(hi)}.`, tone: lowBp.length ? 'amber' : 'green' });
-    }
+    const sy = Math.round(avg(bps.map((e) => Number(e.systolic)))), di = Math.round(avg(bps.map((e) => Number(e.diastolic))));
+    tiles.push({ k: 'Blood pressure', v: sy + '/' + di, unit: 'average', note: nRead(bps.length), tone: toneOf(sy >= 160 || di >= 100, sy >= 140 || di >= 90 || sy <= 90) });
   }
-  const oxs = entries.filter((e) => e.type === 'vitals' && Number(e.oxygen) > 0);
-  if (!oxs.length) tiles.push({ k: 'Oxygen', v: 'None', note: 'No readings in this period.', tone: '' });
-  else {
-    const loE = oxs.reduce((a, b) => (Number(b.oxygen) < Number(a.oxygen) ? b : a));
-    const latest = latestOf(oxs, (e) => Math.round(e.oxygen) + '%');
-    tiles.push({ k: 'Oxygen', v: String(Math.round(loE.oxygen)), unit: '% low', note: (loE.oxygen <= 93 ? `Down to ${Math.round(loE.oxygen)}% on ${rDay(loE.day)}. ` : 'Steady. ') + latest, tone: toneOf(loE.oxygen <= 90, loE.oxygen <= 93) });
-  }
-  /* Pain: amber at 4 (the NHS scale's moderate, v243), red at 7, as in the app's own summary */
-  if (f.pWorst == null) tiles.push({ k: 'Pain', v: 'None', note: 'No pain scores in this period.', tone: '' });
-  else {
-    const worstDay = (() => { let d = null, v = -1; entries.forEach((e) => { const s = isPatientCheckin(e) ? Math.max(Number(e.pain ?? -1), Number(e.worstPain ?? -1)) : e.type === 'pain' ? Number(e.value) : -1; if (s > v) { v = s; d = e.day; } }); return d; })();
-    const highDays = new Set(entries.filter((e) => (isPatientCheckin(e) && (Number(e.pain) >= 4 || Number(e.worstPain) >= 4)) || (e.type === 'pain' && Number(e.value) >= 4)).map((e) => e.day)).size;
-    tiles.push({ k: 'Pain', v: f.pAvg == null ? String(f.pWorst) : (Math.round(f.pAvg * 10) / 10).toString(), unit: f.pAvg == null ? '/10 worst' : '/10 average',
-      note: f.pWorst >= 4 ? `Worst ${f.pWorst} out of 10 on ${rDay(worstDay)}. 4 or more on ${plural(highDays, 'day')}.` : `Steady. Worst ${f.pWorst} out of 10.`,
-      /* the tile's colour follows the number it shows (v272): an average of 3 is mild, whatever the worst day was */
-      tone: (() => { const v = f.pAvg == null ? f.pWorst : Math.round(f.pAvg * 10) / 10; return toneOf(v >= 7, v >= 4); })() });
-  }
-  if (!f.nights.length) tiles.push({ k: 'Sleep', v: 'None', note: 'No nights logged in this period.', tone: '' });
-  else {
-    const mean = fmtHm(f.nights.reduce((t, e) => t + Number(e.value), 0) / f.nights.length);
-    if (f.shortN) tiles.push({ k: 'Sleep', v: String(f.shortN), unit: 'of ' + plural(f.nights.length, 'night'), note: `Under 5 hours. Average ${mean} a night.`, tone: 'amber' });
-    else tiles.push({ k: 'Sleep', v: (Math.round(f.nights.reduce((t, e) => t + Number(e.value), 0) / f.nights.length / 6) / 10).toString(), unit: 'h a night', note: `Steady. No night under 5 hours (${plural(f.nights.length, 'night')} logged).`, tone: 'green' });
-  }
-  /* Protein: the same food-day calculation as the Food diary (v119): complete days with usable
-     totals, the food app's where it has them, food-app totals far below the entries left out */
+  const oxs = entries.filter((e) => e.type === 'vitals' && Number(e.oxygen) > 0).map((e) => Number(e.oxygen));
+  if (!oxs.length) tiles.push(none('Oxygen', 'readings'));
+  else { const a = Math.round(avg(oxs)); tiles.push({ k: 'Oxygen', v: String(a), unit: '% average', note: nRead(oxs.length), tone: toneOf(a <= 90, a <= 93) }); }
+  /* Pain: the average of each day's score; amber from 4 (the NHS scale's moderate, v243), red from 7 */
+  if (f.pAvg == null) tiles.push(none('Pain', 'pain scores'));
+  else { const a = r1(f.pAvg); tiles.push({ k: 'Pain', v: String(a), unit: '/10 average', note: 'Average of ' + plural(f.pDays || 0, 'day') + ' scored.', tone: toneOf(a >= 7, a >= 4) }); }
+  if (!f.nights.length) tiles.push(none('Sleep', 'nights logged'));
+  else { const m = avg(f.nights.map((e) => Number(e.value))); tiles.push({ k: 'Sleep', v: String(Math.round(m / 6) / 10), unit: 'h a night', note: 'Average of ' + plural(f.nights.length, 'night') + ' logged.', tone: m < 300 ? 'amber' : 'green' }); }
+  /* Protein: the same food-day calculation as the Food diary (v119) */
   const target = proteinTarget();
-  const protDays = foodDaysFor(entries, from, to, foodIndex).days.filter((d) => !d.partial && d.p != null).map((d) => ({ day: d.day, prot: d.p, logged: d.source !== 'estimate' }));
+  const protDays = foodDaysFor(entries, from, to, foodIndex).days.filter((d) => !d.partial && d.p != null).map((d) => ({ prot: d.p, logged: d.source !== 'estimate' }));
   if (!protDays.length) tiles.push({ k: 'Protein', v: 'None', note: detailedNutritionOn() ? 'No food totals in this period.' : 'Not tracked. Food estimates are off in Settings.', tone: '' });
   else {
-    const mean = Math.round(protDays.reduce((t, p) => t + p.prot, 0) / protDays.length);
-    const est = protDays.every((p) => p.logged) ? '' : ' (estimated)';
-    if (target) {
-      const under = protDays.filter((p) => p.prot < target).length;
-      tiles.push({ k: 'Protein', v: String(under), unit: 'of ' + plural(protDays.length, 'day'), note: under ? `Below the ${target} g target. Average ${mean} g a day${est}.` : `Steady. Target of ${target} g met every day${est}.`, tone: under ? 'amber' : 'green' });
-    } else tiles.push({ k: 'Protein', v: String(mean), unit: 'g a day', note: `Average${est}. No target set.`, tone: '' });
+    const mean = Math.round(avg(protDays.map((p) => p.prot)));
+    const est = protDays.every((p) => p.logged) ? '' : ', estimated';
+    tiles.push({ k: 'Protein', v: String(mean), unit: 'g a day average', note: (target ? `Target ${target} g. ` : 'No target set. ') + `${plural(protDays.length, 'day')}${est}.`, tone: target ? (mean < target ? 'amber' : 'green') : '' });
   }
-  if (!f.lowMood.length && !f.moodDay.some((v) => v != null)) tiles.push({ k: 'Mood', v: 'None', note: 'No mood scores in this period.', tone: '' });
-  else if (f.lowMood.length) tiles.push({ k: 'Mood', v: String(f.lowMood.length), unit: f.lowMood.length === 1 ? 'day low' : 'days low', note: `Low on ${joinAnd(f.lowMood.map((d) => String(parseDay(d).getDate())).slice(0, -1).concat([rDay(f.lowMood[f.lowMood.length - 1])]))}.`, tone: 'amber' });
-  else { const mv = f.moodDay.filter((v) => v != null); tiles.push({ k: 'Mood', v: mv.length ? (Math.round(mv.reduce((t, v) => t + v, 0) / mv.length * 10) / 10).toString() : '0', unit: '/10 average', note: 'Steady. No low days.', tone: 'green' }); }
+  const mv = f.moodDay.filter((v) => v != null);
+  if (!mv.length) tiles.push(none('Mood', 'mood scores'));
+  else { const a = r1(avg(mv)); tiles.push({ k: 'Mood', v: String(a), unit: '/10 average', note: 'Average of ' + plural(mv.length, 'day') + ' scored.', tone: a <= 4 ? 'amber' : 'green' }); }
   return tiles;
 }
 
