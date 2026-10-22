@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=262">
+  <link rel="stylesheet" href="styles.css?v=263">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -727,7 +727,7 @@
           <button id="pain-preview" class="btn btn-tint tint-plum" type="button"><svg class="icon" aria-hidden="true"><use href="#i-eye"/></svg>Preview</button>
           <button id="pain-pdf" class="btn btn-tint tint-warm" type="button"><svg class="icon" aria-hidden="true"><use href="#i-download"/></svg>Save as PDF</button>
         </div>
-        <p class="hint">For the pain nurse or team: your pain scores morning and evening, the worst pain each day, where it was in your own words, every dose of pain relief, your nights, and your questions labelled Pain team. Everything comes from the check-ins, the Pain tile and the Meds tab as logged.</p>
+        <p class="hint">For the pain nurse or team: your pain scores from the check-ins, the worst pain each day, key points from what you wrote, every dose of pain relief, your nights, and your questions labelled Pain team. Everything comes from the check-ins, the Pain tile and the Meds tab as logged.</p>
         <div id="pain-questions-section" hidden>
           <h3 class="section-title">Questions for the pain team</h3>
           <p class="hint">Asked from Today with "Question for the team" and labelled Pain team. They go on the report, and stay until marked as answered.</p>
@@ -736,20 +736,23 @@
         <div class="status" role="group" aria-label="At a glance">
           <div class="tiles tiles-2" id="pain-tiles"></div>
         </div>
-        <h3 class="section-title">The period in brief</h3>
-        <button id="pain-brief" class="btn btn-tint tint-blue btn-block" type="button" hidden>Write the brief with Daybook Assistant</button>
+        <h3 class="section-title">Key points</h3>
+        <button id="pain-brief" class="btn btn-tint tint-blue btn-block" type="button" hidden>Write the key points with Daybook Assistant</button>
         <p id="pain-brief-note" class="mood-brief-note"></p>
-        <textarea id="pain-brief-text" class="brief-box" aria-label="The period in brief" readonly></textarea>
+        <textarea id="pain-brief-text" class="brief-box keys-box" aria-label="Key points from the scores and doses" readonly></textarea>
+        <h3 class="section-title">In your words</h3>
+        <p id="pain-said-note" class="mood-brief-note"></p>
+        <textarea id="pain-said-text" class="brief-box keys-box" aria-label="Key points from what you wrote" readonly></textarea>
         <button id="pain-brief-undo" class="btn btn-link" type="button" hidden>Use the app's plain version instead</button>
-        <h3 class="section-title">By time of day</h3>
-        <div id="pain-tod" class="card todcard"></div>
         <h3 class="section-title">Pain relief</h3>
         <div id="pain-relief"></div>
         <h3 class="section-title">Week by week</h3>
         <div id="pain-weeks"></div>
-        <h3 class="section-title">Where it was, in your words</h3>
-        <p class="hint">What you wrote under the pain scores, as logged, in full. These print on the report.</p>
-        <div id="pain-words"></div>
+        <details class="pain-allwords">
+          <summary id="pain-words-sum">Every note under a pain score</summary>
+          <p class="hint">Not printed on the report, which carries key points from them. Each can be read in full and fixed here.</p>
+          <div id="pain-words"></div>
+        </details>
       </section>
 
       <section id="view-ibd" class="view" data-view="ibd" hidden>
@@ -1213,6 +1216,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=262"></script>
+  <script type="module" src="scripts.js?v=263"></script>
 </body>
 </html>

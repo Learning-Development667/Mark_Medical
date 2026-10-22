@@ -1710,16 +1710,14 @@ h1, h2, h3 { font-weight: 600; }
 .wkcard.carer-card .wk-sub { font-weight: 600; color: var(--text-primary); }
 .wkcard .wk-sub { font-size: 15px; color: var(--text-secondary); margin: 4px 0 0; }
 /* The Pain report screen (v161) */
-.todcard { display: flex; flex-direction: column; gap: var(--s-3); }
-.todrow { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) auto; gap: var(--s-3); align-items: center; font-size: 17px; }
-.tod-bar { height: 12px; background: var(--surface-sunken); border-radius: 6px; overflow: hidden; }
-.tod-bar i { display: block; height: 100%; background: var(--teal); border-radius: 6px; }
-.tod-v { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 15px; color: var(--text-secondary); white-space: nowrap; }
+.keys-box { min-height: 170px; }
+.pain-allwords { margin-top: var(--s-6); }
+.pain-allwords > summary { min-height: 48px; display: flex; align-items: center; font-weight: 600; color: var(--teal-dark); cursor: pointer; }
+@media (prefers-color-scheme: dark) { .pain-allwords > summary { color: var(--teal); } }
 .reliefcard, .wordcard { margin: 0 0 var(--s-3); }
 .wordcard .word-when { display: block; font-size: 15px; font-weight: 600; color: var(--teal-dark); margin-bottom: 4px; }
 .wordcard p { margin: 0; white-space: pre-wrap; }
 @media (prefers-color-scheme: dark) { .wordcard .word-when { color: var(--teal); } }
-@media (max-width: 359px) { .todrow { grid-template-columns: 1fr; gap: 4px; } }
 
 /* ---------- The set-up (v164) ---------- */
 .setup-list { padding-left: 22px; margin: 0 0 var(--s-4); }

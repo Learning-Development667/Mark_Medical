@@ -1059,18 +1059,15 @@ const PAIN_CSS = `
 .c .legend i.swb{width:1.6mm;height:3.4mm;border-radius:.4mm}
 .c .legend .tri{display:inline-block;width:0;height:0;border-left:1.4mm solid transparent;border-right:1.4mm solid transparent;border-top:2.2mm solid var(--ink);margin-right:1.2mm;vertical-align:middle}
 .wbody{flex:1;display:flex;flex-direction:column;gap:3.6mm;min-height:0}
-.brief{display:grid;grid-template-columns:1fr 1fr;gap:2.2mm 5mm;font-size:8.3pt;line-height:1.42}
-.brief p b{font-weight:600}
 .wsec{display:flex;flex-direction:column;gap:1.8mm}
-.two{display:grid;grid-template-columns:1fr 1.25fr;gap:4mm;align-items:start}
-.tod{display:flex;flex-direction:column;gap:1.4mm;margin-top:.6mm}
-.tod .row{display:grid;grid-template-columns:28mm 1fr 20mm;gap:2mm;align-items:center;font-size:7.8pt}
-.tod .tbar{height:3.2mm;background:var(--mist);border-radius:1mm;overflow:hidden}
-.tod .tbar i{display:block;height:100%;background:var(--teal);border-radius:1mm}
-.tod .tbar i.amber{background:var(--amber)}
-.tod .tbar i.red{background:var(--red)}
-.tod .v{font-variant-numeric:tabular-nums;color:var(--slate);font-size:7.2pt;text-align:right}
-.rhead,.rrow{display:grid;grid-template-columns:1.3fr 1fr 1.4fr;gap:2mm;align-items:start}
+.keys{display:grid;grid-template-columns:1fr 1fr;gap:5mm;align-items:start}
+.keys h3{font-family:Inter,sans-serif;font-size:7pt;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--slate);margin-bottom:1.2mm}
+.keys h3 small{text-transform:none;letter-spacing:0;font-weight:400}
+.keys ul{list-style:none;display:flex;flex-direction:column;gap:1.3mm}
+.keys li{position:relative;padding-left:3.4mm;font-size:8.2pt;line-height:1.4}
+.keys li::before{content:"";position:absolute;left:0;top:1.6mm;width:1.5mm;height:1.5mm;border-radius:50%;background:var(--teal)}
+.keys .said li::before{background:#C2703D}
+.rhead,.rrow{display:grid;grid-template-columns:1.5fr 1.6fr 1fr;gap:2mm;align-items:start}
 .rhead{font-size:6.6pt;letter-spacing:.06em;text-transform:uppercase;color:var(--slate);background:var(--mist);padding:1.4mm 2mm;border-bottom:1.3px solid var(--ink);font-weight:600}
 .rrow{padding:1.6mm 2mm;border-bottom:1px solid var(--line);font-size:7.7pt;line-height:1.35}
 .rrow .sm{display:block;color:var(--slate);font-size:7pt}
@@ -1092,22 +1089,27 @@ const PAIN_CSS = `
 .mnotes .lines{flex:1;margin-top:1.4mm;position:relative;overflow:hidden}
 .mnotes .lines i{position:absolute;left:0;right:0;height:0;border-top:1px solid rgba(30,127,134,.35)}
 `;
-/* P: { patient, period, prepared, tiles[], charts[renderChart configs, six of them: morning pain, evening pain, worst pain today, between times, doses a day, hours asleep], key, days[], brief[{ head, text }], briefNote, tod[{ label, avg, n }],
-   relief[{ name, dose, how, kind, n, days, most, maxPerDay, hitMax, last, line }], words[{ when, text, score }], wordsTotal, weeks[{ label, pain, painSub, bad, worst, worstSub, relief, nights }],
-   questions[{ team, text, by }], items[{ t: 'brief'|'tod'|'sec'|'word'|'wk'|'q'|'notes', s, r, q }], pages[[item index]], noteLines } */
+/* P: { patient, period, prepared, tiles[], charts[renderChart configs, six of them: morning check-in, evening check-in, worst pain of the day, logged in between, doses a day, hours asleep], key, days[],
+   points[string], said[string], briefNote, saidNote, ai, relief[{ name, dose, how, uses, kind, n, days, most, maxPerDay, hitMax, last, usesNote }], weeks[{ label, pain, painSub, bad, worst, worstSub, relief, nights }],
+   questions[{ team, text, by }], items[{ t: 'keys'|'relief'|'sec'|'wk'|'q'|'notes', s, r, q }], pages[[item index]], noteLines }
+   Key points since v263 (Mark: the notes in full were "way too long"); By time of day went (pain is scored at the two check-ins). */
 export function painReportHtml(P) {
   const total = P.pages.length;
   const pages = P.pages.map((idx, p) => {
     let html = '', open = null;
-    const close = () => { if (open) { html += open === 'words' ? '</ul></div>' : '</div>'; open = null; } };
+    const close = () => { if (open) { html += open === 'q' ? '</div></div>' : '</div>'; open = null; } };
     idx.forEach((i) => {
       const it = P.items[i];
-      if (it.t === 'brief') { close(); html += `<div class="wsec" data-i="${i}"><h2 class="sec">The period in brief <small>${esc(P.briefNote || '')}</small></h2><div class="brief">${(P.brief || []).map((b) => `<p>${b.head ? `<b>${esc(b.head)}.</b> ` : ''}${esc(b.text)}</p>`).join('')}</div></div>`; return; }
-      if (it.t === 'tod') {
+      if (it.t === 'keys') {
         close();
-        const bars = P.tod.map((r) => `<div class="row"><span>${esc(r.label)}</span><div class="tbar"><i class="${r.avg == null ? '' : r.avg >= 7 ? 'red' : r.avg >= 4 ? 'amber' : ''}" style="width:${r.avg == null ? 0 : Math.round(r.avg * 10)}%"></i></div><span class="v">${r.n ? esc(String(r.avg)) + ' · ' + r.n : 'None'}</span></div>`).join('');
-        const rows = P.relief.length ? P.relief.map((r) => `<div class="rrow"><span><span class="pill${r.kind === 'When needed' ? ' prn' : ''}">${esc(r.kind)}</span><br>${esc(r.name)}<span class="sm">${esc(r.dose)}${r.how ? ' · ' + esc(r.how) : ''}</span></span><span class="n">${r.n ? `<b>${esc(String(r.n))}</b> ${r.n === 1 ? 'dose' : 'doses'}<span class="sm">on ${r.days} of the days${r.most > 1 ? ', up to ' + r.most + ' a day' : ''}${r.hitMax ? ' (the maximum)' : ''}</span>` : 'None<span class="sm">in this period</span>'}</span><span>${r.last ? 'Last ' + esc(r.last) : ''}${r.maxPerDay ? `<span class="sm">At most ${r.maxPerDay} a day</span>` : ''}</span></div>`).join('') : '<p class="sm" style="font-size:7.7pt;color:var(--slate)">No pain relief medicine on the list, or none logged.</p>';
-        html += `<div class="two" data-i="${i}"><div class="wsec"><h2 class="sec">By time of day <small>Average score, and how many.</small></h2><div class="tod">${bars}</div></div><div class="wsec"><h2 class="sec">Pain relief <small>Every dose as logged.</small></h2><div class="rhead"><span>Medicine</span><span>Doses</span><span>Last</span></div>${rows}</div></div>`;
+        const li = (l) => (l || []).map((x) => `<li>${esc(x)}</li>`).join('');
+        html += `<div class="wsec" data-i="${i}"><h2 class="sec">Key points <small>${esc(P.briefNote || '')}</small></h2><div class="keys"><div><h3>From the scores and doses</h3><ul>${li(P.points)}</ul></div><div class="said"><h3>In ${esc(P.patient)}'s words${P.saidNote ? ` <small>${esc(P.saidNote)}</small>` : ''}</h3><ul>${li(P.said)}</ul></div></div></div>`;
+        return;
+      }
+      if (it.t === 'relief') {
+        close();
+        const rows = P.relief.length ? P.relief.map((r) => `<div class="rrow"><span><span class="pill${r.kind === 'When needed' ? ' prn' : ''}">${esc(r.kind)}</span><br>${esc(r.name)}<span class="sm">${esc(r.dose)}${r.how ? ' · ' + esc(r.how) : ''}${r.uses ? ' · for ' + esc(r.uses.toLowerCase()) : ''}</span></span><span class="n">${r.n ? `<b>${esc(String(r.n))}</b> ${r.n === 1 ? 'dose' : 'doses'}<span class="sm">on ${r.days} of the days${r.most > 1 ? ', up to ' + r.most + ' a day' : ''}${r.hitMax ? ' (the maximum)' : ''}${r.usesNote ? '; ' + esc(r.usesNote) : ''}</span>` : 'None<span class="sm">in this period</span>'}</span><span>${r.last ? 'Last ' + esc(r.last) : ''}${r.maxPerDay ? `<span class="sm">At most ${r.maxPerDay} a day</span>` : ''}</span></div>`).join('') : '<p class="sm" style="font-size:7.7pt;color:var(--slate)">No pain relief medicine on the list, or none logged.</p>';
+        html += `<div class="wsec" data-i="${i}"><h2 class="sec">Pain relief <small>Every dose as logged.</small></h2><div class="rhead"><span>Medicine</span><span>Doses</span><span>Last</span></div>${rows}</div>`;
         return;
       }
       if (it.t === 'notes') {
@@ -1116,36 +1118,33 @@ export function painReportHtml(P) {
         html += `<div class="mnotes" data-i="${i}"><h3>Notes from the appointment</h3><div class="lines">${l}</div></div>`;
         return;
       }
-      if (it.t === 'sec' || (it.t === 'word' && open !== 'words') || (it.t === 'wk' && open !== 'weeks') || (it.t === 'q' && open !== 'q')) {
+      if (it.t === 'sec' || (it.t === 'wk' && open !== 'weeks') || (it.t === 'q' && open !== 'q')) {
         close();
-        const which = it.t === 'sec' ? it.s : it.t === 'word' ? 'words' : it.t === 'wk' ? 'weeks' : 'q';
+        const which = it.t === 'sec' ? it.s : it.t === 'wk' ? 'weeks' : 'q';
         const cont = it.t !== 'sec';
-        const title = which === 'words' ? 'Where it was, in ' + esc(P.patient) + "'s words" : which === 'weeks' ? 'Week by week' : 'Questions';
-        const note = which === 'words' ? (P.words.length ? 'Written under the pain scores, as logged, in full.' + (P.wordsTotal > P.words.length ? ` Plain answers such as "none" or "nothing new" (${P.wordsTotal - P.words.length}) are left out.` : '') : 'Nothing was written under the pain scores in this period.') : which === 'weeks' ? 'Pain right now, days at 7 or more, the worst pain, the relief taken and the nights.' : 'Labelled Pain team in the app. Space under each to write the reply.';
+        const title = which === 'weeks' ? 'Week by week' : 'Questions';
+        const note = which === 'weeks' ? 'Average pain, days at 7 or more, the worst pain of the day, the relief taken and the nights.' : 'Labelled Pain team in the app. Space under each to write the reply.';
         html += `<div class="wsec"><h2 class="sec"${cont ? '' : ` data-i="${i}"`}>${title}${cont ? ', continued' : ` <small>${note}</small>`}</h2>`;
-        if (which === 'words') html += '<ul class="words">';
-        if (which === 'weeks') html += '<div class="wkhead"><span>Week</span><span>Pain right now</span><span>Days at 7+</span><span>Worst pain</span><span>Pain relief</span><span>Nights</span></div>';
+        if (which === 'weeks') html += '<div class="wkhead"><span>Week</span><span>Average pain</span><span>Days at 7+</span><span>Worst pain</span><span>Pain relief</span><span>Nights</span></div>';
         if (which === 'q') html += '<div class="wq">';
         open = which;
         if (it.t === 'sec') return;
       }
-      if (it.t === 'word') { const w = P.words[it.r]; html += `<li data-i="${i}"${w.score != null && w.score >= 7 ? ' class="bad"' : ''}><time>${esc(w.when)}${w.score != null ? `<b>${esc(String(w.score))} out of 10</b>` : ''}</time><span>${esc(w.text)}</span></li>`; }
       if (it.t === 'wk') {
         const w = P.weeks[it.r];
         html += `<div class="wkrow" data-i="${i}"><span class="n">${esc(w.label)}</span><span class="n">${esc(w.pain)}<span class="sm">${esc(w.painSub)}</span></span><span class="n">${esc(w.bad)}</span><span class="n">${esc(w.worst)}${w.worstSub ? `<span class="sm">${esc(w.worstSub)}</span>` : ''}</span><span>${esc(w.relief)}</span><span>${esc(w.nights)}</span></div>`;
       }
       if (it.t === 'q') { const q = P.questions[it.q]; html += `<article class="q" data-i="${i}"><header><div>${q.team ? `<div class="team">${esc(q.team)}</div>` : ''}<h3>${esc(q.text)}</h3><div class="by">${esc(q.by)}</div></div></header><div class="lines" style="min-height:16.2mm">${lines(3)}</div></article>`; }
     });
-    if (open === 'q') html += '</div>';
     close();
     const charts = (P.charts || []).map((c) => `<div class="c"><div class="h"><h3>${esc(c.title)}</h3><span class="stat ${esc(c.tone || '')}">${esc(c.stat)}</span></div>${renderChart(c, P.days)}</div>`).join('');
     const key = `<div class="c key">${P.key || ''}</div>`;
     const first = p === 0
-      ? `<div class="masthead"><div><div class="titlerow"><h1>Pain and pain relief</h1><span class="madeby">Created with <b>My Medical Daybook</b></span></div><div class="sub">Pain scores morning and evening, where it was in ${esc(P.patient)}'s words, and the pain relief taken, for the pain nurse or team.</div></div><div class="who"><strong>${esc(P.patient)}</strong>Period: ${esc(P.period)}<br>Prepared: ${esc(P.prepared)}</div></div>`
+      ? `<div class="masthead"><div><div class="titlerow"><h1>Pain and pain relief</h1><span class="madeby">Created with <b>My Medical Daybook</b></span></div><div class="sub">Pain scores from the morning and evening check-ins, key points from ${esc(P.patient)}'s own words, and the pain relief taken, for the pain nurse or team.</div></div><div class="who"><strong>${esc(P.patient)}</strong>Period: ${esc(P.period)}<br>Prepared: ${esc(P.prepared)}</div></div>`
         + `<div class="tiles pain">${P.tiles.map((t) => `<div class="tile ${esc(t.tone || '')}"><div class="k">${esc(t.k)}</div><div class="v">${esc(t.v)}${t.unit ? `<em>${esc(t.unit)}</em>` : ''}</div><div class="n">${esc(t.n)}</div></div>`).join('')}</div>`
         + `<div class="cgrid pain">${charts}${key}</div>`
       : `<div class="runner"><h2>Pain and pain relief</h2><span>${esc(P.patient)} · ${esc(P.period)}</span></div>`;
-    return `<section class="page" id="page${p + 1}">${first}<div class="wbody">${html}</div><div class="foot"><span>Scores, words and doses as logged in Daybook${P.briefNote && P.briefNote.startsWith('Written by') ? '; the brief is written by an AI helper and checked by ' + esc(P.patient) : ''}. Not medical advice.</span>${madeBy(p + 1, total)}</div></section>`;
+    return `<section class="page" id="page${p + 1}">${first}<div class="wbody">${html}</div><div class="foot"><span>Scores, words and doses as logged in Daybook${P.ai ? '; the key points are written by an AI helper and checked by ' + esc(P.patient) : ''}. Not medical advice.</span>${madeBy(p + 1, total)}</div></section>`;
   }).join('\n');
   return `<!doctype html>
 <html lang="en-GB">
