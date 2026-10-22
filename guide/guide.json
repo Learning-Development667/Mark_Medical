@@ -263,14 +263,6 @@
     },
     {
      "file": "treatment-5.webp",
-     "caption": "Something between check-ins? Log a side effect here, or from a medicine's card, and say what caused it. Notes for the team lists them by cause.",
-     "tap": {
-      "x": 0.5,
-      "y": 0.435
-     }
-    },
-    {
-     "file": "treatment-6.webp",
      "caption": "How treatment goes: energy, sickness, appetite, pain, mood or sleep by day after each session, so the shape of a cycle shows after a few."
     }
    ]
@@ -515,7 +507,7 @@
     },
     {
      "file": "carer-2.webp",
-     "caption": "Their mood on 1 to 10, then anything you noticed. It goes on the reports in its own area, as \"As Shelley saw it\", never mixed with the patient's own scores."
+     "caption": "Their mood on 1 to 10, then anything you noticed. It goes on the timeline and the Mood and wellbeing report, never mixed with the patient's own scores."
     },
     {
      "file": "carer-3.webp",
@@ -527,19 +519,7 @@
     },
     {
      "file": "carer-4.webp",
-     "caption": "Four questions on how they seemed this week, then three in your own words. It goes on the Mood and wellbeing report as \"As Shelley saw it\"."
-    },
-    {
-     "file": "carer-5.webp",
-     "caption": "On the Treatment tab, the Carer's view: the day's energy, sickness, eating, pain and mood as you see it.",
-     "tap": {
-      "x": 0.5,
-      "y": 0.435
-     }
-    },
-    {
-     "file": "carer-6.webp",
-     "caption": "The same sliders, worded as you see it. They are shown beside the patient's own scores on the treatment cycle chart, never mixed with them."
+     "caption": "Four questions on how they seemed this week, then three in your own words. It goes on Notes for the team and the Mood and wellbeing report as \"As Shelley saw it\"."
     }
    ]
   },
