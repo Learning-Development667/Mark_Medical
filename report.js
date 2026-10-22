@@ -1067,6 +1067,10 @@ const PAIN_CSS = `
 .keys li{position:relative;padding-left:3.4mm;font-size:8.2pt;line-height:1.4}
 .keys li::before{content:"";position:absolute;left:0;top:1.6mm;width:1.5mm;height:1.5mm;border-radius:50%;background:var(--teal)}
 .keys .said li::before{background:#C2703D}
+.when{display:flex;flex-direction:column;gap:2mm}
+.when svg.hours{width:100%;height:auto;display:block}
+.when ul{list-style:none;display:grid;grid-template-columns:1fr 1fr;gap:1.3mm 5mm;font-size:8pt;line-height:1.4}
+.when li.nights{grid-column:1 / -1;border-top:1px solid var(--line);padding-top:1.3mm}
 .rhead,.rrow{display:grid;grid-template-columns:1.5fr 1.6fr 1fr;gap:2mm;align-items:start}
 .rhead{font-size:6.6pt;letter-spacing:.06em;text-transform:uppercase;color:var(--slate);background:var(--mist);padding:1.4mm 2mm;border-bottom:1.3px solid var(--ink);font-weight:600}
 .rrow{padding:1.6mm 2mm;border-bottom:1px solid var(--line);font-size:7.7pt;line-height:1.35}
@@ -1091,8 +1095,29 @@ const PAIN_CSS = `
 `;
 /* P: { patient, period, prepared, tiles[], charts[renderChart configs, six of them: morning check-in, evening check-in, worst pain of the day, logged in between, doses a day, hours asleep], key, days[],
    points[string], said[string], briefNote, saidNote, ai, relief[{ name, dose, how, uses, kind, n, days, most, maxPerDay, hitMax, last, usesNote }], weeks[{ label, pain, painSub, bad, worst, worstSub, relief, nights }],
-   questions[{ team, text, by }], items[{ t: 'keys'|'relief'|'sec'|'wk'|'q'|'notes', s, r, q }], pages[[item index]], noteLines }
+   questions[{ team, text, by }], items[{ t: 'keys'|'relief'|'when'|'sec'|'wk'|'q', s, r, q }], pages[[item index]], hourly[24], timing[{ text }], nightLine }
+   v264: the notes panel gave way to When the top-up doses were taken (Mark).
    Key points since v263 (Mark: the notes in full were "way too long"); By time of day went (pain is scored at the two check-ins). */
+/* 24 bars, one an hour, the night, morning, afternoon and evening shaded in turn (v264) */
+function hourBars(h) {
+  const W = 700, H = 118, L = 22, R = 690, T = 16, B = 84, max = Math.max(1, ...h), bw = (R - L) / 24;
+  let s = `<svg viewBox="0 0 ${W} ${H}" class="hours" role="img" aria-label="When-needed doses by hour of the day">`;
+  ['Night', 'Morning', 'Afternoon', 'Evening'].forEach((q, k) => {
+    const x = L + k * 6 * bw;
+    if (k % 2 === 0) s += `<rect x="${x}" y="${T - 6}" width="${6 * bw}" height="${B - T + 6}" fill="#EEF3F6"/>`;
+    s += `<text x="${x + 3 * bw}" y="${H - 4}" text-anchor="middle" font-size="12" fill="#4B5B6B">${q}</text>`;
+    s += `<text x="${x}" y="${B + 13}" text-anchor="middle" font-size="10.5" fill="#4B5B6B">${String(k * 6).padStart(2, '0')}:00</text>`;
+  });
+  s += `<text x="${R}" y="${B + 13}" text-anchor="end" font-size="10.5" fill="#4B5B6B">24:00</text>`;
+  s += `<line x1="${L}" y1="${B}" x2="${R}" y2="${B}" stroke="#D5DEE5"/>`;
+  h.forEach((n, i) => {
+    if (!n) return;
+    const bh = (B - T) * n / max, x = L + i * bw + 2;
+    s += `<rect x="${x.toFixed(1)}" y="${(B - bh).toFixed(1)}" width="${(bw - 4).toFixed(1)}" height="${bh.toFixed(1)}" rx="1.5" fill="#C2703D"/>`;
+    s += `<text x="${(x + (bw - 4) / 2).toFixed(1)}" y="${(B - bh - 2).toFixed(1)}" text-anchor="middle" font-size="11" font-weight="600" fill="#17263A">${n}</text>`;
+  });
+  return s + '</svg>';
+}
 export function painReportHtml(P) {
   const total = P.pages.length;
   const pages = P.pages.map((idx, p) => {
@@ -1110,6 +1135,12 @@ export function painReportHtml(P) {
         close();
         const rows = P.relief.length ? P.relief.map((r) => `<div class="rrow"><span><span class="pill${r.kind === 'When needed' ? ' prn' : ''}">${esc(r.kind)}</span><br>${esc(r.name)}<span class="sm">${esc(r.dose)}${r.how ? ' · ' + esc(r.how) : ''}${r.uses ? ' · for ' + esc(r.uses.toLowerCase()) : ''}</span></span><span class="n">${r.n ? `<b>${esc(String(r.n))}</b> ${r.n === 1 ? 'dose' : 'doses'}<span class="sm">on ${r.days} of the days${r.most > 1 ? ', up to ' + r.most + ' a day' : ''}${r.hitMax ? ' (the maximum)' : ''}${r.usesNote ? '; ' + esc(r.usesNote) : ''}</span>` : 'None<span class="sm">in this period</span>'}</span><span>${r.last ? 'Last ' + esc(r.last) : ''}${r.maxPerDay ? `<span class="sm">At most ${r.maxPerDay} a day</span>` : ''}</span></div>`).join('') : '<p class="sm" style="font-size:7.7pt;color:var(--slate)">No pain relief medicine on the list, or none logged.</p>';
         html += `<div class="wsec" data-i="${i}"><h2 class="sec">Pain relief <small>Every dose as logged.</small></h2><div class="rhead"><span>Medicine</span><span>Doses</span><span>Last</span></div>${rows}</div>`;
+        return;
+      }
+      if (it.t === 'when') {
+        close();
+        const lines = (P.timing || []).length ? P.timing.map((t) => `<li>${esc(t.text)}</li>`).join('') : '<li>No when-needed pain relief logged in this period.</li>';
+        html += `<div class="wsec" data-i="${i}"><h2 class="sec">When the top-up doses were taken <small>Every when-needed pain relief dose in the period, by hour of the day.</small></h2><div class="when">${hourBars(P.hourly || [])}<ul>${lines}<li class="nights"><b>Nights.</b> ${esc(P.nightLine || '')}</li></ul></div></div>`;
         return;
       }
       if (it.t === 'notes') {
