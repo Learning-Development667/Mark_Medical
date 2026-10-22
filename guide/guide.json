@@ -302,7 +302,7 @@
      "caption": "Finish when it is done. Close it instead and Today says it is not finished yet, with everything kept.",
      "tap": {
       "x": 0.5,
-      "y": 0.934
+      "y": 0.871
      }
     },
     {
@@ -379,7 +379,7 @@
     },
     {
      "file": "morereports-2.webp",
-     "caption": "Pain and pain relief: the scores morning and evening, the worst each day, every dose of pain relief and your own words on where it was. Send, Preview and Save as PDF, as on every report.",
+     "caption": "Pain and pain relief: two weeks to start, the check-in scores, the worst each day, key points from what you wrote, every dose of pain relief and when the top-ups were taken. Send, Preview and Save as PDF, as on every report.",
      "tap": {
       "x": 0.5,
       "y": 0.293

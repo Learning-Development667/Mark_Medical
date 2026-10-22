@@ -216,7 +216,7 @@ const QUALITY = 0.8;
   await tab('vitals');
   await shot('Beside Notes for the team: Pain and pain relief for the pain team, the Food diary for the dietitian, Mood and wellbeing for a therapist or GP.', '#rep-pain');
   await page.click('#rep-pain'); await page.waitForSelector('#view-pain:not([hidden])'); await settle(1500);
-  await shot('Pain and pain relief: the scores morning and evening, the worst each day, every dose of pain relief and your own words on where it was. Send, Preview and Save as PDF, as on every report.', '#pain-send');
+  await shot('Pain and pain relief: two weeks to start, the check-in scores, the worst each day, key points from what you wrote, every dose of pain relief and when the top-ups were taken. Send, Preview and Save as PDF, as on every report.', '#pain-send');
   await tab('vitals'); await page.click('#rep-food'); await page.waitForSelector('#view-food:not([hidden])'); await settle(1500);
   await shot('The Food diary: what was eaten and drunk each day, with the questions for the dietitian, on two pages.', '#food-send');
   await tab('vitals'); await page.click('#rep-mood'); await page.waitForSelector('#view-mood:not([hidden])'); await settle(1500);
