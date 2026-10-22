@@ -1110,7 +1110,6 @@ function hourBars(h, span) {
   });
   s += `<text x="${R}" y="${B + 13}" text-anchor="end" font-size="10.5" fill="#4B5B6B">24:00</text>`;
   s += `<line x1="${L}" y1="${B}" x2="${R}" y2="${B}" stroke="#D5DEE5"/>`;
-  s += `<text x="${L + 4}" y="${T + 6}" font-size="10.5" fill="#4B5B6B">Doses in each hour, ${span} days added together</text>`;
   h.forEach((n, i) => {
     if (!n) return;
     const bh = (B - T) * n / max, x = L + i * bw + 2;
