@@ -14,6 +14,7 @@
    ACTION=beta-code   CODE (letters and digits, say BINCEY or SCRI), LABEL (where it goes: "Bincey's patients"),
                       OFF=yes to switch an existing code off (a leaked one), otherwise made or switched on.
    ACTION=beta-codes  every Beta code with its label, state and uses.
+   ACTION=dose-use-check / dose-use  (v267) DOSE_USE "Diazepam | 21:00-01:00 | Sleep | Pain": what each logged dose was for, by its time.
    ACTION=unseed-check / unseed  (v248) until v248 every new circle was given the app's starter medicines list,
                       which was Mark's own from September 2026. These list (unseed-check) or delete (unseed) those
                       copies in every circle that came in on a Beta code (Mark's own circle has none), keeping any
@@ -147,6 +148,55 @@ if (action === 'create') {
       console.log(`  ${london(tsv(f, 'createdAt'))} | ${london(tsv(f, 'lastAt'))} | ${london(tsv(f, 'updatedAt'))} | ${(f.uses && (f.uses.integerValue || f.uses.doubleValue)) || 0} | by ${fieldString(f, 'addedBy')}`);
     }
   }
+} else if (action === 'dose-use-check' || action === 'dose-use') {
+  /* (v267) Mark, 22 October 2026: "Every diazepam I have taken between 2100hrs and 0100hrs has been for sleep. The rest
+     has been pain." Marks each logged dose of one medicine with what it was for (forUse, v263) by the London time it
+     was taken. DOSE_USE is "Medicine | 21:00-01:00 | use inside | use outside". dose-use-check lists and changes
+     nothing; dose-use saves it, and sets the medicine's What it is for and Also used for to the two uses so the app
+     asks between them from then on. NAME (a member's first name) must find one circle, or give HOUSEHOLD_ID. */
+  const apply = action === 'dose-use';
+  const parts = env('DOSE_USE').split('|').map((x) => x.trim());
+  const m = (parts[1] || '').match(/^(\d{1,2}):?(\d{2})?\s*-\s*(\d{1,2}):?(\d{2})?$/);
+  if (parts.length < 4 || !parts[0] || !m || !parts[2] || !parts[3]) { console.error('DOSE_USE must read like: Diazepam | 21:00-01:00 | Sleep | Pain'); process.exit(1); }
+  const [medWord, , useIn, useOut] = parts;
+  const startMin = Number(m[1]) * 60 + Number(m[2] || 0), endMin = Number(m[3]) * 60 + Number(m[4] || 0);
+  const inWindow = (mins) => (startMin <= endMin ? mins >= startMin && mins < endMin : mins >= startMin || mins < endMin);
+  let hid = env('HOUSEHOLD_ID');
+  if (!hid) {
+    const want = env('NAME').toLowerCase();
+    if (!want) { console.error('Give NAME (a member\'s first name) or HOUSEHOLD_ID'); process.exit(1); }
+    const hits = [];
+    for (const h of await fs.list('households')) {
+      const ms = await fs.list(`households/${h.id}/members`);
+      if (ms.some((x) => fieldString(x.fields, 'name').toLowerCase() === want && fieldString(x.fields, 'relation') === 'patient')) hits.push(h.id);
+    }
+    if (hits.length !== 1) { console.error(`${hits.length} circles have a patient called ${want}${hits.length ? ': ' + hits.join(', ') : ''}. Give HOUSEHOLD_ID.`); process.exit(1); }
+    hid = hits[0];
+  }
+  const meds = (await fs.list(`households/${hid}/medicines`)).filter((x) => fieldString(x.fields, 'name').toLowerCase().includes(medWord.toLowerCase()));
+  const medIds = new Set(meds.map((x) => x.id));
+  console.log(`Circle ${hid}. Medicines matching "${medWord}": ${meds.map((x) => `${fieldString(x.fields, 'name')} (now for "${fieldString(x.fields, 'purpose')}"${fieldString(x.fields, 'alsoFor') ? ', also "' + fieldString(x.fields, 'alsoFor') + '"' : ''})`).join('; ') || 'none'}`);
+  const tsv = (f, k) => (f && f[k] && f[k].timestampValue) || '';
+  const doses = (await fs.list(`households/${hid}/entries`)).filter((e) => fieldString(e.fields, 'type') === 'med'
+    && (medIds.has(fieldString(e.fields, 'medId')) || fieldString(e.fields, 'medName').toLowerCase().includes(medWord.toLowerCase())));
+  const counts = { [useIn]: 0, [useOut]: 0 }, writes = [];
+  doses.sort((a, b) => tsv(a.fields, 'at').localeCompare(tsv(b.fields, 'at')));
+  for (const e of doses) {
+    const at = tsv(e.fields, 'at');
+    if (!at) { console.log(`  ${e.id}: no time, left alone`); continue; }
+    const [hh, mm] = new Date(at).toLocaleTimeString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).split(':').map(Number);
+    const use = inWindow(hh * 60 + mm) ? useIn : useOut;
+    counts[use] += 1;
+    const was = fieldString(e.fields, 'forUse');
+    console.log(`  ${new Date(at).toLocaleString('en-GB', { timeZone: 'Europe/London', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })}  ${fieldString(e.fields, 'medName')}: ${use}${was ? ' (was ' + was + ')' : ''}`);
+    if (was !== use) writes.push([e.id, use]);
+  }
+  console.log(`${doses.length} doses: ${useIn} ${counts[useIn]}, ${useOut} ${counts[useOut]}. ${writes.length} to ${apply ? 'save' : 'change'}.`);
+  if (apply) {
+    for (const [id, use] of writes) await fs.merge(`households/${hid}/entries/${id}`, { forUse: str(use), updatedAt: ts() });
+    for (const x of meds) await fs.merge(`households/${hid}/medicines/${x.id}`, { purpose: str(useIn), alsoFor: str(useOut) });
+    console.log(`Saved ${writes.length} doses, and set ${meds.length} medicine${meds.length === 1 ? '' : 's'} to "${useIn}", also "${useOut}".`);
+  } else console.log('Nothing changed. Run dose-use to save it.');
 } else if (action === 'list') {
   const hs = await fs.list('households');
   for (const h of hs) {
@@ -156,6 +206,6 @@ if (action === 'create') {
   }
   if (!hs.length) console.log('No households yet.');
 } else {
-  console.error('ACTION must be create, add-member, remove-member, new-key, beta-code, beta-codes, unseed-check, unseed, food-check or list');
+  console.error('ACTION must be create, add-member, remove-member, new-key, beta-code, beta-codes, unseed-check, unseed, food-check, dose-use-check, dose-use or list');
   process.exit(1);
 }

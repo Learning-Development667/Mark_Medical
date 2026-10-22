@@ -23,6 +23,8 @@ on:
           - unseed-check
           - unseed
           - food-check
+          - dose-use-check
+          - dose-use
       code:
         description: "Beta code to make or switch off (beta-code): letters and digits, e.g. BINCEY"
         required: false
@@ -75,6 +77,10 @@ on:
         required: false
         type: boolean
         default: false
+      dose_use:
+        description: "dose-use-check / dose-use: Medicine | from-to | use inside | use outside, e.g. Diazepam | 21:00-01:00 | Sleep | Pain"
+        required: false
+        type: string
       all_circles:
         description: "unseed-check / unseed: every circle, not only those with a Beta code (give Mark's circle as household_id to leave it alone)"
         required: false
@@ -107,4 +113,5 @@ jobs:
           LABEL: ${{ inputs.label }}
           OFF: ${{ inputs.switch_off && 'yes' || 'no' }}
           ALL: ${{ inputs.all_circles && 'yes' || 'no' }}
+          DOSE_USE: ${{ inputs.dose_use }}
         run: node tools/household_admin.mjs
