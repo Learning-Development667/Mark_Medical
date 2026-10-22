@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '264';
+const APP_VERSION = '265';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -10161,7 +10161,7 @@ function buildPainReport(n) {
     prnDoses.filter((e) => e.medId === r.id).forEach((e) => { q[Math.floor(entryDate(e).getHours() / 6)] += 1; });
     const top = q.indexOf(Math.max(...q));
     const rest = [1, 2, 3, 0].filter((i) => i !== top && q[i]).map((i) => QUARTERS[i][0] + ' ' + q[i]).join(', ');
-    return { name: r.name.split(/\s+/)[0], n: r.n, q, text: `${r.name.split(/\s+/)[0]}: ${plural(r.n, 'dose')}` + (r.n > 1 ? `, ${q[top] === r.n ? 'all' : q[top]} in the ${QUARTERS[top][0]} (${QUARTERS[top][1]})` + (q[top] === r.n ? '.' : `. The rest: ${rest}.`) : ` in the ${QUARTERS[top][0]}.`) };
+    return { name: r.name.split(/\s+/)[0], n: r.n, q, text: `${r.name.split(/\s+/)[0]}: ${plural(r.n, 'dose')} over the ${days.length} days, on ${plural(r.days, 'day')}` + (r.n > 1 ? `, ${q[top] === r.n ? 'all' : q[top]} in the ${QUARTERS[top][0]} (${QUARTERS[top][1]})` + (q[top] === r.n ? '.' : `. The rest: ${rest}.`) : `, in the ${QUARTERS[top][0]}.`) };
   });
   /* Nights broken by pain (v264), from the morning check-in's night questions and the sleep entries (v260) */
   const nightByDay = new Map();

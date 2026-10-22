@@ -1140,7 +1140,7 @@ export function painReportHtml(P) {
       if (it.t === 'when') {
         close();
         const lines = (P.timing || []).length ? P.timing.map((t) => `<li>${esc(t.text)}</li>`).join('') : '<li>No when-needed pain relief logged in this period.</li>';
-        html += `<div class="wsec" data-i="${i}"><h2 class="sec">When the top-up doses were taken <small>Every when-needed pain relief dose in the period, by hour of the day.</small></h2><div class="when">${hourBars(P.hourly || [])}<ul>${lines}<li class="nights"><b>Nights.</b> ${esc(P.nightLine || '')}</li></ul></div></div>`;
+        html += `<div class="wsec" data-i="${i}"><h2 class="sec">When the top-up doses were taken <small>All ${P.daysFull ? P.daysFull.length : ''} days added together: each bar is how many doses fell in that hour across the whole period, not in one day.</small></h2><div class="when">${hourBars(P.hourly || [])}<ul>${lines}<li class="nights"><b>Nights.</b> ${esc(P.nightLine || '')}</li></ul></div></div>`;
         return;
       }
       if (it.t === 'notes') {
