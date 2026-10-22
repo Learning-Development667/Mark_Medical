@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '271';
+const APP_VERSION = '272';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -788,7 +788,7 @@ const state = {
   charts: {},
   trendRange: 7,
   foodRange: 14,
-  notesRange: 14,
+  notesRange: 7,
   moodRange: 28,
   painRange: 14, // two weeks by default (Mark, 22 October 2026)
   ibdRange: 28,
@@ -6453,8 +6453,11 @@ function twoPageCharts(entries, days) {
   ci.forEach((e) => { if (e.pain != null) painAll.push(Number(e.pain)); if (e.worstPain != null) painAll.push(Number(e.worstPain)); });
   entries.filter((e) => e.type === 'pain' && e.value != null).forEach((e) => painAll.push(Number(e.value)));
   const pv = vals(painDay), pAvg = pv.length ? pv.reduce((t, v) => t + v, 0) / pv.length : null, pWorst = painAll.length ? Math.max(...painAll) : null;
-  charts.push({ key: 'pain', title: 'Pain (0 to 10)', stat: pWorst == null ? 'No scores' : `Average ${(Math.round(pAvg * 10) / 10).toString()}, worst ${pWorst}`, tone: pWorst == null ? '' : toneOf(pWorst >= 7, pWorst >= 4),
-    min: 0, max: 10, ticks: [0, 5, 10], bands: [{ from: 7, to: 10, c: red }], series: [{ d: painDay, c: ink }] });
+  /* The colour follows the average the pill leads with (v272, Mark: red at an average of 3 read as wrong), on the
+     NHS bands: 4 to 6 amber, 7 or more red; the shading behind the line shows the same two bands */
+  const pShown = pAvg == null ? pWorst : pAvg;
+  charts.push({ key: 'pain', title: 'Pain (0 to 10)', stat: pWorst == null ? 'No scores' : `Average ${(Math.round(pAvg * 10) / 10).toString()}, worst ${pWorst}`, tone: pWorst == null ? '' : toneOf(pShown >= 7, pShown >= 4),
+    min: 0, max: 10, ticks: [0, 5, 10], bands: [{ from: 4, to: 7, c: amber }, { from: 7, to: 10, c: red }], series: [{ d: painDay, c: ink }] });
 
   const moodDay = days.map((d) => avgOf(ci.filter((e) => e.day === d && e.mood != null), (e) => Number(e.mood)));
   const lowMood = days.filter((d) => state.days[d] && state.days[d].mood && state.days[d].mood <= 2);
@@ -6516,7 +6519,9 @@ function twoPageTiles(entries, from, to, f) {
     const worstDay = (() => { let d = null, v = -1; entries.forEach((e) => { const s = isPatientCheckin(e) ? Math.max(Number(e.pain ?? -1), Number(e.worstPain ?? -1)) : e.type === 'pain' ? Number(e.value) : -1; if (s > v) { v = s; d = e.day; } }); return d; })();
     const highDays = new Set(entries.filter((e) => (isPatientCheckin(e) && (Number(e.pain) >= 4 || Number(e.worstPain) >= 4)) || (e.type === 'pain' && Number(e.value) >= 4)).map((e) => e.day)).size;
     tiles.push({ k: 'Pain', v: f.pAvg == null ? String(f.pWorst) : (Math.round(f.pAvg * 10) / 10).toString(), unit: f.pAvg == null ? '/10 worst' : '/10 average',
-      note: f.pWorst >= 4 ? `Worst ${f.pWorst} out of 10 on ${rDay(worstDay)}. 4 or more on ${plural(highDays, 'day')}.` : `Steady. Worst ${f.pWorst} out of 10.`, tone: toneOf(f.pWorst >= 7, f.pWorst >= 4) });
+      note: f.pWorst >= 4 ? `Worst ${f.pWorst} out of 10 on ${rDay(worstDay)}. 4 or more on ${plural(highDays, 'day')}.` : `Steady. Worst ${f.pWorst} out of 10.`,
+      /* the tile's colour follows the number it shows (v272): an average of 3 is mild, whatever the worst day was */
+      tone: (() => { const v = f.pAvg == null ? f.pWorst : Math.round(f.pAvg * 10) / 10; return toneOf(v >= 7, v >= 4); })() });
   }
   if (!f.nights.length) tiles.push({ k: 'Sleep', v: 'None', note: 'No nights logged in this period.', tone: '' });
   else {
@@ -6707,6 +6712,35 @@ function carerLog(entries, from, to) {
   };
 }
 
+/* The carer's weekly review for Notes for the team (v272, Mark: the daily "As Shelley saw it" would make the report
+   massive; the carer's Your week, as you see it, is the one that goes in). One row a weekly review in the period:
+   the four scored answers in words, then what helped, what was hardest and the week in a sentence, whole. Null
+   when no carer finished one in the period. */
+function carerWeekLog(entries, from, to) {
+  const rows = entries.filter((e) => e.type === 'checkin' && e.slot === 'weekcarer' && e.day >= from && e.day <= to && e.done !== false)
+    .sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : 0));
+  if (!rows.length) return null;
+  const qs = CHECKIN_QUESTIONS.weekcarer;
+  const short = { wkcTired: 'Tiredness in the way', wkcLow: 'Seemed low', wkcSymptoms: 'Pain or symptoms in the way', wkcHelp: 'Needed more help' };
+  const names = [...new Set(rows.map((e) => e.addedBy || 'the carer'))];
+  const days = rows.map((e) => {
+    const wb = weekBounds(e.day);
+    const by = names.length > 1 ? ' (' + (e.addedBy || 'the carer') + ')' : '';
+    const moods = qs.filter((q) => q.kind === 'scale' && e[q.key] != null).map((q) => `${short[q.key]}: ${scaleText(q, e[q.key]).toLowerCase()}`).join(' \u00b7 ');
+    const texts = [['sentence', 'Their week'], ['helped', 'What helped'], ['hardest', 'Hardest']]
+      .filter(([k]) => String(e[k] || '').trim()).map(([k, w]) => `${w}: ${String(e[k]).trim()}`);
+    return { day: e.day, when: rRange(wb.from, wb.to) + by, moods, texts };
+  }).filter((d) => d.moods || d.texts.length);
+  if (!days.length) return null;
+  return {
+    title: `As ${joinAnd(names)} saw it, week by week`,
+    range: days.length > 1 ? rRange(weekBounds(rows[0].day).from, weekBounds(rows[rows.length - 1].day).to) : '',
+    summary: '',
+    note: "The carer's own weekly review of how the patient seemed, kept apart from the patient's own scores.",
+    days
+  };
+}
+
 function buildTwoPage(n) {
   const { from, to, report, entries } = n;
   const today = todayStr();
@@ -6747,7 +6781,7 @@ function buildTwoPage(n) {
     patient, period, prepared: rDay(today) + ' ' + parseDay(today).getFullYear(),
     latest, tiles, meds, hospital, steady, sideFx: twoPageSideFx(entries), results: twoPageResults(entries),
     questions: qs, more: 0, older: report.older.length, olderFrom: rDay(from), extraQ: [], weeksPage3: false, lines: 3,
-    charts, days: labels, weeks, carer: carerLog(entries, from, to), carerTail: false,
+    charts, days: labels, weeks, carer: carerWeekLog(entries, from, to), carerTail: false,
     weeksNote: ai ? 'Summarised from the daily notes by Daybook Assistant, an AI helper. Every note is in Daybook.' : 'The most telling note of each day. Every note is in Daybook.',
     foot: 'Notes for the team'
   };
@@ -7862,11 +7896,10 @@ function buildNotesReport(entries, questionsAll, from, to, rangeLabel) {
   lines.push('', 'Summary (simple checks by the app, not a diagnosis):');
   if (glance.length) glance.forEach((g) => lines.push(`- ${LEVEL_WORD[g.level]}: ${g.text}`));
   else lines.push('- No readings logged in this period.');
-  const carerCl = carerLog(entries, from, to);
+  const carerCl = carerWeekLog(entries, from, to);
   if (carerCl) {
     lines.push('', carerCl.title + ' (' + carerCl.note + '):');
-    if (carerCl.summary) lines.push('- ' + carerCl.summary);
-    carerCl.days.forEach((d) => lines.push(`- ${fmtDayShort(d.day)}: ${[d.moods, ...d.texts].filter(Boolean).join('. ')}`));
+    carerCl.days.forEach((d) => lines.push(`- Week ${d.when}: ${[d.moods, ...d.texts].filter(Boolean).join('. ')}`));
   }
   lines.push('', 'Notes (who wrote each one, then the note):');
   if (days.length) days.forEach((d) => {
