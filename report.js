@@ -320,20 +320,21 @@ ${bar}
     <div class="tiles">${R.tiles.map(tileHtml).join('')}</div>
   </div>
   <div class="strip${strip.length === 1 ? ' one' : ''}">${strip.join('')}</div>
-  <div class="qwrap" data-sec="Questions">
+  <div class="qwrap${R.questions.length ? '' : ' nat'}" data-sec="Questions">
     <h2 class="sec" style="margin-bottom:2.4mm">Questions for the team <small>Space is left under each one to write the reply.</small></h2>
     ${noneLine}<div class="qgrid">${qs.join('')}</div>
     ${extraN ? `<p class="more">${esc(extraN === 1 ? 'One more question' : extraN + ' more questions')} on page 3.</p>` : ''}
     ${R.latestMoved ? '<p class="more">The latest note is in full on page 3.</p>' : ''}
     ${olderLine}
   </div>
+  ${R.carer && R.carerPage1 ? carerHtml(R.carer) : ''}
   <div class="foot"><span>${esc(R.foot)}</span>${madeBy(1, total)}</div>
 </section>
 <section class="page" id="page2">
   <div class="runner"><h2>${R.weeksPage3 ? 'Readings' : 'Readings and weekly notes'}</h2><span>${esc(R.patient)} · ${esc(R.period)}</span></div>
   <div class="cgrid" data-sec="Charts">${charts}${key}</div>
   ${R.weeksPage3 ? '' : weeksHtml}
-  ${R.carer && !R.carerTail ? carerHtml(R.carer) : ''}
+  ${R.carer && !R.carerTail && !R.carerPage1 ? carerHtml(R.carer) : ''}
   <div class="foot"><span>${esc(R.foot)}</span>${madeBy(2, total)}</div>
 </section>
 ${tail.map((items, p) => tailPageHtml(R, items, p, total)).join('\n')}
@@ -404,9 +405,15 @@ export function spillTail(doc, R) {
    to the pages after the second, then page 1 gives up its writing lines and its questions, and last of all the
    latest note, which is then printed in full after them. */
 export function shrink(R, over) {
-  /* The carer's area (v237) gives way first: if page 2 is full, it moves whole to the pages after the second, and the weeks stay where they were */
-  if (R.carer && !R.carerTail && over.some((s) => s === R.carer.title || s === 'Week by week' || s === 'Page 2' || R.weeks.some((w) => w.title === s))) {
-    R.carerTail = true; R.tailPages = null; return true;
+  /* The carer's area (v237) gives way first, and uses the space there is (v275, Mark: "always create an efficient
+     report using space to its best"): if page 2 is full it tries page 1, under the questions, where a short list of
+     questions leaves room; only when page 1 cannot hold it either does it move whole to the pages after the second.
+     The weeks stay where they were. */
+  if (R.carer && !R.carerTail && !R.carerPage1 && over.some((s) => s === R.carer.title || s === 'Week by week' || s === 'Page 2' || R.weeks.some((w) => w.title === s))) {
+    R.carerPage1 = true; R.tailPages = null; return true;
+  }
+  if (R.carer && R.carerPage1 && over.some((s) => s === R.carer.title || /^Question|^Questions|^No questions|^Page 1|^Medicines|^Steady|^Latest|^Side effects|^Results/.test(s))) {
+    R.carerPage1 = false; R.carerTail = true; R.tailPages = null; return true;
   }
   if (!R.weeksPage3 && R.weeks.some((w) => over.includes(w.title) || over.includes('Week by week') || over.includes('Page 2'))) {
     R.weeksPage3 = true; R.tailPages = null; return true;
