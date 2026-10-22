@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '275';
+const APP_VERSION = '276';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -9834,20 +9834,21 @@ function buildMoodReport(n) {
   const tapCount = (k) => taps.filter((d) => d.wb[k] != null && d.wb[k] >= 2).length;
   const tapAnswered = (k) => taps.filter((d) => d.wb[k] != null).length;
   const nights = daysFull.filter((d) => d.sleep != null).map((d) => d.sleep), shortN = nights.filter((v) => v < 5).length;
-  /* Every tile is an average for the period, coloured by it (v275, Mark: the at a glance tiles are averages; the best,
-     hardest and low days are on the chart, which rings the low ones) */
-  const moodAvg = scored.length ? avg(scored.map((d) => d.mood)) : null;
-  const painDays = daysFull.filter((d) => d.pain != null);
-  const painAvg = painDays.length ? avg(painDays.map((d) => d.pain)) : null;
-  const lowAns = taps.map((d) => d.wb.low).filter((v) => v != null);
-  const lowAvg = lowAns.length ? avg(lowAns) : null;
+  /* Best day, Hardest day and Felt low as they were (v276, Mark: counts stay counts, and the best and hardest days go
+     back); Sleep, a reading that goes up and down, is the average coloured by the average (v275) */
   const tiles = [
-    moodAvg != null ? { k: 'Mood', v: String(moodAvg), unit: '/10 average', tone: moodAvg <= 4 ? 'amber' : 'green', n: `Average of ${plural(scored.length, 'day')} scored.` }
-      : { k: 'Mood', v: 'None', unit: '', tone: '', n: 'No mood scores in this period.' },
-    lowAvg != null ? { k: 'Felt low', v: WB_WORDS[Math.round(lowAvg)], unit: '', tone: lowAvg >= 1.5 ? 'amber' : 'green', n: `Average answer over ${plural(lowAns.length, 'evening')}.` }
-      : { k: 'Felt low', v: 'None', unit: '', tone: '', n: 'Asked in the evening check-in.' },
-    painAvg != null ? { k: 'Worst pain of the day', v: String(painAvg), unit: '/10 average', tone: painAvg >= 7 ? 'red' : painAvg >= 4 ? 'amber' : 'green', n: `Average over ${plural(painDays.length, 'day')}.` }
-      : { k: 'Worst pain of the day', v: 'None', unit: '', tone: '', n: 'No pain scores in this period.' },
+    /* v233: the quote was cut at 90 characters, which chopped a dictated note mid-sentence; the report tile now takes whole
+       sentences up to 260 characters and the screen shows the note whole (full) */
+    best ? { k: 'Best day', v: dayWord(best.day), unit: '', tone: 'green', n: moodWords(best) + '.' + (bestQuote ? ' “' + text(bestQuote[1]).replace(/\s+/g, ' ').trim() + '”' : ''),
+      full: moodWords(best) + '.' + (bestQuote ? ' “' + text(bestQuote[1]).replace(/\s+/g, ' ').trim() + '”' : '') }
+      : { k: 'Best day', v: 'None', unit: '', tone: '', n: 'No mood scores in this period.' },
+    worst ? { k: 'Hardest day', v: dayWord(worst.day), unit: '', tone: worst.mood <= 3 ? 'red' : worst.mood <= 5 ? 'amber' : 'green', n: moodWords(worst) + (worstWhy.length ? ', ' + worstWhy.join(', ') : '') + '.' }
+      : { k: 'Hardest day', v: 'None', unit: '', tone: '', n: 'No mood scores in this period.' },
+    taps.length ? { k: 'Felt low', v: String(tapCount('low')), unit: 'of ' + plural(tapAnswered('low'), 'evening'), tone: tapCount('low') ? 'amber' : 'green',
+      n: `Quite a bit or a lot. Worried or on edge on ${plural(tapCount('worried'), 'evening')}. Enjoyed something on ${tapCount('enjoyed')}.` }
+      : scored.length ? { k: 'Low days', v: String(lowDays.length), unit: 'of ' + plural(scored.length, 'day') + ' scored', tone: lowDays.length ? 'amber' : 'green',
+        n: lowDays.length ? 'Mood 4 or under: ' + lowDays.slice(0, 3).map((d) => rDay(d.day)).join(', ') + (lowDays.length > 3 ? ' and ' + (lowDays.length - 3) + ' more' : '') + '.' : 'No day with mood 4 or under.' }
+      : { k: 'Low days', v: 'None', unit: '', tone: '', n: 'No mood scores in this period.' },
     nights.length ? { k: 'Sleep', v: String(avg(nights)), unit: 'h a night', tone: avg(nights) < 5 ? 'amber' : 'green', n: `Average of ${plural(nights.length, 'night')} logged.` }
       : { k: 'Sleep', v: 'None', unit: '', tone: '', n: 'No sleep logged in this period.' }
   ];
@@ -10135,18 +10136,17 @@ function buildPainReport(n) {
   const prnDays = new Set(prnDoses.map((e) => e.day)).size;
   const reliefNote = relief.filter((r) => r.n).map((r) => `${r.name.split(/\s+/)[0]} on ${plural(r.days, 'day')}`).slice(0, 3).join(', ');
   /* "Pain right now" is the check-in's question, not something anyone enters as such (Mark, 22 October 2026): the tile is the average of every score.
-     Every tile is an average for the period and is coloured by it (v275, Mark): the highest scores are on the charts. */
-  const worstAvg = avg(worsts);
+     Readings that go up and down are averages coloured by the average (v275); counts stay counts (v276, Mark). */
   const sleepAvg = nights.length ? avg(nights.map((d) => d.sleep)) : null;
-  const perDay = doses.length ? Math.round(doses.length / days.length * 10) / 10 : 0;
   const tiles = [
     mean != null ? { k: 'Average pain', v: String(mean), unit: 'out of 10', tone: mean >= 7 ? 'red' : mean >= 4 ? 'amber' : 'green',
       n: `From ${plural(nowAll.length, 'score')} over the ${days.length} days: morning check-in ${avg(mornings) ?? 'none'}, evening check-in ${avg(evenings) ?? 'none'}${readingsAll.length ? ', between check-ins ' + avg(readingsAll) : ''}.` }
       : { k: 'Average pain', v: 'None', unit: '', tone: '', n: 'No pain scores in this period. The check-ins ask morning and evening.' },
-    worstAvg != null ? { k: 'Worst pain of the day', v: String(worstAvg), unit: 'average', tone: worstAvg >= 7 ? 'red' : worstAvg >= 4 ? 'amber' : 'green', n: `Average of ${plural(worsts.length, 'evening')} answered.` }
-      : { k: 'Worst pain of the day', v: 'None', unit: '', tone: '', n: 'Asked in the evening check-in.' },
-    painMeds.length ? { k: 'Pain relief', v: String(perDay), unit: 'doses a day', tone: '',
-      n: doses.length ? `Average over the ${days.length} days, ${plural(doses.length, 'dose')} in all.` : 'None logged in this period.' }
+    scored.length ? { k: 'Days at 7 or more', v: String(bad.length), unit: 'of ' + plural(scored.length, 'day') + ' scored', tone: bad.length ? (bad.length * 2 >= scored.length ? 'red' : 'amber') : 'green',
+      n: bad.length ? `Highest ${peak.max} on ${rDay(peak.day)}.` + (worsts.length ? ` Worst pain of the day averaged ${avg(worsts)}.` : '') : `No day at 7 or more. Highest ${peak.max} on ${rDay(peak.day)}.` }
+      : { k: 'Days at 7 or more', v: 'None', unit: '', tone: '', n: 'No pain scores in this period.' },
+    painMeds.length ? { k: 'Pain relief', v: String(doses.length), unit: plural(doses.length, 'dose').replace(/^\d+\s/, ''), tone: relief.some((r) => r.hitMax) ? 'amber' : doses.length ? '' : 'green',
+      n: doses.length ? (prnDoses.length ? `When needed on ${plural(prnDays, 'day')} of ${days.length}: ` : '') + (reliefNote || 'as logged') + (relief.some((r) => r.hitMax) ? '. The daily maximum was reached.' : '.') : 'None logged in this period.' }
       : { k: 'Pain relief', v: 'None', unit: '', tone: '', n: 'No pain relief medicine on the list.' },
     sleepAvg != null ? { k: 'Sleep', v: String(sleepAvg), unit: 'h a night', tone: sleepAvg < 5 ? 'amber' : 'green', n: `Average of ${plural(nights.length, 'night')} logged.` }
       : { k: 'Sleep', v: 'None', unit: '', tone: '', n: 'No sleep logged in this period.' }
@@ -10357,22 +10357,18 @@ function buildIbdReport(n) {
   const patient = (state.profile && state.profile.reportName) || state.patientName || state.name || 'The patient';
   /* tiles */
   const tone = twDays.length || blackDays.length || worstBlood >= 3 ? 'red' : above || bloodDays.length || rush || accidents || nightN || wateryDays.length >= 2 ? 'amber' : logged.length ? 'green' : '';
-  /* Every tile is an average for the period, coloured by it (v275, Mark): the highest days are on the charts, and the
-     flare days in the flare log and as triangles on the charts */
-  const bloodAvg = logged.length ? avg(logged.map(bloodOf)) : null;
-  const urg = real.filter((e) => e.urgency != null && e.urgency !== '').map((e) => Number(e.urgency));
-  const urgAvg = urg.length ? avg(urg) : null;
-  const tummy = gutPains.length ? gutPains : pains;
-  const tummyAvg = tummy.length ? avg(tummy) : null;
+  /* Bowels a day is an average coloured by the average (v275); blood, urgency and flare days are counts and stay counts (v276, Mark) */
   const tiles = [
     logged.length ? { k: what + ' a day', v: one(mean), unit: usual ? 'average, usual ' + usual : 'average', tone: usual && mean >= usual + 3 ? 'amber' : 'green', n: `Average of the ${plural(logged.length, 'day')} logged.` }
       : { k: what + ' a day', v: 'None', unit: '', tone: '', n: 'No bowel movements logged in this period.' },
-    bloodAvg != null ? { k: 'Blood', v: capFirst(bloodWord(Math.round(bloodAvg))), unit: '', tone: Math.round(bloodAvg) >= 3 ? 'red' : Math.round(bloodAvg) >= 1 ? 'amber' : 'green', n: `Average of the ${plural(logged.length, 'day')} logged, from none to mostly blood.` }
+    logged.length ? { k: 'Blood', v: String(bloodDays.length), unit: 'of ' + plural(logged.length, 'day'), tone: worstBlood >= 3 || blackDays.length ? 'red' : bloodDays.length ? 'amber' : 'green',
+      n: bloodDays.length ? `Worst ${bloodWord(worstBlood)}, on ${bloodDays.slice(0, 3).map(rDay).join(', ')}${bloodDays.length > 3 ? ' and ' + (bloodDays.length - 3) + ' more' : ''}.${blackDays.length ? ' Black or tarry on ' + plural(blackDays.length, 'day') + '.' : ''}` : 'No blood logged.' + (twDays.length ? '' : '') }
       : { k: 'Blood', v: 'None', unit: '', tone: '', n: 'Nothing logged.' },
-    urgAvg != null ? { k: 'Urgency', v: URGENCY[Math.round(urgAvg)] ? URGENCY[Math.round(urgAvg)][1] : one(urgAvg), unit: '', tone: Math.round(urgAvg) >= 1 ? 'amber' : 'green', n: `Average of ${plural(urg.length, 'movement')} answered.` }
-      : { k: 'Urgency', v: 'None', unit: '', tone: '', n: stoma ? 'Not asked with a stoma.' : 'Not answered in this period.' },
-    tummyAvg != null ? { k: gutPains.length ? 'Tummy pain' : 'Pain', v: String(tummyAvg), unit: '/10 average', tone: tummyAvg >= 7 ? 'red' : tummyAvg >= 4 ? 'amber' : 'green', n: `Average of ${plural(tummy.length, 'score')}.` }
-      : { k: 'Pain', v: 'None', unit: '', tone: '', n: 'No pain scores in this period.' }
+    logged.length ? { k: stoma ? 'Leaks and nights' : 'Urgency', v: String(stoma ? accidents : rush), unit: stoma ? plural(accidents, 'leak').replace(/^\d+\s/, '') : 'straight away', tone: rush || accidents || nightN ? 'amber' : 'green',
+      n: [stoma ? '' : (rush ? 'Had to go straight away ' + plural(rush, 'time') : 'Never had to go straight away'), stoma ? '' : accidents ? plural(accidents, 'accident or leak') : 'no accidents', nightN ? plural(nightN, 'time') + ' at night' : 'none at night', wateryDays.length ? 'watery output on ' + plural(wateryDays.length, 'day') : ''].filter(Boolean).join(', ') + '.' }
+      : { k: 'Urgency', v: 'None', unit: '', tone: '', n: 'Nothing logged.' },
+    { k: 'Flare days', v: flareDays.length ? String(flareDays.length) : 'None', unit: flareDays.length ? 'of ' + days.length : '', tone: flareDays.length ? 'amber' : '',
+      n: flareDays.length ? `Marked as flaring ${runs.map((r) => (r.from === r.to ? rDay(r.from) : rDay(r.from) + ' to ' + rDay(r.to))).join('; ')}.${calls.length ? ' ' + plural(calls.length, 'call') + ' to the advice line.' : ''}` : 'No day marked as a flare day' + (calls.length ? '; ' + plural(calls.length, 'call') + ' to the advice line.' : '.') }
   ];
   /* charts, drawn by report.js renderChart() */
   const teal = REPORT_TEAL, red = REPORT_RED, ink = REPORT_INK, warm = '#C2703D';
