@@ -2045,3 +2045,7 @@ body[data-page="docs"] :is(.card, .checkin-row):not(.is-due) { background: color
 .field.is-missing input { border-color: var(--warn-border); }
 .field .missing-note { display: block; color: var(--warn-ink); font-weight: 700; margin-top: var(--s-1); }
 .hint-warn[role="alert"] { color: var(--warn-ink); background: var(--warn-bg); border: 2px solid var(--warn-border); border-radius: var(--r-sm); padding: var(--s-2) var(--s-3); }
+
+/* v281: the same red on a group of chips or rows, a stepper or a tick box that stops a save */
+.is-missing:not(.field) { outline: 2px solid var(--warn-border); outline-offset: 3px; border-radius: var(--r-sm); background: var(--warn-bg); }
+.missing-note { display: block; color: var(--warn-ink); font-weight: 700; margin-top: var(--s-1); }

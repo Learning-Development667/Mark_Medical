@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '280';
+const APP_VERSION = '281';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -669,6 +669,32 @@ function confirmSheet(title, message, okLabel, danger) {
 function field(label, input) {
   return h('label', { class: 'field' }, h('span', { text: label }), input);
 }
+/* v281, Mark: anything that stops a save marks the box itself in red with "Missing information" under it (or "Check this" for
+   something typed that cannot be read), never only a message at the top. el is the box, or a group of chips or rows; the red
+   goes as soon as it is changed. missing() also says why at the top, moves to the box, and returns { hold: true } for getData. */
+function markMissing(el, on = true, label = 'Missing information') {
+  if (!el) return;
+  const wrap = (el.closest && el.closest('.field')) || (el.parentElement && el.parentElement.classList.contains('bigvalue') ? el.parentElement : el);
+  wrap.classList.toggle('is-missing', on);
+  if (/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)) el.setAttribute('aria-invalid', on ? 'true' : 'false');
+  if (on && !wrap._missNote) {
+    const note = h('span', { class: 'missing-note', role: 'alert', text: label });
+    if (wrap.classList.contains('field')) wrap.append(note); else wrap.after(note);
+    wrap._missNote = note; wrap._missEl = el;
+    const types = wrap.classList.contains('field') ? ['input', 'change'] : ['input', 'change', 'click'];
+    const clear = () => { markMissing(el, false); types.forEach((t) => wrap.removeEventListener(t, clear)); };
+    types.forEach((t) => wrap.addEventListener(t, clear));
+  } else if (on && wrap._missNote) wrap._missNote.textContent = label;
+  if (!on && wrap._missNote) { wrap._missNote.remove(); wrap._missNote = null; }
+}
+function missing(el, why, label = 'Missing information') {
+  document.querySelectorAll('#sheet .is-missing').forEach((w) => { if (w._missEl && w._missEl !== el) markMissing(w._missEl, false); });
+  markMissing(el, true, label);
+  toast(label === 'Missing information' ? 'Missing information. ' + why : why);
+  if (el) { if (el.scrollIntoView) el.scrollIntoView({ block: 'center' }); if (el.focus) el.focus({ preventScroll: true }); }
+  return { hold: true };
+}
+const CHECK = 'Check this';
 
 function timeInput(defaultDay) {
   const now = new Date();
@@ -1925,7 +1951,7 @@ function renderPacksCard() {
     const t = usual.value.trim();
     if (!t) { saveProfilePatch({ ibd: { ...ibdInfo(), usual: null } }, 'Usual number cleared'); return; }
     const n = Number(t.replace(',', '.'));
-    if (!(n >= 0 && n <= 30)) { toast('Type a number from 0 to 30, like on a settled day'); usual.focus(); return; }
+    if (!(n >= 0 && n <= 30)) { missing(usual, 'Type a number from 0 to 30, like on a settled day', CHECK); return; }
     saveProfilePatch({ ibd: { ...ibdInfo(), usual: Math.round(n * 2) / 2 } }, 'Usual number saved');
   });
   ibdBox.replaceChildren(
@@ -1982,7 +2008,7 @@ function openSetup(kind, opts = {}) {
           h('span', { text: pk.name + (pk.later ? ' (coming later)' : '') })),
         h('p', { class: 'hint', text: pk.hint }))),
       save: async () => {
-        if (!PACKS.some((pk) => !pk.later && draft.packs[pk.key])) { toast('Tick at least one. It can be changed later in Settings.'); return false; }
+        if (!PACKS.some((pk) => !pk.later && draft.packs[pk.key])) { missing($('sheet-body').querySelector('input[type=checkbox]')?.closest('.check, label') || null, 'Tick at least one. It can be changed later in Settings.'); return false; }
         return saveProfilePatch({ packs: PACKS.reduce((o, pk) => ({ ...o, [pk.key]: Boolean(draft.packs[pk.key]) && !pk.later }), {}) });
       } },
     { key: 'ibd', only: full, when: () => Boolean(draft.packs.ibd), title: "Crohn's or colitis", hint: 'What the reports compare each day with, the way IBD teams do. Skip anything you are not sure of.',
@@ -2007,14 +2033,14 @@ function openSetup(kind, opts = {}) {
       save: async () => {
         const t = ($('setup-ibd-usual') || { value: '' }).value.trim();
         let usual = null;
-        if (t) { const n = Number(t.replace(',', '.')); if (!(n >= 0 && n <= 30)) { toast('Type a number from 0 to 30, like on a settled day'); return false; } usual = Math.round(n * 2) / 2; }
+        if (t) { const n = Number(t.replace(',', '.')); if (!(n >= 0 && n <= 30)) { missing($('setup-ibd-usual'), 'Type a number from 0 to 30, like on a settled day', CHECK); return false; } usual = Math.round(n * 2) / 2; }
         draft.ibd.usual = usual;
         const patch = { ibd: { kind: draft.ibd.kind || null, stoma: draft.ibd.stoma || null, usual } };
         /* the advice line (v221): a contact under Who to contact, and the flare plan's contact, so I think I'm flaring shows it */
         const a = { label: ($('setup-ibd-advice') || { value: '' }).value.trim(), number: ($('setup-ibd-phone') || { value: '' }).value.trim() };
         draft.advice = { ...a };
         if (a.number && !a.label) a.label = 'IBD advice line';
-        if (a.label && !a.number) { toast('Add the advice line\'s phone number, or leave both blank'); $('setup-ibd-phone').focus(); return false; }
+        if (a.label && !a.number) { missing($('setup-ibd-phone'), 'Add the advice line\'s phone number, or leave both blank'); return false; }
         if (a.label) {
           const calls = [...((state.profile && state.profile.calls) || [])];
           const c = { label: a.label, role: 'IBD advice line', number: a.number, ext: '', email: '' };
@@ -2039,9 +2065,9 @@ function openSetup(kind, opts = {}) {
         const c = { label: $('setup-c-name').value.trim(), role: $('setup-c-role').value.trim(), number: $('setup-c-number').value.trim(), ext: '', email: $('setup-c-email').value.trim() };
         draft.contact = { ...c };
         if (!c.label && !c.role && !c.number && !c.email) return true;
-        if (!c.label) { toast('Add a name for the contact, or skip this step'); $('setup-c-name').focus(); return false; }
-        if (!c.number && !c.email) { toast('Add a phone number or an email for ' + c.label); $('setup-c-number').focus(); return false; }
-        if (c.email && !EMAIL_RE.test(c.email)) { toast('Check the email address for ' + c.label); $('setup-c-email').focus(); return false; }
+        if (!c.label) { missing($('setup-c-name'), 'Add a name for the contact, or skip this step'); return false; }
+        if (!c.number && !c.email) { missing($('setup-c-number'), 'Add a phone number or an email for ' + c.label); return false; }
+        if (c.email && !EMAIL_RE.test(c.email)) { missing($('setup-c-email'), 'Check the email address for ' + c.label, CHECK); return false; }
         const calls = [...((state.profile && state.profile.calls) || [])];
         if (draft.contactAt != null && calls[draft.contactAt]) calls[draft.contactAt] = c; else { draft.contactAt = calls.length; calls.push(c); }
         return saveProfilePatch({ calls });
@@ -2216,7 +2242,7 @@ function openInviteSheet() {
   drawRole(); drawRel();
   const result = h('div', { class: 'invitebox' });
   const makeBtn = h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
-    if (!name.value.trim()) { toast('Their first name, please'); name.focus(); return; }
+    if (!name.value.trim()) { missing(name, 'Their first name, please'); return; }
     makeBtn.disabled = true;
     try {
       const inv = await bridgeCall('/invite', { name: name.value.trim(), role, relation });
@@ -3047,7 +3073,7 @@ function openFeedbackSheet() {
   const clearNote = () => { note.t.value = ''; picture = null; shot.hidden = true; shot.replaceChildren(); pickBtn.hidden = false; };
   const sendBtn = h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => {
     const text = note.t.value.trim();
-    if (!text && !picture) { toast('Say what happened, or add a picture.'); note.t.focus(); return; }
+    if (!text && !picture) { missing(note.t, 'Say what happened, or add a picture.'); return; }
     send(sendBtn, { kind: 'note', text, image: picture || undefined }, () => {
       const sent = fbRead('sent', []); sent.unshift({ at: Date.now(), text: text.slice(0, 120), screen, picture: !!picture }); fbWrite('sent', sent.slice(0, 50));
       clearNote(); saveDraft({ note: null, picture: null });
@@ -3626,7 +3652,7 @@ function openAdd(type, editEntry, preset) {
         h('div', { class: 'btnrow' },
           h('button', { class: 'btn btn-secondary btn-small', type: 'button', onclick: async () => {
             const g = ov.per === '100g' ? 100 : (parseFloat(grams.value) || 0);
-            if (!g) { grams.parentElement.hidden = false; grams.focus(); toast('Add the weight eaten so it can be saved per 100 g'); return; }
+            if (!g) { grams.parentElement.hidden = false; missing(grams, 'Add the weight eaten so it can be saved per 100 g'); return; }
             const f = 100 / g;
             const per100 = { kcal: (ov.kcal || 0) * f, prot: (ov.prot || 0) * f, carb: (ov.carb || 0) * f, fat: (ov.fat || 0) * f };
             await saveCustomFood(c.phrase, per100);
@@ -3861,12 +3887,12 @@ function openAdd(type, editEntry, preset) {
 
     getData = () => {
       if (details.hidden) { /* still on the pick stage: take what was typed */
-        if (!what.value.trim()) return null;
+        if (!what.value.trim()) return missing(what, 'Type what was eaten');
         choose(what.value.trim(), findMeal(what.value) || findMeal(cleanName(what.value)));
         return { hold: true };
       }
       const name = what.value.trim();
-      if (!name) return null;
+      if (!name) return missing(what, 'Type what was eaten');
       const detail = parts.value.trim();
       /* Only the components still on screen are kept. Pieces and grams are stored whatever the setting;
          sizes and overrides only mean something with it on, so with it off only rows with a quantity are kept. */
@@ -3891,7 +3917,7 @@ function openAdd(type, editEntry, preset) {
     body.append(h('p', { class: 'wiz-q', text: 'Pain right now' }), ...sl.nodes, field('Time', time), field('Note', painNote));
     getData = () => {
       const v = sl.value();
-      if (v == null) { toast('Slide to a number first'); return { hold: true }; }
+      if (v == null) return missing(sl.nodes.find((n) => n.type === 'range') || sl.nodes[0], 'Slide to a number first');
       return { type: 'pain', value: v, note: painNote.value.trim() };
     };
   }
@@ -3961,10 +3987,10 @@ function openAdd(type, editEntry, preset) {
     getData = () => {
       let d;
       if (stoma) {
-        if (!output.get()) { toast('Tap what the output was like first'); return { hold: true }; }
+        if (!output.get()) return missing(output.node, 'Tap what the output was like');
         d = { type: 'bowel', none: false, stoma: true, output: output.get(), types: [], bristol: null, note: bowelNote.value.trim() };
       } else {
-        if (!chosen.size) { toast('Tap the type first'); return { hold: true }; }
+        if (!chosen.size) return missing(body.querySelector('.bristol'), 'Tap the type of stool');
         const types = [...chosen].sort((a, b) => a - b);
         d = { type: 'bowel', none: false, types, bristol: types[types.length - 1], note: bowelNote.value.trim() };
       }
@@ -4031,12 +4057,12 @@ function openAdd(type, editEntry, preset) {
     getData = () => {
       let what = whatIn.value.trim().replace(/\s+/g, ' ');
       if (!what) what = listSel.value;
-      if (!what) { toast('Choose a symptom, or type your own'); listSel.focus(); return { hold: true }; }
+      if (!what) { missing(listSel, 'Choose a symptom, or type your own'); return { hold: true }; }
       const same = offer.find((w) => w.toLowerCase() === what.toLowerCase());
       what = same || what.charAt(0).toUpperCase() + what.slice(1);
       if (!same && !state.readOnly && !state.viewer) { saved = [...saved, what]; saveProfilePatch({ customSymptoms: saved }); }
       const v = sl.value();
-      if (v == null) { toast('Slide to a number first'); return { hold: true }; }
+      if (v == null) return missing(sl.nodes.find((n) => n.type === 'range') || sl.nodes[0], 'Slide to a number first');
       const c = cause.read();
       const d = { type: 'symptom', what, value: v, note: symNote.value.trim() };
       if (editEntry && editEntry.grade != null) d.grade = null; // a score from the slider replaces a check-in's word
@@ -4051,7 +4077,7 @@ function openAdd(type, editEntry, preset) {
     body.append(...wIn.nodes, field('Time', time), field('Note', note));
     getData = () => {
       const w = wIn.read();
-      if (w.empty || w.kg == null || w.kg < 20 || w.kg > 300) { toast('Could not read the weight. Type just the number.'); return { hold: true }; }
+      if (w.empty || w.kg == null || w.kg < 20 || w.kg > 300) return w.empty ? missing(w.el || wIn.first, 'Type the weight') : missing(w.el || wIn.first, 'Could not read the weight. Type just the number.', CHECK);
       return { type: 'weight', value: Math.round(w.kg * 10) / 10, note: note.value.trim() };
     };
   }
@@ -4125,7 +4151,7 @@ function openAdd(type, editEntry, preset) {
     if (editEntry) text.value = editEntry.note || '';
     body.append(field('Note', text), speakButton(text) || '', field('Time', time));
     getData = () => {
-      if (!text.value.trim()) return null;
+      if (!text.value.trim()) return missing(text, 'Type the note');
       return { type: 'note', note: text.value.trim() };
     };
   }
@@ -4150,7 +4176,7 @@ function openAdd(type, editEntry, preset) {
       field('Time', time)
     );
     getData = () => {
-      if (!text.value.trim()) return null;
+      if (!text.value.trim()) return missing(text, 'Type the question');
       return { type: 'question', note: text.value.trim(), team, answered: Boolean(editEntry && editEntry.answered) };
     };
   }
@@ -4265,20 +4291,18 @@ function openAdd(type, editEntry, preset) {
       if (bad) {
         const shown = bad.raw || bad.el.value.trim();
         const like = bad.name === 'weight' ? (weightPref() === 'stlb' ? ', like 12 and 10' : ', like 80.6') : '';
-        toast(`Could not read the ${bad.name} "${shown}". Type just the number${like}.`);
-        bad.el.focus();
-        return { hold: true };
+        return missing(bad.el, `Could not read the ${bad.name} "${shown}". Type just the number${like}.`, CHECK);
       }
       const val = (name) => boxes.find((b) => b.name === name).value;
       if (editing === 'temp') {
-        if (val('temperature') == null) { toast('Type the temperature, or use Delete to remove the reading'); temp.focus(); return { hold: true }; }
+        if (val('temperature') == null) { missing(temp, 'Type the temperature, or use Delete to remove the reading'); return { hold: true }; }
         return [{ type: 'temp', value: Math.round(val('temperature') * 10) / 10, note: noteV }];
       }
       if (editing === 'vitals') {
-        if ((val('systolic') != null) !== (val('diastolic') != null)) { toast('Blood pressure needs both numbers, systolic and diastolic'); return { hold: true }; }
+        if ((val('systolic') != null) !== (val('diastolic') != null)) return missing(val('systolic') == null ? sys : dia, 'Blood pressure needs both numbers, systolic and diastolic');
         const r = (n) => (val(n) != null ? Math.round(val(n)) : null);
         const one = { type: 'vitals', note: noteV, heartRate: r('heart rate'), systolic: r('systolic'), diastolic: r('diastolic'), oxygen: r('oxygen') };
-        if (one.heartRate == null && one.systolic == null && one.oxygen == null) { toast('Type at least one reading, or use Delete to remove it'); hr.focus(); return { hold: true }; }
+        if (one.heartRate == null && one.systolic == null && one.oxygen == null) { missing(hr, 'Type at least one reading, or use Delete to remove it'); return { hold: true }; }
         return [one];
       }
       const out = [];
@@ -4286,12 +4310,12 @@ function openAdd(type, editEntry, preset) {
       const data = { type: 'vitals', note: noteV };
       let has = false;
       if (val('heart rate') != null) { data.heartRate = Math.round(val('heart rate')); has = true; }
-      if ((val('systolic') != null) !== (val('diastolic') != null)) { toast('Blood pressure needs both numbers, systolic and diastolic'); return { hold: true }; }
+      if ((val('systolic') != null) !== (val('diastolic') != null)) return missing(val('systolic') == null ? sys : dia, 'Blood pressure needs both numbers, systolic and diastolic');
       if (val('systolic') != null) { data.systolic = Math.round(val('systolic')); data.diastolic = Math.round(val('diastolic')); has = true; }
       if (val('oxygen') != null) { data.oxygen = Math.round(val('oxygen')); has = true; }
       if (has) out.push(data);
       if (val('weight') != null) out.push({ type: 'weight', value: Math.round(val('weight') * 10) / 10, note: noteV, ...(replaceW ? { _replace: replaceW } : {}) });
-      return out.length ? out : null;
+      return out.length ? out : missing(tempBlock.hidden ? hr : temp, 'Type at least one reading');
     };
   }
 
@@ -4302,7 +4326,7 @@ function openAdd(type, editEntry, preset) {
     if (data && data.hold) return;
     if (!data) { toast('Please check the value'); return; }
     const saveDay = dateIn ? dateIn.value : day;
-    if (!saveDay || saveDay > todayStr()) { toast('Please choose a date up to today'); return; }
+    if (!saveDay || saveDay > todayStr()) { missing(dateIn || time, 'Please choose a date up to today', CHECK); return; }
     const at = atFromInputs(saveDay, time.value);
     const list = Array.isArray(data) ? data : [data];
     const after = list.map((d) => { const f = d._remember; delete d._remember; return f; }).filter(Boolean);
@@ -4884,9 +4908,9 @@ function openEditMeal(m) {
     field('Meal', name), field('What is in it (optional)', parts),
     h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
       const n = name.value.trim();
-      if (!n) { toast('Please enter a name'); return; }
+      if (!n) { missing(name, 'Please enter a name'); return; }
       const dup = findMeal(n);
-      if (dup && (isNew || dup.id !== m.id)) { toast('That meal is already saved'); return; }
+      if (dup && (isNew || dup.id !== m.id)) { missing(name, 'That meal is already saved', CHECK); return; }
       closeSheet();
       await saveMeal(isNew ? null : m.id, n, parts.value.trim());
       toast(isNew ? 'Meal saved' : 'Meal updated');
@@ -6067,7 +6091,7 @@ $('food-totals').addEventListener('click', () => {
       const day = dayInput.value;
       const v = (i) => { const n = parseFloat(i.value); return isFinite(n) && n >= 0 ? Math.round(n) : 0; };
       const data = { day, kcal: v(kcal), prot: v(prot), carb: v(carb), fat: v(fat), source: 'manual', addedBy: state.name };
-      if (!day || !data.kcal) { toast('Add at least the day\'s calories'); return; }
+      if (!day || !data.kcal) { missing(day ? kcal : dayInput, 'Add at least the day\'s calories'); return; }
       closeSheet();
       if (state.demo) { state.nutrition[day] = data; renderFoodDiary(); toast('Day totals saved'); return; }
       try { await setDoc(hdoc('nutrition', day), { ...data, updatedAt: serverTimestamp() }, { merge: true }); toast('Day totals saved'); }
@@ -7159,7 +7183,7 @@ function openFixWords(src, redraw) {
   box.value = String(src.words || '');
   const save = h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
     const words = box.value.trim();
-    if (!words) { toast('Type the words, or delete the entry from Today instead'); box.focus(); return; }
+    if (!words) { missing(box, 'Type the words, or delete the entry from Today instead'); return; }
     if (words === String(src.words || '').trim()) { closeSheet(); return; }
     save.disabled = true;
     const patch = { [src.field]: words };
@@ -9123,11 +9147,11 @@ function openCallLogSheet(day, back) {
     field('Who you spoke to', who),
     field('What they said', note), speakButton(note) || '',
     h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
-      if (!who.value.trim() && !note.value.trim()) { toast('Say who you spoke to, or what they said'); who.focus(); return; }
+      if (!who.value.trim() && !note.value.trim()) { missing(who, 'Say who you spoke to, or what they said'); return; }
       const d = date.value || day;
       const [hh, mm] = (time.value || '12:00').split(':').map(Number);
       const at = parseDay(d); at.setHours(hh || 0, mm || 0, 0, 0);
-      if (at > new Date()) { toast('That time is still to come'); time.focus(); return; }
+      if (at > new Date()) { missing(time, 'That time is still to come', CHECK); return; }
       await addEntry({ type: 'call', who: who.value.trim(), note: note.value.trim(), day: d, at });
       toast('Call logged');
       if (back) back(); else closeSheet();
@@ -9341,20 +9365,20 @@ function openResultsSheet(opts = {}) {
   if (pre) pre.rows.forEach((r) => addRow(r.key === 'other' ? { key: 'other', name: '', unit: '' } : RESULT_TESTS.find((t) => t.key === r.key), r));
   const save = async () => {
     const d = date.value;
-    if (!d || d > today) { toast('Pick the date the sample was taken'); date.focus(); return; }
+    if (!d || d > today) { missing(date, 'Pick the date the sample was taken'); return; }
     const out = [];
     for (const r of rows.values()) {
       const name = r.nameIn ? r.nameIn.value.trim() : r.t.name;
       const unit = (r.unitIn ? r.unitIn.value.trim() : r.t.unit) || '';
       const n = readResultValue(r.value);
       if (n.empty) continue;
-      if (n.value == null) { toast('Could not read the ' + (name || 'result') + ' "' + r.value.value + '". Type just the number.'); r.value.focus(); return; }
-      if (!name) { toast('Give the test a name'); r.nameIn.focus(); return; }
+      if (n.value == null) { missing(r.value, 'Could not read the ' + (name || 'result') + ' "' + r.value.value + '". Type just the number.', CHECK); return; }
+      if (!name) { missing(r.nameIn, 'Give the test a name'); return; }
       const range = r.range.value.trim().slice(0, 40);
       const { low, high } = parseRange(range);
       out.push({ type: 'result', test: r.t.key, name, unit, value: n.value, below: n.below, range, low, high, source: source.value.trim().slice(0, 60), note: note.value.trim() });
     }
-    if (!out.length) { toast('Type at least one result, or leave the others blank'); return; }
+    if (!out.length) { const first = [...rows.values()][0]; missing(first ? first.value : date, 'Type at least one result, or leave the others blank'); return; }
     const at = parseDay(d); at.setHours(12, 0, 0, 0);
     if (edit) { await updateEntry(edit.id, { ...out[0], day: d, at }); toast(out[0].name + ' changed'); }
     else { for (const o of out) await addEntry({ ...o, day: d, at }); toast(plural(out.length, 'result') + ' saved for ' + resDay(d)); }
@@ -10927,7 +10951,7 @@ function askDoseForm(m) {
       h('p', { class: 'hint', text: 'Change it any time in Manage medicines, Edit. A different amount one day: use Other time, or change the dose afterwards from its "..." menu.' }),
       h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
         const data = c.result();
-        if (!data.dose) { toast('Please type the dose'); c.dose.focus(); return; }
+        if (!data.dose) { missing(c.dose, 'Please type the dose'); return; }
         const updated = { ...m, ...data };
         try {
           if (state.demo) Object.assign(state.medicines.find((x) => x.id === m.id) || {}, data);
@@ -10982,7 +11006,7 @@ function askCountNow(m) {
     const quick = h('div', { class: 'presets', role: 'group', 'aria-label': 'Quick numbers' },
       ...(form.key === 'ml' ? [2.5, 5, 10] : [1, 2, 3]).map((n) => h('button', { class: 'preset', type: 'button', dataset: { n: String(n) }, onclick: () => st.set(n) }, fmtDoseCount(n) + (form.key === 'ml' ? ' ml' : ''))));
     const go = h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => {
-      if (!(st.value() > 0)) { toast('How many was it?'); return; }
+      if (!(st.value() > 0)) { missing(st.el, 'How many was it?'); return; }
       result = doseNow(); closeSheet();
     } }, 'Log');
     sync();
@@ -11053,10 +11077,10 @@ function openDoseEdit(e) {
     use ? use.el : null,
     field('Note', note), speakButton(note) || '',
     h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
-      if (!dateIn.value || dateIn.value > todayStr()) { toast('Please choose a date up to today'); dateIn.focus(); return; }
-      if (!time.value) { toast('Please choose a time'); time.focus(); return; }
+      if (!dateIn.value || dateIn.value > todayStr()) { missing(dateIn, 'Please choose a date up to today', CHECK); return; }
+      if (!time.value) { missing(time, 'Please choose a time'); return; }
       const at = atFromInputs(dateIn.value, time.value);
-      if (at > new Date()) { toast('That time is still to come. Choose the time it was taken.'); time.focus(); return; }
+      if (at > new Date()) { missing(time, 'That time is still to come. Choose the time it was taken.', CHECK); return; }
       closeSheet();
       try {
         await updateEntry(e.id, { day: dateIn.value, dose: amount.value.trim(), note: note.value.trim(), at, ...(use ? { forUse: use.value() || null } : {}) });
@@ -11099,9 +11123,9 @@ async function logMedAtTime(m) {
     use ? use.el : null,
     field('Note', note),
     h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => {
-      if (!day.value) { toast('Please choose a date'); return; }
-      if (form && !(thisTime.value() > 0)) { toast('How many was it?'); return; }
-      if (use && !use.value()) { toast('What was it for?'); return; }
+      if (!day.value) { missing(day, 'Please choose a date'); return; }
+      if (form && !(thisTime.value() > 0)) { missing(thisTime.el, 'How many was it?'); return; }
+      if (use && !use.value()) { missing(use.el, 'What was it for?'); return; }
       closeSheet();
       logMed(m, atFromInputs(day.value, time.value), note.value.trim(), doseNow(), use ? use.value() : null);
     } }, 'Save'),
@@ -11378,8 +11402,8 @@ function openHospitalDose(edit, prefill) {
     field('Note', note), speakButton(note) || '',
     edit ? null : h('label', { class: 'check' }, alsoList, h('span', { text: 'Also add it to my medicines list, to keep taking at home' })),
     h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
-      if (!name.value.trim()) { toast('Please say what was given'); name.focus(); return; }
-      if (!dateIn.value || dateIn.value > todayStr()) { toast('Please choose a date up to today'); return; }
+      if (!name.value.trim()) { missing(name, 'Please say what was given'); return; }
+      if (!dateIn.value || dateIn.value > todayStr()) { missing(dateIn, 'Please choose a date up to today', CHECK); return; }
       const data = { type: 'med', medId: (edit && edit.medId) || null, medName: name.value.trim(), dose: amount.value.trim(), route: route.value, hospital: true, note: note.value.trim() };
       const at = atFromInputs(dateIn.value, time.value);
       closeSheet();
@@ -11660,7 +11684,7 @@ function openEditMed(m, prefill) {
     schedFields, prnFields,
     isNew ? null : h('label', { class: 'check' }, active, h('span', { text: 'Currently in use' })),
     h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
-      if (!name.value.trim()) { toast('Please enter a name'); return; }
+      if (!name.value.trim()) { missing(name, 'Please enter a name'); return; }
       const data = {
         name: name.value.trim(), dose: composeDose(count.value(), formIn.value, dose.value), how: how.value.trim(), purpose: purpose.value.trim(), alsoFor: alsoFor.value.trim(),
         doseForm: formIn.value || 'none', doseCount: doseFormOf(formIn.value) ? count.value() || 1 : null, strength: dose.value.trim(),
@@ -12187,7 +12211,7 @@ $('doc-edit').addEventListener('click', () => {
     field('Title', title), field('Date on the document', date), field('Category', category),
     h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
       const t = title.value.trim();
-      if (!t) { toast('Please enter a title'); return; }
+      if (!t) { missing(title, 'Please enter a title'); return; }
       const data = { title: t, docDate: date.value || todayStr(), category: category.value };
       closeSheet();
       if (state.demo) {
@@ -13030,7 +13054,7 @@ function openAnswerSheet(q) {
   const saveBtn = h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
     const v = text.value.trim();
     const cur = fresh();
-    if (!v && !(cur.recordings > 0)) { toast('Nothing to save yet. Record the answer or write it down.'); return; }
+    if (!v && !(cur.recordings > 0)) { missing(text, 'Nothing to save yet. Record the answer or write it down.'); return; }
     saveBtn.disabled = true;
     try {
       await updateEntry(q.id, { answerText: v, answered: true, answeredAt: stampNow() });
@@ -13713,8 +13737,8 @@ function openDaySheet(key) {
   moveBox.append(field('Move it to', moveDate), h('div', { class: 'btnrow' },
     h('button', { class: 'btn btn-primary', type: 'button', onclick: async () => {
       const to = moveDate.value;
-      if (!to || to === key) { toast('Choose a different day'); moveDate.focus(); return; }
-      if (state.days[to] && state.days[to].chemo) { toast(fmtDayShort(to) + ' already has a session'); moveDate.focus(); return; }
+      if (!to || to === key) { missing(moveDate, 'Choose a different day', CHECK); return; }
+      if (state.days[to] && state.days[to].chemo) { missing(moveDate, fmtDayShort(to) + ' already has a session', CHECK); return; }
       closeSheet();
       await moveSession(key, to);
     } }, 'Move the session'),
@@ -13857,7 +13881,7 @@ function openAddSessions() {
     preview,
     h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
       const n = count();
-      if (!firstIn.value || n < 1 || n > 60) { toast('Choose the first day and how many, 1 to 60'); countIn.focus(); return; }
+      if (!firstIn.value || n < 1 || n > 60) { missing(countIn, 'Choose the first day and how many, 1 to 60'); return; }
       const days = runDays(firstIn.value, n, every, tOf().home).filter((d) => !(state.days[d] && state.days[d].chemo));
       if (!days.length) { toast('Those days already have sessions'); return; }
       closeSheet();
@@ -14184,7 +14208,7 @@ function openExercisePicker() {
     const name = h('input', { type: 'text', placeholder: 'e.g. Heel slides', maxlength: '60', 'aria-label': 'Your own exercise' });
     const add = h('button', { class: 'btn btn-secondary', type: 'button', onclick: () => {
       const n = name.value.trim();
-      if (!n) { toast('Give it a name'); name.focus(); return; }
+      if (!n) { missing(name, 'Give it a name'); return; }
       openItemSheet({ id: newItemId(), name: n, section: 'stretch', kind: 'reps', amount: 5 }, true, () => openExercisePicker());
     } }, 'Add');
     name.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); add.click(); } });
@@ -14543,7 +14567,7 @@ function openStepsSheet(initialDay) {
     h('div', { class: 'bigvalue' }, input, h('span', { class: 'unit', text: 'steps' })),
     h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
       const v = parseInt(input.value, 10);
-      if (isNaN(v) || v < 0) { toast('Please check the number'); return; }
+      if (isNaN(v) || v < 0) { missing(input, isNaN(v) ? 'Type the steps' : 'Please check the number', isNaN(v) ? undefined : CHECK); return; }
       const savedDay = day;
       const ok = await saveStepsFor(savedDay, v);
       if (!ok) { toast('Could not save'); return; }
@@ -14675,8 +14699,8 @@ function openItemSheet(item, isNew, after) {
     it.amount = it.kind === 'do' ? 1 : Math.max(0, (decimals ? Math.round(parseFloat(amount.value) * 100) / 100 : parseInt(amount.value, 10)) || 0);
     it.sets = it.kind === 'sets' ? Math.max(1, parseInt(sets.value, 10) || 1) : null;
     it.note = note.value.trim();
-    if (!it.name) { toast('Give it a name'); name.focus(); return; }
-    if (it.kind !== 'do' && !it.amount) { toast('How many?'); amount.focus(); return; }
+    if (!it.name) { missing(name, 'Give it a name'); return; }
+    if (it.kind !== 'do' && !it.amount) { missing(amount, 'How many?'); return; }
     const clean = { id: it.id, name: it.name, section: it.section === 'physio' || it.section === 'stretch' ? it.section : 'exercise', kind: it.kind, amount: it.amount, days: it.days };
     if (it.sets) clean.sets = it.sets;
     if (it.kind === 'lengths') clean.pool = Math.max(1, parseInt(pool.value, 10) || 25);
@@ -14884,10 +14908,10 @@ function openContactsSheet(addNew) {
         const [l, ro, n, x, em] = [...r.querySelectorAll('input')];
         const c = { label: l.value.trim(), role: ro.value.trim(), number: n.value.trim(), ext: x.value.trim(), email: em.value.trim() };
         if (!c.label && !c.role && !c.number && !c.ext && !c.email) continue;
-        if (!c.label) { toast('Add a name for each contact'); l.focus(); return; }
-        if (!c.number && !c.email) { toast('Add a phone number or an email for ' + c.label); n.focus(); return; }
-        if (c.ext && !c.number) { toast('Add the phone number that goes with the extension for ' + c.label); n.focus(); return; }
-        if (c.email && !EMAIL_RE.test(c.email)) { toast('Check the email address for ' + c.label); em.focus(); return; }
+        if (!c.label) { missing(l, 'Add a name for each contact'); return; }
+        if (!c.number && !c.email) { missing(n, 'Add a phone number or an email for ' + c.label); return; }
+        if (c.ext && !c.number) { missing(n, 'Add the phone number that goes with the extension for ' + c.label); return; }
+        if (c.email && !EMAIL_RE.test(c.email)) { missing(em, 'Check the email address for ' + c.label, CHECK); return; }
         calls.push(c);
       }
       closeSheet();
