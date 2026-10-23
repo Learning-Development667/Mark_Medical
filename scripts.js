@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '284';
+const APP_VERSION = '285';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -1900,6 +1900,7 @@ function syncSettings() {
   ['settings-nutrition', 'food-nutrition'].forEach((id) => { const box = $(id); if (box.checked !== on) box.checked = on; });
   const target = $('settings-protein');
   if (document.activeElement !== target) target.value = proteinTarget() ? String(proteinTarget()) : '';
+  renderFoodStatsSetting(on);
   const rname = $('settings-report-name');
   if (document.activeElement !== rname) rname.value = (state.profile && state.profile.reportName) || '';
   rname.disabled = Boolean(state.readOnly);
@@ -2311,6 +2312,24 @@ $('settings-protein').addEventListener('change', async (ev) => {
   catch (e) { console.error(e); toast('Could not save the target'); }
 });
 $('food-nutrition').addEventListener('change', (ev) => setDetailedNutrition(ev.target.checked, ev.target));
+/* Figures to show on the Food sheet (v285, Mark: "so the user can choose what stats they can see"), with the estimates on */
+function renderFoodStatsSetting(on) {
+  const box = $('settings-foodstats');
+  box.hidden = !on;
+  if (!on) return;
+  const chosen = new Set(foodStats());
+  $('settings-foodstats-list').replaceChildren(...FOOD_STATS.map(([k, label]) => {
+    const input = h('input', { type: 'checkbox', checked: chosen.has(k), disabled: Boolean(state.readOnly) });
+    input.addEventListener('change', () => saveFoodStats(k, input.checked));
+    return h('label', { class: 'check foodstat-check' }, input, h('span', { text: label }));
+  }));
+}
+async function saveFoodStats(k, on) {
+  const set = new Set(foodStats());
+  if (on) set.add(k); else set.delete(k);
+  const foodStatsNew = FOOD_STATS.map(([key]) => key).filter((key) => set.has(key));
+  await saveProfilePatch({ foodStats: foodStatsNew });
+}
 /* My week ends on (v228): a day of the week, and a one-tap "use my treatment day" once treatment sessions are on the calendar */
 function treatmentWeekday() {
   const days = sessionDays().sort(), today = todayStr();
@@ -3645,9 +3664,11 @@ function openAdd(type, editEntry, preset) {
     const totalsEl = h('p', { class: 'macro-total' });
     totalsEl.hidden = true;
     const draft = () => ({ note: what.value, detail: parts.value, amount: amount.value, portions: portionsState });
+    const dayPanel = foodDayPanel(day, editId);
     const refreshTotals = () => {
       if (!macroOn || !foodIndex) return;
       const m = entryMacros(foodIndex, draft());
+      dayPanel.update(details.hidden ? null : m.totals);
       if (!lastComponents.length) { totalsEl.hidden = true; return; }
       totalsEl.hidden = false;
       totalsEl.textContent = m.any
@@ -3785,6 +3806,7 @@ function openAdd(type, editEntry, preset) {
       chosenName.textContent = what.value.trim();
       pick.hidden = true;
       details.hidden = false;
+      dayPanel.list.hidden = true;
       rebuildRows();
       syncFood();
       if (saveBtn) saveBtn.scrollIntoView({ block: 'nearest' });
@@ -3876,6 +3898,13 @@ function openAdd(type, editEntry, preset) {
     }) : null;
     pick.append(field('Food', what), ...(scanControl ? [scanControl] : []), list); // no camera: nothing between (v201; `null` drew the word)
 
+    /* Which meal (v285): four buttons, picked by the time until one is tapped */
+    let meal = editEntry ? mealOf(editEntry) : mealSlot(time.value), mealPicked = Boolean(editEntry && editEntry.meal);
+    const mealBtns = MEALS.map(([k, label]) => h('button', { class: 'preset', type: 'button', dataset: { meal: k }, onclick: () => { meal = k; mealPicked = true; markMeal(); } }, label));
+    const markMeal = () => mealBtns.forEach((b) => { const on = b.dataset.meal === meal; b.classList.toggle('is-active', on); b.setAttribute('aria-pressed', String(on)); });
+    markMeal();
+    time.addEventListener('input', () => { if (!mealPicked) { meal = mealSlot(time.value); markMeal(); } });
+    const mealField = h('div', { class: 'field' }, h('span', { class: 'fieldlabel', text: 'Which meal?' }), h('div', { class: 'presets meal-chips', role: 'group', 'aria-label': 'Which meal' }, ...mealBtns));
     /* The time is shown as a line, and only becomes a field when it needs changing */
     const timeField = field('Time', time);
     timeField.hidden = !editEntry;
@@ -3886,7 +3915,8 @@ function openAdd(type, editEntry, preset) {
     timeLine.hidden = Boolean(editEntry);
     details.append(
       h('div', { class: 'chosen' }, chosenName,
-        h('button', { class: 'btn btn-link btn-small', type: 'button', onclick: () => { details.hidden = true; pick.hidden = false; renderPick(); syncFood(); what.focus(); } }, 'Change')),
+        h('button', { class: 'btn btn-link btn-small', type: 'button', onclick: () => { details.hidden = true; pick.hidden = false; dayPanel.list.hidden = false; dayPanel.update(null); renderPick(); syncFood(); what.focus(); } }, 'Change')),
+      mealField,
       field('What is in it (optional)', parts),
       rowsWrap,
       amountBlock,
@@ -3894,7 +3924,7 @@ function openAdd(type, editEntry, preset) {
       timeLine, timeField,
       warn
     );
-    body.append(pick, details);
+    body.append(dayPanel.el, pick, details);
     if (editEntry) showDetails(); else renderPick();
     const unsaved = h('div', { class: 'nudge food-unsaved', role: 'alert' });
     unsaved.hidden = true;
@@ -3931,10 +3961,10 @@ function openAdd(type, editEntry, preset) {
          name with a number in it ("2 x kiwi") is renamed to the clean one. Remembered only once the
          entry itself is written (v259: a meal was remembered for Helen while her lunch was not). */
       const existing = findMeal(name) || (pickedRawName ? findMeal(pickedRawName) : null);
-      const data = { type: 'food', note: name, amount: amount.value };
+      const data = { type: 'food', note: name, amount: amount.value, meal };
       if (detail) data.detail = detail;
       if (portions) data.portions = portions;
-      if (!editEntry) data._remember = () => saveMeal(existing ? existing.id : null, name, detail, portions, mealSlot(time.value), existing);
+      if (!editEntry) data._remember = () => saveMeal(existing ? existing.id : null, name, detail, portions, meal, existing);
       return data;
     };
   }
@@ -4682,6 +4712,77 @@ function mealSlot(hhmm) {
   if (hour >= 11 && hour < 15) return 'lunch';
   if (hour >= 15 && hour < 21) return 'dinner';
   return 'snack';
+}
+/* Which meal a food was (v285, Mark: "is it 1 of the 4 options"): asked on the Food sheet as four buttons, picked
+   by the time of day until changed; a food saved before v285 is read from its time */
+const MEALS = [['breakfast', 'Breakfast', 'Breakfast'], ['lunch', 'Lunch', 'Lunch'], ['dinner', 'Dinner', 'Dinner'], ['snack', 'Snack', 'Snacks']];
+function mealOf(e) { return MEALS.some(([k]) => k === e.meal) ? e.meal : mealSlot(fmtTime(entryDate(e))); }
+/* The figures each circle chooses to see on the Food sheet (v285), in profile/main.foodStats */
+const FOOD_STATS = [['kcal', 'Calories', 'kcal'], ['prot', 'Protein', 'g'], ['carb', 'Carbs', 'g'], ['fat', 'Fat', 'g'], ['fibre', 'Fibre', 'g'], ['sugar', 'Sugar', 'g'], ['sat', 'Saturated fat', 'g'], ['salt', 'Salt', 'g']];
+const FOOD_STATS_DEFAULT = ['kcal', 'prot', 'carb', 'fat'];
+function foodStats() {
+  const s = state.profile && state.profile.foodStats;
+  return Array.isArray(s) ? FOOD_STATS.map(([k]) => k).filter((k) => s.includes(k)) : FOOD_STATS_DEFAULT;
+}
+function fmtStatValue(k, v) {
+  if (k === 'kcal') return Math.round(v).toLocaleString('en-GB');
+  if (k === 'salt') return (Math.round(v * 10) / 10).toString();
+  return String(Math.round(v));
+}
+/* A day's food in one place, whichever list holds it */
+function foodsOnDay(day) {
+  const seen = new Set(), out = [];
+  [...state.dayEntries, ...state.recentEntries].forEach((e) => { if (e.type === 'food' && e.day === day && !seen.has(e.id)) { seen.add(e.id); out.push(e); } });
+  return out.sort((a, b) => entryDate(a) - entryDate(b));
+}
+/* The top of the Food sheet (v285): the day's running totals in the figures chosen, kept in view, and the day's food
+   by meal, one line each, opened to see each item. update(draft) adds the food being logged to the totals. */
+function foodDayPanel(day, excludeId) {
+  const when = day === todayStr() ? 'Today' : fmtDayShort(day);
+  const bar = h('div', { class: 'daybar', role: 'status', 'aria-live': 'polite' });
+  const list = h('div', { class: 'daymeals' });
+  const foods = () => foodsOnDay(day).filter((e) => e.id !== excludeId);
+  const estimates = () => detailedNutritionOn() && foodIndex;
+  const update = (draft) => {
+    const stats = foodStats();
+    let totals = null, source = '';
+    if (estimates()) { totals = zeroMacros(); foods().forEach((e) => addMacros(totals, entryMacros(foodIndex, e).totals)); }
+    else { const t = loggedTotals(day); if (t) { totals = { ...zeroMacros(), ...t }; source = t.source === 'apple-health' ? 'From Apple Health' : 'From your food app'; } }
+    const shown = totals ? stats.filter((k) => source ? ['kcal', 'prot', 'carb', 'fat'].includes(k) : true) : [];
+    bar.hidden = !shown.length;
+    if (bar.hidden) return;
+    const adds = draft && estimates() ? draft : null;
+    const all = adds ? addMacros({ ...totals }, adds) : totals;
+    const target = proteinTarget();
+    bar.replaceChildren(
+      h('p', { class: 'daybar-head', text: (adds ? when + ' with this' : when + ' so far') + (source ? ' · ' + source : '') }),
+      h('div', { class: 'daybar-stats' }, ...shown.map((k) => {
+        const [, label, unit] = FOOD_STATS.find(([key]) => key === k);
+        const val = fmtStatValue(k, all[k]);
+        return h('div', { class: 'daybar-stat' + (k === 'prot' && target && all.prot >= target ? ' is-met' : '') },
+          h('span', { class: 'daybar-val', text: val }), h('span', { class: 'daybar-unit', text: unit === 'kcal' ? 'kcal' : k === 'prot' && target ? 'Protein, of ' + target + ' g' : label + ' (g)' }));
+      })),
+      ...(adds ? [h('p', { class: 'daybar-adds', text: 'This adds ' + shown.map((k) => fmtStatValue(k, adds[k]) + (k === 'kcal' ? ' kcal' : ' g ' + FOOD_STATS.find(([key]) => key === k)[1].toLowerCase())).join(' · ') })] : []) // never a bare null
+    );
+  };
+  const drawList = () => {
+    const fs = foods();
+    list.replaceChildren(...MEALS.map(([k, , heading]) => {
+      const items = fs.filter((e) => mealOf(e) === k);
+      const names = items.map((e) => e.note).join(', ');
+      const kcal = estimates() && items.length ? Math.round(items.reduce((t, e) => t + entryMacros(foodIndex, e).totals.kcal, 0)) : 0;
+      const sum = h('summary', { class: 'daymeal-sum' },
+        h('span', { class: 'daymeal-name', text: heading }),
+        h('span', { class: 'daymeal-what' + (items.length ? '' : ' is-empty'), text: items.length ? names : 'Nothing yet' }),
+        kcal ? h('span', { class: 'daymeal-kcal', text: kcal.toLocaleString('en-GB') + ' kcal' }) : null);
+      if (!items.length) return h('div', { class: 'daymeal is-empty' }, sum);
+      return h('details', { class: 'daymeal' }, sum, h('ul', { class: 'timeline' }, ...items.map((e) => renderEntry(e))));
+    }));
+  };
+  const el = h('div', { class: 'foodday' }, bar, list);
+  drawList(); update(null);
+  loadFoodTable().then(() => { if (el.isConnected) { drawList(); update(null); } });
+  return { el, bar, list, update, drawList };
 }
 const mealMillis = (m) => (m.lastAt && typeof m.lastAt.toDate === 'function') ? m.lastAt.toDate().getTime() : (typeof m.lastAt === 'number' ? m.lastAt : 0);
 /* The last n distinct foods logged: the past two days first, then saved meals by when they were last used */
@@ -5861,9 +5962,13 @@ function quantityText(entry) {
     .join(' · ');
 }
 
+/* Every figure a food can carry (v285: fibre, sugar, saturated fat and salt beside the four, for the Food sheet's day totals) */
+const MACRO_KEYS = ['kcal', 'prot', 'carb', 'fat', 'fibre', 'sugar', 'sat', 'salt'];
+const zeroMacros = () => Object.fromEntries(MACRO_KEYS.map((k) => [k, 0]));
+function addMacros(into, m) { MACRO_KEYS.forEach((k) => { into[k] += Number(m[k]) || 0; }); return into; }
 function scaleMacro(per100, grams) {
   const f = (grams || 0) / 100;
-  return { kcal: (per100.kcal || 0) * f, prot: (per100.prot || 0) * f, carb: (per100.carb || 0) * f, fat: (per100.fat || 0) * f };
+  return Object.fromEntries(MACRO_KEYS.map((k) => [k, (Number(per100[k]) || 0) * f]));
 }
 
 /* Foods added by hand from a packet, kept in profile/main.customFoods (name
@@ -5917,11 +6022,11 @@ function componentMacros(phrase, food, portion, scale) {
     const z = (v) => v || 0;
     const per100 = { kcal: z(vals.kcal), prot: z(vals.prot), carb: z(vals.carb), fat: z(vals.fat) };
     if (ov.per === '100g') return scaleMacro(per100, num(ov.grams) || grams);
-    return per100; // stated per portion: already the totals for what was actually eaten
+    return { ...zeroMacros(), ...per100 }; // stated per portion: already the totals for what was actually eaten
   }
   const custom = customFoodByName(phrase);
-  if (custom) return scaleMacro({ kcal: custom.kcal || 0, prot: custom.prot || 0, carb: custom.carb || 0, fat: custom.fat || 0 }, grams);
-  if (food) return scaleMacro({ kcal: food.kcal || 0, prot: food.prot || 0, carb: food.carb || 0, fat: food.fat || 0 }, grams);
+  if (custom) return scaleMacro(custom, grams);
+  if (food) return scaleMacro(food, grams);
   return null;
 }
 
@@ -5952,7 +6057,7 @@ function entryMacros(index, entry) {
   const nutrition = entryNutrition(index, entry);
   const portions = entry.portions || {};
   const scale = amountScale(entry.amount);
-  const totals = { kcal: 0, prot: 0, carb: 0, fat: 0 };
+  const totals = zeroMacros();
   const excluded = [];
   const components = [];
   const seen = new Set();
@@ -5975,7 +6080,7 @@ function entryMacros(index, entry) {
     const macros = componentMacros(c.phrase, c.food, portions[c.key], scale);
     if (!macros) { excluded.push(c.phrase); return; }
     counted++;
-    totals.kcal += macros.kcal; totals.prot += macros.prot; totals.carb += macros.carb; totals.fat += macros.fat;
+    addMacros(totals, macros);
   });
   return { any: counted > 0, totals, excluded, components };
 }
@@ -7898,14 +8003,14 @@ function noteContext(e) {
    loaded; null otherwise, so callers add nothing (used by the Food diary too) */
 function dayMacros(foods) {
   if (!detailedNutritionOn() || !foodIndex || !foods.length) return null;
-  const totals = { kcal: 0, prot: 0, carb: 0, fat: 0 };
+  const totals = zeroMacros();
   let any = false, excluded = 0;
   foods.forEach((e) => {
     const m = entryMacros(foodIndex, e);
     excluded += m.excluded.length;
     if (!m.any) return;
     any = true;
-    totals.kcal += m.totals.kcal; totals.prot += m.totals.prot; totals.carb += m.totals.carb; totals.fat += m.totals.fat;
+    addMacros(totals, m.totals);
   });
   return any ? { totals, excluded } : null;
 }
