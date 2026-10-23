@@ -29,6 +29,8 @@ export default {
       if (url.pathname === '/feedback' && request.method === 'POST') return withCors(request, await handleFeedback(request, env));
       if (url.pathname === '/feedback-info' && request.method === 'POST') return withCors(request, await handleFeedbackInfo(request, env));
       if (url.pathname === '/food' && request.method === 'POST') return withCors(request, await handleFood(request, env));
+      if (url.pathname === '/circle-delete' && request.method === 'POST') return withCors(request, await handleCircleDelete(request, env));
+      if (url.pathname === '/account-delete' && request.method === 'POST') return withCors(request, await handleAccountDelete(request, env));
       if (url.pathname === '/verify-email' && request.method === 'POST') return withCors(request, await handleVerifyEmail(request, env));
       if (url.pathname === '/send-report' && request.method === 'POST') return withCors(request, await handleSendReport(request, env));
       if (url.pathname === '/invite' && request.method === 'POST') return withCors(request, await handleInvite(request, env));
@@ -308,6 +310,21 @@ async function firestore(env) {
     async set(path, fields) {
       const r = await fetch(base + path, { method: 'PATCH', headers, body: JSON.stringify({ fields }) });
       if (!r.ok) throw new Error('Firestore set ' + path + ': ' + r.status + ' ' + await r.text());
+    },
+    /* (v295) the names of up to `limit` documents anywhere under a document, in name order: a kindless all-descendants
+       query, the one the Admin SDK's recursiveDelete uses, so subcollections (pages, parts) are found too */
+    async descendants(parentDoc, limit) {
+      const r = await fetch(base + parentDoc + ':runQuery', { method: 'POST', headers, body: JSON.stringify({ structuredQuery: {
+        select: { fields: [{ fieldPath: '__name__' }] }, from: [{ allDescendants: true }], orderBy: [{ field: { fieldPath: '__name__' }, direction: 'ASCENDING' }], limit } }) });
+      if (!r.ok) throw new Error('Firestore descendants ' + parentDoc + ': ' + r.status + ' ' + await r.text());
+      const rows = await r.json();
+      return rows.filter((x) => x.document).map((x) => x.document.name);
+    },
+    /* (v295) delete up to 500 documents in one write, by their full names */
+    async deleteMany(names) {
+      if (!names.length) return;
+      const r = await fetch(base.replace(/\/$/, '') + ':commit', { method: 'POST', headers, body: JSON.stringify({ writes: names.map((n) => ({ delete: n })) }) });
+      if (!r.ok) throw new Error('Firestore commit: ' + r.status + ' ' + await r.text());
     },
     async remove(path) {
       const r = await fetch(base + path, { method: 'DELETE', headers });
@@ -1035,6 +1052,85 @@ async function handleSendReport(request, env) {
     return json({ error: 'refused', message: `Could not send (${why}). Use Send from my own Mail app for now.` }, 502);
   }
   return json({ ok: true, id: (data && data.id) || null, to, copyTo: who.email, at: new Date().toISOString(), kind });
+}
+
+/* Delete (v295, ROADMAP action 8, Apple's rule for apps with accounts). POST /circle-delete { confirm: "DELETE" }: the patient,
+   or whoever set the circle up, erases the whole circle: every document under households/{hid} (subcollections too), the
+   circle's invite lookups, its Apple Health key lookup, every member's pointer to it, then the circle itself and the caller's
+   own sign-in. Others in the circle keep their sign-ins and land on the "not in a care circle" screen. Done in rounds of 500
+   (the free plan allows 50 outside calls a request), so the app calls again while `done` is false; bridge/deleting-{uid}
+   remembers which circle, since the caller's own pointer goes in the first round. The operator's own circle (the one holding
+   BRIDGE_KEY) is refused: months of Mark's records are not one mistyped word from gone. */
+const DELETE_ROUNDS = 10;
+async function deleteSignIn(sa, uid) {
+  const token = await accessToken(sa, 'https://www.googleapis.com/auth/cloud-platform');
+  const r = await fetch('https://identitytoolkit.googleapis.com/v1/projects/' + encodeURIComponent(sa.project_id) + '/accounts:delete', {
+    method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify({ localId: uid }) });
+  if (!r.ok) throw new Error('accounts:delete ' + r.status + ' ' + (await r.text()).slice(0, 300));
+}
+async function handleCircleDelete(request, env) {
+  const a = await whoIs(request, env); if (a.error) return a.error;
+  if (a.demo) return json({ error: 'demo', message: 'The demo is wiped every night by itself.' }, 403);
+  const { who, fs, sa } = a;
+  const body = await readJson(request);
+  if (!body || body.confirm !== 'DELETE') return json({ error: 'bad-request', message: 'Type DELETE to confirm.' }, 400);
+  const markPath = 'bridge/deleting-' + who.uid;
+  const mark = await fs.get(markPath);
+  let hid = mark ? f(mark.fields, 'household') : null;
+  if (!hid) {
+    const me = await memberOf(fs, who.uid);
+    if (!me.hid || !me.role) return json({ error: 'unauthorised', message: 'This sign-in is not in a care circle.' }, 403);
+    const circle = await circleOf(fs, me.hid);
+    if (!circle.house || !runsCircle(circle, who.uid, me)) return json({ error: 'unauthorised', message: 'Only the patient, or whoever set the circle up, can delete the whole circle. You can leave it and delete your own sign-in instead.' }, 403);
+    if (env.BRIDGE_KEY && await householdForKey(fs, env.BRIDGE_KEY) === me.hid) return json({ error: 'operator', message: "This is the operator's own circle, so it cannot be deleted from the app. Mark 1 Apps Ltd can do it on request." }, 403);
+    hid = me.hid;
+    await fs.set(markPath, { household: strVal(hid), startedAt: nowTs() });
+    const names = [];
+    for (const inv of await fs.list(hp(hid, 'invites'))) names.push(fs.docName('inviteCodes/' + inv.id));
+    const priv = await fs.get(hp(hid, 'private/health'));
+    const key = priv && f(priv.fields, 'key');
+    if (key) names.push(fs.docName('healthKeys/' + await sha256Hex(key)));
+    for (const m of circle.members) {
+      const uid = m.path.split('/').pop();
+      if (!UID_RE.test(uid)) continue;
+      const ptr = uid === who.uid ? { fields: { household: strVal(hid) } } : await fs.get('users/' + uid);
+      if (ptr && f(ptr.fields, 'household') === hid) names.push(fs.docName('users/' + uid));
+    }
+    await fs.deleteMany(names);
+  }
+  let deleted = 0, done = false;
+  for (let i = 0; i < DELETE_ROUNDS; i++) {
+    const names = await fs.descendants('households/' + hid, 500);
+    if (!names.length) { done = true; break; }
+    await fs.deleteMany(names);
+    deleted += names.length;
+  }
+  if (!done) return json({ ok: true, done: false, deleted });
+  await fs.deleteMany([fs.docName('households/' + hid), fs.docName('bridge/verify-' + who.uid), fs.docName(markPath)]);
+  try { await deleteSignIn(sa, who.uid); }
+  catch (e) { console.error('circle-delete: sign-in', e && e.message); return json({ ok: true, done: true, deleted, signIn: false }); }
+  return json({ ok: true, done: true, deleted, signIn: true });
+}
+/* POST /account-delete { confirm: "DELETE" } (v295): anyone but the person who runs the circle leaves it and deletes their own
+   sign-in. What they logged stays with the circle: the records are the patient's, whoever typed them in. Someone who runs a
+   circle with others in it is told to hand it over first, or delete the whole circle. */
+async function handleAccountDelete(request, env) {
+  const a = await whoIs(request, env); if (a.error) return a.error;
+  if (a.demo) return json({ error: 'demo', message: 'The demo sign-in is shared and cannot be deleted.' }, 403);
+  const { who, fs, sa } = a;
+  const body = await readJson(request);
+  if (!body || body.confirm !== 'DELETE') return json({ error: 'bad-request', message: 'Type DELETE to confirm.' }, 400);
+  const me = await memberOf(fs, who.uid);
+  if (me.hid && me.role) {
+    const circle = await circleOf(fs, me.hid);
+    if (circle.house && runsCircle(circle, who.uid, me)) return json({ error: 'runs-circle', message: 'You run this care circle. Hand it to someone else in Settings first, or delete the whole circle.' }, 409);
+    await fs.remove(hp(me.hid, 'members/' + who.uid));
+    for (const sub of await fs.list(hp(me.hid, 'pushSubs'))) if (f(sub.fields, 'uid') === who.uid) await fs.remove(sub.path);
+  }
+  await fs.deleteMany([fs.docName('users/' + who.uid), fs.docName('bridge/verify-' + who.uid)]);
+  try { await deleteSignIn(sa, who.uid); }
+  catch (e) { console.error('account-delete: sign-in', e && e.message); return json({ ok: true, signIn: false }); }
+  return json({ ok: true, signIn: true });
 }
 
 /* POST /verify-email (v294): the "confirm your email" message, sent by Daybook through Resend from SEND_FROM, branded, instead of

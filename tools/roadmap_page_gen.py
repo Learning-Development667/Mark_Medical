@@ -62,7 +62,7 @@ s1 = [
  row('Finish the households move', 'Mark', 'Verify and cleanup on the Actions tab, then Claude trims the rules.', 'open', '5'),
  row('Move to app.mymedicaldaybook.co.uk', 'Mark', 'Built and live (v231). Left: Mark and Shelley add Daybook to the Home Screen again and switch reminders on; the demo project’s authorised domain.', 'now', '6'),
  row('Security tightening', 'Claude', 'Libraries hosted at fixed versions, a content security policy, the check-in author lock in the rules.', 'open', '7'),
- row('Export and delete', 'Claude', 'Download everything, or erase the circle. Apple requires it and the privacy page promises it.', 'open', '8'),
+ row('Export and delete', 'Claude', 'Built in v295: More, Settings, Your records. Download every record as a zip; the patient deletes the whole circle, anyone else leaves and deletes their own sign-in, after typing DELETE.', 'done', '8'),
  row("Condition packs: Crohn's and colitis, then menopause", 'Claude, with testers', "All five Crohn's builds are done (v204 to v221). Next: two friends with Crohn's log through to an appointment and take the report; an IBD nurse reads it. Then menopause.", 'now', '9'),
  row('Firebase to pay-as-you-go', 'Mark', "Upgrade to Blaze with a budget alert at £10, before the testers' links go out. The free plan stops answering past its daily allowance.", 'now', '9b'),
  row('Read the Usage page weekly', 'Mark', 'More > Usage. Built in v211; say what else should be counted.', 'now', '9c'),
@@ -110,7 +110,7 @@ parked = [
 
 page = open(__file__.rsplit('/',1)[0] + '/roadmap_page_template.html').read()
 body = (
- section('Stage 1 · Build', '1 of 14', 'What the app does. Small fixes keep going in as they come.', s1)
+ section('Stage 1 · Build', '2 of 14', 'What the app does. Small fixes keep going in as they come.', s1)
  + section('Stage 2 · UI', '1 of 1', 'How it looks.', s2)
  + section('Stage 3 · UX', '1 of 5', 'How it feels to someone new.', s3)
  + section('Stage 4 · Website', '0 of 2', 'Live since 18 October; the Beta runs from it.', s4)

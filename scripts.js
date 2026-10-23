@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '294';
+const APP_VERSION = '295';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -935,6 +935,7 @@ $('signup-form').addEventListener('submit', async (ev) => {
   const name = $('signup-name').value.trim(), code = $('signup-code').value.trim();
   try {
     await setPersistence(auth, browserLocalPersistence);
+    state.creatingCircle = true;
     const cred = await createUserWithEmailAndPassword(auth, $('signup-email').value.trim(), $('signup-password').value);
     /* the sign-in exists now; the household is made by the bridge, and a failure there lands on the no-household screen, not in limbo */
     const who = signupRelation();
@@ -951,7 +952,7 @@ $('signup-form').addEventListener('submit', async (ev) => {
     console.error(e);
     if (auth.currentUser && !(e && e.code && String(e.code).startsWith('auth/'))) { $('signup').hidden = true; showNoHousehold(auth.currentUser, e.message); }
     else { err.textContent = friendlyAuthError(e); err.hidden = false; }
-  } finally { btn.disabled = false; btn.textContent = 'Create my account'; }
+  } finally { state.creatingCircle = false; btn.disabled = false; btn.textContent = 'Create my account'; }
 });
 $('forgot-button').addEventListener('click', async () => {
   const email = $('signin-email').value.trim(), err = $('signin-error');
@@ -961,6 +962,7 @@ $('forgot-button').addEventListener('click', async () => {
 });
 /* Signed in, in no household: make one, or join with a code */
 function showNoHousehold(user, message) {
+  if (state.household && state.user && user && state.user.uid === user.uid) return; // (v295) a late check after the circle was made
   $('app').hidden = true; $('signin').hidden = true; $('signup').hidden = true;
   $('nohousehold').hidden = false;
   $('nohousehold-who').textContent = (user && user.email ? user.email + ' is signed in, but' : 'This sign-in is') + ' not in a care circle yet. Set up your own, or paste the invite code someone sent you.';
@@ -1103,7 +1105,8 @@ function friendlyAuthError(e) {
   return 'Could not sign in. ' + (e && e.message ? e.message : '');
 }
 
-onAuthStateChanged(auth, (user) => enterApp(user));
+/* (v295) while Create an account is still asking the bridge for the circle, the listener waits: the sign-up's own enterApp follows */
+onAuthStateChanged(auth, (user) => { if (user && state.creatingCircle) return; enterApp(user); });
 
 /* Runs on every sign-in state change, and again from the Sign in button when a
    signed-in person's account could not be checked the first time. */
@@ -1136,7 +1139,7 @@ async function enterApp(user) {
     state.viewer = account.role === 'viewer';
     state.readOnly = account.role === 'readonly';
     $('signin-error').hidden = true;
-    $('signin').hidden = true;
+    $('signin').hidden = true; $('signup').hidden = true; $('nohousehold').hidden = true; // (v295) never left over the app
     $('app').hidden = false;
     requestAnimationFrame(moveTabIndicator);
     $('user-chip').textContent = state.name;
@@ -1932,6 +1935,7 @@ function syncSettings() {
   if (!$('view-notes').hidden) renderNotesReport();
   syncHealthCard();
   syncHouseholdCard();
+  syncRecordsCard();
   renderPacksCard();
   renderSetupRow();
   const nudge = $('settings-stretch-nudge');
@@ -2249,6 +2253,146 @@ async function syncHouseholdCard() {
       return row;
     }));
   } catch (e) { console.warn(e); list.replaceChildren(h('li', { class: 'muted', text: 'Could not load the members.' })); }
+}
+/* Your records (v295, ROADMAP action 8): Download all the records (any member who can read them all: family and read only), and
+   Delete. The patient, or whoever set the circle up, can delete the whole circle; anyone else can leave and delete their own
+   sign-in, their entries staying in the patient's records. Both ask for DELETE to be typed. Not in the preview or the demos. */
+async function syncRecordsCard() {
+  const card = $('settings-records');
+  if (!card) return;
+  const show = !!state.household && !state.demo && !state.demoLive && !state.viewer;
+  card.hidden = !show;
+  if (!show) return;
+  const del = $('settings-delete');
+  del.replaceChildren();
+  if (!BRIDGE) return;
+  let owner = '';
+  try { const house = await getDoc(doc(db, 'households', state.household)); owner = house.exists() ? house.data().owner : ''; } catch (e) { /* the leave button needs no owner */ }
+  const whole = runsCircle(owner) && !state.readOnly;
+  if (!state.patientName) {
+    try { const pt = (await getDocs(hcol('members'))).docs.map((d) => d.data()).find((m) => m.relation === 'patient'); if (pt && pt.name) state.patientName = pt.name; } catch (e) { /* "the patient" will do */ }
+  }
+  const name = state.patientName || '';
+  del.replaceChildren(
+    h('h3', { class: 'records-danger-h', text: whole ? 'Delete this care circle' : 'Leave and delete my sign-in' }),
+    h('p', { class: 'hint', text: whole
+      ? 'Erases every record in this circle, for good, and deletes your sign-in. Anyone else in the circle is taken out but keeps their own sign-in. Download the records first if you want a copy.'
+      : 'Deletes your own sign-in and takes you out of ' + (name ? name + "'s circle" : 'this circle') + '. What you logged stays in ' + (name ? name + "'s" : "the patient's") + ' records, because they are theirs.' }),
+    h('button', { class: 'btn btn-danger btn-block', type: 'button', id: 'settings-delete-open', onclick: () => openDeleteSheet(whole) }, whole ? 'Delete this care circle' : 'Leave and delete my sign-in'));
+}
+$('settings-export').addEventListener('click', () => exportRecords());
+/* Everything the circle can read, gathered into one zip: the records as JSON (dates as ISO text), the entries also as a
+   spreadsheet, each letter's pages as pictures with its explanation, each recording as its sound file, and a README. JSZip
+   comes from cdnjs on first use. The file is offered with a second tap, since a phone only shares straight after a tap. */
+async function exportRecords() {
+  const btn = $('settings-export'), said = $('settings-export-said'), saveBox = $('settings-export-save');
+  btn.disabled = true; saveBox.replaceChildren(); said.textContent = 'Gathering the records. This can take a minute with a lot of letters or recordings.';
+  try {
+    await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js');
+    const zip = new window.JSZip();
+    const plain = (v) => v == null ? v : typeof v.toDate === 'function' ? v.toDate().toISOString() : Array.isArray(v) ? v.map(plain)
+      : typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, plain(x)])) : v;
+    const read = async (...path) => (await getDocs(hcol(...path))).docs.map((d) => ({ id: d.id, ...plain(d.data()) }));
+    const safe = (t) => String(t || '').replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60) || 'untitled';
+    const counts = {};
+    for (const c of ['entries', 'medicines', 'profile', 'days', 'exercise', 'meals', 'nutrition']) {
+      const rows = await read(c); counts[c] = rows.length;
+      zip.file('records/' + c + '.json', JSON.stringify(rows, null, 2));
+      if (c === 'entries') {
+        const cols = ['day', 'time', 'type', 'addedBy', 'medName', 'dose', 'value', 'systolic', 'diastolic', 'heartRate', 'oxygen', 'what', 'slot', 'note'];
+        const cell = (x) => { const t = x == null ? '' : typeof x === 'object' ? JSON.stringify(x) : String(x); return /[",\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
+        const time = (e) => (typeof e.at === 'string' ? new Date(e.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/London' }) : '');
+        const lines = rows.slice().sort((x, y) => String(x.day).localeCompare(String(y.day)) || String(x.at).localeCompare(String(y.at)))
+          .map((e) => cols.map((k) => cell(k === 'time' ? time(e) : e[k])).join(','));
+        zip.file('entries.csv', [cols.join(',')].concat(lines).join('\n'));
+      }
+    }
+    said.textContent = 'Adding the letters and recordings.';
+    const docs = await read('documents'); counts.documents = docs.length;
+    for (const d of docs) {
+      const folder = 'letters/' + safe((d.docDate || '') + ' ' + (d.title || d.id)) + '/';
+      const pages = (await read('documents', d.id, 'pages')).sort((x, y) => (x.n || 0) - (y.n || 0));
+      pages.forEach((p, i) => { if (p.data) zip.file(folder + 'page ' + (i + 1) + '.jpg', p.data, { base64: true }); });
+      if (d.text) zip.file(folder + 'text.txt', d.text);
+      if (d.explanation) zip.file(folder + 'explanation.txt', d.explanation);
+    }
+    zip.file('records/documents.json', JSON.stringify(docs, null, 2));
+    const recs = await read('recordings'); counts.recordings = recs.length;
+    for (const r of recs) {
+      const parts = (await read('recordings', r.id, 'parts')).sort((x, y) => (x.n || 0) - (y.n || 0));
+      if (parts.length) zip.file('recordings/' + safe((r.day || '') + ' ' + (r.questionText || r.kind || r.id)) + '.' + (r.ext || 'm4a'), parts.map((p) => p.data || '').join(''), { base64: true });
+    }
+    zip.file('records/recordings.json', JSON.stringify(recs, null, 2));
+    const today = todayStr();
+    zip.file('README.txt', ['My Medical Daybook: everything recorded in ' + (state.patientName ? state.patientName + "'s" : 'this') + ' care circle, downloaded on ' + today + '.', '',
+      'entries.csv opens in Excel or Numbers: one row for each reading, dose, meal, note, check-in and question.',
+      'records/ holds every record in full as JSON, the format other apps can read.',
+      'letters/ holds each letter or document: its pages as pictures, and any explanation.',
+      'recordings/ holds the answers and appointments recorded in Daybook.', '',
+      'Counts: ' + Object.entries(counts).map(([k, n]) => k + ' ' + n).join(', ') + '.', '',
+      'The records are yours. The app is copyright 2026 Mark 1 Apps Ltd.'].join('\n'));
+    said.textContent = 'Packing the file.';
+    const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+    const filename = 'Daybook records ' + today + '.zip';
+    const mb = blob.size / 1048576;
+    said.textContent = 'Ready: ' + counts.entries + ' entries, ' + counts.documents + ' letters, ' + counts.recordings + ' recordings, ' + (mb < 1 ? Math.max(1, Math.round(blob.size / 1024)) + ' KB' : mb.toFixed(1) + ' MB') + '.';
+    const save = h('button', { class: 'btn btn-primary btn-block', type: 'button', id: 'settings-export-go' }, 'Save the zip file');
+    save.addEventListener('click', async () => {
+      const file = new File([blob], filename, { type: 'application/zip' });
+      if (IS_IOS && navigator.canShare && navigator.canShare({ files: [file] })) {
+        try { await navigator.share({ files: [file], title: filename }); return; } catch (e) { if (e && e.name === 'AbortError') return; }
+      }
+      const url = URL.createObjectURL(blob);
+      const a = h('a', { href: url, download: filename });
+      document.body.append(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+      toast('Saved to Downloads as ' + filename);
+    });
+    saveBox.replaceChildren(save);
+    save.focus();
+  } catch (e) {
+    console.error(e);
+    said.textContent = /load|script/i.test(String(e && e.message)) ? 'Downloading the records needs a connection. Try again when you have signal.' : 'Could not gather the records (' + errText(e) + '). Try again in a minute.';
+  }
+  btn.disabled = false;
+}
+/* The delete sheet: what goes, a nudge to download first, a box that must say DELETE, then the bridge in rounds until done */
+function openDeleteSheet(whole) {
+  const box = h('input', { type: 'text', autocomplete: 'off', autocapitalize: 'characters', spellcheck: 'false', id: 'delete-word' });
+  const go = h('button', { class: 'btn btn-danger btn-block', type: 'button', id: 'delete-go', disabled: true }, whole ? 'Delete the circle for good' : 'Delete my sign-in for good');
+  const said = h('p', { class: 'hint', role: 'status' });
+  box.addEventListener('input', () => { go.disabled = box.value.trim().toUpperCase() !== 'DELETE'; });
+  go.addEventListener('click', async () => {
+    go.disabled = true; box.disabled = true;
+    const uid = state.user && state.user.uid;
+    try {
+      if (whole) {
+        let total = 0;
+        for (let i = 0; i < 200; i++) {
+          said.textContent = 'Deleting' + (total ? ', ' + total.toLocaleString('en-GB') + ' records so far' : '') + '. Keep this screen open.';
+          const r = await bridgeCall('/circle-delete', { confirm: 'DELETE' }, 'Could not delete just now. Try again.');
+          total += r.deleted || 0;
+          if (r.done) break;
+        }
+      } else {
+        said.textContent = 'Deleting your sign-in.';
+        await bridgeCall('/account-delete', { confirm: 'DELETE' }, 'Could not delete just now. Try again in a minute.');
+      }
+    } catch (e) { said.textContent = e.message; go.disabled = false; box.disabled = false; return; }
+    try { if (uid) localStorage.removeItem('daybook.account.' + uid); } catch (e) { /* nothing kept */ }
+    closeSheet({ force: true });
+    try { await signOut(auth); } catch (e) { /* the sign-in is already gone */ }
+    toast(whole ? 'The care circle and your sign-in have been deleted.' : 'Your sign-in has been deleted.', { label: 'OK', onClick() {} });
+  });
+  const body = h('div', { class: 'deletesheet' },
+    h('p', { text: whole
+      ? 'This erases every entry, medicine, check-in, letter and recording in the circle, and your sign-in. It cannot be undone, by you or by Mark 1 Apps Ltd. Anyone else in the circle is taken out but keeps their sign-in.'
+      : "This deletes your sign-in and takes you out of the circle. It cannot be undone. What you logged stays in the patient's records." }),
+    whole ? h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => { closeSheet({ force: true }); exportRecords(); } }, 'Download the records first') : null,
+    field('Type DELETE to confirm', box),
+    go, said,
+    h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => closeSheet({ force: true }) }, 'Cancel'));
+  openSheet(whole ? 'Delete this care circle' : 'Leave and delete my sign-in', body);
 }
 /* Invite someone: name, access, who they are; the bridge makes a one-use link to share */
 function openInviteSheet() {
