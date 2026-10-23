@@ -2038,3 +2038,10 @@ body[data-page="docs"] :is(.card, .checkin-row):not(.is-due) { background: color
 /* v279: "My watch didn't record the whole night" on a tracker night */
 .night-block .night-short { min-height: 44px; white-space: normal; text-align: left; }
 .night-block .night-times { margin-top: var(--s-3); }
+
+/* v280: a time box left half filled in */
+.field.is-missing { background: var(--warn-bg); border: 2px solid var(--warn-border); border-radius: var(--r-sm); padding: var(--s-2); }
+.field.is-missing > span:first-child { color: var(--warn-ink); }
+.field.is-missing input { border-color: var(--warn-border); }
+.field .missing-note { display: block; color: var(--warn-ink); font-weight: 700; margin-top: var(--s-1); }
+.hint-warn[role="alert"] { color: var(--warn-ink); background: var(--warn-bg); border: 2px solid var(--warn-border); border-radius: var(--r-sm); padding: var(--s-2) var(--s-3); }
