@@ -5,7 +5,7 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import {
   getAuth, setPersistence, browserLocalPersistence, inMemoryPersistence, signInWithEmailAndPassword,
-  onAuthStateChanged, signOut, createUserWithEmailAndPassword, sendPasswordResetEmail, sendEmailVerification
+  onAuthStateChanged, signOut, createUserWithEmailAndPassword, sendPasswordResetEmail, sendEmailVerification, applyActionCode
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager, memoryLocalCache,
@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '293';
+const APP_VERSION = '294';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -1046,6 +1046,22 @@ document.addEventListener('click', (ev) => {
     if (info.valid) banner.textContent = 'Your Beta code' + (info.label ? ' from ' + info.label : '') + forWords + ' is filled in. Tap Create an account to start.';
     else { banner.textContent = info.message || 'That Beta code is not right.'; state.pendingBeta = null; state.pendingPacks = null; }
   } catch (e) { /* the banner already says enough */ }
+})();
+/* ?verify=CODE (v294): the link in Daybook's confirm email. Confirms the address with Firebase whether or not anyone is signed in
+   on this browser, then refreshes the sign-in if there is one, so Send to the team works straight away. */
+(async function readVerifyLink() {
+  const code = new URLSearchParams(location.search).get('verify');
+  if (!code) return;
+  const q = new URLSearchParams(location.search); q.delete('verify');
+  history.replaceState(null, '', location.pathname + (q.toString() ? '?' + q : '') + location.hash);
+  try {
+    await applyActionCode(mainAuth, code);
+    try { if (mainAuth.currentUser) { await mainAuth.currentUser.reload(); await mainAuth.currentUser.getIdToken(true); } } catch (e) { /* the send button reloads it again */ }
+    toast('Email confirmed, thank you. You can send reports to your team now.', { label: 'OK', onClick() {} });
+  } catch (e) {
+    const used = e && /expired|invalid-action-code/.test(e.code || '');
+    toast(used ? 'That confirm link has expired or was already used. If reports still will not send, ask for a new link from Send to the team.' : 'Could not confirm the email just now (' + errText(e) + '). Try the link again in a minute.', { label: 'OK', onClick() {} });
+  }
 })();
 (async function readInviteLink() {
   const code = new URLSearchParams(location.search).get('invite');
@@ -6592,7 +6608,17 @@ function openSendSheet(kind) {
       const done = h('button', { class: 'btn btn-primary btn-block', type: 'button', id: 'send-verify-done' }, "I've confirmed it, send now");
       mail.addEventListener('click', async () => {
         mail.disabled = true;
-        try { await sendEmailVerification(user, { url: location.origin + location.pathname }); said.textContent = 'Sent to ' + user.email + '. It often lands in junk or spam, so look there too: it comes from noreply@care-log-3d05a.firebaseapp.com, "Verify your email". Tap the link in it, then come back here and tap the button below.'; said.classList.add('hint-warn'); }
+        /* v294: Daybook's own branded email through the bridge, from reporting@mymedicaldaybook.co.uk; Firebase's plain one only
+           when the bridge cannot send email at all */
+        try {
+          let viaDaybook = true;
+          try { const r = await bridgeCall('/verify-email', {}, 'Could not send the link just now.'); if (r.already) { said.textContent = 'Already confirmed. Tap the button below.'; mail.disabled = false; return; } }
+          catch (e) { if (e.code !== 'not-set-up') throw e; viaDaybook = false; await sendEmailVerification(user, { url: location.origin + location.pathname }); }
+          said.textContent = 'Sent to ' + user.email + '. It can land in junk or spam, so look there too: it comes from ' +
+            (viaDaybook ? 'My Medical Daybook, "Confirm your email for My Medical Daybook"' : 'noreply@care-log-3d05a.firebaseapp.com, "Verify your email"') +
+            '. Tap the button in it, then come back here and tap the button below.';
+          said.classList.add('hint-warn');
+        }
         catch (e) { said.textContent = 'Could not send the link just now (' + errText(e) + '). Try again in a minute.'; }
         mail.disabled = false; mail.textContent = 'Send the link again';
       });
