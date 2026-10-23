@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '289';
+const APP_VERSION = '290';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -6814,9 +6814,16 @@ function twoPageCharts(entries, days) {
   /* The colour follows the average the pill leads with (v272, Mark: red at an average of 3 read as wrong), on the
      NHS bands: 4 to 6 amber, 7 or more red; the shading behind the line shows the same two bands */
   const pShown = pAvg == null ? pWorst : pAvg;
+  /* The fuller chart (v290, Mark approved the picture): each check-in's own score, the worst of the day, and the Pain
+     tile's highest reading between the check-ins as rings, so mornings, evenings and the bad moments can be told apart */
+  const slotPain = (slot) => days.map((d) => maxOf(ci.filter((e) => e.day === d && e.slot === slot && e.pain != null), (e) => Number(e.pain)));
+  const worstDay = days.map((d) => maxOf(ci.filter((e) => e.day === d && e.worstPain != null), (e) => Number(e.worstPain)));
+  const betweenDay = days.map((d) => maxOf(entries.filter((e) => e.type === 'pain' && e.day === d && e.value != null), (e) => Number(e.value)));
   charts.push({ key: 'pain', title: 'Pain (0 to 10)', stat: pWorst == null ? 'No scores' : `Average ${(Math.round(pAvg * 10) / 10).toString()}, worst ${pWorst}`, tone: pWorst == null ? '' : toneOf(pShown >= 7, pShown >= 4),
-    min: 0, max: 10, ticks: [0, 5, 10], bands: [{ from: 4, to: 7, c: amber }, { from: 7, to: 10, c: red }], series: [{ d: painDay, c: ink }],
-    legend: [{ c: ink, t: "The day's check-in average", line: true }, { c: 'amber', t: 'Moderate, 4 to 6' }, { c: 'red', t: 'Severe, 7 to 10' }] });
+    min: 0, max: 10, ticks: [0, 5, 10], bands: [{ from: 4, to: 7, c: amber }, { from: 7, to: 10, c: red }],
+    series: [{ d: worstDay, c: REPORT_WARM, dash: true }, { d: slotPain('morning'), c: teal }, { d: slotPain('evening'), c: ink }, { d: betweenDay, c: red, hollow: true }],
+    legend: [{ c: teal, t: 'Morning check-in', line: true }, { c: ink, t: 'Evening check-in', line: true }, { c: REPORT_WARM, t: 'Worst of the day', line: true },
+      { c: red, t: 'Between check-ins', ring: true }, { c: 'amber', t: 'Moderate, 4 to 6' }, { c: 'red', t: 'Severe, 7 to 10' }] });
 
   const moodDay = days.map((d) => avgOf(ci.filter((e) => e.day === d && e.mood != null), (e) => Number(e.mood)));
   const lowMood = days.filter((d) => state.days[d] && state.days[d].mood && state.days[d].mood <= 2);

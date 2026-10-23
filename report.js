@@ -317,10 +317,10 @@ export function reportHtml(R) {
   const olderLine = R.older ? `<p class="more">${esc(R.older === 1 ? '1 older question is' : R.older + ' older questions are')} still open in the app, asked before ${esc(R.olderFrom || 'this period')}.</p>` : '';
   const noneLine = R.questions.length ? '' : '<p class="none" data-sec="No questions">No new questions this time.</p>';
   /* Every chart carries its own key under it, inside its card (v287 for the bowels, v289 for all, Mark: "the key to the
-     chart should sit underneath the chart and be inside the same rectangle"). c.legend: [{ c: colour, t: words, dot?, line? }] */
+     chart should sit underneath the chart and be inside the same rectangle"). c.legend: [{ c: colour, t: words, dot?, ring?, line? }] */
   const AMB = 'rgba(224,160,48,.45)', RD = 'rgba(200,69,59,.45)';
   const sw = (it) => it.c === 'amber' ? AMB : it.c === 'red' ? RD : it.c;
-  const legend = (c) => (c.legend && c.legend.length ? `<div class="blegend">${c.legend.map((it) => `<span><i style="background:${sw(it)}${it.dot ? ';width:1.6mm;height:1.6mm;border-radius:50%' : it.line ? ';height:.7mm' : ''}"></i>${esc(it.t)}</span>`).join('')}</div>` : '');
+  const legend = (c) => (c.legend && c.legend.length ? `<div class="blegend">${c.legend.map((it) => `<span><i style="background:${it.ring ? '#fff' : sw(it)}${it.ring ? ';width:1.8mm;height:1.8mm;border-radius:50%;box-sizing:border-box;border:.25mm solid ' + sw(it) : it.dot ? ';width:1.6mm;height:1.6mm;border-radius:50%' : it.line ? ';height:.7mm' : ''}"></i>${esc(it.t)}</span>`).join('')}</div>` : '');
   const charts = R.charts.map((c) => `<div class="c" data-sec="${esc(c.title)}"><div class="h"><h3>${esc(c.title)}</h3><span class="stat ${esc(c.tone || '')}">${esc(c.stat)}</span></div>${renderChart(c, R.days)}${legend(c)}</div>`).join('');
   const key = '';
   const weeks = R.weeks.length ? R.weeks.map((w) => weekHtml(w, R.weeks.length === 1)).join('')
