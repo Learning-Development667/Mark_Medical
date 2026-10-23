@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '281';
+const APP_VERSION = '282';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -2896,6 +2896,32 @@ function renderTiles() {
   tileM.classList.toggle('is-green', need > 0 && done >= need);
   $('tile-meds-sub').textContent = need > 0 && done >= need ? 'all done' : 'doses taken';
 }
+
+/* The three tiles on Today open the day's list of that kind (v282, Mark: "click on the tile and see a list of the drinks taken,
+   the doses taken and the temps taken", so nobody has to scroll the whole timeline). The rows are the timeline's own, with
+   their "..." menu, newest first; the foot logs another. */
+const TILE_LISTS = {
+  temp: { title: 'Temperatures', type: 'temp', none: 'No temperature logged', add: 'Log vitals', open: () => openAdd('vitals') },
+  drink: { title: 'Drinks', type: 'drink', none: 'No drinks logged', add: 'Log a drink', open: () => openAdd('drink') },
+  meds: { title: 'Doses taken', type: 'med', none: 'No doses logged', add: 'Log a dose', open: () => openDoseSheet() }
+};
+function openTileList(kind) {
+  const k = TILE_LISTS[kind];
+  const day = state.selectedDay;
+  const when = day === todayStr() ? 'today' : 'on ' + fmtDayShort(day);
+  const list = state.dayEntries.filter((e) => e.type === k.type);
+  let sum = '';
+  if (kind === 'drink') { const ml = list.reduce((t, e) => t + (Number(e.value) || 0), 0); sum = `${plural(list.length, 'drink')}, ${ml >= 1000 ? (ml / 1000).toFixed(2).replace(/0+$/, '').replace(/\.$/, '') + ' L' : ml + ' ml'} in all, ${when}.`; }
+  else if (kind === 'temp') sum = `${plural(list.length, 'reading')} ${when}.`;
+  else { const sched = activeScheduled(day).filter((m) => !m.hospital); const need = sched.reduce((t, m) => t + (m.perDay || 1), 0); const done = sched.reduce((t, m) => t + Math.min(m.perDay || 1, countMedOnDay(m.id, day)), 0); sum = `${plural(list.length, 'dose')} logged ${when}` + (need ? `, ${done} of the ${need} scheduled.` : '.'); }
+  const body = h('div', { class: 'tile-list' },
+    h('p', { class: 'hint', text: list.length ? sum : k.none + ' ' + when + '.' }),
+    list.length ? h('ul', { class: 'timeline' }, ...list.map((e) => renderEntry(e))) : '',
+    state.readOnly || state.viewer ? '' : h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => { closeSheet({ force: true }); k.open(); } }, k.add),
+    h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => closeSheet({ force: true }) }, 'Close'));
+  openSheet(k.title + ' ' + when, body);
+}
+[['tile-temp', 'temp'], ['tile-drink', 'drink'], ['tile-meds', 'meds']].forEach(([id, kind]) => { const b = $(id); if (b) b.addEventListener('click', () => openTileList(kind)); });
 
 /* Quick add */
 document.querySelectorAll('.qa').forEach((b) => b.addEventListener('click', () => (b.dataset.add === 'medicine' ? openDoseSheet() : openAdd(b.dataset.add))));

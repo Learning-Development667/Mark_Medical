@@ -2049,3 +2049,9 @@ body[data-page="docs"] :is(.card, .checkin-row):not(.is-due) { background: color
 /* v281: the same red on a group of chips or rows, a stepper or a tick box that stops a save */
 .is-missing:not(.field) { outline: 2px solid var(--warn-border); outline-offset: 3px; border-radius: var(--r-sm); background: var(--warn-bg); }
 .missing-note { display: block; color: var(--warn-ink); font-weight: 700; margin-top: var(--s-1); }
+
+/* v282: the three tiles on Today open their list */
+button.tile.tile-tap { font: inherit; color: inherit; text-align: left; border: 0; cursor: pointer; position: relative; width: 100%; -webkit-appearance: none; appearance: none; }
+button.tile.tile-tap::after { content: '\203A'; position: absolute; top: 6px; right: 8px; font-size: 18px; line-height: 1; color: var(--text-muted); }
+button.tile.tile-tap:active { transform: translateY(1px); }
+.tile-list .timeline { margin: var(--s-2) 0 var(--s-4); }
