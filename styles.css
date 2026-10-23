@@ -2034,3 +2034,7 @@ body[data-page="docs"] :is(.card, .checkin-row):not(.is-due) { background: color
 .sleep-tracker { margin: var(--s-4) 0; border-radius: var(--r-md); background: var(--surface-sunken); padding: var(--s-3) var(--s-4); }
 .sleep-tracker > summary { cursor: pointer; font-weight: 600; color: var(--teal); min-height: 44px; display: flex; align-items: center; }
 .sleep-tracker[open] > summary { margin-bottom: var(--s-2); }
+
+/* v279: "My watch didn't record the whole night" on a tracker night */
+.night-block .night-short { min-height: 44px; white-space: normal; text-align: left; }
+.night-block .night-times { margin-top: var(--s-3); }

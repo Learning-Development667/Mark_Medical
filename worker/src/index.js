@@ -176,6 +176,16 @@ async function handleHealth(request, env) {
         /* Deterministic id: a night can only ever be one document, so re-sends update rather than duplicate */
         const existing = await fs.get(hp(hid, 'entries/' + day + '_sleep'));
         if (!existing) fields.createdAt = nowTs();
+        /* The person said the watch did not record the whole night (a flat battery, taken off) and typed their own times
+           (v279): those stay as the night; a re-send only refreshes the watch's own figures, kept beside them as watch. */
+        const short = existing && existing.fields && existing.fields.watchShort && existing.fields.watchShort.booleanValue === true;
+        if (short) {
+          const keep = ['value', 'bedAt', 'wokeAt', 'awake', 'core', 'deep', 'rem'];
+          const w = Object.fromEntries(keep.filter((k) => fields[k]).map((k) => [k, fields[k]]));
+          await fs.merge(hp(hid, 'entries/' + day + '_sleep'), { watch: { mapValue: { fields: w } }, updatedAt: fields.updatedAt });
+          result.sleep++;
+          continue;
+        }
         await fs.merge(hp(hid, 'entries/' + day + '_sleep'), fields);
         result.sleep++;
       }
