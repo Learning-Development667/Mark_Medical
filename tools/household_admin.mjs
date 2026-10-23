@@ -13,7 +13,10 @@
    ACTION=list        every household with its members, and the Beta code and "who told you" it came in on.
    ACTION=beta-code   CODE (letters and digits, say WARD1), LABEL (where it goes: "Ward 1 patients"),
                       OFF=yes to switch an existing code off (a leaked one), otherwise made or switched on.
-   ACTION=beta-codes  every Beta code with its label, state and uses.
+   ACTION=beta-codes  every Beta code with its state and uses (masked).
+  ACTION=beta-rotate (v292) CODE "NEW1,NEW2" and LABEL "Label one,Label two": every other code is
+                     switched off and these are made or switched on. Prints counts only; delete the
+                     run's log afterwards, since the inputs show in it.
    ACTION=dose-use-check / dose-use  (v267) DOSE_USE "Diazepam | 21:00-01:00 | Sleep | Pain": what each logged dose was for, by its time.
    ACTION=unseed-check / unseed  (v248) until v248 every new circle was given the app's starter medicines list,
                       which was Mark's own from September 2026. These list (unseed-check) or delete (unseed) those
@@ -88,6 +91,24 @@ if (action === 'create') {
   if (old) await fs.merge('betaCodes/' + code, { active: { booleanValue: !off }, ...(label ? { label: str(label) } : {}) });
   else await fs.set('betaCodes/' + code, { label: str(label || code), active: { booleanValue: true }, uses: { integerValue: '0' }, createdAt: ts() });
   console.log(`Beta code ${hidden(code)}: ${off ? 'switched off' : old ? 'on' : 'made'}. People type it when they create an account, or use the link https://app.mymedicaldaybook.co.uk/?beta= followed by the code.`);
+} else if (action === 'beta-rotate') {
+  const codes = env('CODE').split(',').map(c => c.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 24)).filter(Boolean);
+  const labels = env('LABEL').split(',').map(l => l.trim());
+  if (!codes.length || codes.some(c => c.length < 6)) { console.error('CODE must list one or more new codes of six or more letters or digits, separated by commas'); process.exit(1); }
+  let off = 0, made = 0, on = 0;
+  for (const c of await fs.list('betaCodes')) {
+    if (codes.includes(c.id)) continue;
+    if (c.fields.active && c.fields.active.booleanValue === false) continue;
+    await fs.merge('betaCodes/' + c.id, { active: { booleanValue: false } });
+    off++;
+  }
+  for (const [i, code] of codes.entries()) {
+    const label = labels[i] || 'Beta';
+    const old = await fs.get('betaCodes/' + code);
+    if (old) { await fs.merge('betaCodes/' + code, { active: { booleanValue: true }, label: str(label) }); on++; }
+    else { await fs.set('betaCodes/' + code, { label: str(label), active: { booleanValue: true }, uses: { integerValue: '0' }, createdAt: ts() }); made++; }
+  }
+  console.log(`Beta codes: ${off} switched off, ${made} made, ${on} switched back on. Delete this run's log now.`);
 } else if (action === 'beta-codes') {
   const codes = await fs.list('betaCodes');
   for (const c of codes) console.log(`${hidden(c.id)}  ${c.fields.active && c.fields.active.booleanValue === false ? 'off' : 'on'}  used ${(c.fields.uses && c.fields.uses.integerValue) || 0} times`);
@@ -183,6 +204,6 @@ if (action === 'create') {
   }
   if (!hs.length) console.log('No households yet.');
 } else {
-  console.error('ACTION must be create, add-member, remove-member, new-key, beta-code, beta-codes, unseed-check, unseed, food-check, dose-use-check, dose-use or list');
+  console.error('ACTION must be create, add-member, remove-member, new-key, beta-code, beta-codes, beta-rotate, unseed-check, unseed, food-check, dose-use-check, dose-use or list');
   process.exit(1);
 }

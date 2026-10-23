@@ -965,6 +965,8 @@ async function handleSendReport(request, env) {
   if (!me.hid || !me.role) return json({ error: 'unauthorised', message: 'This sign-in is not in a Daybook household.' }, 403);
   if (me.role !== 'family') return json({ error: 'unauthorised', message: 'Only a family member can send a report.' }, 403);
   if (!who.email || !EMAIL_RE.test(who.email)) return json({ error: 'no-email', message: 'This sign-in has no email address for replies to go to.' }, 400);
+  // v292: a report goes out in this person's name with their address for replies, so the address must be proved theirs once.
+  if (!who.emailVerified) return json({ error: 'unverified', message: 'Confirm your email address first: Daybook sends a link once, then reports can be sent.' }, 403);
   /* v246: the free plan allows about 10 ms of CPU a request, and parsing, checking and re-stringifying a report of several pages as
      JSON took 20 to 50 ms, so Cloudflare stopped the request and the phone saw "No connection". The app now sends one line of JSON
      (everything but the PDF), a newline, then the PDF's base64 as plain text. The PDF stays bytes in a Blob from the request to
@@ -1443,7 +1445,7 @@ async function verifyFirebaseToken(token, projects, fetchFn) {
   const key = await crypto.subtle.importKey('jwk', jwk, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify']);
   const ok = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, b64urlDecode(parts[2]), new TextEncoder().encode(parts[0] + '.' + parts[1]));
   if (!ok) throw new Error('signature');
-  return { uid: claims.sub, project: claims.aud, email: typeof claims.email === 'string' ? claims.email.trim().toLowerCase() : '' };
+  return { uid: claims.sub, project: claims.aud, email: typeof claims.email === 'string' ? claims.email.trim().toLowerCase() : '', emailVerified: claims.email_verified === true };
 }
 async function googleKey(kid, fetchFn) {
   const now = Date.now();

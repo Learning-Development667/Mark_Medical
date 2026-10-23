@@ -5,7 +5,7 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import {
   getAuth, setPersistence, browserLocalPersistence, inMemoryPersistence, signInWithEmailAndPassword,
-  onAuthStateChanged, signOut, createUserWithEmailAndPassword, sendPasswordResetEmail
+  onAuthStateChanged, signOut, createUserWithEmailAndPassword, sendPasswordResetEmail, sendEmailVerification
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager, memoryLocalCache,
@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '291';
+const APP_VERSION = '292';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -6581,7 +6581,43 @@ function openSendSheet(kind) {
     const direct = explainAvailable() && !state.demoLive && !state.readOnly;
     const myEmail = (auth && auth.currentUser && auth.currentUser.email) || '';
     const send = h('button', { class: 'btn btn-primary btn-block', type: 'button', id: 'send-go' }, direct ? 'Send to ' + String(c.label).split(/\s+/)[0] : 'Open in my Mail app');
+    /* v292 (security review): a report goes out in this person's name, so the bridge sends only from a sign-in whose
+       email address has been confirmed. Asked once per sign-in, in the sheet, with why (Mark: "they will need to be told
+       why ... and it only needs to be done once"). */
+    const verifyBox = h('div', { class: 'verifybox', id: 'send-verify', role: 'group', 'aria-labelledby': 'send-verify-h', hidden: true });
+    const showVerify = () => {
+      const user = auth && auth.currentUser;
+      const said = h('p', { class: 'hint', role: 'status' });
+      const mail = h('button', { class: 'btn btn-secondary btn-block', type: 'button', id: 'send-verify-mail' }, 'Email me the link');
+      const done = h('button', { class: 'btn btn-primary btn-block', type: 'button', id: 'send-verify-done' }, "I've confirmed it, send now");
+      mail.addEventListener('click', async () => {
+        mail.disabled = true;
+        try { await sendEmailVerification(user, { url: location.origin + location.pathname }); said.textContent = 'Sent to ' + user.email + '. Open that email, tap the link, then come back here and tap the button below. Check junk mail if it is not there in a minute.'; }
+        catch (e) { said.textContent = 'Could not send the link just now (' + errText(e) + '). Try again in a minute.'; }
+        mail.disabled = false; mail.textContent = 'Send the link again';
+      });
+      done.addEventListener('click', async () => {
+        done.disabled = true;
+        try { await user.reload(); } catch (e) { /* offline: the check below says so */ }
+        done.disabled = false;
+        if (!user.emailVerified) { said.textContent = 'Not confirmed yet. Tap the link in the email first, then this button.'; return; }
+        try { await user.getIdToken(true); } catch (e) { /* sendDirect reports any problem */ }
+        verifyBox.hidden = true; send.hidden = false;
+        sendDirect();
+      });
+      verifyBox.replaceChildren(
+        h('h3', { id: 'send-verify-h', text: 'Confirm your email address, once' }),
+        h('p', { text: 'Daybook sends this report in your name, and replies come back to ' + (user && user.email ? user.email : 'your email address') + '. To make sure nobody can send reports pretending to be you, confirm that address is yours. You only do this once; after that, reports send straight away.' }),
+        mail, said, done);
+      verifyBox.hidden = false; send.hidden = true;
+      mail.focus();
+    };
     const sendDirect = async () => {
+      const user = auth && auth.currentUser;
+      if (user && !user.emailVerified) {
+        try { await user.reload(); if (user.emailVerified) await user.getIdToken(true); } catch (e) { /* offline: the bridge call says so */ }
+        if (!user.emailVerified) { showVerify(); return; }
+      }
       if (!blob) { toast(blobError ? pdfErrorText(blobError) : 'Still making the PDF. Try again in a moment.'); return; }
       const subj = subject.value.trim() || emailSubject(K, range);
       send.disabled = true; send.textContent = 'Sending';
@@ -6596,6 +6632,7 @@ function openSendSheet(kind) {
         toast('Sent to ' + c.label + '. A copy is in your own inbox.');
       } catch (e) {
         send.disabled = false; send.textContent = 'Send to ' + String(c.label).split(/\s+/)[0];
+        if (e && e.code === 'unverified') { showVerify(); return; }
         toast(e && e.message ? e.message : 'Could not send. Use Send from my own Mail app.');
       }
     };
@@ -6633,6 +6670,7 @@ function openSendSheet(kind) {
       direct
         ? h('p', { class: 'hint', id: 'send-direct-hint', text: 'Daybook sends it for you, from reporting@mymedicaldaybook.co.uk in your name, with the PDF attached. Your own address' + (myEmail ? ', ' + myEmail + ',' : '') + ' is the reply address and gets a copy, so a reply comes straight to you.' })
         : h('p', { class: 'hint', text: 'Your Mail app opens with the PDF and this message. The address is copied: paste it into To.' }),
+      verifyBox,
       send,
       /* spread, never a bare null: replaceChildren() writes a null as the word "null" (v230) */
       ...(direct ? [h('button', { class: 'btn btn-link btn-block', type: 'button', id: 'send-other', onclick: share }, 'Send from my own Mail app instead')] : []),
