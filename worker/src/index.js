@@ -80,7 +80,8 @@ export default {
       return withCors(request, json({ error: 'Not found' }, 404));
     } catch (e) {
       console.error('bridge', e && e.message);
-      return withCors(request, json({ error: String(e && e.message || e), message: 'Daybook\'s bridge hit a problem: ' + String(e && e.message || e).slice(0, 160) }, 500));
+      /* (v291) the detail stays in the log: it can name household ids and Google's own error text */
+      return withCors(request, json({ error: 'server', message: 'Daybook\'s bridge hit a problem. Try again in a minute.' }, 500));
     }
   },
   /* Cron (wrangler.toml, every five minutes): medicine reminders as push notifications */
@@ -942,6 +943,15 @@ function reportEmailHtml(text) {
   const paras = String(text || '').split(/\n{2,}/).map((p) => p.trim()).filter(Boolean).map((p) => '<p style="margin:0 0 14px">' + esc(p).replace(/\n/g, '<br>') + '</p>');
   return '<!doctype html><html lang="en-GB"><head><meta charset="utf-8"></head><body style="margin:0;padding:16px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.5;color:#17263A">' + paras.join('') + '</body></html>';
 }
+/* (v291, the security review) a uid from a request is only ever a Firebase uid: letters and digits. Without this, a crafted
+   "../private/health" reached other documents through the REST path. */
+const UID_RE = /^[A-Za-z0-9]{1,128}$/;
+/* the email addresses saved under Who to contact in the circle (profile/main.calls): the only addresses a report goes to */
+async function circleContacts(fs, hid) {
+  const prof = await fs.get(hp(hid, 'profile/main'));
+  const calls = prof && prof.fields && prof.fields.calls && prof.fields.calls.arrayValue ? prof.fields.calls.arrayValue.values || [] : [];
+  return calls.map((c) => (c.mapValue && c.mapValue.fields && c.mapValue.fields.email && c.mapValue.fields.email.stringValue || '').trim().toLowerCase()).filter(Boolean);
+}
 const SEND_FROM = 'reporting@mymedicaldaybook.co.uk';
 const SEND_A_DAY = 20;
 const SEND_PDF_CHARS = 8000000; // about 6 MB of PDF; the reports are about 1 MB
@@ -977,17 +987,22 @@ async function handleSendReport(request, env) {
   if (!body) return json({ error: 'bad-request', message: 'Could not read what was sent.' }, 400);
   const to = clean(body.to, 120).toLowerCase();
   if (!EMAIL_RE.test(to)) return json({ error: 'bad-request', message: 'Check the email address of the contact.' }, 400);
+  /* (v291) only to someone saved under Who to contact, so the reporting address cannot be used to email strangers */
+  if (!(await circleContacts(fs, me.hid)).includes(to)) return json({ error: 'not-a-contact', message: 'Reports can only be sent to someone saved under Who to contact. Add them there first.' }, 400);
   /* base64 checked at both ends and by its length, not character by character (that alone cost several ms at this size) */
   const B64 = /^[A-Za-z0-9+/=]*$/;
   const pdfLen = pdf == null ? 0 : typeof pdf === 'string' ? pdf.length : pdf.size;
   const ends = pdf == null ? ['', ''] : typeof pdf === 'string' ? [pdf.slice(0, 4096), pdf.slice(-4096)] : [await pdf.slice(0, 4096).text(), await pdf.slice(Math.max(0, pdf.size - 4096)).text()];
-  if (!pdfLen || pdfLen % 4 !== 0 || !B64.test(ends[0]) || !B64.test(ends[1])) return json({ error: 'bad-request', message: 'The PDF did not arrive. Try again.' }, 400);
+  if (!pdfLen || pdfLen % 4 !== 0 || !B64.test(ends[0]) || !B64.test(ends[1]) || !ends[0].startsWith('JVBERi0')) return json({ error: 'bad-request', message: 'The PDF did not arrive. Try again.' }, 400);
   if (pdfLen > SEND_PDF_CHARS) return json({ error: 'too-large', message: 'That PDF is too large to email. Use a shorter range.' }, 413);
   const toName = clean(body.toName, 80);
   const subject = clean(body.subject, 150) || 'Notes from My Medical Daybook';
   const text = String(body.text || '').replace(/\r/g, '').trim().slice(0, 6000);
-  const filename = clean(body.filename, 90).replace(/[^\w .()-]/g, '') || 'Daybook report.pdf';
-  const fromName = clean(body.fromName, 60) || me.name || 'A Daybook member';
+  /* (v291) always a PDF (its base64 starts with %PDF- above), always named .pdf, and the sender's name must be the member's own */
+  const filename = (clean(body.filename, 90).replace(/[^\w .()-]/g, '').replace(/\.[A-Za-z0-9]{1,5}$/, '') || 'Daybook report') + '.pdf';
+  const asked = clean(body.fromName, 60);
+  const own = String(me.name || '').toLowerCase();
+  const fromName = (own && /^[\p{L} .'-]{1,40}$/u.test(asked) && (asked.toLowerCase() === own || asked.toLowerCase().startsWith(own + ' ')) ? asked : me.name) || 'A Daybook member';
   const kind = clean(body.kind, 12);
   const day = londonNow().day;
   const logDoc = await fs.get(hp(me.hid, 'bridge/sendLog'));
@@ -1090,6 +1105,7 @@ async function handleInviteInfo(url, env) {
   return json({ valid: true, householdName: inv.householdName, patientName: inv.householdName, name: f(inv.fields, 'name'), role: f(inv.fields, 'role'), relation: f(inv.fields, 'relation') || '', from: f(inv.fields, 'createdByName'), fromRelation: f(inv.fields, 'createdByRelation') || '' });
 }
 async function loadInvite(fs, code) {
+  if (!/^[A-Za-z0-9_-]{8,64}$/.test(String(code || ''))) return { ok: false, message: 'That invite link is not right.' };
   const idx = await fs.get('inviteCodes/' + code);
   const hid = idx && f(idx.fields, 'household');
   if (!hid) return { ok: false, message: 'That invite link has been used or is not right.' };
@@ -1253,6 +1269,7 @@ async function handleOwnerTransfer(request, env) {
   if (!me.hid) return json({ error: 'unauthorised', message: 'This sign-in is not in a care circle.' }, 403);
   const body = await readJson(request); if (!body) return json({ error: 'bad-request', message: 'Could not read what was sent.' }, 400);
   const uid = clean(body.uid, 60);
+  if (!UID_RE.test(uid)) return json({ error: 'bad-request', message: 'That person is not a family member of this circle.' }, 400);
   const circle = await circleOf(fs, me.hid);
   if (!circle.house) return json({ error: 'bad-request', message: 'The circle could not be read.' }, 400);
   const target = circle.members.find((m) => m.path.split('/').pop() === uid);
@@ -1276,6 +1293,7 @@ async function handleRemoveMember(request, env) {
   if (!circle.house || !runsCircle(circle, who.uid, me)) return json({ error: 'unauthorised', message: 'Only the patient, or whoever set the circle up, can remove someone.' }, 403);
   const body = await readJson(request); if (!body) return json({ error: 'bad-request', message: 'Could not read what was sent.' }, 400);
   const uid = clean(body.uid, 60);
+  if (!UID_RE.test(uid)) return json({ error: 'bad-request', message: 'That person is not in this circle.' }, 400);
   if (!uid || uid === who.uid) return json({ error: 'bad-request', message: 'You cannot remove yourself.' }, 400);
   if (uid === circle.owner) return json({ error: 'bad-request', message: 'Whoever set the circle up cannot be removed.' }, 400);
   if (uid === circle.patientUid && me.relation !== 'patient') return json({ error: 'bad-request', message: 'The patient cannot be removed from their own circle.' }, 400);
@@ -1429,12 +1447,14 @@ async function verifyFirebaseToken(token, projects, fetchFn) {
 }
 async function googleKey(kid, fetchFn) {
   const now = Date.now();
-  if (!googleKeys.keys || googleKeys.exp < now || !googleKeys.keys.find((k) => k.kid === kid)) {
+  /* (v291) an unknown key id refetches at most once a minute, so a stream of junk tokens cannot make a fetch each */
+  const known = googleKeys.keys && googleKeys.keys.find((k) => k.kid === kid);
+  if (!googleKeys.keys || googleKeys.exp < now || (!known && now - (googleKeys.fetched || 0) > 60000)) {
     const r = await fetchFn('https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com');
     if (!r.ok) throw new Error('keys ' + r.status);
     const data = await r.json();
     const m = /max-age=(\d+)/.exec(r.headers.get('Cache-Control') || '');
-    googleKeys = { keys: data.keys || [], exp: now + (m ? Number(m[1]) : 3600) * 1000 };
+    googleKeys = { keys: data.keys || [], exp: now + (m ? Number(m[1]) : 3600) * 1000, fetched: now };
   }
   return googleKeys.keys.find((k) => k.kid === kid) || null;
 }

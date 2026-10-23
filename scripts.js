@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '290';
+const APP_VERSION = '291';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -3891,7 +3891,7 @@ function openAdd(type, editEntry, preset) {
       h('span', { class: 'pickrow-main' }, h('span', { class: 'pickrow-title', text: title }), sub ? h('span', { class: 'pickrow-sub', text: sub }) : null),
       icon('chevron'));
     let pickedRawName = null; // a saved meal chosen under an old name with a number in it, renamed on save
-    /* Simpler saving (v259, after Helen's lunch went unsaved): the button says Next on the first step and Save on the
+    /* Simpler saving (v259, after a tester's lunch went unsaved): the button says Next on the first step and Save on the
        second, so a tap that only moves on never looks like a save; a food the table does not know is saved on the first
        tap, with a line saying tags need what is in it, never a second tap; and closing with a food not yet saved asks. */
     let saveBtn = null;
@@ -4066,7 +4066,7 @@ function openAdd(type, editEntry, preset) {
       if (amountBlock.hidden) amount.value = 'All of it';
       /* Every meal is remembered, with when it is usually eaten; a meal chosen under an old
          name with a number in it ("2 x kiwi") is renamed to the clean one. Remembered only once the
-         entry itself is written (v259: a meal was remembered for Helen while her lunch was not). */
+         entry itself is written (v259: a meal was remembered while its food was not). */
       const existing = findMeal(name) || (pickedRawName ? findMeal(pickedRawName) : null);
       if (!drinkWrap.hidden) {
         const raw = drinkMlIn.value.trim(), ml = parseInt(raw, 10);
@@ -8512,7 +8512,7 @@ const WB_ROWS = [['low', 'Feel low?', 'Felt low'], ['worried', 'Feel worried or 
 /* A one-tap scale question in the daily check-ins (v221): four wellbeing words unless the question brings its own */
 function scaleWords(q) { return Array.isArray(q.words) ? q.words : WB_WORDS; }
 function scaleText(q, v) { return v == null ? 'Skipped' : (scaleWords(q)[Number(v)] || String(v)); }
-/* Fasting (v258, Helen, a Crohn's Beta circle: being able to track fasting would be really useful). With Crohn's or colitis
+/* Fasting (v258, a Crohn's Beta tester: being able to track fasting would be really useful). With Crohn's or colitis
    the morning check-in asks "Fasting today?": one tap on No, a time-restricted pattern (hours without food : hours to eat),
    For faith (Ramadan and other fasts), or Other with the person's own words. Stored on the morning check-in as fast: 'no',
    '16:8' and the like, 'faith', the words typed for Other ('other' with none), null when skipped. A fact as logged: Daybook
@@ -11879,7 +11879,7 @@ function renderHospitalDoses() {
   if (section) section.hidden = !list.length && !state.viewer;
 }
 
-/* Remove a medicine from the list (v251, Mark: Helen put a medicine in the wrong section, added it again and could not
+/* Remove a medicine from the list (v251, Mark: a tester put a medicine in the wrong section, added it again and could not
    get rid of the first). One with no dose ever logged is deleted; one with doses is marked not in use, so its history,
    the Medicine history report and every report keep the doses, and it moves to Stopped (Undo puts it back). */
 async function removeMedicine(m, after) {
@@ -11978,7 +11978,7 @@ function openEditMed(m, prefill) {
   const how = h('input', { type: 'text', value: m.how || '' });
   const purpose = h('input', { type: 'text', value: m.purpose || '' });
   const alsoFor = h('input', { type: 'text', value: m.alsoFor || '', placeholder: 'e.g. pain' });
-  /* Regular or when needed, as two chips under the name (v251): a select at the foot of the sheet was missed (Helen) */
+  /* Regular or when needed, as two chips under the name (v251): a select at the foot of the sheet was missed by a tester */
   const kind = h('input', { type: 'hidden', value: m.kind === 'prn' ? 'prn' : 'scheduled' });
   const kindChips = presets([{ value: 'scheduled', label: 'Regular, on a schedule' }, { value: 'prn', label: 'When needed' }], kind, kind.value);
   kindChips.setAttribute('role', 'group'); kindChips.setAttribute('aria-label', 'Regular or when needed?');

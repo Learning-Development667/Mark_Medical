@@ -18,7 +18,7 @@ def section(title, count, sub, rows, cls=''):
 
 built = [
  ('Sleep asked simply for anyone without a watch: bed and wake times, rested, broken and why; a set-up question on health apps', 'v260'),
- ("The Food sheet saves simply and never loses a food silently, after Helen's missing lunch", 'v259'),
+ ("The Food sheet saves simply and never loses a food silently, after a tester's missing lunch", 'v259'),
  ("Fasting today? in the Crohn's morning check-in; the Meds tab's two buttons as tiles", 'v257, v258'),
  ("What's new by condition; when a medicine is taken; courses that start later", 'v253 to v256'),
  ('A new circle starts with no medicines; water with a medicine counts as a drink; Remove a medicine; Gel in pumps', 'v247 to v252'),
