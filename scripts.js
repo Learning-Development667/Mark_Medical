@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '300';
+const APP_VERSION = '301';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -4020,18 +4020,38 @@ function openAdd(type, editEntry, preset) {
       const group = c.food ? portionGroupFor(c.food) : { label: 'Anything else', sizes: [60, 120, 200] };
       const label = c.food ? c.food.n : c.phrase;
       const known = Boolean(c.food || custom);
-      const sub = portion.qty ? (portion.qty.unit === 'piece' ? `about ${portion.qty.each} g each, estimate` : 'weighed') : custom ? 'From My foods' : c.food ? 'Typical portion, estimate' : 'Not in the food table';
+      const product = c.food && String(c.food.c || '').startsWith('custom:') ? c.food.n : null; // scanned or saved in My foods (v301)
+      const sub = product ? (portion.qty && portion.qty.pack ? `From My foods, ${portion.qty.each} g a ${portion.qty.name}` : 'From My foods, weighed')
+        : portion.qty ? (portion.qty.unit === 'piece' ? `about ${portion.qty.each} g each, estimate` : 'weighed') : custom ? 'From My foods' : c.food ? 'Typical portion, estimate' : 'Not in the food table';
       const row = h('div', { class: 'macro-row' }, h('p', { class: 'macro-row-label' }, label, h('small', { text: sub })));
       if (portion.override) { row.append(overridePanel(c, portion, rebuild)); return row; }
       if (portion.qty && portion.qty.unit === 'piece') {
         const q = portion.qty;
         const st = stepper(q.n, 0.5, 1, 'How many ' + q.many, (v) => { q.n = v; st.unitEl.textContent = v === 1 ? q.name : q.many; refreshTotals(); }, q.n === 1 ? q.name : q.many);
         row.append(h('p', { class: 'fieldlabel', text: 'How many' }), st.el);
+        if (q.pack) row.append(h('button', { class: 'btn btn-link btn-small', type: 'button', onclick: () => {
+          portion.qty = { unit: 'g', n: Math.round(q.n * q.each), name: '' }; rebuild();
+        } }, `Not ${q.each} g a ${q.name}? Weigh it in grams`));
       } else if (portion.qty && portion.qty.unit === 'g') {
         const q = portion.qty;
-        const st = stepper(q.n, 0, 10, 'How much in grams', (v) => { q.n = v; refreshTotals(); }, 'g');
+        let remember = null;
+        const st = stepper(q.n, 0, 10, 'How much in grams', (v) => { q.n = v; if (remember) remember.textContent = rememberText(); refreshTotals(); }, 'g');
+        const chips = product ? [['50', '50 g'], ['100', '100 g'], ['150', '150 g'], ['200', '200 g']] : [['20', 'small handful 20 g'], ['30', 'handful 30 g'], ['50', '50 g'], ['100', '100 g']];
         row.append(h('p', { class: 'fieldlabel', text: 'How much' }), st.el,
-          h('div', { class: 'presets' }, ...[['20', 'small handful 20 g'], ['30', 'handful 30 g'], ['50', '50 g'], ['100', '100 g']].map(([v, l]) => h('button', { class: 'preset', type: 'button', text: l, onclick: () => st.set(parseFloat(v)) }))));
+          h('div', { class: 'presets' }, ...chips.map(([v, l]) => h('button', { class: 'preset', type: 'button', text: l, onclick: () => st.set(parseFloat(v)) }))));
+        /* a product with no pack size: one tap keeps this weight as one pot or pack, so next time it is "How many pots" */
+        const word = product ? packWord(product)[0] : '';
+        const rememberText = () => `Save ${fmtQtyNumber(q.n)} g as one ${word} for next time`;
+        if (product && editEntry == null) {
+          remember = h('button', { class: 'btn btn-link btn-small', type: 'button', onclick: async () => {
+            if (!(q.n >= 5)) return;
+            await rememberPackSize(product, q.n);
+            portion.qty = packQty(product);
+            toast(`${product}: one ${word} is ${fmtQtyNumber(q.n)} g, saved in My foods`);
+            rebuild();
+          } }, rememberText());
+          row.append(remember);
+        }
       } else if (known && macroOn) {
         row.append(
           h('div', { class: 'presets' }, ...['S', 'M', 'L'].map((size) => h('button', {
@@ -4145,7 +4165,7 @@ function openAdd(type, editEntry, preset) {
       }, 450);
     };
     const takePackaged = (p) => {
-      if (p.hasFigures) saveCustomFood(p.name, p.per100, { barcode: p.code, source: p.source, drink: p.drink, ml: packMl(p.quantity) || packMl(p.serving) });
+      if (p.hasFigures) saveCustomFood(p.name, p.per100, { barcode: p.code, source: p.source, drink: p.drink, ml: packMl(p.quantity) || packMl(p.serving), g: packGrams(p.serving) || packGrams(p.quantity) });
       drinkHint = p.drink ? { ml: packMl(p.quantity) || packMl(p.serving) || (DRINK_ML.find(([re]) => re.test(p.name)) || [0, 250])[1] } : null;
       choose(p.name, null);
       toast(p.hasFigures ? 'Found ' + p.name + ' (Open Food Facts), saved to My foods' : 'Found ' + p.name + ', but the database has no nutrition figures for it.');
@@ -4201,7 +4221,7 @@ function openAdd(type, editEntry, preset) {
     loadFoodTable().then(() => { if (!pick.hidden) renderPick(); syncFood(); });
     const scanControl = scanAvailable() ? foodScanControl((r) => {
       const label = r.name + (r.hasFigures ? ': ' + (r.per100.kcal != null ? Math.round(r.per100.kcal) + ' kcal' : '') + (r.per100.prot != null ? ', ' + r.per100.prot + ' g protein' : '') + ' per 100 g' : '');
-      if (r.hasFigures) saveCustomFood(r.name, r.per100, { barcode: r.code, source: r.source, drink: r.drink, ml: packMl(r.quantity) || packMl(r.serving) });
+      if (r.hasFigures) saveCustomFood(r.name, r.per100, { barcode: r.code, source: r.source, drink: r.drink, ml: packMl(r.quantity) || packMl(r.serving), g: packGrams(r.serving) || packGrams(r.quantity) });
       drinkHint = r.drink ? { ml: packMl(r.quantity) || packMl(r.serving) || (DRINK_ML.find(([re]) => re.test(r.name)) || [0, 250])[1] } : null;
       choose(r.name, null);
       toast(r.hasFigures ? 'Found ' + label + ' (Open Food Facts)' : 'Found ' + r.name + ', but the database has no nutrition figures for it.');
@@ -6277,16 +6297,55 @@ const singular = (w) => w.replace(/ies$/, 'y').replace(/(ch|sh|s|x|z)es$/, '$1')
 /* The piece entry for a component, from the words typed only: the table food's own name would
    turn "Soup" (matched to "Soup, carrot and orange") into an orange */
 function pieceInfo(phrase, food) {
+  if (food && String(food.c || '').startsWith('custom:')) return null; // a scanned or saved product is never "cherries" because its name says cherry (v301)
   const texts = [phrase].filter(Boolean).map((t) => ' ' + t.toLowerCase().replace(/[^a-z ]+/g, ' ').split(/\s+/).filter(Boolean).map(singular).join(' ') + ' ');
   for (const t of texts) for (const k of PIECE_KEYS) if (t.includes(' ' + k.split(' ').map(singular).join(' ') + ' ')) { const [each, one, many] = PIECE_WEIGHTS[k]; return { key: k, each, one, many, tiny: each < 5 }; }
   return null;
 }
 /* What a component's quantity control should be before anyone touches it: pieces, grams, or the S/M/L sizes */
 function defaultQty(phrase, food, text) {
+  if (food && String(food.c || '').startsWith('custom:')) return packQty(food.n);
   const p = pieceInfo(phrase, food);
   if (!p) return null;
   if (p.tiny) return { unit: 'g', n: 30, name: p.many };
   return { unit: 'piece', n: countInText(text || '', p.key) || 1, each: p.each, name: p.one, many: p.many };
+}
+/* A product from My foods (v301, Mark's scanned yogurt was asked "How many cherry"): counted in packs of its own size
+   when the size is known ("1 pot, 150 g each"), otherwise weighed in grams from 100 g. */
+function packWord(name) {
+  const n = String(name || '').toLowerCase();
+  if (/yog|pudding|dessert|custard|mousse|hummus|houmous|\bdip\b|fromage|rice pot|jelly/.test(n)) return ['pot', 'pots'];
+  if (/crisp|popcorn|nuts?\b|sweets/.test(n)) return ['packet', 'packets'];
+  if (/\bbars?\b/.test(n)) return ['bar', 'bars'];
+  if (/\btins?\b|\bcans?\b|beans|soup/.test(n)) return ['tin', 'tins'];
+  return ['pack', 'packs'];
+}
+function packQty(name) {
+  const custom = customFoodByName(name);
+  if (custom && custom.packG > 0) { const [one, many] = packWord(name); return { unit: 'piece', n: 1, each: custom.packG, name: one, many, pack: true }; }
+  return { unit: 'g', n: 100, name: '' };
+}
+/* "150 g", "4 x 125 g", "0.5 kg" -> grams of one item; anything else -> 0 */
+function packGrams(text) {
+  const t = String(text || '').toLowerCase().replace(/,/g, '.');
+  let m = t.match(/(\d+)\s*[x×]\s*(\d+(?:\.\d+)?)\s*(kg|g)\b/);
+  if (!m) { m = t.match(/(\d+(?:\.\d+)?)\s*(kg|g)\b/); if (m) m = [m[0], '1', m[1], m[2]]; }
+  if (!m) return 0;
+  const g = parseFloat(m[2]) * (m[3] === 'kg' ? 1000 : 1);
+  return g >= 5 && g <= 2000 ? Math.round(g) : 0;
+}
+/* Remember (or forget, with 0) a My foods product's pack size */
+function rememberPackSize(name, g) {
+  const key = String(name || '').trim().toLowerCase();
+  const current = ((state.profile && state.profile.customFoods) || []).slice();
+  const i = current.findIndex((f) => (f.name || '').trim().toLowerCase() === key);
+  if (i < 0) return Promise.resolve();
+  const next = { ...current[i] };
+  if (g > 0) next.packG = Math.round(g); else delete next.packG;
+  current[i] = next;
+  state.profile = { ...state.profile, customFoods: current };
+  if (state.demo) return Promise.resolve();
+  return setDoc(hdoc('profile', 'main'), { customFoods: current }, { merge: true }).catch((e) => { console.error(e); toast('Could not save to My foods'); });
 }
 /* "two eggs, wholemeal toast" -> 2 for the egg key; nothing found -> null */
 function countInText(text, key) {
@@ -6368,6 +6427,9 @@ function saveCustomFood(name, per100, extra) {
   if (extra && Number(extra.ml) > 0) entry.ml = Math.round(Number(extra.ml)); // its pack size, the ml offered when it is logged
   const current = ((state.profile && state.profile.customFoods) || []).slice();
   const i = current.findIndex((f) => (f.name || '').trim().toLowerCase() === key);
+  /* the weight of one pot or pack (v301), from the label, or kept from before when the figures are saved again */
+  if (extra && Number(extra.g) > 0) entry.packG = Math.round(Number(extra.g));
+  else if (i >= 0 && current[i].packG > 0) entry.packG = current[i].packG;
   if (i >= 0) current[i] = entry; else current.push(entry);
   state.profile = { ...state.profile, customFoods: current }; // at once, so the sheet that follows can already use it
   if (state.demo) return Promise.resolve();
