@@ -83,7 +83,7 @@ s4 = [
  row('The Beta', 'Both', 'Codes and the feedback sheet are built. FRIENDS is made for the two Crohn’s friends. Next: the three messages (nurse email, Sarah Cannon Research, WhatsApp) and the first invites.', 'now', '15a'),
 ]
 s5 = [
- row('Apple Developer Programme', 'Mark', 'The D-U-N-S number arrived on 19 October, so the organisation enrolment is under way as Mark 1 Apps Ltd. Apple may ring to check you can act for the company; approval can take a few days, then £79 a year.', 'now', '16'),
+ row('Apple Developer Programme', 'Mark', 'Enrolment submitted on 23 October as Mark 1 Apps Ltd, from the company Apple Account (mark@mark1apps.co.uk). Waiting on Apple to check you can sign for the company, by email or phone; then £79 a year.', 'now', '16'),
  row('iPhone and Android apps, with Siri', 'Claude', 'Apple Health and Health Connect read directly, so nobody needs a paid app to connect; "Hey Siri, log a dose". Google Fit is being retired, so Android goes through Health Connect.', 'open', '17'),
  row('TestFlight, then both stores', 'Both', 'Mark and Shelley first, then a small group. Then clear APP_STAGE so the Beta label goes.', 'open', '18'),
  row('Trade mark for My Medical Daybook', 'Mark', 'An IPO search in classes 9, 42 and 44, then about £170 for one class.', 'open', '19'),
