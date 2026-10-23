@@ -934,7 +934,7 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
   animation: rise var(--t-slow) var(--ease-out);
 }
 @keyframes rise { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
-.sheet-handle { width: 44px; height: 5px; border-radius: 3px; background: var(--border-subtle); margin: 6px auto 14px; }
+.sheet-handle { width: 44px; height: 5px; border-radius: 3px; background: var(--border-subtle); margin: 6px auto 14px; touch-action: none; }
 .sheet-close {
   position: absolute; top: 10px; right: 12px; width: 44px; height: 44px; border-radius: 50%; border: 0;
   background: var(--surface-sunken); color: var(--text-secondary); font-size: 26px; line-height: 1; cursor: pointer;
