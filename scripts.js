@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '296';
+const APP_VERSION = '297';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -2961,6 +2961,7 @@ function entryTitle(e) {
     case 'drink': return [h('span', { text: e.note || 'Drink' }), e.value ? h('span', { class: 'val', text: '  ' + e.value + ' ml' }) : null];
     case 'food': return [h('span', { text: e.note || 'Food' })];
     case 'sleep': return [h('span', { class: 'val', text: fmtHm(e.value) }), h('span', { text: ' asleep' })];
+    case 'nap': return [h('span', { class: 'val', text: fmtHm(e.value) }), h('span', { text: ' nap' })];
     case 'checkin': return [h('span', { text: checkinTitle(e.slot) })];
     case 'pain': return [h('span', { class: 'val', text: 'Pain ' + e.value + '/10' }), painBandWord(e.value) ? h('span', { text: ', ' + painBandWord(e.value).toLowerCase() }) : null];
     case 'symptom': return [h('span', { class: 'val', text: symptomLevel(e) }), e.grade == null && painBandWord(e.value, '') ? h('span', { text: ', ' + painBandWord(e.value, '').toLowerCase() }) : null];
@@ -3009,6 +3010,7 @@ function entrySub(e) {
     const s = sleepStages(e); if (s) bits.push(s);
     if (e.note) bits.push(e.note);
   }
+  if (e.type === 'nap') { const d0 = entryDate(e); if (d0) bits.push(fmtTime(d0) + ' to ' + addMinutesHm(fmtTime(d0), e.value)); bits.push('A nap, kept apart from the night'); if (e.note) bits.push(e.note); }
   if (e.type === 'checkin') { const s = checkinSummary(e); if (s) bits.push(s); }
   if (e.type === 'pain' && e.note) bits.push(e.note);
   if (e.type === 'symptom') { const c = causeOf(e); bits.push(c ? 'Side effect of ' + c.name + (e.sessionDay ? ' on ' + fmtDayShort(e.sessionDay) : '') : 'Symptom'); if (e.fromCheckin) bits.push('From the ' + slotWord(e.fromCheckin).toLowerCase() + ' check-in'); if (e.note) bits.push(e.note); }
@@ -3053,7 +3055,7 @@ function renderEntry(e) {
 }
 
 /* Types openAdd() can pre-fill and update in place, given the original entry */
-const EDITABLE_ENTRY_TYPES = ['food', 'drink', 'weight', 'note', 'question', 'bowel', 'symptom', 'pain', 'result'];
+const EDITABLE_ENTRY_TYPES = ['food', 'drink', 'weight', 'note', 'question', 'bowel', 'symptom', 'pain', 'result', 'nap'];
 
 function entryOptions(e) {
   const d = entryDate(e);
@@ -3085,7 +3087,7 @@ function entryOptions(e) {
   );
   openSheet(ENTRY_SHEET_TITLES[e.type] || 'Entry', body);
 }
-const ENTRY_SHEET_TITLES = { call: 'Call', result: 'Result', temp: 'Temperature', vitals: 'Vitals', weight: 'Weight', med: 'Medicine', drink: 'Drink', food: 'Food', note: 'Note', sleep: 'Sleep', pain: 'Pain', bowel: 'Bowels', symptom: 'Symptom', question: 'Question for the team' };
+const ENTRY_SHEET_TITLES = { call: 'Call', result: 'Result', temp: 'Temperature', vitals: 'Vitals', weight: 'Weight', med: 'Medicine', drink: 'Drink', food: 'Food', note: 'Note', sleep: 'Sleep', nap: 'Nap', pain: 'Pain', bowel: 'Bowels', symptom: 'Symptom', question: 'Question for the team' };
 /* One line per reading for the entry view, coloured with the same levels as Trends' tables */
 function readingRows(e) {
   if (e.type === 'temp') return [['Temperature', fmtTemp(e.value), tempClass(e.value) === 'is-red' ? 'red' : tempClass(e.value) === 'is-amber' ? 'amber' : null]];
@@ -4443,6 +4445,7 @@ function openAdd(type, editEntry, preset) {
       asleep.row, h('span', { class: 'fieldlabel', text: 'The four stages, in the order Apple Health lists them' }),
       h('div', { class: 'stages' }, ...Object.values(stages).map((st) => st.row)));
     details.open = tracked;
+    if (!editEntry) body.append(sleepKindSwitch('night'));
     body.append(
       h('p', { class: 'hint', text: existing && existing.addedBy === 'Apple Health'
         ? 'This night came in from Apple Health. Change anything that is wrong and save.'
@@ -4475,6 +4478,34 @@ function openAdd(type, editEntry, preset) {
       if (undo) Object.assign(data, { ...undo, value: data.value });
       if (!editId) data._id = state.selectedDay + '_sleep'; // the night's own document, where Apple Health would merge too
       return data;
+    };
+  }
+
+  /* A nap (v297, Mark: "add a nap function to the sleep tile"): its own entry, type nap, kept apart from the night, so the
+     night's hours and the short-night flag stay about the night. Logged with when it started and how long it lasted. */
+  if (type === 'nap') {
+    const mins = h('input', { type: 'number', inputmode: 'numeric', min: '5', max: '360', step: '5', id: 'nap-mins', value: editEntry ? String(Math.round(Number(editEntry.value) || 0)) : '' });
+    const ends = h('p', { class: 'hint', role: 'status' });
+    const syncEnds = () => {
+      const m = parseInt(mins.value, 10);
+      ends.textContent = m > 0 && /^\d\d:\d\d$/.test(time.value) ? 'That is ' + fmtHm(m) + ', from ' + time.value + ' to ' + addMinutesHm(time.value, m) + '.' : 'Choose how long, or type the minutes.';
+    };
+    mins.addEventListener('input', syncEnds); time.addEventListener('input', syncEnds); time.addEventListener('change', syncEnds);
+    const lengths = presets([{ value: '15', label: '15 min' }, { value: '30', label: '30 min' }, { value: '45', label: '45 min' }, { value: '60', label: '1 h' }, { value: '90', label: '1 h 30' }, { value: '120', label: '2 h' }], mins, mins.value);
+    lengths.addEventListener('click', syncEnds);
+    if (!editEntry) body.append(sleepKindSwitch('nap'));
+    body.append(
+      h('p', { class: 'hint', text: 'A sleep in the day. Kept apart from the night, so the night\'s hours stay as they were.' }),
+      field('Started at', time),
+      h('span', { class: 'fieldlabel', text: 'How long?' }), lengths,
+      field('Minutes', mins), ends,
+      field('Note', note));
+    syncEnds();
+    getData = () => {
+      const m = parseInt(mins.value, 10);
+      if (!mins.value.trim()) return missing(mins, 'How long was the nap?');
+      if (isNaN(m) || m < 5 || m > 360) return missing(mins, 'A nap between 5 minutes and 6 hours, please', CHECK);
+      return { type: 'nap', value: m, note: note.value.trim() };
     };
   }
 
@@ -4651,7 +4682,7 @@ function openAdd(type, editEntry, preset) {
     };
   }
 
-  const titles = { drink: 'Drink', food: 'Food', weight: 'Weight', note: 'Note', vitals: 'Vitals', sleep: 'Sleep', question: 'Question for the team', pain: 'Log pain', bowel: 'Bowels', symptom: 'Symptom' };
+  const titles = { drink: 'Drink', food: 'Food', weight: 'Weight', note: 'Note', vitals: 'Vitals', sleep: 'Sleep', nap: 'Nap', question: 'Question for the team', pain: 'Log pain', bowel: 'Bowels', symptom: 'Symptom' };
   const save = h('button', { class: 'btn btn-primary btn-block', type: 'button' }, 'Save');
   save.addEventListener('click', async () => {
     const data = getData();
@@ -4714,6 +4745,19 @@ function openAdd(type, editEntry, preset) {
   if (!editId && (type === 'note' || type === 'question' || type === 'vitals')) body.dataset.reopen = type;
   openSheet(editId && type === 'vitals' ? (editEntry.type === 'temp' ? 'Edit temperature' : 'Edit vitals') : editId && type === 'pain' ? 'Edit pain' : titles[type], body);
   if (foodGuard) state.sheetGuard = foodGuard;
+}
+
+/* The Sleep tile's two kinds (v297): Last night or A nap, a switch at the top of the sheet that swaps one for the other */
+function sleepKindSwitch(on) {
+  const b = (k, label) => h('button', { class: 'seg' + (on === k ? ' is-active' : ''), type: 'button', 'aria-pressed': on === k ? 'true' : 'false', dataset: { kind: k },
+    onclick: () => { if (on === k) return; closeSheet({ force: true }); openAdd(k === 'nap' ? 'nap' : 'sleep'); } }, label);
+  return h('div', { class: 'segmented sleep-kind', role: 'group', 'aria-label': 'Last night or a nap' }, b('night', 'Last night'), b('nap', 'A nap'));
+}
+/* "14:10" plus minutes, as "HH:MM" (past midnight wraps round) */
+function addMinutesHm(hm, mins) {
+  const [hh, mm] = String(hm).split(':').map(Number);
+  const t = ((hh * 60 + mm + Math.round(Number(mins) || 0)) % 1440 + 1440) % 1440;
+  return String(Math.floor(t / 60)).padStart(2, '0') + ':' + String(t % 60).padStart(2, '0');
 }
 
 /* The weight already logged for a day (the latest, typed or from Apple Health), or null: the Vitals sheet asks once a day */
@@ -8144,6 +8188,16 @@ function summaryRows(entries, from, to) {
     const ownNote = own ? ` ${own === 1 ? 'One night is' : own + ' nights are'} from the times given, as the watch did not record the whole night.` : '';
     if (short.length) { const lo = minBy(short, (e) => Number(e.value)); push('amber', 'Sleep', `Short nights: under 5 hours on ${short.length} of ${plural(sleeps.length, 'night')}, shortest ${fmtHm(lo.value)} before ${when(lo)}; averaging ${fmtHm(mean)}.${ownNote}`, short.length === 1 ? `a short night (${fmtHm(lo.value)}) before ${when(lo)}` : null, `Short nights (under 5 h): ${short.length} of ${sleeps.length}`); }
     else fine.push(`sleep (${fmtHm(mean)} a night)`);
+  }
+  /* naps (v297): kept apart from the nights, one line of facts */
+  {
+    const naps = entries.filter((e) => e.type === 'nap' && Number(e.value) > 0 && e.day >= from && e.day <= to);
+    if (naps.length) {
+      const days = new Set(naps.map((e) => e.day)).size;
+      const total = naps.reduce((t, e) => t + Number(e.value), 0);
+      const long = naps.reduce((a, e) => (Number(e.value) > Number(a.value) ? e : a), naps[0]);
+      push('teal', 'Sleep', `Naps on ${plural(days, 'day')}, ${fmtHm(total)} in all; the longest ${fmtHm(long.value)} on ${when(long)}. Kept apart from the nights.`, null, `Naps: ${plural(days, 'day')}, ${fmtHm(total)} in all`);
+    }
   }
   /* how the nights felt (v260): broken sleep and what broke it, as facts, never judged */
   {
@@ -12446,9 +12500,9 @@ function renderChartTables(entries, from) {
     bp: { rows: inRange.filter((e) => e.type === 'vitals' && e.systolic && e.diastolic), head: 'Blood pressure', cell: (e) => [Math.round(Number(e.systolic)) + '/' + Math.round(Number(e.diastolic)) + ' mmHg', sub(e.note)] },
     oxygen: { rows: inRange.filter((e) => e.type === 'vitals' && e.oxygen), head: 'Oxygen', cell: (e) => [Math.round(Number(e.oxygen)) + '%', sub(e.note)] },
     weight: { rows: inRange.filter((e) => e.type === 'weight' && Number(e.value) > 0), head: 'Weight', cell: (e) => [weightPref() === 'stlb' ? fmtStLb(e.value) : fmtKg(e.value), sub([weightPref() === 'stlb' ? fmtKg(e.value) : '', Number(e.bmi) > 0 ? 'BMI ' + Number(e.bmi).toFixed(1) : '', e.note].filter(Boolean).join(' · '))] },
-    sleep: { rows: inRange.filter((e) => e.type === 'sleep'), head: 'Asleep', timeHead: 'Bed to up',
-      time: (e) => e.bedAt && e.wokeAt ? e.bedAt + ' to ' + e.wokeAt : '--',
-      cell: (e) => { const st = ['deep', 'core', 'rem'].filter((k) => Number(e[k]) > 0).map((k) => (k === 'rem' ? 'REM' : k[0].toUpperCase() + k.slice(1)) + ' ' + fmtHm(Number(e[k]))); if (Number(e.awake) > 0) st.push('awake ' + fmtHm(Number(e.awake))); return [fmtHm(Number(e.value) || 0), sub(st.join(' · '))]; } },
+    sleep: { rows: inRange.filter((e) => e.type === 'sleep' || e.type === 'nap'), head: 'Asleep', timeHead: 'Bed to up',
+      time: (e) => e.type === 'nap' ? fmtTime(entryDate(e)) + ' to ' + addMinutesHm(fmtTime(entryDate(e)), e.value) : e.bedAt && e.wokeAt ? e.bedAt + ' to ' + e.wokeAt : '--',
+      cell: (e) => { if (e.type === 'nap') return [fmtHm(Number(e.value) || 0), sub(['Nap', e.note].filter(Boolean).join(' · '))]; const st = ['deep', 'core', 'rem'].filter((k) => Number(e[k]) > 0).map((k) => (k === 'rem' ? 'REM' : k[0].toUpperCase() + k.slice(1)) + ' ' + fmtHm(Number(e[k]))); if (Number(e.awake) > 0) st.push('awake ' + fmtHm(Number(e.awake))); return [fmtHm(Number(e.value) || 0), sub(st.join(' · '))]; } },
     drink: { rows: inRange.filter((e) => e.type === 'drink'), head: 'Amount', cell: (e) => [(Number(e.value) || 0) + ' ml', sub(e.note)], dayNote: (day) => 'Total ' + (drinkTotals[day] || 0) + ' ml' },
     bowel: { rows: inRange.filter((e) => e.type === 'bowel'), head: 'Bowels', cell: (e) => { if (e.none) return ['None']; if (e.stoma) return ['Stoma output', sub([stomaWord(e), bowelFlagWords(e), e.note].filter(Boolean).join(' · '))]; const ts = bowelTypes(e); return [(ts.length > 1 ? 'Types ' : 'Type ') + ts.join(', '), sub([ts.map((t) => bristolName(t)).join(', '), bowelFlagWords(e), e.note].filter(Boolean).join(' · '))]; } }
   };
@@ -12629,6 +12683,8 @@ async function renderVitals() {
   /* Remainder worked out in whole minutes first, so rounding the stages does not leave a phantom sliver */
   const otherH = sleepEntries.map((e) => e ? hoursOf(Math.max(0, (Number(e.value) || 0) - (Number(e.deep) || 0) - (Number(e.core) || 0) - (Number(e.rem) || 0))) : null);
   const awakeMins = sleepEntries.map((e) => (e && e.awake) ? Number(e.awake) : 0);
+  /* naps (v297): their own lighter part of the bar, on top of the night, never counted in it */
+  const napH = days.map((d) => { const m = entries.filter((x) => x.type === 'nap' && x.day === d).reduce((t, x) => t + (Number(x.value) || 0), 0); return m ? hoursOf(m) : null; });
   const sleepStageSet = (label, data, colour) => ({ label, data, backgroundColor: hexAlpha(colour, 0.85), borderColor: T.surface, borderWidth: 1.5, borderRadius: 4, borderSkipped: false, stack: 'sleep', maxBarThickness: 28 });
   makeChart('sleep', {
     type: 'bar',
@@ -12636,7 +12692,8 @@ async function renderVitals() {
       sleepStageSet('Deep', deepH, cssVar('--sleep-deep')),
       sleepStageSet('Core', coreH, cssVar('--sleep-core')),
       sleepStageSet('REM', remH, cssVar('--sleep-rem')),
-      sleepStageSet('Not broken down', otherH, T.muted)
+      sleepStageSet('Not broken down', otherH, T.muted),
+      Object.assign(sleepStageSet('Naps', napH, T.warm), { backgroundColor: hexAlpha(T.warm, 0.45) })
     ] },
     options: {
       responsive: true, maintainAspectRatio: false, layout: { padding: { top: 8, right: 4 } },

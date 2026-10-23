@@ -2100,3 +2100,7 @@ details.daymeal[open] .daymeal-sum::after { transform: rotate(90deg); }
 .records-danger-h { font-family: var(--font-head); font-weight: 600; font-size: 19px; color: var(--danger); margin: 0 0 var(--s-2); }
 #settings-export-save:not(:empty) { margin-top: var(--s-3); }
 .deletesheet .field { margin-top: var(--s-4); }
+
+/* The Sleep tile's Last night or A nap switch (v297) */
+.sleep-kind { margin-bottom: var(--s-4); }
+.entry.type-nap { --cat: var(--cat-sleep); }
