@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '299';
+const APP_VERSION = '300';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -384,6 +384,45 @@ function closeSheet(opts) {
   const back = state.sheetOpener; state.sheetOpener = null;
   if (back && document.contains(back) && typeof back.focus === 'function') back.focus({ preventScroll: true });
 }
+/* Swipe down to close (v300, Mark: the bar at the top of a sheet looked like one and did nothing). A finger that starts
+   on the bar or the title, with the sheet scrolled to its top, drags the sheet down; let go past 90px (or a quick flick)
+   and it closes through closeSheet(), so a sheet's guard (the Food sheet's "not saved yet") still asks first. Starting
+   lower down, or with the sheet scrolled, is left alone so sliders, lists and scrolling work as before. */
+(function swipeSheetDown() {
+  const panel = document.querySelector('#sheet .sheet-panel');
+  if (!panel) return;
+  const GRAB = 88; // px from the top of the panel: the bar and the title
+  let y0 = 0, t0 = 0, dy = 0, dragging = false, armed = false;
+  const reset = () => { panel.style.transition = ''; panel.style.transform = ''; };
+  panel.addEventListener('touchstart', (ev) => {
+    armed = false; dragging = false; dy = 0;
+    if (ev.touches.length !== 1 || panel.scrollTop > 0 || document.querySelector('.bigedit')) return;
+    const top = panel.getBoundingClientRect().top;
+    if (ev.touches[0].clientY - top > GRAB || ev.target.closest('button:not(.sheet-handle), input, textarea, select')) return;
+    armed = true; y0 = ev.touches[0].clientY; t0 = Date.now();
+  }, { passive: true });
+  panel.addEventListener('touchmove', (ev) => {
+    if (!armed) return;
+    dy = ev.touches[0].clientY - y0;
+    if (!dragging && dy > 8) { dragging = true; panel.style.transition = 'none'; panel.style.animation = 'none'; }
+    if (!dragging) return;
+    ev.preventDefault();
+    panel.style.transform = 'translateY(' + Math.max(0, dy) + 'px)';
+  }, { passive: false });
+  const end = () => {
+    if (!armed) return;
+    armed = false;
+    if (!dragging) return;
+    dragging = false;
+    const fast = dy > 40 && Date.now() - t0 < 250;
+    if (dy > 90 || fast) {
+      panel.style.transition = 'transform 160ms ease-in'; panel.style.transform = 'translateY(100%)';
+      setTimeout(() => { closeSheet(); reset(); panel.style.animation = ''; }, 150);
+    } else { panel.style.transition = 'transform 180ms ease-out'; panel.style.transform = ''; setTimeout(() => { panel.style.transition = ''; panel.style.animation = ''; }, 200); }
+  };
+  panel.addEventListener('touchend', end);
+  panel.addEventListener('touchcancel', end);
+})();
 document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && document.querySelector('.bigedit')) { ev.preventDefault(); closeBigEdit(); return; } if (ev.key === 'Escape' && !$('sheet').hidden) { ev.preventDefault(); closeSheet(); } });
 /* The on-screen keyboard. iPhone Safari lays the keyboard over the page rather than shrinking it, so a
    sheet anchored to the bottom ended up behind it and a check-in answer was typed blind (Mark, 5 October).
