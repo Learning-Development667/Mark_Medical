@@ -863,7 +863,7 @@ async function handleFeedbackInfo(request, env) {
    about the person goes with it (the request carries the bridge's own User-Agent, never the sign-in or the household),
    and nothing is kept here beyond Cloudflare's day-long cache of the public answer. A miss is { found: false }, not
    an error: plenty of UK own-brand products are not in the database, and the app then offers to type the label in. */
-const OFF_FIELDS = 'code,product_name,product_name_en,brands,quantity,serving_size,nutriments';
+const OFF_FIELDS = 'code,product_name,product_name_en,brands,quantity,serving_size,nutriments,categories_tags';
 const num = (v) => { const n = typeof v === 'string' ? parseFloat(v.replace(',', '.')) : v; return typeof n === 'number' && isFinite(n) ? n : null; };
 const r1 = (n) => (n == null ? null : Math.round(n * 10) / 10);
 function mapOffProduct(code, p) {
@@ -876,7 +876,10 @@ function mapOffProduct(code, p) {
   if (!name && !brand) return { found: false, code };
   const full = brand && !name.toLowerCase().includes(brand.toLowerCase()) ? (brand + ' ' + name).trim() : (name || brand);
   const hasFigures = per100.kcal != null || per100.prot != null || per100.carb != null || per100.fat != null;
-  return { found: true, code, name: full, brand, quantity: clean(p.quantity, 40), serving: clean(p.serving_size, 40), per100, hasFigures, source: 'Open Food Facts' };
+  /* a drink (v288): Open Food Facts files it under beverages, so the app can ask how many ml and add it to the day's drinks */
+  const cats = Array.isArray(p.categories_tags) ? p.categories_tags : [];
+  const drink = cats.some((c) => /^en:(beverages|drinks|plant-based-milks|milks|soups|smoothies|juices|sodas|protein-shakes|milkshakes|dairy-drinks)/.test(String(c)));
+  return { found: true, code, name: full, brand, quantity: clean(p.quantity, 40), serving: clean(p.serving_size, 40), per100, hasFigures, drink, source: 'Open Food Facts' };
 }
 const OFF_HEADERS = { 'User-Agent': 'MyMedicalDaybook/1.0 (support@mymedicaldaybook.co.uk)', Accept: 'application/json' };
 const OFF_SEARCH_MAX = 8;
