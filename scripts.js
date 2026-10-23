@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '286';
+const APP_VERSION = '287';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -362,8 +362,11 @@ function openSheet(title, body, onClose) {
   state.sheetOpener = document.activeElement && document.activeElement !== document.body ? document.activeElement : null;
   for (const el of document.querySelectorAll('.skip-link, .topbar, #main, #tabs')) el.inert = true;
   const first = b.querySelector('input:not([type=hidden]), textarea');
-  if (first && first.type !== 'file' && window.matchMedia('(min-width: 700px)').matches) first.focus();
+  if (first && first.type !== 'file' && window.matchMedia('(min-width: 700px)').matches) first.focus({ preventScroll: true });
   else $('sheet-title').focus({ preventScroll: true });
+  /* every sheet opens at its top (v287): Safari kept the last sheet's scroll position, so a new one could open part way down */
+  const panel = document.querySelector('#sheet .sheet-panel');
+  if (panel) { panel.scrollTop = 0; requestAnimationFrame(() => { panel.scrollTop = 0; }); }
 }
 function closeSheet(opts) {
   /* opts.force: closed on purpose (Save, Cancel, Don't save). Anything else (the X, the backdrop, Escape) asks the sheet's guard first. */
@@ -413,7 +416,9 @@ document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && docume
   $('sheet').addEventListener('focusin', (ev) => {
     const el = ev.target;
     if (!el.matches(TEXTISH)) return;
-    setTimeout(() => { fit(); if (document.activeElement === el) el.scrollIntoView({ block: 'center', behavior: 'smooth' }); }, 320);
+    /* only when a keyboard has really come up (v287): on a Mac the first box of a sheet takes focus on opening, and
+       centring it scrolled the sheet half way down before anything was read (Mark: "it opens at the middle or bottom") */
+    setTimeout(() => { fit(); const kbUp = window.innerHeight - vv.height > 120; if (kbUp && document.activeElement === el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }, 320);
   });
   $('sheet').addEventListener('focusout', () => later(350));
 })();
@@ -2532,7 +2537,12 @@ function showTab(name) {
   document.querySelectorAll('.view').forEach((v) => { v.hidden = v.dataset.view !== name; });
   document.body.dataset.page = name; // the watercolour behind the app is stronger on the hub pages (styles.css, v229)
   setBrand(PAGE_TITLES[name] || '');
-  window.scrollTo(0, 0);
+  /* every page opens at its top (v287, Mark on his iPhone and Mac: tiles opened the next page part way down). Safari
+     can ignore one scroll made while the old page is still laid out or a flick is still moving, so it is made again
+     once the new page has drawn */
+  const was = document.activeElement; if (was && was.closest && was.closest('.view[hidden]') && was.blur) was.blur(); // a button left behind on the hidden page
+  const toTop = () => { window.scrollTo(0, 0); if (document.scrollingElement) document.scrollingElement.scrollTop = 0; };
+  toTop(); requestAnimationFrame(toTop); setTimeout(toTop, 80);
   enterView(document.querySelector('.view[data-view="' + name + '"]'));
   moveTabIndicator();
   requestAnimationFrame(moveTabIndicator);

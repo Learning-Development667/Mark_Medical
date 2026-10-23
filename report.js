@@ -88,6 +88,9 @@ h2.sec small{font-family:Inter,sans-serif;font-weight:400;font-size:7.6pt;color:
 .c .stat.green{background:var(--green-soft);color:var(--green)}
 .c svg{display:block;width:100%;height:auto;margin-top:.6mm}
 .key{grid-column:1/-1;background:var(--mist);border-color:transparent;font-size:7pt;line-height:1.4;color:var(--slate);display:flex;flex-wrap:wrap;align-items:center;column-gap:5mm;row-gap:.6mm;padding:1.8mm 3.4mm}
+.key.half{grid-column:auto;align-content:center}
+.c .blegend{display:flex;flex-wrap:wrap;column-gap:3mm;row-gap:.4mm;font-size:6.6pt;color:var(--slate);margin-top:.6mm}
+.c .blegend i{display:inline-block;width:3.4mm;height:1.6mm;border-radius:.5mm;margin-right:1mm;vertical-align:middle}
 .key b{color:var(--ink);font-weight:600}
 .sw{display:inline-block;width:3mm;height:3mm;border-radius:.6mm;vertical-align:-.5mm;margin-right:1.4mm}
 .wwrap{flex:1;display:flex;flex-direction:column;min-height:0}
@@ -300,8 +303,10 @@ export function reportHtml(R) {
   const extraN = (R.extraQ || []).length;
   const olderLine = R.older ? `<p class="more">${esc(R.older === 1 ? '1 older question is' : R.older + ' older questions are')} still open in the app, asked before ${esc(R.olderFrom || 'this period')}.</p>` : '';
   const noneLine = R.questions.length ? '' : '<p class="none" data-sec="No questions">No new questions this time.</p>';
-  const charts = R.charts.map((c) => `<div class="c" data-sec="${esc(c.title)}"><div class="h"><h3>${esc(c.title)}</h3><span class="stat ${esc(c.tone || '')}">${esc(c.stat)}</span></div>${renderChart(c, R.days)}</div>`).join('');
-  const key = `<div class="c key"><b>Key</b><span><i class="sw" style="background:rgba(224,160,48,.45)"></i>Amber: worth mentioning</span><span><i class="sw" style="background:rgba(200,69,59,.45)"></i>Red: raise promptly</span><span><i class="sw" style="background:${C.ink}"></i><i class="sw" style="background:${C.teal}"></i>Blood pressure: dark systolic, teal diastolic</span><span>Sleep bars under 5 h are amber.</span>${R.charts.some((c) => c.key === 'bowel') ? `<span><i class="sw" style="background:#8FA6B8"></i>Hard (types 1 to 2) <i class="sw" style="background:${C.teal};margin-left:1.5mm"></i>Types 3 to 5 <i class="sw" style="background:#C2703D;margin-left:1.5mm"></i>Loose (6 to 7); a red dot is a day with blood</span>` : ''}</div>`;
+  /* the bowel chart carries its own small legend under it (v287, Mark: the notes belong under the chart, not in the key) */
+  const legend = (c) => c.key === 'bowel' ? `<div class="blegend"><span><i style="background:#8FA6B8"></i>Hard (1 to 2)</span><span><i style="background:${C.teal}"></i>Types 3 to 5</span><span><i style="background:#C2703D"></i>Loose (6 to 7)</span><span><i style="background:${C.red};width:1.6mm;height:1.6mm;border-radius:50%"></i>Blood</span></div>` : '';
+  const charts = R.charts.map((c) => `<div class="c" data-sec="${esc(c.title)}"><div class="h"><h3>${esc(c.title)}</h3><span class="stat ${esc(c.tone || '')}">${esc(c.stat)}</span></div>${renderChart(c, R.days)}${legend(c)}</div>`).join('');
+  const key = `<div class="c key"><b>Key</b><span><i class="sw" style="background:rgba(224,160,48,.45)"></i>Amber: worth mentioning</span><span><i class="sw" style="background:rgba(200,69,59,.45)"></i>Red: raise promptly</span><span><i class="sw" style="background:${C.ink}"></i><i class="sw" style="background:${C.teal}"></i>Blood pressure: dark systolic, teal diastolic</span><span>Sleep bars under 5 h are amber.</span></div>`.replace('class="c key"', R.charts.length % 2 ? 'class="c key half"' : 'class="c key"');
   const weeks = R.weeks.length ? R.weeks.map((w) => weekHtml(w, R.weeks.length === 1)).join('')
     : weekHtml({ title: 'Notes', range: R.period, theme: '', entries: [] }, true).replace('No written notes this week.', 'No written notes in this period.');
   const weeksHtml = `<div class="wwrap" data-sec="Week by week">
