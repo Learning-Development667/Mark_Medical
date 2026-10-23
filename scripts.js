@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '288';
+const APP_VERSION = '289';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -6750,13 +6750,15 @@ function twoPageCharts(entries, days) {
   const tv = vals(temp), tPeak = tv.length ? Math.max(...tv) : null;
   charts.push({ key: 'temp', title: 'Temperature (°C)', stat: tPeak == null ? 'No readings' : 'Peak ' + tPeak.toFixed(1) + ' °C', tone: tPeak == null ? '' : toneOf(tPeak >= 38, tPeak >= 37.5),
     min: Math.min(35, ...tv.map(Math.floor)), max: Math.max(41, ...tv.map(Math.ceil)), ticks: [36, 38, 40],
-    bands: [{ from: 37.5, to: 38, c: amber }, { from: 38, to: 45, c: red }], series: [{ d: temp, c: ink }] });
+    bands: [{ from: 37.5, to: 38, c: amber }, { from: 38, to: 45, c: red }], series: [{ d: temp, c: ink }],
+    legend: [{ c: 'amber', t: 'Raised, 37.5 to 37.9' }, { c: 'red', t: 'High, 38.0 or above' }] });
 
   const hr = by((e) => e.type === 'vitals' && Number(e.heartRate) > 0).map((l) => maxOf(l, (e) => Number(e.heartRate)));
   const hv = vals(hr), hPeak = hv.length ? Math.max(...hv) : null;
   charts.push({ key: 'heart', title: 'Heart rate (bpm)', stat: hPeak == null ? 'No readings' : 'Peak ' + Math.round(hPeak) + ' bpm', tone: hPeak == null ? '' : toneOf(hPeak >= 120, hPeak >= 100 || Math.min(...hv) <= 50),
     min: Math.min(40, ...hv.map((v) => Math.floor(v / 10) * 10 - 10)), max: Math.max(140, ...hv.map((v) => Math.ceil(v / 10) * 10 + 10)), ticks: [60, 100, 120],
-    bands: [{ from: 100, to: 120, c: amber }, { from: 120, to: 300, c: red }], series: [{ d: hr, c: ink }] });
+    bands: [{ from: 100, to: 120, c: amber }, { from: 120, to: 300, c: red }], series: [{ d: hr, c: ink }],
+    legend: [{ c: 'amber', t: '100 to 119' }, { c: 'red', t: '120 or over' }] });
 
   /* Blood pressure: each day's reading with the highest systolic, so the pair stays together */
   const bpDay = by((e) => e.type === 'vitals' && Number(e.systolic) > 0 && Number(e.diastolic) > 0).map((l) => (l.length ? l.reduce((a, b) => (Number(b.systolic) > Number(a.systolic) ? b : a)) : null));
@@ -6769,13 +6771,15 @@ function twoPageCharts(entries, days) {
     tone: !bpAll.length ? '' : toneOf(bpRed.length, bpAmber.length || sysV.some((v) => v <= 90)),
     min: Math.min(60, ...diaV.map((v) => Math.floor(v / 20) * 20 - 20)), max: Math.max(180, ...sysV.map((v) => Math.ceil(v / 20) * 20 + 20)), ticks: [80, 120, 160],
     bands: [{ from: 140, to: 160, c: amber }, { from: 160, to: 300, c: red }],
-    series: [{ d: bpDay.map((e) => (e ? Number(e.systolic) : null)), c: ink }, { d: bpDay.map((e) => (e ? Number(e.diastolic) : null)), c: teal }] });
+    series: [{ d: bpDay.map((e) => (e ? Number(e.systolic) : null)), c: ink }, { d: bpDay.map((e) => (e ? Number(e.diastolic) : null)), c: teal }],
+    legend: [{ c: ink, t: 'Top number', line: true }, { c: teal, t: 'Bottom number', line: true }, { c: 'amber', t: 'Top 140 to 159' }, { c: 'red', t: '160 or over' }] });
 
   const ox = by((e) => e.type === 'vitals' && Number(e.oxygen) > 0).map((l) => minOf(l, (e) => Number(e.oxygen)));
   const ov = vals(ox), oLow = ov.length ? Math.min(...ov) : null;
   charts.push({ key: 'oxygen', title: 'Oxygen (%)', stat: oLow == null ? 'No readings' : 'Low ' + Math.round(oLow) + '%', tone: oLow == null ? '' : toneOf(oLow <= 90, oLow <= 93),
     min: Math.min(85, ...ov.map((v) => Math.floor(v / 5) * 5 - 5)), max: 100, ticks: [90, 95, 100],
-    bands: [{ from: 90, to: 93, c: amber }, { from: 0, to: 90, c: red }], series: [{ d: ox, c: ink }] });
+    bands: [{ from: 90, to: 93, c: amber }, { from: 0, to: 90, c: red }], series: [{ d: ox, c: ink }],
+    legend: [{ c: 'amber', t: '91 to 93' }, { c: 'red', t: '90 or under' }] });
 
   /* Weight: the day's last reading; the axis follows the period's own lowest and highest, with room */
   const wt = by((e) => e.type === 'weight' && Number(e.value) > 0).map((l) => (l.length ? Number(l.slice().sort((a, b) => entryDate(a) - entryDate(b)).pop().value) : null));
@@ -6793,7 +6797,8 @@ function twoPageCharts(entries, days) {
   const sl = by((e) => e.type === 'sleep' && Number(e.value) > 0).map((l) => (l.length ? Math.round(Number(l[l.length - 1].value) / 6) / 10 : null));
   charts.push({ key: 'sleep', title: 'Sleep (hours a night)', type: 'bars', flagBelow: 5,
     stat: !nights.length ? 'No nights logged' : shortN ? `${shortN} of ${plural(nights.length, 'night')} under 5 h` : 'Average ' + fmtHm(nights.reduce((t, e) => t + Number(e.value), 0) / nights.length),
-    tone: !nights.length ? '' : shortN ? 'amber' : 'green', min: 0, max: Math.max(10, ...vals(sl).map(Math.ceil)), ticks: [0, 5, 10], series: [{ d: sl, c: teal }] });
+    tone: !nights.length ? '' : shortN ? 'amber' : 'green', min: 0, max: Math.max(10, ...vals(sl).map(Math.ceil)), ticks: [0, 5, 10], series: [{ d: sl, c: teal }],
+    legend: [{ c: teal, t: 'Hours asleep' }, { c: amber, t: 'Under 5 hours' }] });
 
   /* Pain: the day's average of the patient's check-in scores (pain readings where there was no check-in score) */
   const ci = entries.filter(isPatientCheckin);
@@ -6810,12 +6815,14 @@ function twoPageCharts(entries, days) {
      NHS bands: 4 to 6 amber, 7 or more red; the shading behind the line shows the same two bands */
   const pShown = pAvg == null ? pWorst : pAvg;
   charts.push({ key: 'pain', title: 'Pain (0 to 10)', stat: pWorst == null ? 'No scores' : `Average ${(Math.round(pAvg * 10) / 10).toString()}, worst ${pWorst}`, tone: pWorst == null ? '' : toneOf(pShown >= 7, pShown >= 4),
-    min: 0, max: 10, ticks: [0, 5, 10], bands: [{ from: 4, to: 7, c: amber }, { from: 7, to: 10, c: red }], series: [{ d: painDay, c: ink }] });
+    min: 0, max: 10, ticks: [0, 5, 10], bands: [{ from: 4, to: 7, c: amber }, { from: 7, to: 10, c: red }], series: [{ d: painDay, c: ink }],
+    legend: [{ c: ink, t: "The day's check-in average", line: true }, { c: 'amber', t: 'Moderate, 4 to 6' }, { c: 'red', t: 'Severe, 7 to 10' }] });
 
   const moodDay = days.map((d) => avgOf(ci.filter((e) => e.day === d && e.mood != null), (e) => Number(e.mood)));
   const lowMood = days.filter((d) => state.days[d] && state.days[d].mood && state.days[d].mood <= 2);
   charts.push({ key: 'mood', title: 'Mood (1 to 10)', stat: !vals(moodDay).length && !lowMood.length ? 'No scores' : lowMood.length ? 'Low on ' + plural(lowMood.length, 'day') : 'Steady',
-    tone: !vals(moodDay).length && !lowMood.length ? '' : lowMood.length ? 'amber' : 'green', min: 0, max: 10, ticks: [0, 5, 10], series: [{ d: moodDay, c: teal }] });
+    tone: !vals(moodDay).length && !lowMood.length ? '' : lowMood.length ? 'amber' : 'green', min: 0, max: 10, ticks: [0, 5, 10], series: [{ d: moodDay, c: teal }],
+    legend: [{ c: teal, t: "The day's check-in average", line: true }] });
 
   /* Bowels (v286): only when bowel movements were logged in the period, so a report without them is unchanged. A bar a day
      split into hard (types 1 to 2), the middle of the scale (3 to 5) and loose (6 to 7), a red dot under a day with blood */
@@ -6838,7 +6845,8 @@ function twoPageCharts(entries, days) {
     charts.push({ key: 'bowel', title: 'Bowels a day', type: 'stack', stat: statBits.join(', '),
       tone: toneOf(bloodDays.length, looseDays || hardDays >= 3), min: 0, max: bTop, ticks: [0, bTop / 2, bTop],
       dots: bloodDays, dotC: red,
-      series: [{ d: hard, c: REPORT_SLATE }, { d: mid, c: teal }, { d: loose, c: REPORT_WARM }] });
+      series: [{ d: hard, c: REPORT_SLATE }, { d: mid, c: teal }, { d: loose, c: REPORT_WARM }],
+      legend: [{ c: REPORT_SLATE, t: 'Hard (1 to 2)' }, { c: teal, t: 'Types 3 to 5' }, { c: REPORT_WARM, t: 'Loose (6 to 7)' }, { c: red, t: 'Blood', dot: true }] });
   }
 
   return { charts, facts: { tv, tPeak, hv, hPeak, bpAll, bpRed, bpAmber, ov, oLow, wSorted, wDrop, nights, shortN, pAvg, pDays: pv.length, pWorst, painAll, lowMood, moodDay } };
@@ -6928,7 +6936,8 @@ function twoPageMeds(entries, from, to) {
 
 /* Side effects for the strip (v174): symptoms that name a cause, by cause, worst first, as facts */
 function twoPageSideFx(entries) {
-  const fx = entries.filter((e) => e.type === 'symptom' && e.value != null && causeOf(e));
+  /* the check-ins' own side effects have their own block since v289 (afterTreatmentLog), so only the rest are listed here */
+  const fx = entries.filter((e) => e.type === 'symptom' && e.value != null && causeOf(e) && !e.fromCheckin);
   if (!fx.length) return null;
   const byCause = new Map();
   fx.forEach((e) => { const c = causeOf(e); if (!byCause.has(c.name)) byCause.set(c.name, []); byCause.get(c.name).push(e); });
@@ -7068,6 +7077,48 @@ function carerLog(entries, from, to) {
    massive; the carer's Your week, as you see it, is the one that goes in). One row a weekly review in the period:
    the four scored answers in words, then what helped, what was hardest and the week in a sentence, whole. Null
    when no carer finished one in the period. */
+/* Side effects after each treatment session (v289, Mark: "the side effects are logged for three days after a treatment,
+   so those are what need to be in the report"). One row per session whose three days touch the period: each day's answers
+   from the morning and evening check-ins' side-effects step, the worse of the two for each, in the check-in's own words.
+   Shaped like the carer's block so it lays out, moves and carries on the same way. Null when no session in the period
+   was answered at all, so a report without check-ins is unchanged. */
+function afterTreatmentLog(entries, from, to) {
+  const sessions = sessionDays().filter((d) => d <= to && addDays(d, FX_DAYS) >= from);
+  const cis = entries.filter((e) => isPatientCheckin(e) && e.sidefx && e.sidefx.session);
+  let answered = 0;
+  const days = sessions.map((sd) => {
+    const info = state.days[sd] || {};
+    const t = treatmentOf(info);
+    const name = isRepeat(t) ? capFirst(sessionLabel(info)) : t.label;
+    const worst = {};
+    const lines = [];
+    for (let n = 1; n <= FX_DAYS; n++) {
+      const day = addDays(sd, n);
+      if (day > to || day > todayStr()) break;
+      const grades = {};
+      cis.filter((e) => e.day === day && e.sidefx.session === sd).forEach((e) => Object.entries(e.sidefx.grades || {}).forEach(([k, g]) => {
+        if (g != null) grades[k] = Math.max(grades[k] == null ? 0 : grades[k], g);
+      }));
+      const keys = Object.keys(grades);
+      if (keys.length) answered++;
+      const bad = SIDEFX_ALL.filter((k) => grades[k] > 0);
+      bad.forEach((k) => { worst[k] = Math.max(worst[k] || 0, grades[k]); });
+      lines.push(`Day ${n}, ${rDay(day)}: ` + (bad.length ? capFirst(bad.map((k) => k.toLowerCase() + ' ' + FX_WORDS[grades[k]].toLowerCase()).join(', ')) : keys.length ? 'none of these' : 'not answered'));
+    }
+    const w = Object.entries(worst).sort((a, b) => b[1] - a[1]);
+    const moods = w.length ? 'Worst: ' + w.map(([k, g]) => k.toLowerCase() + ' ' + FX_WORDS[g].toLowerCase()).join(', ') : '';
+    return { day: sd, when: name + ', ' + rDay(sd), moods, texts: lines };
+  }).filter((d) => d.texts.length);
+  if (!answered || !days.length) return null;
+  return {
+    title: 'Side effects after treatment',
+    range: days.length > 1 ? rRange(days[0].day, days[days.length - 1].day) : '',
+    summary: '',
+    note: 'From the morning and evening check-ins on the three days after each session: none, mild, moderate or severe, the worse of the two each day.',
+    days
+  };
+}
+
 function carerWeekLog(entries, from, to) {
   const rows = entries.filter((e) => e.type === 'checkin' && e.slot === 'weekcarer' && e.day >= from && e.day <= to && e.done !== false)
     .sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : 0));
@@ -7134,6 +7185,7 @@ function buildTwoPage(n) {
     latest, tiles, meds, hospital, steady, sideFx: twoPageSideFx(entries), results: twoPageResults(entries),
     questions: qs, more: 0, older: report.older.length, olderFrom: rDay(from), extraQ: [], weeksPage3: false, lines: 3,
     charts, days: labels, weeks, carer: carerWeekLog(entries, from, to), carerTail: false, carerPage1: false,
+    fx: afterTreatmentLog(entries, from, to), fxTail: false,
     weeksNote: ai ? 'Summarised from the daily notes by Daybook Assistant, an AI helper. Every note is in Daybook.' : 'The most telling note of each day. Every note is in Daybook.',
     foot: 'Notes for the team'
   };

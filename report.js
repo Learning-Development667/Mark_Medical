@@ -121,6 +121,11 @@ h2.sec small{font-family:Inter,sans-serif;font-weight:400;font-size:7.6pt;color:
 .carerbox li b{font-weight:600}
 .carerbox li .cmood{display:block}
 .carerbox li .ctext{display:block;margin-top:.4mm}
+.fxbox{flex:none;background:#FBF6EA;border-left:1.2mm solid #E0A030;border-radius:0 2.4mm 2.4mm 0}
+.fxbox li time{color:#8A5E10}
+.fxbox li b{font-weight:600}
+.fxbox li .cmood{display:block}
+.fxbox li .ctext{display:block;margin-top:.4mm}
 .tail .more{margin:0}
 `;
 
@@ -187,8 +192,9 @@ export function renderChart(cfg, days) {
       /* The line runs from reading to reading across days with none (v152): the dots mark the readings, the line
          only joins them, as the app's own charts do; a gap read as a broken chart, not as a day with nothing logged */
       se.d.forEach((v, i) => { if (v == null) return; d += (pen ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1) + ' '; pen = true; });
-      s += `<path d="${d}" fill="none" stroke="${se.c}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>`;
-      se.d.forEach((v, i) => { if (v != null) s += `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="${r}" fill="${se.c}"/>`; });
+      /* se.hollow: points alone, as rings (readings between the check-ins, v289); se.dash: a dashed line */
+      if (!se.hollow) s += `<path d="${d}" fill="none" stroke="${se.c}" stroke-width="1.5"${se.dash ? ' stroke-dasharray="3 2"' : ''} stroke-linejoin="round" stroke-linecap="round"/>`;
+      se.d.forEach((v, i) => { if (v != null) s += se.hollow ? `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="${r + 0.4}" fill="#fff" stroke="${se.c}" stroke-width="1"/>` : `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="${r}" fill="${se.c}"/>`; });
     });
   }
   return s + '</svg>';
@@ -222,11 +228,12 @@ function weekHtml(w, wide, o = {}) {
 /* The carer's own mood scores and observations, kept apart from the patient's (v237). C: { title, range, summary, note,
    days: [{ when, moods, texts: [string] }] }. Every observation is printed whole; a long list carries on, headed "continued". */
 function carerHtml(C, o = {}) {
+  const cls = o.cls || 'carerbox';
   const from = o.from || 0, to = o.to == null ? C.days.length : o.to;
   const shown = C.days.slice(from, to);
   const last = to >= C.days.length;
   const items = `<ul>${shown.map((d) => `<li><time>${esc(d.when)}</time><span>${d.moods ? `<b class="cmood">${esc(d.moods)}</b>` : ''}${d.texts.map((t) => `<span class="ctext">${esc(t)}</span>`).join('')}</span></li>`).join('')}</ul>`;
-  return `<div class="week carerbox wide${o.nat ? ' nat' : ''}" data-sec="${esc(C.title)}"${o.ti == null ? '' : ` data-ti="${o.ti}"`}><div class="wh"><h3>${esc(C.title)}${from ? ' <small>(continued)</small>' : ''}</h3><span>${esc(C.range)}</span></div>${C.summary && !from ? `<div class="theme">${esc(C.summary)}</div>` : ''}${items}${C.note && last ? `<p class="ai">${esc(C.note)}</p>` : ''}</div>`;
+  return `<div class="week ${cls} wide${o.nat ? ' nat' : ''}" data-sec="${esc(C.title)}"${o.ti == null ? '' : ` data-ti="${o.ti}"`}><div class="wh"><h3>${esc(C.title)}${from ? ' <small>(continued)</small>' : ''}</h3><span>${esc(C.range)}</span></div>${C.summary && !from ? `<div class="theme">${esc(C.summary)}</div>` : ''}${items}${C.note && last ? `<p class="ai">${esc(C.note)}</p>` : ''}</div>`;
 }
 
 /* The pages after the two fixed ones (since v236). Nothing on a report is cut short: whatever page 1 or page 2
@@ -238,6 +245,7 @@ function tailItems(R) {
   if (R.latestMoved && R.latest) items.push({ k: 'l' });
   (R.extraQ || []).forEach((_, n) => items.push({ k: 'q', n }));
   if (R.weeksPage3) R.weeks.forEach((w, n) => items.push({ k: 'w', n, from: 0, to: w.entries.length }));
+  if (R.fx && R.fxTail) items.push({ k: 'f', from: 0, to: R.fx.days.length });
   if (R.carer && R.carerTail) items.push({ k: 'c', from: 0, to: R.carer.days.length });
   return items;
 }
@@ -259,6 +267,10 @@ function tailPageHtml(R, items, p, total) {
       return;
     }
     flushQ();
+    if (it.k === 'f') {
+      body += `<div class="weeks nat">${carerHtml(R.fx, { nat: true, ti, from: it.from, to: it.to, cls: 'fxbox' })}</div>`;
+      return;
+    }
     if (it.k === 'c') {
       body += `<div class="weeks nat">${carerHtml(R.carer, { nat: true, ti, from: it.from, to: it.to })}</div>`;
       return;
@@ -275,7 +287,8 @@ function tailPageHtml(R, items, p, total) {
   flushQ();
   const kinds = new Set(items.map((i) => i.k));
   const hasQ = kinds.has('q') || kinds.has('l'), hasW = kinds.has('w'), hasC = kinds.has('c');
-  const base = hasQ && hasW ? 'More questions, and the weekly notes' : hasQ ? 'More questions for the team' : hasW ? (p > 0 ? 'Weekly notes, continued' : 'Weekly notes') : '';
+  let base = hasQ && hasW ? 'More questions, and the weekly notes' : hasQ ? 'More questions for the team' : hasW ? (p > 0 ? 'Weekly notes, continued' : 'Weekly notes') : '';
+  if (kinds.has('f')) base = base ? 'Side effects after treatment, and ' + base.charAt(0).toLowerCase() + base.slice(1) : 'Side effects after treatment';
   const title = hasC ? (base ? base + ", and the carer's view" : "The carer's view") : base;
   return `<section class="page tail" id="page${3 + p}">
   <div class="runner"><h2>${title}</h2><span>${esc(R.patient)} · ${esc(R.period)}</span></div>
@@ -290,7 +303,7 @@ export function reportHtml(R) {
   const strip = [];
   const medsHtml = `<div data-sec="Medicines"><b>When-needed medicines.</b> ${esc(R.meds)}${R.hospital ? `<br><b>${esc(R.hospital.label)}</b> ${esc(R.hospital.text)}` : ''}</div>`;
   strip.push(medsHtml);
-  if (R.sideFx) strip.push(`<div data-sec="Side effects"><b>Side effects logged.</b> ${esc(R.sideFx)}</div>`);
+  if (R.sideFx) strip.push(`<div data-sec="Side effects"><b>${R.fx ? 'Other side effects logged.' : 'Side effects logged.'}</b> ${esc(R.sideFx)}</div>`);
   if (R.results) strip.push(`<div data-sec="Results"><b>Results, as the team gave them.</b> ${esc(R.results)}</div>`);
   if (R.steady) strip.push(`<div class="steady" data-sec="Steady"><b>Steady.</b> ${esc(R.steady)}</div>`);
   const qs = R.questions.map((q, i) => questionHtml({ ...q, i: i + 1, lines: R.lines }, false));
@@ -303,10 +316,13 @@ export function reportHtml(R) {
   const extraN = (R.extraQ || []).length;
   const olderLine = R.older ? `<p class="more">${esc(R.older === 1 ? '1 older question is' : R.older + ' older questions are')} still open in the app, asked before ${esc(R.olderFrom || 'this period')}.</p>` : '';
   const noneLine = R.questions.length ? '' : '<p class="none" data-sec="No questions">No new questions this time.</p>';
-  /* the bowel chart carries its own small legend under it (v287, Mark: the notes belong under the chart, not in the key) */
-  const legend = (c) => c.key === 'bowel' ? `<div class="blegend"><span><i style="background:#8FA6B8"></i>Hard (1 to 2)</span><span><i style="background:${C.teal}"></i>Types 3 to 5</span><span><i style="background:#C2703D"></i>Loose (6 to 7)</span><span><i style="background:${C.red};width:1.6mm;height:1.6mm;border-radius:50%"></i>Blood</span></div>` : '';
+  /* Every chart carries its own key under it, inside its card (v287 for the bowels, v289 for all, Mark: "the key to the
+     chart should sit underneath the chart and be inside the same rectangle"). c.legend: [{ c: colour, t: words, dot?, line? }] */
+  const AMB = 'rgba(224,160,48,.45)', RD = 'rgba(200,69,59,.45)';
+  const sw = (it) => it.c === 'amber' ? AMB : it.c === 'red' ? RD : it.c;
+  const legend = (c) => (c.legend && c.legend.length ? `<div class="blegend">${c.legend.map((it) => `<span><i style="background:${sw(it)}${it.dot ? ';width:1.6mm;height:1.6mm;border-radius:50%' : it.line ? ';height:.7mm' : ''}"></i>${esc(it.t)}</span>`).join('')}</div>` : '');
   const charts = R.charts.map((c) => `<div class="c" data-sec="${esc(c.title)}"><div class="h"><h3>${esc(c.title)}</h3><span class="stat ${esc(c.tone || '')}">${esc(c.stat)}</span></div>${renderChart(c, R.days)}${legend(c)}</div>`).join('');
-  const key = `<div class="c key"><b>Key</b><span><i class="sw" style="background:rgba(224,160,48,.45)"></i>Amber: worth mentioning</span><span><i class="sw" style="background:rgba(200,69,59,.45)"></i>Red: raise promptly</span><span><i class="sw" style="background:${C.ink}"></i><i class="sw" style="background:${C.teal}"></i>Blood pressure: dark systolic, teal diastolic</span><span>Sleep bars under 5 h are amber.</span></div>`.replace('class="c key"', R.charts.length % 2 ? 'class="c key half"' : 'class="c key"');
+  const key = '';
   const weeks = R.weeks.length ? R.weeks.map((w) => weekHtml(w, R.weeks.length === 1)).join('')
     : weekHtml({ title: 'Notes', range: R.period, theme: '', entries: [] }, true).replace('No written notes this week.', 'No written notes in this period.');
   const weeksHtml = `<div class="wwrap" data-sec="Week by week">
@@ -351,6 +367,7 @@ ${bar}
 <section class="page" id="page2">
   <div class="runner"><h2>${R.weeksPage3 ? 'Readings' : 'Readings and weekly notes'}</h2><span>${esc(R.patient)} · ${esc(R.period)}</span></div>
   <div class="cgrid" data-sec="Charts">${charts}${key}</div>
+  ${R.fx && !R.fxTail ? carerHtml(R.fx, { cls: 'fxbox' }) : ''}
   ${R.weeksPage3 ? '' : weeksHtml}
   ${R.carer && !R.carerTail && !R.carerPage1 ? carerHtml(R.carer) : ''}
   <div class="foot"><span>${esc(R.foot)}</span>${madeBy(2, total)}</div>
@@ -433,8 +450,12 @@ export function shrink(R, over) {
   if (R.carer && R.carerPage1 && over.some((s) => s === R.carer.title || /^Question|^Questions|^No questions|^Page 1|^Medicines|^Steady|^Latest|^Side effects|^Results/.test(s))) {
     R.carerPage1 = false; R.carerTail = true; R.tailPages = null; return true;
   }
-  if (!R.weeksPage3 && R.weeks.some((w) => over.includes(w.title) || over.includes('Week by week') || over.includes('Page 2'))) {
+  if (!R.weeksPage3 && R.weeks.some((w) => over.includes(w.title) || over.includes('Week by week') || over.includes('Page 2') || (R.fx && over.includes(R.fx.title)))) {
     R.weeksPage3 = true; R.tailPages = null; return true;
+  }
+  /* the side effects after treatment (v289) stay on page 2 under the charts until the weeks have gone; then they move too */
+  if (R.fx && !R.fxTail && R.weeksPage3 && over.some((s) => s === R.fx.title || s === 'Page 2' || s === 'Charts')) {
+    R.fxTail = true; R.tailPages = null; return true;
   }
   const page1 = over.some((s) => /^Question|^Other points|^Questions|^No questions|^Page 1|^Medicines|^Steady|^Latest|^Side effects|^Results/.test(s));
   if (page1) {
