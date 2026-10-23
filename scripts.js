@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '292';
+const APP_VERSION = '293';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -6592,7 +6592,7 @@ function openSendSheet(kind) {
       const done = h('button', { class: 'btn btn-primary btn-block', type: 'button', id: 'send-verify-done' }, "I've confirmed it, send now");
       mail.addEventListener('click', async () => {
         mail.disabled = true;
-        try { await sendEmailVerification(user, { url: location.origin + location.pathname }); said.textContent = 'Sent to ' + user.email + '. Open that email, tap the link, then come back here and tap the button below. Check junk mail if it is not there in a minute.'; }
+        try { await sendEmailVerification(user, { url: location.origin + location.pathname }); said.textContent = 'Sent to ' + user.email + '. It often lands in junk or spam, so look there too: it comes from noreply@care-log-3d05a.firebaseapp.com, "Verify your email". Tap the link in it, then come back here and tap the button below.'; said.classList.add('hint-warn'); }
         catch (e) { said.textContent = 'Could not send the link just now (' + errText(e) + '). Try again in a minute.'; }
         mail.disabled = false; mail.textContent = 'Send the link again';
       });
