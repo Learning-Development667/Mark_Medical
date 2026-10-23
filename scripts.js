@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '278';
+const APP_VERSION = '279';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -2748,6 +2748,7 @@ function entrySub(e) {
     if (m.any) bits.push('about ' + Math.round(m.totals.kcal) + ' kcal, ' + Math.round(m.totals.prot) + ' g protein');
   }
   if (e.type === 'sleep') {
+    if (e.watchShort) bits.push('Times as given: the watch did not record the whole night');
     if (e.bedAt || e.wokeAt) bits.push((e.bedAt || '?') + ' to ' + (e.wokeAt || '?'));
     const s = sleepStages(e); if (s) bits.push(s);
     if (e.note) bits.push(e.note);
@@ -4073,11 +4074,12 @@ function openAdd(type, editEntry, preset) {
     const tracked = isTrackerNight(existing);
     if (existing) {
       editId = existing.id;
-      if (tracked) { asleep.set(existing.value); Object.keys(stages).forEach((k) => { if (existing[k]) stages[k].set(existing[k]); }); }
+      if (tracked) { const w = existing.watchShort && existing.watch ? existing.watch : existing; asleep.set(w.value); Object.keys(stages).forEach((k) => { if (w[k]) stages[k].set(w[k]); }); }
       note.value = existing.note || '';
     }
     /* a tracker night opens on its figures, editable; a simple night on the block, with its times */
-    const block = nightBlock(nightFrom(existing), { ibd: packOn('ibd') });
+    const block = nightBlock(nightFrom(existing), { tracker: tracked ? existing : null, ibd: packOn('ibd') });
+    const sleepWarn = h('p', { class: 'hint hint-warn', role: 'alert', hidden: true });
     const details = h('details', { class: 'sleep-tracker' }, h('summary', { text: 'Add details from a tracker' }),
       h('p', { class: 'hint', text: 'For a watch or health app. Leave it shut if you do not have one: the times above are enough.' }),
       asleep.row, h('span', { class: 'fieldlabel', text: 'The four stages, in the order Apple Health lists them' }),
@@ -4087,12 +4089,23 @@ function openAdd(type, editEntry, preset) {
       h('p', { class: 'hint', text: existing && existing.addedBy === 'Apple Health'
         ? 'This night came in from Apple Health. Change anything that is wrong and save.'
         : existing ? 'Editing the sleep already logged for this morning.' : 'Last night, logged against this morning.' }),
-      block.el, details, field('Note', note));
+      block.el, sleepWarn, details, field('Note', note));
+    /* Save that cannot save says why inside the sheet, beside the times, not only in the message at the top (v279, Mark:
+       Save "took me back to the entry screen like I had made an entry", and nothing had been saved) */
+    const holdTimes = () => { sleepWarn.hidden = false; sleepWarn.textContent = 'Not saved yet: add when you went to bed and when you woke up, then Save.'; toast('Not saved yet. Add when you went to bed and when you woke up'); const b = $('night-bed'); if (b && b.offsetParent) { b.scrollIntoView({ block: 'center' }); b.focus(); } return { hold: true }; };
     getData = () => {
+      sleepWarn.hidden = true;
       const n = block.value();
+      /* the watch did not record the whole night (v279): the person's own times are the night */
+      if (tracked && n && n.watchShort) {
+        if (!minutesInBed(n.bedAt, n.wokeAt)) return holdTimes();
+        time.value = n.wokeAt;
+        return { type: 'sleep', note: note.value.trim(), rested: n.rested || null, broken: n.broken || null, brokenWhy: n.brokenWhy || [], brokenOther: n.brokenOther || '', ...shortNightPatch(state.selectedDay, n, existing) };
+      }
+      const undo = tracked && existing.watchShort ? shortNightPatch(state.selectedDay, n, existing) : null;
       const typed = asleep.minutes();
       const v = typed != null && typed > 0 ? typed : nightAsleep(n) || (tracked ? Number(existing.value) : null);
-      if (!v || v > 24 * 60) { toast('Add when you went to bed and when you woke up'); const b = $('night-bed'); if (b) b.focus(); return { hold: true }; }
+      if (!v || v > 24 * 60) return holdTimes();
       const data = { type: 'sleep', value: v, note: note.value.trim() };
       Object.keys(stages).forEach((k) => { const m = stages[k].minutes(); if (m !== null && m > 0) data[k] = m; });
       if (!data.awake && n && n.broken && n.broken !== 'no' && nightAwakeMin(n) && !(typed > 0)) data.awake = nightAwakeMin(n);
@@ -4101,6 +4114,7 @@ function openAdd(type, editEntry, preset) {
         if (n.wokeAt) { data.wokeAt = n.wokeAt; time.value = n.wokeAt; }
         Object.assign(data, { rested: n.rested || null, broken: n.broken || null, brokenWhy: n.brokenWhy || [], brokenOther: n.brokenOther || '', awakeFor: n.awakeFor || null });
       } else if (existing && existing.wokeAt) time.value = existing.wokeAt;
+      if (undo) Object.assign(data, { ...undo, value: data.value });
       if (!editId) data._id = state.selectedDay + '_sleep'; // the night's own document, where Apple Health would merge too
       return data;
     };
@@ -4353,7 +4367,7 @@ const NIGHT_RESTED = [['yes', 'Yes'], ['bit', 'A bit'], ['no', 'No']];
 const NIGHT_BROKEN = [['no', 'No'], ['some', 'Once or twice'], ['lots', 'Lots']];
 const NIGHT_WHY = [['toilet', 'Toilet'], ['pain', 'Pain'], ['sick', 'Feeling sick'], ['worry', 'Worry or racing mind'], ['hot', 'Too hot or night sweats'], ['other', 'Other']];
 const NIGHT_AWAKE = [['lt30', 'Under 30 minutes', 15], ['30to60', '30 minutes to an hour', 45], ['1to2', '1 to 2 hours', 90], ['gt2', 'More than 2 hours', 150]];
-const NIGHT_KEYS = ['bedAt', 'wokeAt', 'rested', 'broken', 'brokenWhy', 'brokenOther', 'awakeFor', 'toilet'];
+const NIGHT_KEYS = ['bedAt', 'wokeAt', 'rested', 'broken', 'brokenWhy', 'brokenOther', 'awakeFor', 'toilet', 'watchShort'];
 function minutesInBed(bed, woke) {
   if (!/^\d\d:\d\d$/.test(bed || '') || !/^\d\d:\d\d$/.test(woke || '')) return null;
   const [bh, bm] = bed.split(':').map(Number), [wh, wm] = woke.split(':').map(Number);
@@ -4378,6 +4392,7 @@ function nightWhyText(n) {
 function nightSummary(n) {
   if (!n) return '';
   const bits = [];
+  if (n.watchShort) bits.push('Watch did not record the whole night');
   if (n.bedAt && n.wokeAt) bits.push('In bed ' + n.bedAt + ' to ' + n.wokeAt);
   if (n.rested) bits.push('Rested: ' + (NIGHT_RESTED.find((x) => x[0] === n.rested) || ['', n.rested])[1].toLowerCase());
   if (n.broken === 'no') bits.push('Not broken');
@@ -4412,8 +4427,11 @@ function nightBlock(init, opts = {}) {
   const other = h('input', { type: 'text', class: 'input', maxlength: '60', placeholder: 'e.g. the dog, or a phone call', value: n0.brokenOther || '' });
   const otherWrap = h('div', { class: 'night-other' }, field('What else?', other));
   let rested, broken, why, awake, toilet;
+  /* v279, Mark: the watch's battery died in the night, so Apple Health had a short night and 45 minutes "awake" he never was.
+     "My watch didn't record the whole night" opens the times, and his own times then replace the watch's figures. */
+  let short = Boolean(tracker && n0.watchShort);
   const showTotal = () => {
-    if (tracker) return;
+    if (tracker && !short) return;
     const inBed = minutesInBed(bed.value, woke.value);
     const aw = (broken.get() && broken.get() !== 'no') ? nightAwakeMin({ awakeFor: awake.get() }) : null;
     total.textContent = inBed ? 'That is ' + fmtHm(inBed) + ' in bed' + (aw ? ', about ' + fmtHm(Math.max(1, inBed - aw)) + ' asleep.' : '.') : 'Daybook works out the hours.';
@@ -4421,21 +4439,30 @@ function nightBlock(init, opts = {}) {
   const showSubs = () => {
     const isBroken = broken.get() === 'some' || broken.get() === 'lots';
     whyWrap.hidden = !isBroken;
-    awakeWrap.hidden = !isBroken || Boolean(tracker);
+    awakeWrap.hidden = !isBroken || Boolean(tracker && !short);
     otherWrap.hidden = !(isBroken && why.get().includes('other'));
     toiletWrap.hidden = !(isBroken && opts.ibd && why.get().includes('toilet'));
     showTotal();
   };
+  bed = h('input', { type: 'time', id: 'night-bed', value: n0.bedAt || (tracker && tracker.bedAt) || '' });
+  woke = h('input', { type: 'time', id: 'night-woke', value: n0.wokeAt || (tracker && tracker.wokeAt) || '' });
+  bed.addEventListener('input', showTotal); woke.addEventListener('input', showTotal);
+  const times = h('div', { class: 'night-times' }, h('div', { class: 'field-row' }, field('Went to bed', bed), field('Woke up', woke)), total);
   if (tracker) {
-    const asleep = Number(tracker.value) > 0 ? fmtHm(Number(tracker.value)) + ' asleep' : '';
+    const w = tracker.watchShort && tracker.watch ? tracker.watch : tracker;
+    const asleep = Number(w.value) > 0 ? fmtHm(Number(w.value)) + ' asleep' : '';
     const from = tracker.addedBy === 'Apple Health' ? 'From Apple Health' : 'From the night logged';
-    box.append(h('p', { class: 'wiz-hint night-tracker' }, icon('check'), from + ': ' + [tracker.bedAt && tracker.wokeAt ? 'in bed ' + tracker.bedAt + ' to ' + tracker.wokeAt : '', asleep].filter(Boolean).join(', ') + '.'));
-  } else {
-    bed = h('input', { type: 'time', id: 'night-bed', value: n0.bedAt || '' });
-    woke = h('input', { type: 'time', id: 'night-woke', value: n0.wokeAt || '' });
-    bed.addEventListener('input', showTotal); woke.addEventListener('input', showTotal);
-    box.append(h('div', { class: 'field-row' }, field('Went to bed', bed), field('Woke up', woke)), total);
-  }
+    const line = h('p', { class: 'wiz-hint night-tracker' }, icon('check'), from + ': ' + [w.bedAt && w.wokeAt ? 'in bed ' + w.bedAt + ' to ' + w.wokeAt : '', asleep].filter(Boolean).join(', ') + '.');
+    const shortBtn = h('button', { class: 'preset night-short', type: 'button', 'aria-pressed': 'false' }, "My watch didn't record the whole night");
+    const shortHint = h('p', { class: 'wiz-hint', text: 'Battery died or taken off? Put in when you really went to bed and woke up. Your times replace the watch\'s.' });
+    const syncShort = () => {
+      shortBtn.classList.toggle('is-active', short); shortBtn.setAttribute('aria-pressed', short ? 'true' : 'false');
+      times.hidden = !short; shortHint.hidden = !short; showSubs();
+    };
+    shortBtn.addEventListener('click', () => { short = !short; syncShort(); if (short) setTimeout(() => woke.focus(), 50); });
+    box.append(line, h('div', { class: 'chips' }, shortBtn), shortHint, times);
+    box._syncShort = syncShort;
+  } else box.append(times);
   rested = nightChips('Do you feel rested', NIGHT_RESTED, n0.rested, false);
   broken = nightChips('Was your sleep broken', NIGHT_BROKEN, n0.broken, false, showSubs);
   why = nightChips('What broke it', NIGHT_WHY, n0.brokenWhy, true, showSubs);
@@ -4448,29 +4475,49 @@ function nightBlock(init, opts = {}) {
     h('p', { class: 'fieldlabel', text: 'Do you feel rested?' }), rested.el,
     h('p', { class: 'fieldlabel', text: 'Was your sleep broken?' }), broken.el,
     whyWrap, toiletWrap, awakeWrap);
-  showSubs();
+  if (box._syncShort) box._syncShort(); else showSubs();
   const value = () => {
     const b = broken.get(), isBroken = b === 'some' || b === 'lots';
     const w = isBroken ? why.get() : [];
+    const own = !tracker || short;
     const n = {
-      bedAt: bed && bed.value ? bed.value : null,
-      wokeAt: woke && woke.value ? woke.value : null,
+      bedAt: own && bed.value ? bed.value : null,
+      wokeAt: own && woke.value ? woke.value : null,
       rested: rested.get(), broken: b,
       brokenWhy: w, brokenOther: isBroken && w.includes('other') ? other.value.trim() : '',
-      awakeFor: isBroken && !tracker ? awake.get() : null,
+      awakeFor: isBroken && own ? awake.get() : null,
       toilet: isBroken && opts.ibd && w.includes('toilet') ? toilet.get() : null
     };
-    return (n.bedAt || n.wokeAt || n.rested || n.broken) ? n : null;
+    if (tracker && short) n.watchShort = true;
+    return (n.bedAt || n.wokeAt || n.rested || n.broken || n.watchShort) ? n : null;
   };
   return { el: box, value, tracker };
 }
 /* the night's minutes asleep from the simple answers: time in bed less roughly how long awake */
 function nightAsleep(n) { const inBed = n ? minutesInBed(n.bedAt, n.wokeAt) : null; if (!inBed) return null; const aw = n.broken && n.broken !== 'no' ? nightAwakeMin(n) : null; return Math.max(1, inBed - (aw || 0)); }
+/* A tracker night the watch did not record in full (v279): the person's own times become the night (value, bedAt, wokeAt, awake,
+   at), the watch's figures are kept as watch, and the bridge then leaves the night alone. Unticked, the watch's figures come back. */
+function shortNightPatch(day, n, entry) {
+  if (n && n.watchShort && minutesInBed(n.bedAt, n.wokeAt)) {
+    const aw = n.broken && n.broken !== 'no' ? nightAwakeMin(n) : null;
+    const watch = entry.watchShort && entry.watch ? entry.watch
+      : Object.fromEntries(['value', 'bedAt', 'wokeAt', 'awake', 'core', 'deep', 'rem'].filter((k) => entry[k] != null).map((k) => [k, entry[k]]));
+    return { watchShort: true, watch, bedAt: n.bedAt, wokeAt: n.wokeAt, value: nightAsleep(n), awake: aw || null, awakeFor: n.awakeFor || null, at: atFromInputs(day, n.wokeAt) };
+  }
+  if (entry.watchShort && !(n && n.watchShort)) {
+    const w = entry.watch || {};
+    return { watchShort: false, watch: null, value: w.value != null ? w.value : entry.value, bedAt: w.bedAt || entry.bedAt || null, wokeAt: w.wokeAt || entry.wokeAt || null, awake: w.awake != null ? w.awake : null };
+  }
+  return {};
+}
 /* the night written onto its sleep entry: a tracker night takes only how it felt; a simple night its times and hours too */
 async function saveNightEntry(day, n, entry) {
   if (!n || state.readOnly || state.viewer) return;
   const fields = { rested: n.rested || null, broken: n.broken || null, brokenWhy: n.brokenWhy || [], brokenOther: n.brokenOther || '', awakeFor: n.awakeFor || null };
-  if (entry && isTrackerNight(entry)) return updateEntry(entry.id, fields);
+  if (entry && isTrackerNight(entry)) {
+    const patch = shortNightPatch(day, n, entry);
+    return updateEntry(entry.id, { ...fields, ...patch });
+  }
   const inBed = minutesInBed(n.bedAt, n.wokeAt);
   if (inBed) {
     const aw = n.broken && n.broken !== 'no' ? nightAwakeMin(n) : null;
@@ -7502,7 +7549,9 @@ function summaryRows(entries, from, to) {
   if (sleeps.length) {
     const mean = avg(sleeps.map((e) => Number(e.value)));
     const short = sleeps.filter((e) => Number(e.value) < 300);
-    if (short.length) { const lo = minBy(short, (e) => Number(e.value)); push('amber', 'Sleep', `Short nights: under 5 hours on ${short.length} of ${plural(sleeps.length, 'night')}, shortest ${fmtHm(lo.value)} before ${when(lo)}; averaging ${fmtHm(mean)}.`, short.length === 1 ? `a short night (${fmtHm(lo.value)}) before ${when(lo)}` : null, `Short nights (under 5 h): ${short.length} of ${sleeps.length}`); }
+    const own = sleeps.filter((e) => e.watchShort).length;
+    const ownNote = own ? ` ${own === 1 ? 'One night is' : own + ' nights are'} from the times given, as the watch did not record the whole night.` : '';
+    if (short.length) { const lo = minBy(short, (e) => Number(e.value)); push('amber', 'Sleep', `Short nights: under 5 hours on ${short.length} of ${plural(sleeps.length, 'night')}, shortest ${fmtHm(lo.value)} before ${when(lo)}; averaging ${fmtHm(mean)}.${ownNote}`, short.length === 1 ? `a short night (${fmtHm(lo.value)}) before ${when(lo)}` : null, `Short nights (under 5 h): ${short.length} of ${sleeps.length}`); }
     else fine.push(`sleep (${fmtHm(mean)} a night)`);
   }
   /* how the nights felt (v260): broken sleep and what broke it, as facts, never judged */
