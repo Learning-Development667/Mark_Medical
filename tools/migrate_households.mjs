@@ -83,7 +83,7 @@ if (action === 'copy') {
     if (!['family', 'readonly', 'viewer'].includes(role)) continue;
     await fs.set(`households/${hid}/members/${u.id}`, { name: str(fieldString(u.fields, 'name') || 'Unknown'), role: str(role), relation: str(fieldString(u.fields, 'relation')), addedBy: str('migration'), addedAt: ts() });
     await fs.merge(`users/${u.id}`, { household: str(hid) });
-    console.log(`member ${u.id}: ${fieldString(u.fields, 'name')} (${role})`);
+    console.log(`member ${u.id.slice(0, 2)}*** (${role})`);
   }
   /* the data, collection by collection, subcollections after their parents */
   for (const col of COLLECTIONS) {

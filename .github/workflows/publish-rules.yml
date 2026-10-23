@@ -27,8 +27,11 @@ jobs:
           node-version: "20"
       - name: Publish
         env:
-          SERVICE_ACCOUNT: ${{ inputs.target == 'demo' && secrets.DEMO_SERVICE_ACCOUNT || secrets.FIREBASE_SERVICE_ACCOUNT }}
-          RULES_FILE: ${{ inputs.target == 'demo' && 'firestore.demo.rules' || 'firestore.rules' }}
+          TARGET: ${{ inputs.target }}
+          DEMO_SA: ${{ secrets.DEMO_SERVICE_ACCOUNT }}
+          REAL_SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: |
-          if [ -z "$SERVICE_ACCOUNT" ]; then echo "::error::The service account secret for ${{ inputs.target }} is not set"; exit 1; fi
+          # each target takes only its own secret: no falling back to the real project (v291)
+          if [ "$TARGET" = "demo" ]; then export SERVICE_ACCOUNT="$DEMO_SA" RULES_FILE=firestore.demo.rules; else export SERVICE_ACCOUNT="$REAL_SA" RULES_FILE=firestore.rules; fi
+          if [ -z "$SERVICE_ACCOUNT" ]; then echo "::error::The service account secret for $TARGET is not set"; exit 1; fi
           node tools/publish_rules.mjs

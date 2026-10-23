@@ -93,7 +93,7 @@ One at a time, each a few days with its sources checked, on the profile mechanis
 
 ## Done
 - v260 Sleep asked simply, for anyone without a watch: in the morning check-in and on the Sleep tile, when you went to bed and woke (the hours worked out), rested, whether it was broken, what broke it and roughly for how long; a night from Apple Health shows as a line and only how it felt is asked; with Crohn's, Toilet answers the night question; broken sleep on Notes for the team; a set-up question on watches and health apps. Tested in `t/t64.mjs`.
-- v259 The Food sheet saves simply and never loses a food silently (Helen's missing lunch): Next then Save, an unknown food saved in one tap, closing with a food not saved asks first, no Undo on a food save, the entry written before the meal is remembered. Tested in `t/t63.mjs`.
+- v259 The Food sheet saves simply and never loses a food silently (a tester's missing lunch): Next then Save, an unknown food saved in one tap, closing with a food not saved asks first, no Undo on a food save, the entry written before the meal is remembered. Tested in `t/t63.mjs`.
 - v258 Fasting today? in the Crohn's morning check-in, shown as a fact on the Food diary, Notes for the team and the Crohn's report. Tested in `t/t61.mjs`.
 - v257 The Meds tab's Manage medicines and Medicine history as tinted tiles, and a gap above Scheduled. Tested in `t/t60.mjs`.
 - v253 to v256 What's new and the Beta welcome, by condition and bundled; when a medicine is taken (Morning, Midday, Teatime, Night with their own times); a course that starts later waits under Starting soon.

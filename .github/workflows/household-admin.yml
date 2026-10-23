@@ -2,6 +2,8 @@
 # household, add or remove a member, make a fresh Apple Health inbox key, make or switch off a Beta
 # code (one per route in: a ward, a clinic, a WhatsApp group), or list them all.
 # Uses the bridge's FIREBASE_SERVICE_ACCOUNT secret; nothing secret is typed in or printed.
+# THIS REPOSITORY IS PUBLIC: anyone can read a run's log, and the log shows what was typed into the boxes
+# below. Type no one's health details into them; the tool prints ids, counts and states only (v291).
 name: Household admin
 
 on:
@@ -26,11 +28,11 @@ on:
           - dose-use-check
           - dose-use
       code:
-        description: "Beta code to make or switch off (beta-code): letters and digits, e.g. BINCEY"
+        description: "Beta code to make or switch off (beta-code): letters and digits, e.g. WARD1"
         required: false
         type: string
       label:
-        description: "Where the Beta code goes (beta-code), e.g. Bincey's patients"
+        description: "Where the Beta code goes (beta-code), e.g. Ward 1 patients"
         required: false
         type: string
       switch_off:
@@ -39,7 +41,7 @@ on:
         type: boolean
         default: false
       household_id:
-        description: "Household id (add-member, remove-member, new-key)"
+        description: "Household id, from list (add-member, remove-member, new-key, food-check, dose-use)"
         required: false
         type: string
       household_name:
@@ -78,7 +80,7 @@ on:
         type: boolean
         default: false
       dose_use:
-        description: "dose-use-check / dose-use: Medicine | from-to | use inside | use outside, e.g. Diazepam | 21:00-01:00 | Sleep | Pain"
+        description: "dose-use-check / dose-use: Medicine | from-to | use inside | use outside, e.g. Medicine | 21:00-01:00 | Sleep | Pain"
         required: false
         type: string
       all_circles:

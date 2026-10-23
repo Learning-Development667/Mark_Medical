@@ -10,6 +10,11 @@ import { createSign } from 'node:crypto';
 const sa = JSON.parse(process.env.SERVICE_ACCOUNT || '{}');
 if (!sa.client_email || !sa.private_key || !sa.project_id) { console.error('SERVICE_ACCOUNT secret is missing or incomplete'); process.exit(1); }
 const file = process.env.RULES_FILE || 'firestore.rules';
+/* (v291) the wide-open demo rules may only ever reach the demo project, and the real rules only the real one:
+   the workflow once fell back to the real service account when the demo secret was missing */
+const PROJECTS = { 'firestore.rules': 'care-log-3d05a', 'firestore.demo.rules': 'daybook-demo-34eae' };
+const want = PROJECTS[file.split('/').pop()];
+if (!want || sa.project_id !== want) { console.error(`Refused: ${file} may only be published to ${want || 'a known project'}, and this service account is for ${sa.project_id}.`); process.exit(1); }
 const source = readFileSync(file, 'utf8');
 
 const b64url = (s) => Buffer.from(s).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');

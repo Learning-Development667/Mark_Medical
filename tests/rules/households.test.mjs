@@ -57,7 +57,7 @@ beforeEach(async () => {
     await put(`betaCodes/BETA1`, { label: 'A ward', active: true, uses: 0 });
     await put(`feedback/f1`, { household: A, text: 'The button did nothing' });
     await put(`bridge/global`, { day: '2026-09-29', households: 1 });
-    /* the pre-v75 shared layout, still guarded during the transition */
+    /* the pre-v75 shared layout: closed to everyone since v291 */
     await put(`entries/old1`, { type: 'note', day: '2026-09-01', note: 'Old' });
   });
 });
@@ -211,13 +211,13 @@ test('an oversized page or recording part is refused even for family', async () 
   await assertSucceeds(write(MARK, `households/${A}/recordings/r1/parts/1`, { n: 1, data: 'x'.repeat(700000) }));
 });
 
-/* ---- the transition layout ---- */
-test('the old shared layout still answers to the old role records, and to nobody else', async () => {
+/* ---- the old shared layout, closed since v291 ---- */
+test('the old shared layout answers to nobody, even an old role record', async () => {
   await env.withSecurityRulesDisabled(async (ctx) => {
     await setDoc(doc(ctx.firestore(), `users/${MARK}`), { household: A, role: 'family', name: 'Mark' });
   });
-  await assertSucceeds(read(MARK, `entries/old1`));
+  await assertFails(read(MARK, `entries/old1`));
+  await assertFails(write(MARK, `entries/old2`, { type: 'note' }));
   await assertFails(read(JANE, `entries/old1`));
-  await assertFails(read(SAM, `entries/old1`));
   await assertFails(read(null, `entries/old1`));
 });

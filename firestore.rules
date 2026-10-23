@@ -166,75 +166,7 @@ service cloud.firestore {
       }
     }
 
-    // ---- TRANSITION: the pre-v75 shared layout ----
-    // Kept only until the old top-level collections are cleaned up after the migration, so a
-    // phone still running an older version keeps working. Remove this whole block (down to
-    // END TRANSITION) in the clean-up commit.
-    function oldAccount() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
-    }
-    function oldHasRole(roles) {
-      return signedIn()
-        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
-        && oldAccount().role in roles;
-    }
-    function oldFamily() { return oldHasRole(['family']); }
-    function oldReadOnly() { return oldHasRole(['readonly']); }
-    function oldViewer() { return oldHasRole(['viewer']); }
-
-    match /entries/{entryId} {
-      allow read: if oldFamily() || oldReadOnly() || (oldViewer() && resource.data.type in ['med', 'temp', 'vitals', 'weight', 'sleep', 'drink']);
-      allow write: if oldFamily();
-    }
-    match /medicines/{medId} {
-      allow read: if oldFamily() || oldReadOnly() || oldViewer();
-      allow write: if oldFamily();
-    }
-    match /documents/{docId} {
-      allow read: if oldFamily() || oldReadOnly();
-      allow write: if oldFamily();
-      match /pages/{pageNo} {
-        allow read: if oldFamily() || oldReadOnly();
-        allow delete: if oldFamily();
-        allow create, update: if oldFamily() && pageSizeOk();
-      }
-    }
-    match /profile/{profileId} {
-      allow read: if oldFamily() || oldReadOnly();
-      allow write: if oldFamily();
-    }
-    match /days/{dayId} {
-      allow read: if oldFamily() || oldReadOnly() || oldViewer();
-      allow write: if oldFamily();
-    }
-    match /exercise/{dayId} {
-      allow read: if oldFamily() || oldReadOnly();
-      allow write: if oldFamily();
-    }
-    match /meals/{mealId} {
-      allow read: if oldFamily() || oldReadOnly();
-      allow write: if oldFamily();
-    }
-    match /nutrition/{dayId} {
-      allow read: if oldFamily() || oldReadOnly();
-      allow write: if oldFamily();
-    }
-    match /recordings/{recId} {
-      allow read: if oldFamily() || oldReadOnly();
-      allow write: if oldFamily();
-      match /parts/{partNo} {
-        allow read: if oldFamily() || oldReadOnly();
-        allow delete: if oldFamily();
-        allow create, update: if oldFamily() && pageSizeOk();
-      }
-    }
-    match /pushSubs/{subId} {
-      allow read, write: if oldFamily();
-    }
-    match /reminders/{reminderId} {
-      allow read, write: if oldFamily();
-    }
-    // ---- END TRANSITION ----
+    // The pre-v75 shared top-level layout (the TRANSITION block) was removed in v291: nothing outside a household is readable.
 
     match /{document=**} {
       allow read, write: if false;

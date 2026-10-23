@@ -11,7 +11,7 @@
                       its hash and stores the key under private/health, where the app shows it
                       (More > Settings > Apple Health). The key itself is never printed here.
    ACTION=list        every household with its members, and the Beta code and "who told you" it came in on.
-   ACTION=beta-code   CODE (letters and digits, say BINCEY or SCRI), LABEL (where it goes: "Bincey's patients"),
+   ACTION=beta-code   CODE (letters and digits, say WARD1), LABEL (where it goes: "Ward 1 patients"),
                       OFF=yes to switch an existing code off (a leaked one), otherwise made or switched on.
    ACTION=beta-codes  every Beta code with its label, state and uses.
    ACTION=dose-use-check / dose-use  (v267) DOSE_USE "Diazepam | 21:00-01:00 | Sleep | Pain": what each logged dose was for, by its time.
@@ -21,13 +21,19 @@
                       the circle has renamed or changed the dose of, or logged a dose of.
                       ALL=yes (v253) checks every circle, Beta code or not, naming its members, and leaves alone
                       only HOUSEHOLD_ID (Mark's own, whose medicines are real); unseed with ALL=yes refuses to run
-                      without HOUSEHOLD_ID. */
+                      without HOUSEHOLD_ID.
+
+   PUBLIC LOGS (v291, the security review of 23 October 2026): this repository is public, so anyone can read
+   every Actions run's log. Nothing printed here may name a person, a medicine, a Beta code, a label or a time
+   anything was taken or eaten: ids, counts and states only. A circle is found by HOUSEHOLD_ID (from list), never
+   by a person's name. */
 import { loadServiceAccount, connect, str, ts, fieldString, newId, newKey, sha256Hex } from './lib/firestore_rest.mjs';
 
 const action = (process.env.ACTION || '').trim();
 const env = (k) => (process.env[k] || '').trim();
 const uidOk = (u) => /^[A-Za-z0-9]{20,40}$/.test(u);
 const relation = (r) => (['patient', 'carer'].includes(r) ? r : '');
+const hidden = (s) => (s ? String(s).slice(0, 2) + '***' : '');
 const sa = loadServiceAccount('FIREBASE_SERVICE_ACCOUNT');
 const fs = await connect(sa);
 
@@ -46,7 +52,7 @@ async function addMember(hid, uid, name, role, rel, move) {
   if (current && current !== hid) { await fs.deleteMany([`${fs.root}/households/${current}/members/${uid}`]); console.log(`Removed from household ${current}`); }
   await fs.set(`households/${hid}/members/${uid}`, { name: str(name), role: str(role), relation: str(rel), addedBy: str('workflow'), addedAt: ts() });
   await fs.merge('users/' + uid, { household: str(hid) });
-  console.log(`households/${hid}/members/${uid}: ${name}, ${role}${rel ? ', ' + rel : ''}`);
+  console.log(`households/${hid}: member ${hidden(uid)} saved, ${role}${rel ? ', ' + rel : ''}`);
 }
 
 if (action === 'create') {
@@ -54,7 +60,7 @@ if (action === 'create') {
   if (!name) { console.error('HOUSEHOLD_NAME is required'); process.exit(1); }
   const hid = newId();
   await fs.set('households/' + hid, { name: str(name), owner: str(uid), createdAt: ts() });
-  console.log(`Created household ${hid} (${name})`);
+  console.log(`Created household ${hid}`);
   await addMember(hid, uid, env('OWNER_NAME'), 'family', relation(env('OWNER_RELATION')), false);
 } else if (action === 'add-member') {
   const hid = env('HOUSEHOLD_ID');
@@ -64,7 +70,7 @@ if (action === 'create') {
   const hid = env('HOUSEHOLD_ID'), uid = env('USER_UID');
   await household(hid);
   await fs.deleteMany([`${fs.root}/households/${hid}/members/${uid}`, `${fs.root}/users/${uid}`]);
-  console.log(`Removed ${uid} from household ${hid}`);
+  console.log(`Removed member ${hidden(uid)} from household ${hid}`);
 } else if (action === 'new-key') {
   const hid = env('HOUSEHOLD_ID');
   await household(hid);
@@ -81,10 +87,10 @@ if (action === 'create') {
   if (!old && off) { console.error('No Beta code ' + code); process.exit(1); }
   if (old) await fs.merge('betaCodes/' + code, { active: { booleanValue: !off }, ...(label ? { label: str(label) } : {}) });
   else await fs.set('betaCodes/' + code, { label: str(label || code), active: { booleanValue: true }, uses: { integerValue: '0' }, createdAt: ts() });
-  console.log(`Beta code ${code}: ${off ? 'switched off' : old ? 'on' : 'made'}${label ? ', ' + label : ''}. People type it when they create an account; a link that fills it in is ${process.env.APP_URL || 'https://app.mymedicaldaybook.co.uk/'}?beta=${code}`);
+  console.log(`Beta code ${hidden(code)}: ${off ? 'switched off' : old ? 'on' : 'made'}. People type it when they create an account, or use the link https://app.mymedicaldaybook.co.uk/?beta= followed by the code.`);
 } else if (action === 'beta-codes') {
   const codes = await fs.list('betaCodes');
-  for (const c of codes) console.log(`${c.id}  ${fieldString(c.fields, 'label')}  ${c.fields.active && c.fields.active.booleanValue === false ? 'off' : 'on'}  used ${(c.fields.uses && c.fields.uses.integerValue) || 0} times`);
+  for (const c of codes) console.log(`${hidden(c.id)}  ${c.fields.active && c.fields.active.booleanValue === false ? 'off' : 'on'}  used ${(c.fields.uses && c.fields.uses.integerValue) || 0} times`);
   if (!codes.length) console.log('No Beta codes yet. Make one with beta-code.');
 } else if (action === 'unseed-check' || action === 'unseed') {
   const SEED = { dalteparin: 'Dalteparin injection', 'co-amoxiclav': 'Co-amoxiclav 500/125mg', creon: 'Creon 25000', oramorph: 'Oramorph 10mg/5ml', diazepam: 'Diazepam', metoclopramide: 'Metoclopramide', chlorphenamine: 'Chlorphenamine', 'menthol-cream': 'Menthol 2% cream', macrogol: 'Macrogol sachets', senna: 'Senna' };
@@ -95,59 +101,38 @@ if (action === 'create') {
   for (const h of await fs.list('households')) {
     const code = fieldString(h.fields, 'betaCode') || (all ? 'no Beta code' : '');
     if (all) {
-      const who = (await fs.list(`households/${h.id}/members`)).map((m) => `${fieldString(m.fields, 'name')} (${fieldString(m.fields, 'role')}${fieldString(m.fields, 'relation') ? ', ' + fieldString(m.fields, 'relation') : ''})`);
-      console.log(`--- ${h.id}  ${fieldString(h.fields, 'name')}  members: ${who.join(', ') || 'none'}`);
+      const who = (await fs.list(`households/${h.id}/members`)).length;
+      console.log(`--- ${h.id}  ${who} member${who === 1 ? '' : 's'}`);
       if (h.id === keep) { console.log(`${h.id}: left alone (HOUSEHOLD_ID)`); continue; }
     }
-    if (!code) { console.log(`${h.id}  ${fieldString(h.fields, 'name')}: no Beta code, left alone`); continue; }
+    if (!code) { console.log(`${h.id}: no Beta code, left alone`); continue; }
     const meds = await fs.list(`households/${h.id}/medicines`);
-    if (all) console.log(`   medicines in this circle: ${meds.map((m) => fieldString(m.fields, 'name') + (SEED[m.id] ? ' [starter id ' + m.id + ']' : '')).join('; ') || 'none'}`);
     const copies = meds.filter((m) => SEED[m.id] && fieldString(m.fields, 'name') === SEED[m.id]);
-    if (!copies.length) { console.log(`${h.id}  ${fieldString(h.fields, 'name')} (${code}): none`); continue; }
+    if (!copies.length) { console.log(`${h.id}: none`); continue; }
     const dosed = new Set((await fs.list(`households/${h.id}/entries`)).filter((e) => fieldString(e.fields, 'type') === 'med').map((e) => fieldString(e.fields, 'medId')));
     const go = copies.filter((m) => !dosed.has(m.id));
     const kept = copies.filter((m) => dosed.has(m.id)).map((m) => m.id);
-    console.log(`${h.id}  ${fieldString(h.fields, 'name')} (${code}): ${go.length} starter medicines to ${apply ? 'delete' : 'remove'}${kept.length ? '; kept, doses logged: ' + kept.join(', ') : ''}`);
+    console.log(`${h.id}: ${go.length} starter medicines to ${apply ? 'delete' : 'remove'}${kept.length ? '; ' + kept.length + ' kept, doses logged' : ''}`);
     if (apply && go.length) await fs.deleteMany(go.map((m) => `${fs.root}/households/${h.id}/medicines/${m.id}`));
     total += go.length;
   }
   console.log(apply ? `Deleted ${total}.` : `${total} would be deleted. Run unseed to delete them.`);
 } else if (action === 'food-check') {
-  /* Read only, with the person's agreement (Helen, 21 October 2026: a lunch missing from her timeline).
-     Prints when things were saved and by whom, never what was eaten: entry types, days, times, the
-     author, and for saved meals only their dates and counts. NAME finds the circle by a member's
-     first name, or HOUSEHOLD_ID names it. */
-  const want = env('NAME').toLowerCase(), days = 3;
-  const london = (v) => v ? new Date(v).toLocaleString('en-GB', { timeZone: 'Europe/London', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '-';
+  /* Read only, with the person's agreement (a Beta tester, 21 October 2026: a lunch missing from the timeline). Since v291 it
+     prints counts only (the log is public): entries a day by type over the last three days, and how many saved meals,
+     never what was eaten, when, or by whom. HOUSEHOLD_ID names the circle. */
+  const hid = env('HOUSEHOLD_ID');
+  if (!hid) { console.error('Give HOUSEHOLD_ID (from list)'); process.exit(1); }
+  await household(hid);
   const tsv = (f, k) => (f && f[k] && f[k].timestampValue) || '';
-  let hids = env('HOUSEHOLD_ID') ? [env('HOUSEHOLD_ID')] : [];
-  if (!hids.length) {
-    if (!want) { console.error('Give NAME (a member\'s first name) or HOUSEHOLD_ID'); process.exit(1); }
-    for (const h of await fs.list('households')) {
-      const ms = await fs.list(`households/${h.id}/members`);
-      if (ms.some((m) => fieldString(m.fields, 'name').toLowerCase().startsWith(want))) hids.push(h.id);
-    }
-  }
-  if (!hids.length) { console.log('No circle with a member called ' + want); process.exit(0); }
-  const since = new Date(Date.now() - days * 864e5).toISOString().slice(0, 10);
-  for (const hid of hids) {
-    const ms = await fs.list(`households/${hid}/members`);
-    console.log(`=== circle ${hid}, members: ${ms.map((m) => fieldString(m.fields, 'name') + ' (' + fieldString(m.fields, 'role') + ')').join(', ')}`);
-    const all = await fs.list(`households/${hid}/entries`);
-    const es = all.filter((e) => fieldString(e.fields, 'day') >= since || tsv(e.fields, 'createdAt').slice(0, 10) >= since);
-    console.log(`${all.length} entries in the circle in all; food entries on any day: ${all.filter((e) => fieldString(e.fields, 'type') === 'food').map((e) => fieldString(e.fields, 'day')).sort().join(', ') || 'none'}`);
-    es.sort((a, b) => tsv(a.fields, 'createdAt').localeCompare(tsv(b.fields, 'createdAt')));
-    console.log(`Entries dated or saved from ${since}, in the order they reached the database (type | day | time logged | saved at | by):`);
-    for (const e of es) {
-      const f = e.fields;
-      console.log(`  ${fieldString(f, 'type').padEnd(9)} | ${fieldString(f, 'day')} | ${london(tsv(f, 'at'))} | ${london(tsv(f, 'createdAt'))} | ${fieldString(f, 'addedBy')}${tsv(f, 'updatedAt') ? ' | updated ' + london(tsv(f, 'updatedAt')) : ''}`);
-    }
-    console.log('Saved meals (no names: created | last logged | updated | uses):');
-    for (const m of await fs.list(`households/${hid}/meals`)) {
-      const f = m.fields;
-      console.log(`  ${london(tsv(f, 'createdAt'))} | ${london(tsv(f, 'lastAt'))} | ${london(tsv(f, 'updatedAt'))} | ${(f.uses && (f.uses.integerValue || f.uses.doubleValue)) || 0} | by ${fieldString(f, 'addedBy')}`);
-    }
-  }
+  const since = new Date(Date.now() - 3 * 864e5).toISOString().slice(0, 10);
+  const all = await fs.list(`households/${hid}/entries`);
+  const es = all.filter((e) => fieldString(e.fields, 'day') >= since || tsv(e.fields, 'createdAt').slice(0, 10) >= since);
+  const byDay = {};
+  for (const e of es) { const d = fieldString(e.fields, 'day'), t = fieldString(e.fields, 'type'); byDay[d] = byDay[d] || {}; byDay[d][t] = (byDay[d][t] || 0) + 1; }
+  console.log(`Circle ${hid}: ${all.length} entries in all; ${all.filter((e) => fieldString(e.fields, 'type') === 'food').length} food entries on any day.`);
+  for (const d of Object.keys(byDay).sort()) console.log(`  ${d}: ${Object.entries(byDay[d]).map(([t, n]) => t + ' ' + n).join(', ')}`);
+  console.log(`Saved meals: ${(await fs.list(`households/${hid}/meals`)).length}.`);
 } else if (action === 'dose-use-check' || action === 'dose-use') {
   /* (v267) Mark, 22 October 2026: "Every diazepam I have taken between 2100hrs and 0100hrs has been for sleep. The rest
      has been pain." Marks each logged dose of one medicine with what it was for (forUse, v263) by the London time it
@@ -160,21 +145,12 @@ if (action === 'create') {
   const [medWord, , useIn, useOut] = parts;
   const startMin = Number(m[1]) * 60 + Number(m[2] || 0), endMin = Number(m[3]) * 60 + Number(m[4] || 0);
   const inWindow = (mins) => (startMin <= endMin ? mins >= startMin && mins < endMin : mins >= startMin || mins < endMin);
-  let hid = env('HOUSEHOLD_ID');
-  if (!hid) {
-    const want = env('NAME').toLowerCase();
-    if (!want) { console.error('Give NAME (a member\'s first name) or HOUSEHOLD_ID'); process.exit(1); }
-    const hits = [];
-    for (const h of await fs.list('households')) {
-      const ms = await fs.list(`households/${h.id}/members`);
-      if (ms.some((x) => fieldString(x.fields, 'name').toLowerCase() === want && fieldString(x.fields, 'relation') === 'patient')) hits.push(h.id);
-    }
-    if (hits.length !== 1) { console.error(`${hits.length} circles have a patient called ${want}${hits.length ? ': ' + hits.join(', ') : ''}. Give HOUSEHOLD_ID.`); process.exit(1); }
-    hid = hits[0];
-  }
+  const hid = env('HOUSEHOLD_ID');
+  if (!hid) { console.error('Give HOUSEHOLD_ID (from list)'); process.exit(1); }
+  await household(hid);
   const meds = (await fs.list(`households/${hid}/medicines`)).filter((x) => fieldString(x.fields, 'name').toLowerCase().includes(medWord.toLowerCase()));
   const medIds = new Set(meds.map((x) => x.id));
-  console.log(`Circle ${hid}. Medicines matching "${medWord}": ${meds.map((x) => `${fieldString(x.fields, 'name')} (now for "${fieldString(x.fields, 'purpose')}"${fieldString(x.fields, 'alsoFor') ? ', also "' + fieldString(x.fields, 'alsoFor') + '"' : ''})`).join('; ') || 'none'}`);
+  console.log(`Circle ${hid}: ${meds.length} matching medicine${meds.length === 1 ? '' : 's'}.`);
   const tsv = (f, k) => (f && f[k] && f[k].timestampValue) || '';
   const doses = (await fs.list(`households/${hid}/entries`)).filter((e) => fieldString(e.fields, 'type') === 'med'
     && (medIds.has(fieldString(e.fields, 'medId')) || fieldString(e.fields, 'medName').toLowerCase().includes(medWord.toLowerCase())));
@@ -182,28 +158,28 @@ if (action === 'create') {
   doses.sort((a, b) => tsv(a.fields, 'at').localeCompare(tsv(b.fields, 'at')));
   for (const e of doses) {
     const at = tsv(e.fields, 'at');
-    if (!at) { console.log(`  ${e.id}: no time, left alone`); continue; }
+    if (!at) continue;
     const [hh, mm] = new Date(at).toLocaleTimeString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).split(':').map(Number);
     const use = inWindow(hh * 60 + mm) ? useIn : useOut;
     counts[use] += 1;
     const was = fieldString(e.fields, 'forUse');
-    console.log(`  ${new Date(at).toLocaleString('en-GB', { timeZone: 'Europe/London', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })}  ${fieldString(e.fields, 'medName')}: ${use}${was ? ' (was ' + was + ')' : ''}`);
     if (was !== use) writes.push([e.id, use]);
   }
-  console.log(`${doses.length} doses: ${useIn} ${counts[useIn]}, ${useOut} ${counts[useOut]}. ${writes.length} to ${apply ? 'save' : 'change'}.`);
+  console.log(`${doses.length} doses: ${counts[useIn]} inside the window, ${counts[useOut]} outside. ${writes.length} to ${apply ? 'save' : 'change'}.`);
   if (apply) {
     for (const [id, use] of writes) await fs.merge(`households/${hid}/entries/${id}`, { forUse: str(use), updatedAt: ts() });
     /* the medicine's two uses are only filled in when it has none yet: never write over what the person set */
     const unset = meds.filter((x) => !fieldString(x.fields, 'alsoFor'));
     for (const x of unset) await fs.merge(`households/${hid}/medicines/${x.id}`, { purpose: str(fieldString(x.fields, 'purpose') || useIn), alsoFor: str(useOut) });
-    console.log(`Saved ${writes.length} doses.` + (unset.length ? ` Gave ${unset.length} medicine${unset.length === 1 ? '' : 's'} "${useOut}" as a second use.` : ' The medicine\'s own uses were left as they are.'));
+    console.log(`Saved ${writes.length} doses.` + (unset.length ? ` Gave ${unset.length} medicine${unset.length === 1 ? '' : 's'} a second use.` : ' The medicine\'s own uses were left as they are.'));
   } else console.log('Nothing changed. Run dose-use to save it.');
 } else if (action === 'list') {
   const hs = await fs.list('households');
   for (const h of hs) {
     const via = [fieldString(h.fields, 'betaCode'), fieldString(h.fields, 'heardFrom')].filter(Boolean);
-    console.log(`${h.id}  ${fieldString(h.fields, 'name')}${via.length ? '  (Beta: ' + via.join(', ') + ')' : ''}`);
-    for (const m of await fs.list(`households/${h.id}/members`)) console.log(`   ${m.id}  ${fieldString(m.fields, 'name')}, ${fieldString(m.fields, 'role')}${fieldString(m.fields, 'relation') ? ', ' + fieldString(m.fields, 'relation') : ''}`);
+    const ms = await fs.list(`households/${h.id}/members`);
+    console.log(`${h.id}  ${ms.length} member${ms.length === 1 ? '' : 's'}${via.length ? '  (Beta code ' + hidden(via[0]) + ')' : ''}`);
+    for (const m of ms) console.log(`   ${hidden(m.id)}  ${fieldString(m.fields, 'role')}${fieldString(m.fields, 'relation') ? ', ' + fieldString(m.fields, 'relation') : ''}`);
   }
   if (!hs.length) console.log('No households yet.');
 } else {
