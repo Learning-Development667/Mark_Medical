@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=294">
+  <link rel="stylesheet" href="styles.css?v=295">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -1020,6 +1020,16 @@
             <div id="settings-handover"></div>
           </div>
         </div>
+        <div id="settings-records" hidden>
+          <h2 class="section-title">Your records</h2>
+          <div class="card settings-group">
+            <p class="hint">Download everything the circle has recorded: every entry, medicine, check-in, letter and recording, in one zip file to keep or to take elsewhere.</p>
+            <button id="settings-export" class="btn btn-secondary btn-block" type="button">Download all the records</button>
+            <p class="hint" id="settings-export-said" role="status"></p>
+            <div id="settings-export-save"></div>
+            <div id="settings-delete"></div>
+          </div>
+        </div>
         <div id="settings-health" hidden>
           <h2 class="section-title">Apple Health</h2>
           <div class="card settings-group">
@@ -1069,7 +1079,7 @@
   <!-- Privacy, terms and About (since v90): plain English, opened in the sheet from the Settings App card,
        the sign-in and sign-up screens, or ?page=privacy|terms|about in the address (openLegal()). -->
   <template id="tpl-privacy">
-    <p class="legal-date mono">Last updated 22 October 2026</p>
+    <p class="legal-date mono">Last updated 23 October 2026</p>
     <p>My Medical Daybook (Daybook for short) is made and run by Mark 1 Apps Ltd, a company registered in England and Wales (company number 17510025), which is responsible for the information the app holds (the "data controller" in UK law). Mark 1 Apps Ltd is registered with the Information Commissioner's Office, registration number ZC275185. <span data-contact></span></p>
     <h3>The short version</h3>
     <ul>
@@ -1116,9 +1126,9 @@
     <h3>Why it is held</h3>
     <p>To provide the service you have asked for, with your explicit consent for the health information you choose to record. UK data protection law calls health information "special category data", which is why it is handled with the care above. You can withdraw consent at any time by deleting what you recorded or asking for it to be erased.</p>
     <h3>How long</h3>
-    <p>Until you delete it. Deleting an entry, document or recording removes it from the database straight away. Removing a member removes their access and their reminders. The last Apple Health message held by the bridge is overwritten by the next one. Export and deleting a whole circle with one tap are planned; until they arrive, ask using the contact details at the top and it will be done within 30 days. Google keeps standard server logs for a limited period.</p>
+    <p>Until you delete it. Deleting an entry, document or recording removes it from the database straight away. Removing a member removes their access and their reminders. The last Apple Health message held by the bridge is overwritten by the next one. Under More, Settings, Your records, the patient (or whoever set the circle up) can download every record and delete the whole circle, which erases everything in it and their sign-in at once; anyone else can leave and delete their own sign-in, and what they logged stays in the patient's records. You can also ask using the contact details at the top and it will be done within 30 days. Google keeps standard server logs for a limited period.</p>
     <h3>Your rights</h3>
-    <p>Under UK data protection law you can ask to see the information held about you, have it corrected, have it erased, have a copy to take elsewhere, and object to how it is used. Ask using the contact details at the top. You can also complain to the Information Commissioner's Office at ico.org.uk.</p>
+    <p>Under UK data protection law you can ask to see the information held about you, have it corrected, have it erased, have a copy to take elsewhere, and object to how it is used. The copy and the erasing you can do yourself under More, Settings, Your records; for anything else, ask using the contact details at the top. You can also complain to the Information Commissioner's Office at ico.org.uk.</p>
     <h3>Children</h3>
     <p>A sign-in holder must be 18 or over. A parent or carer may set up a circle and record on behalf of someone they look after, including a child, with that person's agreement where they are able to give it, and otherwise acting in their interests.</p>
     <h3>The demo</h3>
@@ -1209,6 +1219,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=294"></script>
+  <script type="module" src="scripts.js?v=295"></script>
 </body>
 </html>
