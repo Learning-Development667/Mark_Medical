@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '287';
+const APP_VERSION = '288';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -2466,6 +2466,8 @@ function deleteEntry(id) {
   /* a dose taken in water goes with its drink (v249) */
   const water = medWaterOf(id);
   if (water) deleteEntry(water.id);
+  const fdrink = foodDrinkOf(id); // and a food drunk goes with its drink (v288)
+  if (fdrink) deleteEntry(fdrink.id);
   if (state.demo) {
     state.recentEntries = state.recentEntries.filter((e) => e.id !== id);
     state.dayEntries = state.dayEntries.filter((e) => e.id !== id);
@@ -2498,6 +2500,42 @@ function doseWaterMl(dose, how) {
   }
   ml = Math.round(ml);
   return ml >= 10 && ml <= 3000 ? ml : 0;
+}
+/* A drink with nutrition in it (v288, Mark: "something like a protein shake would take all the food stats but then also
+   add the mls to the daily drink total"): logged as a food entry carrying `drinkMl`, with a linked drink beside it,
+   `entries/{foodId}_drink` { type "drink", value, note, fromFood }, hidden from the timeline like the water with a
+   medicine, so the food totals and the drinks totals both count it from one entry. Known by Open Food Facts calling it a
+   drink (a scanned or searched product saved to My foods with `drink`), or by its name. Water, tea, coffee and squash
+   on the Drink tile stay plain drinks. */
+const NUTRI_DRINK_RE = /\b(protein shakes?|shakes?|milk ?shakes?|smoothies?|milk|juices?|lattes?|cappuccinos?|flat whites?|mochas?|hot chocolate|cola|coke|lemonade|fizzy drinks?|fortisip|ensure|complan|build ?up|supplement drinks?|soups?|kefir|yop|yazoo|frijj|drinking yog(?:h)?urts?)\b/i;
+const NOT_A_DRINK_RE = /\b(cake|biscuits?|bars?|cereal|pudding|ice ?cream|sweets?|buns?|cookies?|loaf|bread|crisps|porridge|weetabix|cornflakes|muesli)\b|milk chocolate|chocolate milk powder/i;
+const DRINK_ML = [[/protein shake|shake|smoothie/i, 300], [/soup/i, 300], [/fortisip|ensure|complan|build ?up|supplement/i, 200], [/cola|coke|lemonade|fizzy|yazoo|frijj/i, 330], [/latte|cappuccino|flat white|mocha|hot chocolate/i, 250], [/juice/i, 200], [/milk|kefir|yop|drinking yog/i, 200]];
+function packMl(text) {
+  const t = String(text || '').toLowerCase().replace(',', '.');
+  const m = t.match(/(\d+(?:\.\d+)?)\s*(ml|cl|l|litres?|liters?)\b/);
+  if (!m) return 0;
+  const v = parseFloat(m[1]) * (m[2] === 'ml' ? 1 : m[2] === 'cl' ? 10 : 1000);
+  return v >= 20 && v <= 3000 ? Math.round(v) : 0;
+}
+function drinkInfo(name) {
+  const n = String(name || '').trim();
+  if (!n) return null;
+  const custom = customFoodByName(n);
+  if (custom && (custom.drink || custom.ml)) return { ml: custom.ml || (DRINK_ML.find(([re]) => re.test(n)) || [0, 250])[1], nutri: Boolean(custom.kcal || custom.prot) };
+  if (NOT_A_DRINK_RE.test(n) && !/hot chocolate/i.test(n)) return null;
+  if (!NUTRI_DRINK_RE.test(n)) return null;
+  return { ml: (DRINK_ML.find(([re]) => re.test(n)) || [0, 250])[1], nutri: true };
+}
+function foodDrinkOf(foodId) {
+  if (!foodId) return null;
+  return state.recentEntries.find((e) => e.fromFood === foodId) || state.dayEntries.find((e) => e.fromFood === foodId) || null;
+}
+/* keeps a food's linked drink in step with its drinkMl after an edit (added, changed, moved or taken away) */
+function syncFoodDrink(foodId, name, ml, at) {
+  const linked = foodDrinkOf(foodId);
+  if (ml > 0 && linked) return updateEntry(linked.id, { value: ml, note: name, at, day: dayStr(at) });
+  if (ml > 0) return addEntry({ type: 'drink', value: ml, note: name, fromFood: foodId, at }, foodId + '_drink');
+  if (linked) return deleteEntry(linked.id);
 }
 function medWaterOf(doseId) {
   if (!doseId || String(doseId).endsWith('_water')) return null;
@@ -2747,7 +2785,7 @@ function renderToday() {
   const list = $('timeline');
   let fresh = 0;
   /* a medicine's water shows on its dose's line, not as a second entry (v283); it still counts in the drinks */
-  const shown = state.dayEntries.filter((e) => !(e.type === 'drink' && e.fromMed));
+  const shown = state.dayEntries.filter((e) => !(e.type === 'drink' && (e.fromMed || e.fromFood)));
   list.replaceChildren(...shown.map((e) => {
     const el = renderEntry(e);
     const id = e.id || (e.type + ':' + entryDate(e).getTime());
@@ -2798,7 +2836,8 @@ function entrySub(e) {
   if (e.type === 'med' && e.forUse) bits.push('for ' + e.forUse.toLowerCase());
   if (e.type === 'med' && e.note) bits.push(e.note);
   if (e.type === 'temp' && e.note) bits.push(e.note);
-  if (e.type === 'food') { const q = quantityText(e); if (q) bits.push(q); else if (e.amount) bits.push(e.amount); }
+  if (e.type === 'food' && Number(e.drinkMl) > 0) bits.push(Math.round(e.drinkMl) + ' ml, counted in drinks');
+  else if (e.type === 'food') { const q = quantityText(e); if (q) bits.push(q); else if (e.amount) bits.push(e.amount); }
   if (e.type === 'food' && e.detail) bits.push(e.detail);
   if (e.type === 'food' && detailedNutritionOn() && foodIndex) {
     const m = entryMacros(foodIndex, e);
@@ -3639,8 +3678,31 @@ function openAdd(type, editEntry, preset) {
     const whatPresets = presets(['Water', 'Tea', 'Coffee', 'Squash', 'Juice', 'Milk', 'Supplement drink'], what, whatDefault);
     const mlPresets = presets(['50', '100', '150', '200', '250', { value: '300', label: '300 cup' }, { value: '568', label: '568 pint' }, { value: '900', label: '900 bottle' }], ml, mlDefault);
     const howMany = stepper(1, 1, 1, 'How many');
+    /* Scan a drink, and a drink with nutrition counts as food too (v288, Mark: a protein shake "would take all the food
+       stats but then also add the mls to the daily drink total"): its pack size fills the ml, and a drink with nutrition
+       in it (a shake, milk, juice, a latte, a supplement drink, soup) is saved as one food entry with its ml, so the
+       food totals and the drinks both count it. Water, tea, coffee and squash stay plain drinks. */
+    if (!editEntry) loadFoodTable();
+    const nutriLine = h('p', { class: 'hint drink-nutri' });
+    const syncNutri = () => {
+      const info = !editEntry && drinkInfo(what.value);
+      nutriLine.hidden = !(info && info.nutri);
+      nutriLine.textContent = info && info.nutri ? what.value.trim() + ' has food in it, so it counts in the food totals as well as the drinks. One entry on the timeline.' : '';
+    };
+    what.addEventListener('input', syncNutri);
+    whatPresets.addEventListener('click', syncNutri);
+    syncNutri();
+    const drinkScan = !editEntry && scanAvailable() ? foodScanControl((r) => {
+      what.value = r.name;
+      const ml0 = packMl(r.quantity) || packMl(r.serving);
+      if (ml0) ml.value = String(ml0);
+      if (r.hasFigures) saveCustomFood(r.name, r.per100, { barcode: r.code, source: r.source, drink: true, ml: ml0 });
+      what.dispatchEvent(new Event('input')); ml.dispatchEvent(new Event('input'));
+      syncNutri();
+      toast('Found ' + r.name + (ml0 ? ', ' + ml0 + ' ml' : '') + (r.hasFigures ? '. Its nutrition counts in the food totals too.' : ''));
+    }) : null;
     body.append(
-      field('Drink', what), whatPresets,
+      field('Drink', what), ...(drinkScan ? [drinkScan] : []), whatPresets, nutriLine,
       field('Amount of each (ml)', ml), mlPresets,
       h('p', { class: 'fieldlabel', text: 'How many' }), howMany.el,
       field('Time', time)
@@ -3648,7 +3710,19 @@ function openAdd(type, editEntry, preset) {
     getData = () => {
       const v = parseInt(ml.value, 10);
       const n = howMany.value();
-      return { type: 'drink', value: isNaN(v) ? 0 : Math.round(v * n), note: what.value.trim() || 'Drink' };
+      const total = isNaN(v) ? 0 : Math.round(v * n);
+      const name = what.value.trim() || 'Drink';
+      const info = !editEntry && drinkInfo(name);
+      if (info && info.nutri && total > 0) {
+        const data = { type: 'food', note: name, amount: 'All of it', meal: mealSlot(time.value), drinkMl: total };
+        if (foodIndex) {
+          const comps = entryMacros(foodIndex, { note: name }).components;
+          if (comps.length === 1) data.portions = { [comps[0].key]: { size: 'M', override: null, qty: { unit: 'g', n: total } } };
+        }
+        data._remember = () => saveMeal(findMeal(name) ? findMeal(name).id : null, name, '', data.portions || null, data.meal, findMeal(name));
+        return data;
+      }
+      return { type: 'drink', value: total, note: name };
     };
   }
 
@@ -3673,6 +3747,13 @@ function openAdd(type, editEntry, preset) {
     let lastComponents = [];
     let pendingCount = null; // a count parsed out of the name ("2 x kiwi"), applied to the first countable row
     const rowsWrap = h('div', { class: 'qtyrows' });
+    /* A drink with food in it (v288): how many ml, added to the day's drinks too; the ml also sizes the estimate */
+    let drinkHint = null; // { ml } from a scanned or searched product Open Food Facts calls a drink
+    const drinkMlIn = h('input', { class: 'input', type: 'text', inputmode: 'numeric', autocomplete: 'off', id: 'food-drink-ml' });
+    let drinkTyped = false;
+    const drinkWrap = h('div', { class: 'food-drink' }, field('How much did you drink? (ml)', drinkMlIn), h('p', { class: 'hint', text: 'Counted in the day\'s drinks as well. Type 0 if it was not a drink.' }));
+    drinkWrap.hidden = true;
+    const drinkActive = () => !drinkWrap.hidden && parseInt(drinkMlIn.value, 10) > 0;
     const totalsEl = h('p', { class: 'macro-total' });
     totalsEl.hidden = true;
     const draft = () => ({ note: what.value, detail: parts.value, amount: amount.value, portions: portionsState });
@@ -3766,8 +3847,15 @@ function openAdd(type, editEntry, preset) {
     };
     const rebuildRows = () => {
       if (!foodIndex) { rowsWrap.replaceChildren(); return; }
-      const m = entryMacros(foodIndex, draft());
+      let m = entryMacros(foodIndex, draft());
       lastComponents = m.components;
+      /* a drink of one thing is sized by its ml (1 ml taken as 1 g), with no portion row to set */
+      if (drinkActive() && m.components.length === 1) {
+        const c = m.components[0];
+        portionsState[c.key] = { size: 'M', override: (portionsState[c.key] && portionsState[c.key].override) || null, qty: { unit: 'g', n: parseInt(drinkMlIn.value, 10) } };
+        rowsWrap.replaceChildren(); amountBlock.hidden = true; refreshTotals();
+        return;
+      }
       const keep = new Set(m.components.map((c) => c.key));
       Object.keys(portionsState).forEach((k) => { if (!keep.has(k)) delete portionsState[k]; });
       if (pendingCount != null) {
@@ -3785,6 +3873,7 @@ function openAdd(type, editEntry, preset) {
       refreshTotals();
     };
     parts.addEventListener('input', rebuildRows);
+    drinkMlIn.addEventListener('input', () => { drinkTyped = true; rebuildRows(); });
     amountPresets.addEventListener('click', rebuildRows); // the S/M/L grams scale with how much was eaten
     loadFoodTable().then(() => { if (!details.hidden) rebuildRows(); });
 
@@ -3819,6 +3908,9 @@ function openAdd(type, editEntry, preset) {
       pick.hidden = true;
       details.hidden = false;
       dayPanel.list.hidden = true;
+      const info = editEntry && Number(editEntry.drinkMl) > 0 ? { ml: Number(editEntry.drinkMl) } : drinkHint || drinkInfo(what.value);
+      drinkWrap.hidden = !info;
+      if (info && !drinkTyped) drinkMlIn.value = String(info.ml || '');
       rebuildRows();
       syncFood();
       if (saveBtn) saveBtn.scrollIntoView({ block: 'nearest' });
@@ -3849,7 +3941,8 @@ function openAdd(type, editEntry, preset) {
       }, 450);
     };
     const takePackaged = (p) => {
-      if (p.hasFigures) saveCustomFood(p.name, p.per100, { barcode: p.code, source: p.source });
+      if (p.hasFigures) saveCustomFood(p.name, p.per100, { barcode: p.code, source: p.source, drink: p.drink, ml: packMl(p.quantity) || packMl(p.serving) });
+      drinkHint = p.drink ? { ml: packMl(p.quantity) || packMl(p.serving) || (DRINK_ML.find(([re]) => re.test(p.name)) || [0, 250])[1] } : null;
       choose(p.name, null);
       toast(p.hasFigures ? 'Found ' + p.name + ' (Open Food Facts), saved to My foods' : 'Found ' + p.name + ', but the database has no nutrition figures for it.');
     };
@@ -3904,7 +3997,8 @@ function openAdd(type, editEntry, preset) {
     loadFoodTable().then(() => { if (!pick.hidden) renderPick(); syncFood(); });
     const scanControl = scanAvailable() ? foodScanControl((r) => {
       const label = r.name + (r.hasFigures ? ': ' + (r.per100.kcal != null ? Math.round(r.per100.kcal) + ' kcal' : '') + (r.per100.prot != null ? ', ' + r.per100.prot + ' g protein' : '') + ' per 100 g' : '');
-      if (r.hasFigures) saveCustomFood(r.name, r.per100, { barcode: r.code, source: r.source });
+      if (r.hasFigures) saveCustomFood(r.name, r.per100, { barcode: r.code, source: r.source, drink: r.drink, ml: packMl(r.quantity) || packMl(r.serving) });
+      drinkHint = r.drink ? { ml: packMl(r.quantity) || packMl(r.serving) || (DRINK_ML.find(([re]) => re.test(r.name)) || [0, 250])[1] } : null;
       choose(r.name, null);
       toast(r.hasFigures ? 'Found ' + label + ' (Open Food Facts)' : 'Found ' + r.name + ', but the database has no nutrition figures for it.');
     }) : null;
@@ -3927,8 +4021,9 @@ function openAdd(type, editEntry, preset) {
     timeLine.hidden = Boolean(editEntry);
     details.append(
       h('div', { class: 'chosen' }, chosenName,
-        h('button', { class: 'btn btn-link btn-small', type: 'button', onclick: () => { details.hidden = true; pick.hidden = false; dayPanel.list.hidden = false; dayPanel.update(null); renderPick(); syncFood(); what.focus(); } }, 'Change')),
+        h('button', { class: 'btn btn-link btn-small', type: 'button', onclick: () => { details.hidden = true; pick.hidden = false; dayPanel.list.hidden = false; drinkHint = null; drinkTyped = false; dayPanel.update(null); renderPick(); syncFood(); what.focus(); } }, 'Change')),
       mealField,
+      drinkWrap,
       field('What is in it (optional)', parts),
       rowsWrap,
       amountBlock,
@@ -3973,7 +4068,14 @@ function openAdd(type, editEntry, preset) {
          name with a number in it ("2 x kiwi") is renamed to the clean one. Remembered only once the
          entry itself is written (v259: a meal was remembered for Helen while her lunch was not). */
       const existing = findMeal(name) || (pickedRawName ? findMeal(pickedRawName) : null);
+      if (!drinkWrap.hidden) {
+        const raw = drinkMlIn.value.trim(), ml = parseInt(raw, 10);
+        if (raw === '') return missing(drinkMlIn, 'How much did you drink? Type 0 if it was not a drink.');
+        if (!(ml >= 0 && ml <= 3000)) return missing(drinkMlIn, 'Type the amount in ml, like 300', CHECK);
+      }
       const data = { type: 'food', note: name, amount: amount.value, meal };
+      if (drinkActive()) data.drinkMl = parseInt(drinkMlIn.value, 10);
+      else if (editEntry && editEntry.drinkMl) data.drinkMl = 0;
       if (detail) data.detail = detail;
       if (portions) data.portions = portions;
       if (!editEntry) data._remember = () => saveMeal(existing ? existing.id : null, name, detail, portions, meal, existing);
@@ -4403,7 +4505,11 @@ function openAdd(type, editEntry, preset) {
     if (editId) closeSheet({ force: true });
     if (editId) {
       delete list[0]._id;
-      try { await updateEntry(editId, { ...list[0], at, ...(dateIn ? { day: saveDay } : {}) }); toast(titles[type] + ' updated'); }
+      try {
+        await updateEntry(editId, { ...list[0], at, ...(dateIn ? { day: saveDay } : {}) });
+        if (list[0].type === 'food') syncFoodDrink(editId, list[0].note, Number(list[0].drinkMl) || 0, at);
+        toast(titles[type] + ' updated');
+      }
       catch (e) { console.error(e); toast('Could not save'); }
       if (!$('view-food').hidden) renderFoodDiary();
       return;
@@ -4426,13 +4532,14 @@ function openAdd(type, editEntry, preset) {
       const id = await addEntry(d, fid);
       if (!id) return; // refused at once: addEntry has said so, and the sheet stays open with everything still in it
       ids.push(id);
+      if (d.type === 'food' && Number(d.drinkMl) > 0) addEntry({ type: 'drink', value: Number(d.drinkMl), note: d.note, fromFood: id, at }, id + '_drink');
     }
     closeSheet({ force: true });
     after.forEach((f) => f());
     const whenSaved = saveDay === todayStr() ? '' : ' for ' + fmtDayShort(saveDay);
     /* Food says what was saved and when, and has no Undo: one stray tap on Undo at the top of the screen lost a lunch
        (v259). A food is changed or deleted from its "..." on the timeline. */
-    if (type === 'food') toast(`Saved: ${list[0].note} at ${fmtTime(at)}${whenSaved}. It is on the timeline.`);
+    if (type === 'food' || list[0].type === 'food') toast(`Saved: ${list[0].note} at ${fmtTime(at)}${whenSaved}.${Number(list[0].drinkMl) > 0 ? ' ' + Math.round(list[0].drinkMl) + ' ml added to drinks.' : ''} It is on the timeline.`);
     else {
       const what = type === 'vitals' ? ': ' + savedVitalsText(list) : '';
       toast(titles[type] + ' saved' + whenSaved + what, { label: 'Undo', onClick: () => { ids.forEach((id) => deleteEntry(id)); restore.forEach((f) => f()); } });
@@ -6011,6 +6118,8 @@ function saveCustomFood(name, per100, extra) {
      the same tags (High sugar, Fibre and so on) as a table food, and the barcode it came from */
   ['sat', 'sugar', 'fibre', 'salt'].forEach((k) => { const v = rd(per100[k]); if (v !== undefined) entry[k] = v; });
   if (extra && extra.barcode) { entry.barcode = String(extra.barcode); entry.source = extra.source || 'Open Food Facts'; }
+  if (extra && extra.drink) entry.drink = true; // a drink by Open Food Facts' own category (v288)
+  if (extra && Number(extra.ml) > 0) entry.ml = Math.round(Number(extra.ml)); // its pack size, the ml offered when it is logged
   const current = ((state.profile && state.profile.customFoods) || []).slice();
   const i = current.findIndex((f) => (f.name || '').trim().toLowerCase() === key);
   if (i >= 0) current[i] = entry; else current.push(entry);
