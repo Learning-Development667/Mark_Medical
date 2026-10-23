@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '282';
+const APP_VERSION = '283';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -2479,9 +2479,9 @@ function medWaterOf(doseId) {
   if (!doseId || String(doseId).endsWith('_water')) return null;
   return state.recentEntries.find((e) => e.fromMed === doseId) || state.dayEntries.find((e) => e.fromMed === doseId) || null;
 }
-function addMedWater(doseId, m, dose, at) {
+function addMedWater(doseId, m, dose, at, given) {
   if (!doseId || m.hospital) return 0;
-  const ml = doseWaterMl(dose, m.how);
+  const ml = given != null ? given : doseWaterMl(dose, m.how);
   if (!ml) return 0;
   addEntry({ type: 'drink', value: ml, note: 'Water with ' + m.name, fromMed: doseId, medId: m.id, at }, doseId + '_water');
   return ml;
@@ -2717,12 +2717,14 @@ function renderToday() {
   renderMeds();
   const list = $('timeline');
   let fresh = 0;
-  list.replaceChildren(...state.dayEntries.map((e) => {
+  /* a medicine's water shows on its dose's line, not as a second entry (v283); it still counts in the drinks */
+  const shown = state.dayEntries.filter((e) => !(e.type === 'drink' && e.fromMed));
+  list.replaceChildren(...shown.map((e) => {
     const el = renderEntry(e);
     const id = e.id || (e.type + ':' + entryDate(e).getTime());
     return seenIds.entries.has(id) ? el : markNew(el, seenIds.entries, id, fresh++);
   }));
-  $('timeline-empty').hidden = state.dayEntries.length > 0;
+  $('timeline-empty').hidden = shown.length > 0;
 }
 
 function entryTitle(e) {
@@ -2762,7 +2764,7 @@ function entryTitle(e) {
 
 function entrySub(e) {
   const bits = [];
-  if (e.type === 'med' && e.dose) bits.push(e.dose);
+  if (e.type === 'med' && e.dose) bits.push(e.dose + (e.waterMl || (!e.hospital && medWaterOf(e.id)) ? ', counted in drinks' : ''));
   if (e.type === 'med' && e.hospital && e.route) bits.push(ROUTE_WORDS[e.route] || e.route);
   if (e.type === 'med' && e.forUse) bits.push('for ' + e.forUse.toLowerCase());
   if (e.type === 'med' && e.note) bits.push(e.note);
@@ -11044,6 +11046,53 @@ function askCountNow(m) {
   });
 }
 
+/* A medicine taken in water (Macrogol) asks both at once (v283, Mark: "this should just be one entry. Macrogol sachets taken
+   (user inputs 2) with how much water (user inputs fluids)"): How many, and How much water, the water filling in from the
+   count until it is typed over. Resolves { dose: "2 sachets, in 500 ml water", ml } or null when closed. */
+function waterPerOne(m) {
+  const parts = splitDose(m);
+  const w = String(parts.strength || '').match(/([\d,]*\.?\d+)\s*ml\b/i);
+  if (w) return parseFloat(w[1].replace(/,/g, ''));
+  const total = doseWaterMl(m.dose, m.how);
+  return total ? Math.round(total / (parts.count || 1)) : 0;
+}
+function takenInWater(m) { return Boolean(m && !m.hospital && waterPerOne(m) > 0); }
+function askWaterDose(m) {
+  return new Promise((resolve) => {
+    let result = null, typed = false;
+    const parts = splitDose(m), form = doseFormOf(parts.form) || { one: 'sachet', many: 'sachets' };
+    const per = waterPerOne(m);
+    const water = h('input', { class: 'input', type: 'text', inputmode: 'numeric', autocomplete: 'off', id: 'water-ml' });
+    const words = (n) => fmtDoseCount(n) + ' ' + (n > 1 ? form.many : form.one);
+    const doseNow = () => words(st.value()) + ', in ' + (parseInt(water.value, 10) || 0) + ' ml water';
+    const sync = () => {
+      st.unitEl.textContent = st.value() > 1 ? form.many : form.one;
+      if (!typed) water.value = String(Math.round(per * st.value()));
+      quick.querySelectorAll('.preset').forEach((b) => b.classList.toggle('is-active', Number(b.dataset.n) === st.value()));
+      go.textContent = 'Log ' + words(st.value()) + ' with ' + (parseInt(water.value, 10) || 0) + ' ml water';
+    };
+    const st = stepper(parts.count || 1, 0.5, 1, 'How many this time', () => sync(), 'each');
+    const quick = h('div', { class: 'presets', role: 'group', 'aria-label': 'Quick numbers' },
+      ...[1, 2, 3].map((n) => h('button', { class: 'preset', type: 'button', dataset: { n: String(n) }, onclick: () => st.set(n) }, words(n))));
+    water.addEventListener('input', () => { typed = true; sync(); });
+    const go = h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => {
+      if (!(st.value() > 0)) { missing(st.el, 'How many was it?'); return; }
+      const ml = parseInt(water.value, 10);
+      if (water.value.trim() === '' ) { missing(water, 'How much water was it taken in? Type 0 if none.'); return; }
+      if (!(ml >= 0 && ml <= 3000)) { missing(water, 'Type the water in ml, like 250', CHECK); return; }
+      result = { dose: doseNow(), ml }; closeSheet();
+    } }, 'Log');
+    sync();
+    openSheet(m.name, h('div', { class: 'askcount' },
+      h('div', { class: 'field med-count' }, h('span', { class: 'fieldlabel', text: 'How many this time?' }), st.el),
+      quick,
+      field('How much water was it taken in? (ml)', water),
+      h('p', { class: 'hint', text: 'The water is counted in the day\'s drinks. It fills in from the number taken; change it if it was different.' }),
+      go,
+      h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Cancel')), () => resolve(result));
+  });
+}
+
 /* Which use was this dose for? (v263) A medicine with two uses asks as it is logged: one tap, either use or both. */
 function askUseFor(m) {
   return new Promise((resolve) => {
@@ -11068,7 +11117,9 @@ function useChips(m, initial) {
 }
 async function logMed(m, at, note, doseText, forUse) {
   if (forUse === undefined && isDualUse(m)) { forUse = await askUseFor(m); if (!forUse) return; }
-  if (!doseText && asksEachTime(m)) { doseText = await askCountNow(m); if (!doseText) return; }
+  let waterGiven = null;
+  if (!doseText && takenInWater(m)) { const r = await askWaterDose(m); if (!r) return; doseText = r.dose; waterGiven = r.ml; }
+  else if (!doseText && asksEachTime(m)) { doseText = await askCountNow(m); if (!doseText) return; }
   if (m.kind === 'prn' && !at) {
     const s = prnStatus(m);
     if (s.block) {
@@ -11080,8 +11131,8 @@ async function logMed(m, at, note, doseText, forUse) {
   const hosp = m.hospital ? { hospital: true, route: m.route || null } : {};
   const when = at || new Date();
   const id = await addEntry({ type: 'med', medId: m.id, medName: m.name, dose, note: note || '', ...(forUse ? { forUse } : {}), ...hosp, at: when });
-  const ml = addMedWater(id, m, dose, when);
-  toast(m.name + (dose ? ', ' + dose + ',' : '') + (forUse ? ' for ' + forUse.toLowerCase() + ',' : '') + (m.hospital ? ' logged as given in hospital' : ' logged') + (ml ? ', and ' + ml + ' ml added to drinks' : ''), { label: 'Undo', onClick: () => deleteEntry(id) });
+  const ml = addMedWater(id, m, dose, when, waterGiven);
+  toast(m.name + (dose ? ', ' + dose + ',' : '') + (forUse ? ' for ' + forUse.toLowerCase() + ',' : '') + (m.hospital ? ' logged as given in hospital' : ' logged') + (ml ? ', the ' + ml + ' ml water counted in drinks' : ''), { label: 'Undo', onClick: () => deleteEntry(id) });
 }
 
 /* Change a logged dose's date, time, amount or note (since v137): Mark logged diazepam with the
