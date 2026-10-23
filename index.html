@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=284">
+  <link rel="stylesheet" href="styles.css?v=285">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -949,6 +949,11 @@
             <span>Show calorie and macro estimates</span>
           </label>
           <p class="hint">Rough calorie, protein, carb and fat figures from typical portions. Estimates only, not medical advice.</p>
+          <div id="settings-foodstats" class="foodstats" hidden>
+            <p class="fieldlabel">Figures to show on the Food screen</p>
+            <div id="settings-foodstats-list" class="foodstats-list"></div>
+            <p class="hint">The day's running total as food is logged, in the figures ticked.</p>
+          </div>
           <label class="field settings-target">
             <span>Daily protein target in grams, from the dietitian (optional)</span>
             <input id="settings-protein" type="number" inputmode="numeric" min="0" step="5" placeholder="e.g. 100">
@@ -1204,6 +1209,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=284"></script>
+  <script type="module" src="scripts.js?v=285"></script>
 </body>
 </html>
