@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=281">
+  <link rel="stylesheet" href="styles.css?v=282">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -253,21 +253,21 @@
 
         <div class="status" role="group" aria-label="Today at a glance">
           <div class="tiles">
-            <div class="tile" id="tile-temp">
+            <button class="tile tile-tap" type="button" id="tile-temp">
               <span class="tile-label">Latest temp</span>
               <span class="tile-value" id="tile-temp-value">--</span>
               <span class="tile-sub" id="tile-temp-sub"></span>
-            </div>
-            <div class="tile" id="tile-drink">
+            </button>
+            <button class="tile tile-tap" type="button" id="tile-drink">
               <span class="tile-label">Drinks</span>
               <span class="tile-value" id="tile-drink-value">0 ml</span>
               <span class="tile-sub" id="tile-drink-sub"></span>
-            </div>
-            <div class="tile" id="tile-meds">
+            </button>
+            <button class="tile tile-tap" type="button" id="tile-meds">
               <span class="tile-label">Meds taken</span>
               <span class="tile-value" id="tile-meds-value">0 of 0</span>
               <span class="tile-sub" id="tile-meds-sub"></span>
-            </div>
+            </button>
           </div>
         </div>
 
@@ -1204,6 +1204,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=281"></script>
+  <script type="module" src="scripts.js?v=282"></script>
 </body>
 </html>
