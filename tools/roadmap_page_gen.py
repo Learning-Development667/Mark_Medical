@@ -64,7 +64,7 @@ s1 = [
  row('Security tightening', 'Claude', 'Libraries hosted at fixed versions, a content security policy, the check-in author lock in the rules.', 'open', '7'),
  row('Export and delete', 'Claude', 'Built in v295: More, Settings, Your records. Download every record as a zip; the patient deletes the whole circle, anyone else leaves and deletes their own sign-in, after typing DELETE.', 'done', '8'),
  row("Condition packs: Crohn's and colitis, then menopause", 'Claude, with testers', "All five Crohn's builds are done (v204 to v221). Next: two friends with Crohn's log through to an appointment and take the report; an IBD nurse reads it. Then menopause.", 'now', '9'),
- row('Firebase to pay-as-you-go', 'Mark', "Upgrade to Blaze with a budget alert at £10, before the testers' links go out. The free plan stops answering past its daily allowance.", 'now', '9b'),
+ row('Firebase to pay-as-you-go', 'Mark', "Done: the project has been on Blaze for some time (Mark, 23 October 2026). A budget alert keeps an eye on the bill.", 'done', '9b'),
  row('Read the Usage page weekly', 'Mark', 'More > Usage. Built in v211; say what else should be counted.', 'now', '9c'),
  row('Switch on the emailed reports', 'Mark', 'Done 13 October: Resend, domain verified, key deployed, test email arrived with the PDF.', 'done', '10'),
  row('The other sliders against UK scales', 'Mark to decide', 'A sickness count (how many times sick today) for the cancer pack, as the UKONS triage line asks; sleep, mood, appetite and energy on 0 to 10 like pain.', 'open', '9e'),
