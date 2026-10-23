@@ -10,10 +10,10 @@ import {
 import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager, memoryLocalCache,
   collection, doc, setDoc, updateDoc, deleteDoc, getDoc, getDocs,
-  query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
+  query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField, runTransaction
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '301';
+const APP_VERSION = '302';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -4061,8 +4061,10 @@ function openAdd(type, editEntry, preset) {
           h('p', { class: 'hint', text: group.label + (scale < 1 ? `, scaled for "${amount.value.toLowerCase()}"` : '') })
         );
       } else if (macroOn) {
-        row.append(h('p', { class: 'hint', text: 'No figures for this, so it is left out of the estimate unless entered from the packet.' }));
+        row.append(h('p', { class: 'hint hint-warn', text: `Not counted in the estimate: "${label}" is not in the food table. Scan its barcode, or enter it from the packet.` }));
       }
+      /* a scanned product the database had no figures for: said plainly, so the total is never read as complete (v302) */
+      if (macroOn && c.food && c.food.noFigures && !portion.override) row.append(h('p', { class: 'hint hint-warn', text: 'Not counted in the estimate: the food database has no figures for this. Enter them from the packet below to count it.' }));
       if (macroOn) row.append(h('button', { class: 'btn btn-link btn-small', type: 'button', onclick: () => {
         portion.override = { kcal: null, prot: null, carb: null, fat: null, per: 'portion', grams: portionGrams(c.food, portion.size, scale, portion.qty) };
         rebuild();
@@ -4165,10 +4167,10 @@ function openAdd(type, editEntry, preset) {
       }, 450);
     };
     const takePackaged = (p) => {
-      if (p.hasFigures) saveCustomFood(p.name, p.per100, { barcode: p.code, source: p.source, drink: p.drink, ml: packMl(p.quantity) || packMl(p.serving), g: packGrams(p.serving) || packGrams(p.quantity) });
+      saveCustomFood(p.name, p.hasFigures ? p.per100 : {}, { barcode: p.code, source: p.source, drink: p.drink, ml: packMl(p.quantity) || packMl(p.serving), ...labelSize(p), noFigures: !p.hasFigures });
       drinkHint = p.drink ? { ml: packMl(p.quantity) || packMl(p.serving) || (DRINK_ML.find(([re]) => re.test(p.name)) || [0, 250])[1] } : null;
       choose(p.name, null);
-      toast(p.hasFigures ? 'Found ' + p.name + ' (Open Food Facts), saved to My foods' : 'Found ' + p.name + ', but the database has no nutrition figures for it.');
+      toast(p.hasFigures ? 'Found ' + p.name + ' (Open Food Facts), saved to My foods' : 'Found ' + p.name + ', but the database has no nutrition figures for it. Enter them from the packet to count it.');
     };
     const renderPick = () => {
       const q = what.value.trim().toLowerCase();
@@ -4196,7 +4198,14 @@ function openAdd(type, editEntry, preset) {
           .slice(0, 5);
         if (!exact) rows.push(pickRow(cleaned.count ? `Log ${fmtQtyNumber(cleaned.count)} ${cleaned.name}` : `Log "${typed}"`, 'As typed', () => choose(typed, null)));
         mealHits.forEach((m) => rows.push(pickRow(cleanName(m.name), m.parts || 'Saved meal', () => choose(cleaned.count ? `${cleaned.count} x ${m.name}` : m.name, m))));
-        const customHits = ((state.profile && state.profile.customFoods) || []).filter((f) => (f.name || '').toLowerCase().includes(q)).slice(0, 3);
+        /* My foods by every word typed, in any order (v302): "cherry yogurt" finds the scanned Aldi one */
+        const qWords = foodClean(cleaned.name).split(' ').filter((w) => w.length >= 2 && !FOOD_STOP.has(w)).map(foodSingular);
+        const customHits = ((state.profile && state.profile.customFoods) || []).filter((f) => {
+          const n = (f.name || '').toLowerCase();
+          if (n.includes(q)) return true;
+          const nw = foodClean(n).split(' ').map(foodSingular);
+          return qWords.length > 0 && qWords.every((w) => nw.some((x) => x === w || x.startsWith(w)));
+        }).slice(0, 3);
         customHits.forEach((f) => rows.push(pickRow(f.name, 'My foods', () => choose(f.name, null))));
         const tq = cleaned.name.toLowerCase();
         if (foodIndex && tq.length >= 2) {
@@ -4221,10 +4230,10 @@ function openAdd(type, editEntry, preset) {
     loadFoodTable().then(() => { if (!pick.hidden) renderPick(); syncFood(); });
     const scanControl = scanAvailable() ? foodScanControl((r) => {
       const label = r.name + (r.hasFigures ? ': ' + (r.per100.kcal != null ? Math.round(r.per100.kcal) + ' kcal' : '') + (r.per100.prot != null ? ', ' + r.per100.prot + ' g protein' : '') + ' per 100 g' : '');
-      if (r.hasFigures) saveCustomFood(r.name, r.per100, { barcode: r.code, source: r.source, drink: r.drink, ml: packMl(r.quantity) || packMl(r.serving), g: packGrams(r.serving) || packGrams(r.quantity) });
+      saveCustomFood(r.name, r.hasFigures ? r.per100 : {}, { barcode: r.code, source: r.source, drink: r.drink, ml: packMl(r.quantity) || packMl(r.serving), ...labelSize(r), noFigures: !r.hasFigures });
       drinkHint = r.drink ? { ml: packMl(r.quantity) || packMl(r.serving) || (DRINK_ML.find(([re]) => re.test(r.name)) || [0, 250])[1] } : null;
       choose(r.name, null);
-      toast(r.hasFigures ? 'Found ' + label + ' (Open Food Facts)' : 'Found ' + r.name + ', but the database has no nutrition figures for it.');
+      toast(r.hasFigures ? 'Found ' + label + ' (Open Food Facts)' : 'Found ' + r.name + ', but the database has no nutrition figures for it. Enter them from the packet to count it.');
     }) : null;
     pick.append(field('Food', what), ...(scanControl ? [scanControl] : []), list); // no camera: nothing between (v201; `null` drew the word)
 
@@ -5620,6 +5629,8 @@ const FOOD_ALIASES = {
   'yogurt drink': [[/^yogurt, drinking/i, /^yogurt, low fat, fruit/i]],
   'yoghurt': [[/^yogurt, low fat, fruit/i]],
   'yogurt': [[/^yogurt, low fat, fruit/i]],
+  'fruit yoghurt': [[/^yogurt, whole milk, fruit/i]],
+  'fruit yogurt': [[/^yogurt, whole milk, fruit/i]],
   'greek yoghurt': [[/^yogurt, greek style, plain/i]],
   'greek yogurt': [[/^yogurt, greek style, plain/i]],
   'natural yoghurt': [[/^yogurt, whole milk, plain/i]],
@@ -5863,6 +5874,11 @@ const FOOD_ALIASES = {
   'espresso': [[/^coffee, infusion, average$/i]],
   'black coffee': [[/^coffee, infusion, average$/i]],
   'coffee': [[/^coffee, infusion, average, with semi-skimmed milk/i, /^coffee, infusion, average$/i]],
+  'cup of tea': [[/^tea, infusion, average, with semi-skimmed milk/i]],
+  'green tea': [[/^tea, green, infusion/i]],
+  'herbal tea': [[/^tea, herbal, infusion/i]], 'fruit tea': [[/^tea, herbal, infusion/i]], 'peppermint tea': [[/^tea, herbal, infusion/i]],
+  'camomile tea': [[/^tea, herbal, infusion/i]], 'chamomile tea': [[/^tea, herbal, infusion/i]], 'mint tea': [[/^tea, herbal, infusion/i]],
+  'earl grey': [[/^tea, black, infusion, average/i]], 'earl grey tea': [[/^tea, black, infusion, average/i]],
   'hot chocolate': [[/^drinking chocolate powder, made up with semi-skimmed milk/i]],
   'chocolate milk': [[/^milk, flavoured, pasteurised, chocolate/i]],
   'yoghurt': [[/^yogurt, whole milk, plain/i]],
@@ -6061,10 +6077,27 @@ function fuzzyPhrase(index, word) {
 function customFoodRows() {
   const list = (state.profile && state.profile.customFoods) || [];
   return list.filter((f) => f && f.name).map((f) => ({
-    c: 'custom:' + String(f.name).trim().toLowerCase(), n: f.name, g: null,
+    c: 'custom:' + String(f.name).trim().toLowerCase(), n: f.name, g: null, noFigures: Boolean(f.noFigures),
     kcal: f.kcal || 0, prot: f.prot || 0, fat: f.fat || 0, carb: f.carb || 0,
     sat: f.sat != null ? f.sat : null, sugar: f.sugar != null ? f.sugar : null, fibre: f.fibre != null ? f.fibre : null, salt: f.salt != null ? f.salt : null
   })).sort((a, b) => b.n.length - a.n.length);
+}
+
+/* Flavour words (v302, Mark's black cherry yogurt): a fruit or flavour before a food that comes in flavours describes
+   it, it is not a second food. "Strawberry jam on toast" is jam and toast, not strawberries as well; "Activia cherry
+   yogurt" is a fruit yogurt. Words before the carrier that are flavours, or that the table does not know (a brand),
+   are folded into it; a real food before it ("chicken pie") is still its own food. */
+const FLAVOUR_CARRIERS = ['ice cream', 'milkshake', 'yoghurt', 'yogurt', 'jam', 'jelly', 'juice', 'smoothie', 'cake', 'cheesecake', 'muffin', 'bar', 'mousse', 'shake', 'cordial', 'squash', 'sorbet', 'lolly', 'crumble', 'tart', 'pudding', 'biscuit', 'sweets', 'drink', 'tea', 'custard', 'trifle', 'fromage frais', 'pot'];
+const FLAVOUR_WORDS = new Set(['strawberry', 'raspberry', 'cherry', 'black', 'blueberry', 'blackberry', 'blackcurrant', 'redcurrant', 'cranberry', 'banana', 'apple', 'peach', 'apricot', 'mango', 'lemon', 'lime', 'orange', 'pineapple', 'coconut', 'rhubarb', 'plum', 'pear', 'passion', 'passionfruit', 'fig', 'berry', 'berries', 'forest', 'summer', 'fruit', 'fruits', 'mixed', 'tropical', 'chocolate', 'choc', 'vanilla', 'caramel', 'toffee', 'honey', 'mint', 'coffee', 'hazelnut', 'ginger', 'cinnamon', 'maple', 'salted', 'natural', 'luxury', 'light', 'lite', 'low', 'fat', 'free', 'flavour', 'flavoured', 'flavor', 'style', 'kids', 'greek', 'grape', 'melon', 'watermelon', 'kiwi', 'elderflower', 'pomegranate', 'nectarine', 'damson', 'gooseberry', 'lemonade', 'green', 'herbal', 'peppermint', 'camomile', 'chamomile', 'earl', 'grey', 'decaf', 'iced', 'rooibos', 'jasmine', 'fruity']);
+const FRUIT_FLAVOURS = new Set(['strawberry', 'raspberry', 'cherry', 'blueberry', 'blackberry', 'blackcurrant', 'redcurrant', 'cranberry', 'banana', 'apple', 'peach', 'apricot', 'mango', 'lemon', 'lime', 'orange', 'pineapple', 'coconut', 'rhubarb', 'plum', 'pear', 'passion', 'passionfruit', 'fig', 'berry', 'berries', 'forest', 'summer', 'fruit', 'fruits', 'tropical', 'grape', 'melon', 'kiwi', 'pomegranate', 'nectarine', 'damson', 'gooseberry']);
+function flavourCarrier(words) {
+  const sing = words.map(foodSingular);
+  for (const c of FLAVOUR_CARRIERS) {
+    const cw = c.split(' ');
+    const tail = sing.slice(-cw.length).join(' ');
+    if (sing.length > cw.length && (tail === c || tail === foodSingular(c))) return { carrier: words.slice(-cw.length).join(' '), before: words.slice(0, -cw.length) };
+  }
+  return null;
 }
 
 /* Turn a food entry's text into matched table rows and the phrases nothing was found for */
@@ -6097,7 +6130,19 @@ function matchFoodText(index, text) {
   for (const phrase of phrases) {
     let hit = lookupPhrase(index, phrase);
     if (hit) { take(hit, phrase); continue; }
-    const words = phrase.split(' ');
+    const before = matches.length;
+    let words = phrase.split(' ');
+    const fc = flavourCarrier(words);
+    if (fc) {
+      const real = fc.before.filter((w) => !FLAVOUR_WORDS.has(w) && !FLAVOUR_WORDS.has(foodSingular(w)) && lookupPhrase(index, w));
+      const fruity = fc.before.some((w) => FRUIT_FLAVOURS.has(w) || FRUIT_FLAVOURS.has(foodSingular(w)));
+      const carrierHit = (fruity && /^yog/.test(fc.carrier) && lookupPhrase(index, 'fruit yogurt')) || lookupPhrase(index, fc.carrier);
+      if (carrierHit) {
+        take(carrierHit, phrase); // the whole phrase names it, so its row reads "Activia cherry yogurt"
+        if (!real.length) continue;
+        words = real; // only the real foods before it go on to be matched
+      }
+    }
     let any = false;
     /* two-word windows first (e.g. "poached egg", "roast potatoes"), then single words */
     for (let i = 0; i < words.length - 1; i++) {
@@ -6108,11 +6153,17 @@ function matchFoodText(index, text) {
     const left = []; // content words nothing was found for, said aloud rather than dropped (v171: "pain" in "pain au chocolat")
     for (const w of words) {
       if (!w || COOKING_WORDS.has(w)) continue;
-      const h1 = lookupPhrase(index, w) || fuzzyPhrase(index, w);
+      /* a near spelling is only guessed for a food typed on its own: inside a longer name it is more often a
+         brand ("Muller" is not mullet) than a typo, and a wrong food is worse than none (v302) */
+      const h1 = lookupPhrase(index, w) || (words.length === 1 ? fuzzyPhrase(index, w) : null);
       if (h1) { take(h1, w); any = true; }
       else if (w.length >= 3) left.push(w);
     }
-    if (!any) unmatched.push(phrase);
+    /* two or more words nothing knows beside nothing but a flavour ("Muller Corner Strawberry") is a product by
+       name, not a bowl of strawberries: said as not recognised rather than counted wrongly (v302) */
+    const gotOnlyFlavour = any && left.length >= 2 && matches.slice(before).every((m) => FLAVOUR_WORDS.has(m.phrase) || FLAVOUR_WORDS.has(foodSingular(m.phrase)));
+    if (gotOnlyFlavour) { matches.splice(before).forEach((m) => seen.delete(m.food.c)); unmatched.push(phrase); }
+    else if (!any) unmatched.push(phrase);
     else if (left.length && phrase.split(' ').length > 1) unmatched.push(left.join(' '));
   }
   return { matches, unmatched };
@@ -6298,6 +6349,11 @@ const singular = (w) => w.replace(/ies$/, 'y').replace(/(ch|sh|s|x|z)es$/, '$1')
    turn "Soup" (matched to "Soup, carrot and orange") into an orange */
 function pieceInfo(phrase, food) {
   if (food && String(food.c || '').startsWith('custom:')) return null; // a scanned or saved product is never "cherries" because its name says cherry (v301)
+  /* "black cherry yogurt" is counted as a pot of yogurt, never as cherries (v302) */
+  const fc = phrase ? flavourCarrier(foodClean(phrase).split(' ').filter(Boolean)) : null;
+  if (fc) phrase = fc.carrier;
+  /* a name of several words nothing recognised is a product, not pieces of its last word (v302) */
+  else if (!food && phrase && phrase.trim().split(/\s+/).length > 2) return null;
   const texts = [phrase].filter(Boolean).map((t) => ' ' + t.toLowerCase().replace(/[^a-z ]+/g, ' ').split(/\s+/).filter(Boolean).map(singular).join(' ') + ' ');
   for (const t of texts) for (const k of PIECE_KEYS) if (t.includes(' ' + k.split(' ').map(singular).join(' ') + ' ')) { const [each, one, many] = PIECE_WEIGHTS[k]; return { key: k, each, one, many, tiny: each < 5 }; }
   return null;
@@ -6322,7 +6378,7 @@ function packWord(name) {
 }
 function packQty(name) {
   const custom = customFoodByName(name);
-  if (custom && custom.packG > 0) { const [one, many] = packWord(name); return { unit: 'piece', n: 1, each: custom.packG, name: one, many, pack: true }; }
+  if (custom && custom.packG > 0) { const [one, many] = custom.packUnit === 'serving' ? ['serving', 'servings'] : packWord(name); return { unit: 'piece', n: 1, each: custom.packG, name: one, many, pack: true }; }
   return { unit: 'g', n: 100, name: '' };
 }
 /* "150 g", "4 x 125 g", "0.5 kg" -> grams of one item; anything else -> 0 */
@@ -6337,15 +6393,22 @@ function packGrams(text) {
 /* Remember (or forget, with 0) a My foods product's pack size */
 function rememberPackSize(name, g) {
   const key = String(name || '').trim().toLowerCase();
-  const current = ((state.profile && state.profile.customFoods) || []).slice();
-  const i = current.findIndex((f) => (f.name || '').trim().toLowerCase() === key);
-  if (i < 0) return Promise.resolve();
-  const next = { ...current[i] };
-  if (g > 0) next.packG = Math.round(g); else delete next.packG;
-  current[i] = next;
-  state.profile = { ...state.profile, customFoods: current };
-  if (state.demo) return Promise.resolve();
-  return setDoc(hdoc('profile', 'main'), { customFoods: current }, { merge: true }).catch((e) => { console.error(e); toast('Could not save to My foods'); });
+  return saveCustomFoods((list) => {
+    const out = (list || []).slice();
+    const i = out.findIndex((f) => (f.name || '').trim().toLowerCase() === key);
+    if (i < 0) return null;
+    const next = { ...out[i] };
+    delete next.packUnit; // a size saved by hand is the person's own pot or pack
+    if (g > 0) next.packG = Math.round(g); else delete next.packG;
+    out[i] = next;
+    return out;
+  });
+}
+/* The label's size as saved: the serving when it is smaller than the pack ("30 g" of a 500 g box), else the pack */
+function labelSize(p) {
+  const pack = packGrams(p.quantity), serving = packGrams(p.serving);
+  if (serving && pack && serving < pack) return { g: serving, unit: 'serving' };
+  return { g: serving || pack, unit: 'pack' };
 }
 /* "two eggs, wholemeal toast" -> 2 for the egg key; nothing found -> null */
 function countInText(text, key) {
@@ -6425,15 +6488,40 @@ function saveCustomFood(name, per100, extra) {
   if (extra && extra.barcode) { entry.barcode = String(extra.barcode); entry.source = extra.source || 'Open Food Facts'; }
   if (extra && extra.drink) entry.drink = true; // a drink by Open Food Facts' own category (v288)
   if (extra && Number(extra.ml) > 0) entry.ml = Math.round(Number(extra.ml)); // its pack size, the ml offered when it is logged
-  const current = ((state.profile && state.profile.customFoods) || []).slice();
-  const i = current.findIndex((f) => (f.name || '').trim().toLowerCase() === key);
-  /* the weight of one pot or pack (v301), from the label, or kept from before when the figures are saved again */
-  if (extra && Number(extra.g) > 0) entry.packG = Math.round(Number(extra.g));
-  else if (i >= 0 && current[i].packG > 0) entry.packG = current[i].packG;
-  if (i >= 0) current[i] = entry; else current.push(entry);
-  state.profile = { ...state.profile, customFoods: current }; // at once, so the sheet that follows can already use it
+  /* a product the database has no figures for (v302) is still kept whole, so its name is never read as loose words,
+     but it is never counted as 0 kcal: it stays out of the estimates until figures are entered from the packet */
+  if (extra && extra.noFigures) entry.noFigures = true;
+  /* the weight of one pot or pack (v301), from the label, or kept from before when the figures are saved again;
+     "serving" when it came from a serving size that is not the whole pack (v302) */
+  if (extra && Number(extra.g) > 0) { entry.packG = Math.round(Number(extra.g)); if (extra.unit === 'serving') entry.packUnit = 'serving'; }
+  const merge = (list) => {
+    const out = (list || []).slice();
+    const i = out.findIndex((f) => (f.name || '').trim().toLowerCase() === key);
+    if (i >= 0 && entry.noFigures && !out[i].noFigures) return null; // never overwrite real figures with none
+    if (i >= 0 && !entry.packG && out[i].packG > 0) { entry.packG = out[i].packG; if (out[i].packUnit) entry.packUnit = out[i].packUnit; }
+    if (i >= 0) out[i] = entry; else out.push(entry);
+    return out;
+  };
+  return saveCustomFoods(merge);
+}
+/* My foods is one list in profile/main. Each change is merged into the list as stored, inside a transaction (v302),
+   so two phones saving at once never wipe out each other's food. `change(list)` returns the new list, or null for none. */
+function saveCustomFoods(change) {
+  const local = change((state.profile && state.profile.customFoods) || []);
+  if (!local) return Promise.resolve();
+  state.profile = { ...state.profile, customFoods: local }; // at once, so the sheet that follows can already use it
   if (state.demo) return Promise.resolve();
-  return setDoc(hdoc('profile', 'main'), { customFoods: current }, { merge: true }).catch((e) => { console.error(e); toast('Could not save to My foods'); });
+  const ref = hdoc('profile', 'main');
+  return runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref);
+    const stored = (snap.exists() && snap.data().customFoods) || [];
+    const next = change(stored);
+    if (next) tx.set(ref, { customFoods: next }, { merge: true });
+  }).catch((e) => {
+    console.error(e);
+    /* no connection: the transaction cannot read, so fall back to the plain write that waits for the signal */
+    return setDoc(ref, { customFoods: local }, { merge: true }).catch((e2) => { console.error(e2); toast('Could not save to My foods'); });
+  });
 }
 
 /* Macro figures for one component: a manual "from the packet" override
@@ -6453,8 +6541,9 @@ function componentMacros(phrase, food, portion, scale) {
     if (ov.per === '100g') return scaleMacro(per100, num(ov.grams) || grams);
     return { ...zeroMacros(), ...per100 }; // stated per portion: already the totals for what was actually eaten
   }
+  if (food && food.noFigures) return null; // a scanned product the database had no figures for: not counted, never 0 kcal
   const custom = customFoodByName(phrase);
-  if (custom) return scaleMacro(custom, grams);
+  if (custom && !custom.noFigures) return scaleMacro(custom, grams);
   if (food) return scaleMacro(food, grams);
   return null;
 }
