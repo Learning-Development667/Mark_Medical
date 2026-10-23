@@ -29,6 +29,7 @@ export default {
       if (url.pathname === '/feedback' && request.method === 'POST') return withCors(request, await handleFeedback(request, env));
       if (url.pathname === '/feedback-info' && request.method === 'POST') return withCors(request, await handleFeedbackInfo(request, env));
       if (url.pathname === '/food' && request.method === 'POST') return withCors(request, await handleFood(request, env));
+      if (url.pathname === '/verify-email' && request.method === 'POST') return withCors(request, await handleVerifyEmail(request, env));
       if (url.pathname === '/send-report' && request.method === 'POST') return withCors(request, await handleSendReport(request, env));
       if (url.pathname === '/invite' && request.method === 'POST') return withCors(request, await handleInvite(request, env));
       if (url.pathname === '/invite-info' && request.method === 'GET') return withCors(request, await handleInviteInfo(url, env));
@@ -281,7 +282,7 @@ function toIso(s) {
 /* Firestore REST with a service account                                */
 /* ------------------------------------------------------------------ */
 
-let tokenCache = { token: null, exp: 0 };
+let tokenCache = {}; // by scope: the datastore token, and since v294 one for Identity Toolkit
 
 async function firestore(env) {
   const sa = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT || '{}');
@@ -365,12 +366,14 @@ async function firestore(env) {
   };
 }
 
-async function accessToken(sa) {
+async function accessToken(sa, scope) {
+  scope = scope || 'https://www.googleapis.com/auth/datastore';
   const now = Math.floor(Date.now() / 1000);
-  if (tokenCache.token && tokenCache.exp - 60 > now) return tokenCache.token;
+  const hit = tokenCache[scope];
+  if (hit && hit.token && hit.exp - 60 > now) return hit.token;
   const header = b64url(new TextEncoder().encode(JSON.stringify({ alg: 'RS256', typ: 'JWT' })));
   const claims = b64url(new TextEncoder().encode(JSON.stringify({
-    iss: sa.client_email, scope: 'https://www.googleapis.com/auth/datastore',
+    iss: sa.client_email, scope,
     aud: 'https://oauth2.googleapis.com/token', iat: now, exp: now + 3600
   })));
   const key = await crypto.subtle.importKey('pkcs8', pemToDer(sa.private_key), { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['sign']);
@@ -382,7 +385,7 @@ async function accessToken(sa) {
   });
   const data = await r.json();
   if (!data.access_token) throw new Error('Google token: ' + JSON.stringify(data));
-  tokenCache = { token: data.access_token, exp: now + (Number(data.expires_in) || 3600) };
+  tokenCache[scope] = { token: data.access_token, exp: now + (Number(data.expires_in) || 3600) };
   return data.access_token;
 }
 
@@ -1034,6 +1037,88 @@ async function handleSendReport(request, env) {
   return json({ ok: true, id: (data && data.id) || null, to, copyTo: who.email, at: new Date().toISOString(), kind });
 }
 
+/* POST /verify-email (v294): the "confirm your email" message, sent by Daybook through Resend from SEND_FROM, branded, instead of
+   Firebase's plain one from noreply@care-log-3d05a.firebaseapp.com (which landed in Mark's junk and named the project). The
+   link is made by Identity Toolkit (accounts:sendOobCode with returnOobLink, so Google sends nothing itself) and pointed at the
+   app as ?verify=CODE, where applyActionCode() confirms it. Without the Resend key the app falls back to Firebase's own email. */
+const VERIFY_A_DAY = 5;
+async function handleVerifyEmail(request, env) {
+  const a = await whoIs(request, env); if (a.error) return a.error;
+  if (a.demo) return json({ error: 'demo', message: 'The demo does not send email.' }, 403);
+  const { who, fs, sa } = a;
+  if (!who.email) return json({ error: 'no-email', message: 'This sign-in has no email address.' }, 400);
+  if (who.emailVerified) return json({ ok: true, already: true });
+  if (!env.RESEND_API_KEY) return json({ error: 'not-set-up', message: 'Daybook cannot send this email yet.' }, 503);
+  const day = londonNow().day;
+  const logPath = 'bridge/verify-' + who.uid;
+  const logDoc = await fs.get(logPath);
+  const count = logDoc && f(logDoc.fields, 'day') === day ? Number(f(logDoc.fields, 'count') || 0) : 0;
+  if (count >= VERIFY_A_DAY) return json({ error: 'limit', message: 'That is enough links for one day. Use the newest one, or try again tomorrow.' }, 429);
+  await fs.set(logPath, { day: strVal(day), count: intVal(count + 1), updatedAt: nowTs() });
+  let code = '';
+  try {
+    const token = await accessToken(sa, 'https://www.googleapis.com/auth/cloud-platform');
+    const r = await fetch('https://identitytoolkit.googleapis.com/v1/projects/' + encodeURIComponent(sa.project_id) + '/accounts:sendOobCode', {
+      method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestType: 'VERIFY_EMAIL', email: who.email, returnOobLink: true }) });
+    const data = await r.json().catch(() => null);
+    if (!r.ok || !data || !data.oobLink) throw new Error('sendOobCode ' + r.status + ' ' + JSON.stringify(data && data.error || data).slice(0, 300));
+    code = new URL(data.oobLink).searchParams.get('oobCode') || '';
+    if (!code) throw new Error('no oobCode in the link');
+  } catch (e) {
+    console.error('verify-email: link', e && e.message);
+    return json({ error: 'link', message: 'Could not make the link just now. Try again in a minute.' }, 502);
+  }
+  const me = await memberOf(fs, who.uid);
+  const name = clean(me.name, 40);
+  const link = APP_ORIGIN + '/?verify=' + encodeURIComponent(code);
+  const subject = 'Confirm your email for My Medical Daybook';
+  const text = (name ? 'Hello ' + name + ',' : 'Hello,') + '\n\n' + VERIFY_WORDS + '\n\nConfirm my email:\n' + link + '\n\n' + VERIFY_IGNORE +
+    '\n\nMy Medical Daybook\nYour companion between appointments\nMark 1 Apps Ltd, registered in England and Wales, company number 17510025.';
+  let r;
+  try {
+    r = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { Authorization: 'Bearer ' + env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: 'My Medical Daybook <' + (env.SEND_FROM || SEND_FROM) + '>', to: [who.email], subject, text, html: verifyEmailHtml(name, link),
+        headers: { 'X-Entity-Ref-ID': randomCode().slice(0, 16) } }) });
+  } catch (e) {
+    console.error('verify-email: no reach', e && e.message);
+    return json({ error: 'unreachable', message: 'The email service could not be reached. Try again in a minute.' }, 502);
+  }
+  if (!r.ok) {
+    console.error('verify-email: refused', r.status, await r.text().catch(() => ''));
+    return json({ error: 'refused', message: 'The email service would not send it just now. Try again in a minute.' }, 502);
+  }
+  return json({ ok: true, to: who.email });
+}
+const VERIFY_WORDS = 'Please confirm this is your email address. Daybook sends your reports to your care team in your name, and their replies come back to this address, so we check it is really yours. You only need to do this once.';
+const VERIFY_IGNORE = 'If you did not ask for this, you can ignore this email. Nothing will be sent in your name.';
+/* The confirm email's HTML: the app icon from the app's own address, the name in a serif, one teal button and the link in words
+   under it for a mail app that hides buttons. Tables and inline styles only, which is what email apps understand. */
+function verifyEmailHtml(name, link) {
+  const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const icon = APP_ORIGIN + '/icons/icon-192.png?i=2';
+  return '<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Confirm your email</title></head>' +
+    '<body style="margin:0;padding:0;background:#F6F4EF">' +
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F6F4EF"><tr><td align="center" style="padding:28px 14px">' +
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#FFFFFF;border-radius:16px;border:1px solid #D5DEE5">' +
+    '<tr><td align="center" style="padding:30px 28px 6px"><img src="' + icon + '" width="72" height="72" alt="" style="display:block;border:0;border-radius:16px"></td></tr>' +
+    '<tr><td align="center" style="padding:10px 28px 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;letter-spacing:2px;color:#18727A;text-transform:uppercase">My Medical</td></tr>' +
+    '<tr><td align="center" style="padding:2px 28px 0;font-family:Georgia,\'Times New Roman\',serif;font-size:34px;font-weight:bold;color:#17263A">Daybook</td></tr>' +
+    '<tr><td align="center" style="padding:4px 28px 22px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#4B5B6B">Your companion between appointments</td></tr>' +
+    '<tr><td style="padding:0 28px;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.55;color:#17263A">' +
+    '<p style="margin:0 0 14px">' + (name ? 'Hello ' + esc(name) + ',' : 'Hello,') + '</p>' +
+    '<p style="margin:0 0 22px">' + esc(VERIFY_WORDS) + '</p></td></tr>' +
+    '<tr><td align="center" style="padding:0 28px 22px"><table role="presentation" cellpadding="0" cellspacing="0"><tr><td align="center" style="border-radius:12px;background:#1E7F86">' +
+    '<a href="' + esc(link) + '" style="display:inline-block;padding:15px 30px;font-family:Arial,Helvetica,sans-serif;font-size:17px;font-weight:bold;color:#FFFFFF;text-decoration:none;border-radius:12px">Confirm my email</a>' +
+    '</td></tr></table></td></tr>' +
+    '<tr><td style="padding:0 28px 8px;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.5;color:#56667A">If the button does not work, copy this link into your browser:<br>' +
+    '<a href="' + esc(link) + '" style="color:#18727A;word-break:break-all">' + esc(link) + '</a></td></tr>' +
+    '<tr><td style="padding:12px 28px 28px;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.5;color:#56667A">' + esc(VERIFY_IGNORE) + '</td></tr>' +
+    '</table>' +
+    '<p style="margin:16px 0 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.5;color:#56667A">My Medical Daybook is made by Mark 1 Apps Ltd,<br>registered in England and Wales, company number 17510025.</p>' +
+    '</td></tr></table></body></html>';
+}
+
 /* POST /household { name, relation, forName?, carerAgreed?, betaCode?, heardFrom? }: a sign-in with no circle makes its own and becomes its
    owner. Since v199 a carer setting one up for someone else names them (forName) and confirms they have that person's agreement, or
    are acting for someone who cannot decide for themselves; the confirmation is kept on the circle (consent) with the time. */
@@ -1462,7 +1547,7 @@ async function googleKey(kid, fetchFn) {
 }
 
 /* For the test harness only (scratchpad): nothing in the app or the workflow uses these */
-export const _test = { mapOffProduct, handleFood, verifyFirebaseToken, askClaude, aiErrorMessage, EXPLAIN_SYSTEM, distanceKm, payloadFor, sha256Hex, hp, stretchNudgeDue, stretchTickedOn, planEntryFromDocs, planEntryDue, readPlanDoc, planEntryFields, runReminders, runHouseholdReminders, touchPlan, firestore, buildUsage, countCircle, readUsageDoc, handleUsage, USAGE_PATH };
+export const _test = { verifyEmailHtml, mapOffProduct, handleFood, verifyFirebaseToken, askClaude, aiErrorMessage, EXPLAIN_SYSTEM, distanceKm, payloadFor, sha256Hex, hp, stretchNudgeDue, stretchTickedOn, planEntryFromDocs, planEntryDue, readPlanDoc, planEntryFields, runReminders, runHouseholdReminders, touchPlan, firestore, buildUsage, countCircle, readUsageDoc, handleUsage, USAGE_PATH };
 
 /* ------------------------------------------------------------------ */
 /* Plumbing                                                             */
