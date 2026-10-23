@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '297';
+const APP_VERSION = '298';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -3198,6 +3198,9 @@ $('feedback-row').addEventListener('click', () => openFeedbackSheet());
    localStorage: when it first saw this (batches before that day are never shown as new), which batches
    it has seen, and the Beta welcome. Nothing is stored in the circle. */
 const WHATS_NEW = [
+  { id: '2026-10-23', items: [
+    { text: 'You can now log a nap. Tap Sleep, then A nap, and say when it started and how long it lasted. Naps are kept apart from your night\'s sleep.' }
+  ] },
   { id: '2026-10-21', items: [
     { text: 'Add a medicine is now at the top of Manage medicines, so you do not have to scroll past the list to find it.' },
     { text: 'Remove a medicine: on the Meds tab, open its card with the small arrow and tap Remove. A medicine with doses already logged is kept in your history.' },
