@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '277';
+const APP_VERSION = '278';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -573,8 +573,13 @@ function clearSheetDrafts() {
   if (changed) writeDrafts(all);
 }
 /* On a fresh start: the newest kept draft that knows how to reopen its sheet, offered once in a toast */
-function offerDraft() {
+function offerDraft(tries = 0) {
   if (state.readOnly || state.viewer) return;
+  /* Wait for yesterday's and today's entries before judging a check-in unfinished (v278, Mark: "telling me I hadn't completed
+     yesterday's entries when I was fairly sure I had"): on a slow start the offer ran before they arrived, so a saved check-in
+     looked missing. A kept copy of a check-in that is already saved is cleared rather than offered. */
+  if (!state.demo && !state.recentLoaded) { if (tries < 20) setTimeout(() => offerDraft(tries + 1), 1000); return; }
+  for (const k of keptCheckins()) if (findCheckin(k.day, k.slot) && (k.local || !k.by || k.by === state.name)) clearProgress(k.slot, k.day);
   const list = Object.values(readDrafts()).filter((d) => d.reopen).sort((a, b) => b.at - a.at);
   /* A check-in kept in the circle's shared folder by someone else is theirs, not yours (v213, Mark: "Your unfinished carer's
      view was kept" at every start, for a carer's view Shelley had started on her phone); it still opens from its own row. */
@@ -1100,7 +1105,7 @@ async function enterApp(user) {
     if (wanted && PAGE_TITLES[wanted] && !state.viewer) { showTab(wanted); history.replaceState(null, '', location.pathname + location.hash); }
     await startData();
     syncReminders();
-    setTimeout(offerDraft, 1500);
+    setTimeout(() => offerDraft(), 1500);
     setTimeout(offerCircle, 2500);
     syncUsageRow();
     if (state.setupPending && !state.readOnly && !state.viewer) {
@@ -1344,6 +1349,7 @@ function stopData() {
   // sign-out and sign-in without a reload left the recent-entries feed dead, hiding new entries.
   state.recentFrom = null;
   state.recentEntries = [];
+  state.recentLoaded = false;
   state.dayEntries = [];
   state.profileLoaded = false;
 }
@@ -1788,7 +1794,7 @@ function startDemoData(pack) {
   renderChemo();
   renderExercise();
   toast(state.previewPack === 'ibd' ? "Preview: Jo, who has Crohn's, and Alex. Made-up example data, nothing you do here is saved." : 'Preview mode: made-up example data, nothing you do here is saved.');
-  setTimeout(offerDraft, 4200); // after the welcome line has had its four seconds
+  setTimeout(() => offerDraft(), 4200); // after the welcome line has had its four seconds
   renderCalls();
   syncSettings();
 }
@@ -1809,6 +1815,7 @@ function watchRecent() {
   const q = query(hcol('entries'), where('day', '>=', from));
   state.unsub.recent = onSnapshot(q, (snap) => {
     state.recentEntries = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    state.recentLoaded = true;
     sortEntries(state.recentEntries);
     if (state.selectedDay >= state.recentFrom) {
       state.dayEntries = state.recentEntries.filter((e) => e.day === state.selectedDay);
