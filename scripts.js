@@ -11056,7 +11056,10 @@ function waterPerOne(m) {
   const total = doseWaterMl(m.dose, m.how);
   return total ? Math.round(total / (parts.count || 1)) : 0;
 }
-function takenInWater(m) { return Boolean(m && !m.hospital && waterPerOne(m) > 0); }
+/* Every medicine taken in water asks for both (v284, Mark: "for all medications that are sachets taken
+   with water"): one with water in its dose, and any set to Sachets even before a water amount is saved */
+function takenInWater(m) { return Boolean(m && !m.hospital && (waterPerOne(m) > 0 || splitDose(m).form === 'sachet')); }
+function waterDoseText(words, ml) { return ml > 0 ? words + ', in ' + ml + ' ml water' : words; }
 function askWaterDose(m) {
   return new Promise((resolve) => {
     let result = null, typed = false;
@@ -11064,12 +11067,13 @@ function askWaterDose(m) {
     const per = waterPerOne(m);
     const water = h('input', { class: 'input', type: 'text', inputmode: 'numeric', autocomplete: 'off', id: 'water-ml' });
     const words = (n) => fmtDoseCount(n) + ' ' + (n > 1 ? form.many : form.one);
-    const doseNow = () => words(st.value()) + ', in ' + (parseInt(water.value, 10) || 0) + ' ml water';
+    const doseNow = () => waterDoseText(words(st.value()), parseInt(water.value, 10) || 0);
     const sync = () => {
       st.unitEl.textContent = st.value() > 1 ? form.many : form.one;
-      if (!typed) water.value = String(Math.round(per * st.value()));
+      if (!typed && per > 0) water.value = String(Math.round(per * st.value()));
       quick.querySelectorAll('.preset').forEach((b) => b.classList.toggle('is-active', Number(b.dataset.n) === st.value()));
-      go.textContent = 'Log ' + words(st.value()) + ' with ' + (parseInt(water.value, 10) || 0) + ' ml water';
+      const ml = parseInt(water.value, 10) || 0;
+      go.textContent = 'Log ' + words(st.value()) + (ml > 0 ? ' with ' + ml + ' ml water' : '');
     };
     const st = stepper(parts.count || 1, 0.5, 1, 'How many this time', () => sync(), 'each');
     const quick = h('div', { class: 'presets', role: 'group', 'aria-label': 'Quick numbers' },
@@ -11087,7 +11091,7 @@ function askWaterDose(m) {
       h('div', { class: 'field med-count' }, h('span', { class: 'fieldlabel', text: 'How many this time?' }), st.el),
       quick,
       field('How much water was it taken in? (ml)', water),
-      h('p', { class: 'hint', text: 'The water is counted in the day\'s drinks. It fills in from the number taken; change it if it was different.' }),
+      h('p', { class: 'hint', text: per > 0 ? 'The water is counted in the day\'s drinks. It fills in from the number taken; change it if it was different.' : 'The water is counted in the day\'s drinks. Type 0 if it was not taken in water.' }),
       go,
       h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Cancel')), () => resolve(result));
   });
@@ -11188,20 +11192,36 @@ async function logMedAtTime(m) {
   const parts = splitDose(m), form = doseFormOf(parts.form);
   const thisTime = form ? stepper(parts.count, 0.5, 1, 'How many this time', () => syncThis(), 'each') : null;
   const thisLine = h('p', { class: 'med-dose-preview', role: 'status' });
-  const doseNow = () => (form ? composeDose(thisTime.value(), parts.form, parts.strength) : m.dose);
-  const syncThis = () => { if (!form) return; thisTime.unitEl.textContent = thisTime.value() > 1 || form.key === 'ml' ? form.many : form.one; thisLine.textContent = 'Logged as ' + doseNow() + '.'; };
+  /* taken in water (v284): the water box beside the number, its ml written into the dose so the drink follows */
+  const inWater = form && takenInWater(m), per = inWater ? waterPerOne(m) : 0;
+  let waterTyped = false;
+  const water = inWater ? h('input', { class: 'input', type: 'text', inputmode: 'numeric', autocomplete: 'off', id: 'water-ml' }) : null;
+  if (water) water.addEventListener('input', () => { waterTyped = true; syncThis(); });
+  const doseNow = () => {
+    if (inWater) return waterDoseText(fmtDoseCount(thisTime.value()) + ' ' + (thisTime.value() > 1 ? form.many : form.one), parseInt(water.value, 10) || 0);
+    return form ? composeDose(thisTime.value(), parts.form, parts.strength) : m.dose;
+  };
+  const syncThis = () => {
+    if (!form) return;
+    thisTime.unitEl.textContent = thisTime.value() > 1 || form.key === 'ml' ? form.many : form.one;
+    if (water && !waterTyped && per > 0) water.value = String(Math.round(per * thisTime.value()));
+    thisLine.textContent = 'Logged as ' + doseNow() + '.';
+  };
   syncThis();
   const use = isDualUse(m) ? useChips(m) : null;
   const body = h('div', null,
     h('p', { class: 'muted', text: m.dose + '. ' + m.how }),
     h('div', { class: 'field-row' }, field('Date', day), field('Time', time)),
     form ? h('div', { class: 'field med-count' }, h('span', { class: 'fieldlabel', text: form.key === 'ml' ? 'How many ml this time' : 'How many this time' }), thisTime.el) : null,
+    water ? field('How much water was it taken in? (ml)', water) : null,
     form ? thisLine : null,
     use ? use.el : null,
     field('Note', note),
     h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => {
       if (!day.value) { missing(day, 'Please choose a date'); return; }
       if (form && !(thisTime.value() > 0)) { missing(thisTime.el, 'How many was it?'); return; }
+      if (water && water.value.trim() === '') { missing(water, 'How much water was it taken in? Type 0 if none.'); return; }
+      if (water && !(parseInt(water.value, 10) >= 0 && parseInt(water.value, 10) <= 3000)) { missing(water, 'Type the water in ml, like 250', CHECK); return; }
       if (use && !use.value()) { missing(use.el, 'What was it for?'); return; }
       closeSheet();
       logMed(m, atFromInputs(day.value, time.value), note.value.trim(), doseNow(), use ? use.value() : null);
