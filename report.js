@@ -152,10 +152,23 @@ export function renderChart(cfg, days) {
   /* small marks under the plot for the days passed in cfg.marks (treatment sessions on the mood chart, v155) */
   (cfg.marks || []).forEach((i) => { if (i >= 0 && i < n) s += `<path d="M${(x(i) - 1.6).toFixed(1)} ${(T + ph + 2.2).toFixed(1)} L${(x(i) + 1.6).toFixed(1)} ${(T + ph + 2.2).toFixed(1)} L${x(i).toFixed(1)} ${(T + ph - 0.4).toFixed(1)} Z" fill="${C.ink}"/>`; });
   /* small teal dots below those for the days in cfg.dots (fasting days on the Crohn's bowel chart, v258) */
-  (cfg.dots || []).forEach((i) => { if (i >= 0 && i < n) s += `<circle cx="${x(i).toFixed(1)}" cy="${(T + ph + 4.6).toFixed(1)}" r="1.15" fill="${C.teal}"/>`; });
+  (cfg.dots || []).forEach((i) => { if (i >= 0 && i < n) s += `<circle cx="${x(i).toFixed(1)}" cy="${(T + ph + 4.6).toFixed(1)}" r="1.15" fill="${cfg.dotC || C.teal}"/>`; });
   const any = cfg.series.some((se) => se.d.some((v) => v != null));
   if (!any) {
     s += `<text x="${L + pw / 2}" y="${T + ph / 2 + 2}" font-size="7" fill="${C.slate}" text-anchor="middle">No readings in this period</text>`;
+  } else if (cfg.type === 'stack') {
+    /* stacked bars, one colour per series from the bottom up (v286, the bowel chart on Notes for the team) */
+    const bw = Math.max(1.2, Math.min(14, pw / n * 0.62));
+    for (let i = 0; i < n; i++) {
+      let base = 0;
+      cfg.series.forEach((se) => {
+        const v = se.d[i];
+        if (!v) return;
+        const top = y(Math.min(base + v, cfg.max)), bot = y(Math.min(base, cfg.max));
+        s += `<rect x="${(x(i) - bw / 2).toFixed(1)}" y="${top.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(0, bot - top).toFixed(1)}" fill="${se.c}"/>`;
+        base += v;
+      });
+    }
   } else if (cfg.type === 'bars') {
     const bw = Math.max(1.2, Math.min(14, pw / n * 0.62));
     cfg.series[0].d.forEach((v, i) => {
@@ -288,7 +301,7 @@ export function reportHtml(R) {
   const olderLine = R.older ? `<p class="more">${esc(R.older === 1 ? '1 older question is' : R.older + ' older questions are')} still open in the app, asked before ${esc(R.olderFrom || 'this period')}.</p>` : '';
   const noneLine = R.questions.length ? '' : '<p class="none" data-sec="No questions">No new questions this time.</p>';
   const charts = R.charts.map((c) => `<div class="c" data-sec="${esc(c.title)}"><div class="h"><h3>${esc(c.title)}</h3><span class="stat ${esc(c.tone || '')}">${esc(c.stat)}</span></div>${renderChart(c, R.days)}</div>`).join('');
-  const key = `<div class="c key"><b>Key</b><span><i class="sw" style="background:rgba(224,160,48,.45)"></i>Amber: worth mentioning</span><span><i class="sw" style="background:rgba(200,69,59,.45)"></i>Red: raise promptly</span><span><i class="sw" style="background:${C.ink}"></i><i class="sw" style="background:${C.teal}"></i>Blood pressure: dark systolic, teal diastolic</span><span>Sleep bars under 5 h are amber.</span></div>`;
+  const key = `<div class="c key"><b>Key</b><span><i class="sw" style="background:rgba(224,160,48,.45)"></i>Amber: worth mentioning</span><span><i class="sw" style="background:rgba(200,69,59,.45)"></i>Red: raise promptly</span><span><i class="sw" style="background:${C.ink}"></i><i class="sw" style="background:${C.teal}"></i>Blood pressure: dark systolic, teal diastolic</span><span>Sleep bars under 5 h are amber.</span>${R.charts.some((c) => c.key === 'bowel') ? `<span><i class="sw" style="background:#8FA6B8"></i>Hard (types 1 to 2) <i class="sw" style="background:${C.teal};margin-left:1.5mm"></i>Types 3 to 5 <i class="sw" style="background:#C2703D;margin-left:1.5mm"></i>Loose (6 to 7); a red dot is a day with blood</span>` : ''}</div>`;
   const weeks = R.weeks.length ? R.weeks.map((w) => weekHtml(w, R.weeks.length === 1)).join('')
     : weekHtml({ title: 'Notes', range: R.period, theme: '', entries: [] }, true).replace('No written notes this week.', 'No written notes in this period.');
   const weeksHtml = `<div class="wwrap" data-sec="Week by week">

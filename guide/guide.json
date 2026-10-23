@@ -1,5 +1,5 @@
 {
- "made": "2026-10-22",
+ "made": "2026-10-23",
  "width": 390,
  "height": 844,
  "topics": [
@@ -14,7 +14,7 @@
      "caption": "On Today, tap Vitals. The other tiles log pain, a drink, food, a note, sleep, bowels, a symptom or a dose the same way.",
      "tap": {
       "x": 0.187,
-      "y": 0.284
+      "y": 0.279
      }
     },
     {
@@ -50,7 +50,7 @@
      "caption": "Twice a day, a morning check-in and an evening one. Tap the row when it says Due now.",
      "tap": {
       "x": 0.5,
-      "y": 0.325
+      "y": 0.321
      }
     },
     {
@@ -98,7 +98,7 @@
      "caption": "Done. The check-in is a card on Today: tap it to open it, and Edit to change an answer later.",
      "tap": {
       "x": 0.5,
-      "y": 0.323
+      "y": 0.318
      }
     }
    ]
@@ -186,7 +186,7 @@
      "caption": "Something to ask at the next appointment? Tap Question for the team on Today.",
      "tap": {
       "x": 0.5,
-      "y": 0.511
+      "y": 0.506
      }
     },
     {
@@ -202,7 +202,7 @@
      "caption": "Saved. The row now says how many are waiting; tap it to see them all.",
      "tap": {
       "x": 0.5,
-      "y": 0.524
+      "y": 0.519
      }
     },
     {
@@ -278,7 +278,7 @@
      "caption": "Over the last three days of the week, Your week appears on Today: five minutes, once a week.",
      "tap": {
       "x": 0.5,
-      "y": 0.646
+      "y": 0.641
      }
     },
     {
@@ -502,7 +502,7 @@
      "caption": "A carer's Today has two more rows: their mood this morning and this evening, as you see it, at the patient's own times.",
      "tap": {
       "x": 0.5,
-      "y": 0.511
+      "y": 0.506
      }
     },
     {
@@ -534,7 +534,7 @@
      "caption": "A day starts on Today. The morning check-in is due: a minute, one question a screen.",
      "tap": {
       "x": 0.5,
-      "y": 0.325
+      "y": 0.321
      }
     },
     {

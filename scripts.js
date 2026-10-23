@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '285';
+const APP_VERSION = '286';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -3503,14 +3503,16 @@ syncSpeakCheck();
    Since v109 a movement can be several types at once (Mark: "made up of various types"): `types` holds
    every type ticked, lowest first, and `bristol` keeps the loosest of them, so anything that reads only
    `bristol` still errs towards the type that matters most. Read them through bowelTypes(). */
+/* The seven types in Daybook's own words (v286): the 1 to 7 scale is a published method, but the illustrated chart's
+   wording belongs to Norgine, so the names and descriptions here are written fresh, with our own line drawings */
 const BRISTOL = [
-  { t: 1, name: 'Separate hard lumps', hint: 'Like nuts, hard to pass' },
-  { t: 2, name: 'Lumpy sausage', hint: 'Sausage shaped but lumpy' },
-  { t: 3, name: 'Cracked sausage', hint: 'Like a sausage with cracks on the surface' },
-  { t: 4, name: 'Smooth and soft', hint: 'Like a sausage or snake, smooth and soft' },
-  { t: 5, name: 'Soft blobs', hint: 'Soft blobs with clear edges, passed easily' },
-  { t: 6, name: 'Mushy', hint: 'Fluffy pieces with ragged edges' },
-  { t: 7, name: 'Watery', hint: 'Entirely liquid, no solid pieces' }
+  { t: 1, name: 'Hard lumps', hint: 'Small separate pieces, hard to pass' },
+  { t: 2, name: 'Lumpy and firm', hint: 'One firm piece, but lumpy' },
+  { t: 3, name: 'Firm with cracks', hint: 'One piece with cracks along it' },
+  { t: 4, name: 'Smooth and soft', hint: 'One smooth, soft piece, easy to pass' },
+  { t: 5, name: 'Soft pieces', hint: 'Soft pieces with clear edges, easy to pass' },
+  { t: 6, name: 'Mushy', hint: 'Loose, mushy pieces with uneven edges' },
+  { t: 7, name: 'Watery', hint: 'All liquid, no solid pieces' }
 ];
 const BOWEL_FLAGS = [['blood', 'Blood (red)'], ['black', 'Black or tarry'], ['mucus', 'Mucus'], ['urgent', 'Urgent, or an accident'], ['pain', 'Pain or straining'], ['night', 'At night']];
 /* With Crohn's or colitis (v145): blood graded as IBD teams ask it (the Mayo bleeding grades in plain
@@ -6696,9 +6698,34 @@ function twoPageCharts(entries, days) {
   charts.push({ key: 'mood', title: 'Mood (1 to 10)', stat: !vals(moodDay).length && !lowMood.length ? 'No scores' : lowMood.length ? 'Low on ' + plural(lowMood.length, 'day') : 'Steady',
     tone: !vals(moodDay).length && !lowMood.length ? '' : lowMood.length ? 'amber' : 'green', min: 0, max: 10, ticks: [0, 5, 10], series: [{ d: moodDay, c: teal }] });
 
+  /* Bowels (v286): only when bowel movements were logged in the period, so a report without them is unchanged. A bar a day
+     split into hard (types 1 to 2), the middle of the scale (3 to 5) and loose (6 to 7), a red dot under a day with blood */
+  const bowels = entries.filter((e) => e.type === 'bowel' && !e.none);
+  if (bowels.length) {
+    const kind = (e) => (e.stoma ? (e.output === 'watery' ? 'loose' : 'mid') : isLoose(e) ? 'loose' : isHard(e) ? 'hard' : 'mid');
+    const per = by((e) => e.type === 'bowel' && !e.none);
+    const count = (k) => per.map((l) => (l.length ? l.filter((e) => kind(e) === k).length : null));
+    const hard = count('hard'), mid = count('mid'), loose = count('loose');
+    const bloodDays = days.map((d, i) => (per[i].some((e) => bloodGradeOf(e) > 0 || e.black) ? i : -1)).filter((i) => i >= 0);
+    const looseDays = per.filter((l) => l.some((e) => kind(e) === 'loose')).length, hardDays = per.filter((l) => l.some((e) => kind(e) === 'hard')).length;
+    const typeCount = {};
+    bowels.forEach((e) => bowelTypes(e).forEach((t) => { typeCount[t] = (typeCount[t] || 0) + 1; }));
+    const common = Object.entries(typeCount).sort((a, b) => b[1] - a[1])[0];
+    const most = Math.max(...per.map((l) => l.length));
+    const bTop = Math.max(4, Math.ceil(most / 2) * 2);
+    const statBits = [common ? 'Mostly type ' + common[0] : plural(bowels.length, 'movement')];
+    if (looseDays) statBits.push('loose on ' + plural(looseDays, 'day'));
+    if (bloodDays.length) statBits.push('blood on ' + plural(bloodDays.length, 'day'));
+    charts.push({ key: 'bowel', title: 'Bowels a day', type: 'stack', stat: statBits.join(', '),
+      tone: toneOf(bloodDays.length, looseDays || hardDays >= 3), min: 0, max: bTop, ticks: [0, bTop / 2, bTop],
+      dots: bloodDays, dotC: red,
+      series: [{ d: hard, c: REPORT_SLATE }, { d: mid, c: teal }, { d: loose, c: REPORT_WARM }] });
+  }
+
   return { charts, facts: { tv, tPeak, hv, hPeak, bpAll, bpRed, bpAmber, ov, oLow, wSorted, wDrop, nights, shortN, pAvg, pDays: pv.length, pWorst, painAll, lowMood, moodDay } };
 }
 const REPORT_INK = '#17263A', REPORT_TEAL = '#1E7F86', REPORT_AMBER = '#E0A030', REPORT_RED = '#C8453B';
+const REPORT_SLATE = '#8FA6B8', REPORT_WARM = '#C2703D';
 
 /* The eight tiles: vitals on the first row, then pain, sleep, protein and mood */
 function twoPageTiles(entries, from, to, f) {
