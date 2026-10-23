@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '279';
+const APP_VERSION = '280';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -4092,7 +4092,7 @@ function openAdd(type, editEntry, preset) {
       block.el, sleepWarn, details, field('Note', note));
     /* Save that cannot save says why inside the sheet, beside the times, not only in the message at the top (v279, Mark:
        Save "took me back to the entry screen like I had made an entry", and nothing had been saved) */
-    const holdTimes = () => { sleepWarn.hidden = false; sleepWarn.textContent = 'Not saved yet: add when you went to bed and when you woke up, then Save.'; toast('Not saved yet. Add when you went to bed and when you woke up'); const b = $('night-bed'); if (b && b.offsetParent) { b.scrollIntoView({ block: 'center' }); b.focus(); } return { hold: true }; };
+    const holdTimes = () => { sleepWarn.hidden = false; sleepWarn.textContent = 'Not saved yet: fill in the times marked in red, hours and minutes (00 counts), then Save.'; toast('Missing information. Not saved yet'); block.check(true); return { hold: true }; };
     getData = () => {
       sleepWarn.hidden = true;
       const n = block.value();
@@ -4491,7 +4491,28 @@ function nightBlock(init, opts = {}) {
     if (tracker && short) n.watchShort = true;
     return (n.bedAt || n.wokeAt || n.rested || n.broken || n.watchShort) ? n : null;
   };
-  return { el: box, value, tracker };
+  /* v280, Mark: Save took him back to the bed time because the minutes showed 00 and he had not typed them, so the box was
+     really empty. A time box half filled in, or one of the two left empty, turns red with "Missing information".
+     required: both times needed (the Sleep tile); otherwise only a half-done pair is stopped (the check-in, where times are optional). */
+  const mark = (inp, on) => {
+    const f = inp.closest('.field'); if (!f) return;
+    f.classList.toggle('is-missing', on);
+    inp.setAttribute('aria-invalid', on ? 'true' : 'false');
+    let note = f.querySelector('.missing-note');
+    if (on && !note) { note = h('span', { class: 'missing-note', role: 'alert', text: 'Missing information' }); f.append(note); }
+    if (!on && note) note.remove();
+  };
+  [bed, woke].forEach((inp) => inp.addEventListener('input', () => { if (inp.value) mark(inp, false); }));
+  const check = (required) => {
+    if (tracker && !short) return true;
+    const bad = (inp) => Boolean(inp.validity && inp.validity.badInput) || !inp.value;
+    const any = Boolean(bed.value || woke.value || (bed.validity && bed.validity.badInput) || (woke.validity && woke.validity.badInput));
+    const miss = [bed, woke].filter((inp) => (required || any) && bad(inp));
+    [bed, woke].forEach((inp) => mark(inp, miss.includes(inp)));
+    if (miss.length) { miss[0].scrollIntoView({ block: 'center' }); miss[0].focus(); }
+    return !miss.length;
+  };
+  return { el: box, value, tracker, check };
 }
 /* the night's minutes asleep from the simple answers: time in bed less roughly how long awake */
 function nightAsleep(n) { const inBed = n ? minutesInBed(n.bedAt, n.wokeAt) : null; if (!inBed) return null; const aw = n.broken && n.broken !== 'no' ? nightAwakeMin(n) : null; return Math.max(1, inBed - (aw || 0)); }
@@ -8675,6 +8696,7 @@ function openCheckin(slot, initialDay) {
         if (q.kind === 'sleep') {
           night = nightBlock(answers.night, { tracker: isTrackerNight(nightEntry) ? nightEntry : null, ibd: packOn('ibd') });
           wrap.append(night.el);
+          wrap._guard = () => night.check(false);
         }
         if (q.note) {
           noteBox = h('textarea', { rows: '2', placeholder: q.notePh || CHECKIN_NOTE_PH, 'aria-label': q.noteQ || CHECKIN_NOTE_Q });
@@ -8698,7 +8720,7 @@ function openCheckin(slot, initialDay) {
       const go = (n, d) => { while (qs[n] && qs[n].key === 'nightToilet' && nightSaysToilet()) n += d < 0 ? -1 : 1; if (n < 0) n = 0; dir = d; step = n; clearTimeout(keepTimer); keep(); render(); };
       const back = h('button', { class: 'btn btn-secondary btn-back', type: 'button', disabled: step === 0, onclick: () => { answers[q.key] = getVal(); go(step - 1, -1); } }, 'Back');
       const skip = h('button', { class: 'btn-link wiz-skip', type: 'button', onclick: () => { if (q.kind === 'sleep' || q.note) getVal(); answers[q.key] = q.kind === 'text' ? '' : null; const r = fromReview; fromReview = false; go(r ? qs.length : step + 1, r ? -1 : 1); } }, fromReview ? 'Clear this answer' : 'Skip');
-      const next = h('button', { class: 'btn btn-primary btn-next', type: 'button', onclick: () => { answers[q.key] = getVal(); const r = fromReview; fromReview = false; go(r ? qs.length : step + 1, r ? -1 : 1); } }, fromReview ? 'Done, back to the review' : (step === qs.length - 1 ? 'Review' : 'Next'));
+      const next = h('button', { class: 'btn btn-primary btn-next', type: 'button', onclick: () => { if (wrap._guard && !wrap._guard()) { toast('Missing information'); return; } answers[q.key] = getVal(); const r = fromReview; fromReview = false; go(r ? qs.length : step + 1, r ? -1 : 1); } }, fromReview ? 'Done, back to the review' : (step === qs.length - 1 ? 'Review' : 'Next'));
       wrap.append(h('div', { class: 'wiz-buttons' + (fromReview ? ' is-fromreview' : '') }, fromReview ? '' : back, skip, next), cancelLink() || '');
     } else {
       const bar = h('div', { class: 'progress-bar' }, h('div'));
