@@ -938,7 +938,8 @@ async function paginate(frame, M, render, opts = {}) {
 /* (buildMoodReport() in scripts.js). Paginated by paginate().        */
 /* ------------------------------------------------------------------ */
 const MOOD_CSS = `
-.tiles.mood .tile .v{font-size:14.5pt}
+.tiles.mood{grid-template-columns:repeat(5,1fr);gap:2.2mm}
+.tiles.mood .tile .v{font-size:13pt}
 .c.wide{margin-top:1mm}
 .c .legend{display:flex;flex-wrap:wrap;gap:3.6mm;font-size:6.8pt;color:var(--slate);margin-top:1mm}
 .c .legend i{display:inline-block;width:4mm;height:1.3mm;border-radius:.6mm;margin-right:1.2mm;vertical-align:middle}
