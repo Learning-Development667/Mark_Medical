@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField, runTransaction
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '308';
+const APP_VERSION = '309';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -10627,8 +10627,8 @@ async function renderMoodReport() {
   $('mood-brief-note').textContent = ai ? 'Written by Daybook Assistant from your scores and notes. Change any word; the report uses what is in the box.' : W.briefNote + (explainAvailable() && !state.readOnly ? ' Tap the button for a written brief from your notes.' : '');
   /* the carer's own mood and words, in their own area (v237) */
   /* the highs and lows with the words beside them (v308) */
-  $('mood-moments-section').hidden = !W.moments.length;
-  $('mood-moments').replaceChildren(...W.moments.map((x) => h('div', { class: 'card wkcard moment' + (x.high ? ' is-high' : ' is-low') },
+  $('mood-moments-section').hidden = !W.momentsAll.length;
+  $('mood-moments').replaceChildren(...W.momentsAll.map((x) => h('div', { class: 'card wkcard moment' + (x.high ? ' is-high' : ' is-low') },
     h('div', { class: 'wk-head' }, h('span', { text: x.when }), h('span', { class: 'moment-score', text: 'Mood ' + x.v + '/10' })),
     h('p', { class: 'wk-sentence', text: '“' + x.text + '”' }),
     h('p', { class: 'wk-sub', text: 'From the ' + x.from + '.' }))));
@@ -10772,7 +10772,14 @@ function buildMoodReport(n) {
   const allScores = ciScores.concat(between);
   const lowDays = scored.filter((d) => d.moodLow <= 4);
   const moments = daysFull.flatMap((d) => d.moments.map((x) => ({ ...x, day: d.day, when: DOW[parseDay(d.day).getDay()] + ' ' + rDay(d.day) + (x.at ? ', ' + x.at : ''), high: x.v >= 8 })));
-  const momentText = new Set(moments.map((x) => x.text));
+  /* v309 (Mark): the report keeps the most extreme, five lowest and five highest, in time order; the screen lists them all */
+  const MOMENTS_EACH = 5;
+  const recent = (a, b) => (b.day + b.at).localeCompare(a.day + a.at);
+  const lowPick = moments.filter((x) => !x.high).sort((a, b) => a.v - b.v || recent(a, b)).slice(0, MOMENTS_EACH);
+  const highPick = moments.filter((x) => x.high).sort((a, b) => b.v - a.v || recent(a, b)).slice(0, MOMENTS_EACH);
+  const reportMoments = lowPick.concat(highPick).sort((a, b) => (a.day + a.at).localeCompare(b.day + b.at));
+  const momentsLeft = moments.length - reportMoments.length;
+  const momentText = new Set(reportMoments.map((x) => x.text));
   const dayWord = (d) => DOW[parseDay(d).getDay()] + ' ' + rDay(d);
   const both = (d) => (d.moodM != null && d.moodE != null ? 1 : 0);
   const best = scored.slice().sort((a, b) => b.mood - a.mood || both(b) - both(a) || b.day.localeCompare(a.day))[0];
@@ -10871,7 +10878,7 @@ function buildMoodReport(n) {
   const questions = (n.questions || []).map((q) => ({ team: q.teamLabel || 'Wellbeing', text: fixMedWords(q.text), by: `Asked by ${q.who}, ${rDay(q.day)}` }));
   const items = [{ t: 'brief' }];
   if (quotes.length) items.push({ t: 'quotes' });
-  if (moments.length) { items.push({ t: 'sec', s: 'moments' }); moments.forEach((_, r) => items.push({ t: 'mo', r })); }
+  if (reportMoments.length) { items.push({ t: 'sec', s: 'moments' }); reportMoments.forEach((_, r) => items.push({ t: 'mo', r })); }
   if (helped.length || hardest.length) items.push({ t: 'two' });
   const carer = carerLog(entries, from, to);
   if (carer) { items.push({ t: 'sec', s: 'carer' }); carer.days.forEach((_, r) => items.push({ t: 'cd', r })); }
@@ -10881,7 +10888,7 @@ function buildMoodReport(n) {
   const period = rPeriod(from, to);
   /* the table shows what was logged: the taps' columns only when some evening has them, the sentence only with a weekly check (v157) */
   const cols = { taps: taps.length > 0, checks: wkChecks.length > 0 || carerChecks.length > 0 };
-  return { patient, period, prepared: rDay(todayStr()) + ' ' + parseDay(todayStr()).getFullYear(), tiles, chart, days: dayLabels, daysFull, brief, briefNote, quotes, quotesNote, helped, hardest, carer, moments, weeks, cols, questions, items, pages: [], docTitle: `Mood and wellbeing, ${patient}, ${period}` };
+  return { patient, period, prepared: rDay(todayStr()) + ' ' + parseDay(todayStr()).getFullYear(), tiles, chart, days: dayLabels, daysFull, brief, briefNote, quotes, quotesNote, helped, hardest, carer, moments: reportMoments, momentsAll: moments, momentsLeft, weeks, cols, questions, items, pages: [], docTitle: `Mood and wellbeing, ${patient}, ${period}` };
 }
 function fittedMoodReport() {
   return memoFit('mood', async () => {
