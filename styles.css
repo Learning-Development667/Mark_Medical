@@ -2109,3 +2109,9 @@ details.daymeal[open] .daymeal-sum::after { transform: rotate(90deg); }
 
 /* v306: Average mood leads the Mood report's tiles, across the full width above the other four */
 #mood-tiles .tile:first-child { grid-column: 1 / -1; }
+
+/* v308: the highs and lows on the Mood screen, amber edge for 4 or under, teal for 8 or over */
+.moment { border-left: 4px solid var(--warning-fill); }
+.moment.is-high { border-left-color: var(--teal-fill); }
+.moment-score { font-weight: 600; color: var(--warning-ink, var(--warning)); }
+.moment.is-high .moment-score { color: var(--teal); }

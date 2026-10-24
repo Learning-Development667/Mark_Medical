@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField, runTransaction
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '307';
+const APP_VERSION = '308';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -10626,6 +10626,12 @@ async function renderMoodReport() {
   box.readOnly = !ai || state.readOnly;
   $('mood-brief-note').textContent = ai ? 'Written by Daybook Assistant from your scores and notes. Change any word; the report uses what is in the box.' : W.briefNote + (explainAvailable() && !state.readOnly ? ' Tap the button for a written brief from your notes.' : '');
   /* the carer's own mood and words, in their own area (v237) */
+  /* the highs and lows with the words beside them (v308) */
+  $('mood-moments-section').hidden = !W.moments.length;
+  $('mood-moments').replaceChildren(...W.moments.map((x) => h('div', { class: 'card wkcard moment' + (x.high ? ' is-high' : ' is-low') },
+    h('div', { class: 'wk-head' }, h('span', { text: x.when }), h('span', { class: 'moment-score', text: 'Mood ' + x.v + '/10' })),
+    h('p', { class: 'wk-sentence', text: '“' + x.text + '”' }),
+    h('p', { class: 'wk-sub', text: 'From the ' + x.from + '.' }))));
   $('mood-carer-section').hidden = !W.carer;
   if (W.carer) {
     $('mood-carer-title').textContent = W.carer.title;
@@ -10750,7 +10756,13 @@ function buildMoodReport(n) {
     if (ev && text(ev.moodNote)) notes.push(['evening, what is behind the mood', text(ev.moodNote)]);
     if (ev && text(ev.goodThing)) notes.push(['one good thing', text(ev.goodThing)]);
     readings.forEach((r) => { if (r.note) notes.push(['logged at ' + r.at + ', mood ' + r.v + ', what is behind it', r.note]); });
-    return { day: d, dow: DOW[parseDay(d).getDay()], moodM, moodE, readings, mood: moods.length ? avg(moods) : null, moodLow: moods.length ? Math.min(...moods) : null, pain: pains.length ? Math.max(...pains) : null,
+    /* v308, Mark: the words beside a mood of 4 or under, or 8 or over, "could be significant things that happened" */
+    const moments = [];
+    const momentOf = (v, at, words, from) => { if (v != null && (v <= 4 || v >= 8) && text(words)) moments.push({ v, at, text: text(words).replace(/\s+/g, ' '), from }); };
+    momentOf(moodM, m ? fmtTime(entryDate(m)) : '', m && m.moodNote, 'morning check-in');
+    readings.forEach((r) => momentOf(r.v, r.at, r.note, 'Mood tile'));
+    momentOf(moodE, ev ? fmtTime(entryDate(ev)) : '', ev && (text(ev.moodNote) || text(ev.journal)), 'evening check-in');
+    return { day: d, moments, dow: DOW[parseDay(d).getDay()], moodM, moodE, readings, mood: moods.length ? avg(moods) : null, moodLow: moods.length ? Math.min(...moods) : null, pain: pains.length ? Math.max(...pains) : null,
       sleep: sleeps.length ? Math.round(Math.max(...sleeps) / 60 * 10) / 10 : null, temp: temps.length ? Math.max(...temps) : null, wb, session: !!(state.days[d] && state.days[d].chemo),
       hospital: hospitalDays.has(d), notes, any: moods.length || pains.length || sleeps.length || wb || notes.length };
   });
@@ -10759,6 +10771,8 @@ function buildMoodReport(n) {
   const between = daysFull.flatMap((d) => d.readings.map((r) => r.v));
   const allScores = ciScores.concat(between);
   const lowDays = scored.filter((d) => d.moodLow <= 4);
+  const moments = daysFull.flatMap((d) => d.moments.map((x) => ({ ...x, day: d.day, when: DOW[parseDay(d.day).getDay()] + ' ' + rDay(d.day) + (x.at ? ', ' + x.at : ''), high: x.v >= 8 })));
+  const momentText = new Set(moments.map((x) => x.text));
   const dayWord = (d) => DOW[parseDay(d).getDay()] + ' ' + rDay(d);
   const both = (d) => (d.moodM != null && d.moodE != null ? 1 : 0);
   const best = scored.slice().sort((a, b) => b.mood - a.mood || both(b) - both(a) || b.day.localeCompare(a.day))[0];
@@ -10847,7 +10861,7 @@ function buildMoodReport(n) {
     if (wkChecks.length) brief.push({ head: 'The weeks', text: `${plural(wkChecks.length, 'weekly check')} in the period; what helped and what was hardest are listed below, in ${patient}'s own words.` });
     briefNote = 'Worked out by the app from the scores and the weekly check.';
     const cands = daysFull.flatMap((d) => d.notes.filter(([l]) => !/good thing/.test(l)).map(([l, t]) => ({ when: rDay(d.day) + (/^logged at/.test(l) ? ', ' + l.slice(10, 15) : /morning/.test(l) ? ', morning' : ', evening'), text: t, low: d.mood != null && d.mood <= 4 })))
-      .filter((q) => q.text.length > 25 && !isRoutineNote({ text: q.text })).sort((a, b) => b.text.length - a.text.length).slice(0, 3)
+      .filter((q) => q.text.length > 25 && !isRoutineNote({ text: q.text }) && !momentText.has(text(q.text).replace(/\s+/g, ' '))).sort((a, b) => b.text.length - a.text.length).slice(0, 3)
       .map((q) => ({ ...q, text: text(q.text).replace(/\s+/g, ' ') }));
     quotes = cands.sort((a, b) => a.when.localeCompare(b.when));
     quotesNote = quotes.length ? 'Three of the notes from the period, as written.' : '';
@@ -10857,6 +10871,7 @@ function buildMoodReport(n) {
   const questions = (n.questions || []).map((q) => ({ team: q.teamLabel || 'Wellbeing', text: fixMedWords(q.text), by: `Asked by ${q.who}, ${rDay(q.day)}` }));
   const items = [{ t: 'brief' }];
   if (quotes.length) items.push({ t: 'quotes' });
+  if (moments.length) { items.push({ t: 'sec', s: 'moments' }); moments.forEach((_, r) => items.push({ t: 'mo', r })); }
   if (helped.length || hardest.length) items.push({ t: 'two' });
   const carer = carerLog(entries, from, to);
   if (carer) { items.push({ t: 'sec', s: 'carer' }); carer.days.forEach((_, r) => items.push({ t: 'cd', r })); }
@@ -10866,7 +10881,7 @@ function buildMoodReport(n) {
   const period = rPeriod(from, to);
   /* the table shows what was logged: the taps' columns only when some evening has them, the sentence only with a weekly check (v157) */
   const cols = { taps: taps.length > 0, checks: wkChecks.length > 0 || carerChecks.length > 0 };
-  return { patient, period, prepared: rDay(todayStr()) + ' ' + parseDay(todayStr()).getFullYear(), tiles, chart, days: dayLabels, daysFull, brief, briefNote, quotes, quotesNote, helped, hardest, carer, weeks, cols, questions, items, pages: [], docTitle: `Mood and wellbeing, ${patient}, ${period}` };
+  return { patient, period, prepared: rDay(todayStr()) + ' ' + parseDay(todayStr()).getFullYear(), tiles, chart, days: dayLabels, daysFull, brief, briefNote, quotes, quotesNote, helped, hardest, carer, moments, weeks, cols, questions, items, pages: [], docTitle: `Mood and wellbeing, ${patient}, ${period}` };
 }
 function fittedMoodReport() {
   return memoFit('mood', async () => {
