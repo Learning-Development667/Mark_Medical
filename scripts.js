@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField, runTransaction
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '304';
+const APP_VERSION = '305';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -3003,6 +3003,7 @@ function entryTitle(e) {
     case 'nap': return [h('span', { class: 'val', text: fmtHm(e.value) }), h('span', { text: ' nap' })];
     case 'checkin': return [h('span', { text: checkinTitle(e.slot) })];
     case 'pain': return [h('span', { class: 'val', text: 'Pain ' + e.value + '/10' }), painBandWord(e.value) ? h('span', { text: ', ' + painBandWord(e.value).toLowerCase() }) : null];
+    case 'mood': return [h('span', { class: 'val', text: 'Mood ' + e.value + '/10' })];
     case 'symptom': return [h('span', { class: 'val', text: symptomLevel(e) }), e.grade == null && painBandWord(e.value, '') ? h('span', { text: ', ' + painBandWord(e.value, '').toLowerCase() }) : null];
     case 'bowel': {
       if (e.none) return [h('span', { text: e.stoma ? 'No stoma output' : 'No bowel movement' })];
@@ -3052,6 +3053,7 @@ function entrySub(e) {
   if (e.type === 'nap') { const d0 = entryDate(e); if (d0) bits.push(fmtTime(d0) + ' to ' + addMinutesHm(fmtTime(d0), e.value)); bits.push('A nap, kept apart from the night'); if (e.note) bits.push(e.note); }
   if (e.type === 'checkin') { const s = checkinSummary(e); if (s) bits.push(s); }
   if (e.type === 'pain' && e.note) bits.push(e.note);
+  if (e.type === 'mood') { bits.push('Logged between the check-ins'); if (e.note) bits.push(e.note); }
   if (e.type === 'symptom') { const c = causeOf(e); bits.push(c ? 'Side effect of ' + c.name + (e.sessionDay ? ' on ' + fmtDayShort(e.sessionDay) : '') : 'Symptom'); if (e.fromCheckin) bits.push('From the ' + slotWord(e.fromCheckin).toLowerCase() + ' check-in'); if (e.note) bits.push(e.note); }
   if (e.type === 'bowel') { const ts = bowelTypes(e); if (ts.length > 1) bits.push(ts.map((t) => bristolName(t)).join(', ')); const f = bowelFlagWords(e); if (f) bits.push(f); if (e.note) bits.push(e.note); }
   if (e.type === 'question') bits.push((isDietitianQ(e) ? 'Question for the dietitian' : isWellbeingQ(e) ? 'Question for the therapist' : isPainQ(e) ? 'Question for the pain team' : packOn('ibd') && isGastroQ(e) ? 'Question for the gastro team' : 'Question for the team') + (e.answered ? ', answered' : '') + (isDietitianQ(e) || isWellbeingQ(e) || isPainQ(e) ? '' : ' · ' + teamLabel(teamOf(e))));
@@ -3094,7 +3096,7 @@ function renderEntry(e) {
 }
 
 /* Types openAdd() can pre-fill and update in place, given the original entry */
-const EDITABLE_ENTRY_TYPES = ['food', 'drink', 'weight', 'note', 'question', 'bowel', 'symptom', 'pain', 'result', 'nap'];
+const EDITABLE_ENTRY_TYPES = ['food', 'drink', 'weight', 'note', 'question', 'bowel', 'symptom', 'pain', 'mood', 'result', 'nap'];
 
 function entryOptions(e) {
   const d = entryDate(e);
@@ -3126,7 +3128,7 @@ function entryOptions(e) {
   );
   openSheet(ENTRY_SHEET_TITLES[e.type] || 'Entry', body);
 }
-const ENTRY_SHEET_TITLES = { call: 'Call', result: 'Result', temp: 'Temperature', vitals: 'Vitals', weight: 'Weight', med: 'Medicine', drink: 'Drink', food: 'Food', note: 'Note', sleep: 'Sleep', nap: 'Nap', pain: 'Pain', bowel: 'Bowels', symptom: 'Symptom', question: 'Question for the team' };
+const ENTRY_SHEET_TITLES = { call: 'Call', result: 'Result', temp: 'Temperature', vitals: 'Vitals', weight: 'Weight', med: 'Medicine', drink: 'Drink', food: 'Food', note: 'Note', sleep: 'Sleep', nap: 'Nap', pain: 'Pain', mood: 'Mood', bowel: 'Bowels', symptom: 'Symptom', question: 'Question for the team' };
 /* One line per reading for the entry view, coloured with the same levels as Trends' tables */
 function readingRows(e) {
   if (e.type === 'temp') return [['Temperature', fmtTemp(e.value), tempClass(e.value) === 'is-red' ? 'red' : tempClass(e.value) === 'is-amber' ? 'amber' : null]];
@@ -4327,6 +4329,20 @@ function openAdd(type, editEntry, preset) {
     };
   }
 
+  /* Mood (v305): a mood score any time between the check-ins, like the Pain tile. Mark: "Meds has
+     its own tab", so this tile took the Medicine one's place on Today. */
+  if (type === 'mood') {
+    const sl = sliderBlock({ kind: 'slider', q: 'How is your mood right now?', low: '1 rough', high: '10 great' }, editEntry ? editEntry.value : null);
+    const moodNote = h('textarea', { rows: 3, placeholder: 'e.g. a good chat, worried about tomorrow' });
+    moodNote.value = (editEntry && editEntry.note) || '';
+    body.append(h('p', { class: 'wiz-q', text: 'How is your mood right now?' }), ...sl.nodes, field('Time', time), field('What is behind it? (optional)', moodNote), ...[speakButton(moodNote)].filter(Boolean));
+    getData = () => {
+      const v = sl.value();
+      if (v == null) return missing(sl.nodes.find((n) => n.type === 'range') || sl.nodes[0], 'Slide to a number first');
+      return { type: 'mood', value: v, note: moodNote.value.trim() };
+    };
+  }
+
   if (type === 'bowel') {
     /* The Bristol Stool Chart (the scale every nurse knows) as seven rows, one tap; the extras the
        24-hour triage lines ask about as tick chips; and a way to record a day with none, since
@@ -4753,7 +4769,7 @@ function openAdd(type, editEntry, preset) {
     };
   }
 
-  const titles = { drink: 'Drink', food: 'Food', weight: 'Weight', note: 'Note', vitals: 'Vitals', sleep: 'Sleep', nap: 'Nap', question: 'Question for the team', pain: 'Log pain', bowel: 'Bowels', symptom: 'Symptom' };
+  const titles = { drink: 'Drink', food: 'Food', weight: 'Weight', note: 'Note', vitals: 'Vitals', sleep: 'Sleep', nap: 'Nap', question: 'Question for the team', pain: 'Log pain', mood: 'Mood', bowel: 'Bowels', symptom: 'Symptom' };
   const save = h('button', { class: 'btn btn-primary btn-block', type: 'button' }, 'Save');
   save.addEventListener('click', async () => {
     const data = getData();
@@ -4814,7 +4830,7 @@ function openAdd(type, editEntry, preset) {
   if (onSaveReady) onSaveReady(save);
   body.dataset.draft = editId || 'new';
   if (!editId && (type === 'note' || type === 'question' || type === 'vitals')) body.dataset.reopen = type;
-  openSheet(editId && type === 'vitals' ? (editEntry.type === 'temp' ? 'Edit temperature' : 'Edit vitals') : editId && type === 'pain' ? 'Edit pain' : titles[type], body);
+  openSheet(editId && type === 'vitals' ? (editEntry.type === 'temp' ? 'Edit temperature' : 'Edit vitals') : editId && type === 'pain' ? 'Edit pain' : editId && type === 'mood' ? 'Edit mood' : titles[type], body);
   if (foodGuard) state.sheetGuard = foodGuard;
 }
 
@@ -12949,10 +12965,14 @@ async function renderVitals() {
   });
 
   const ciMood = entries.filter((e) => isPatientCheckin(e) && e.mood != null).map((e) => ({ x: entryDate(e).getTime(), y: Number(e.mood) }));
+  const spotMood = entries.filter((e) => e.type === 'mood' && e.value != null).map((e) => ({ x: entryDate(e).getTime(), y: Number(e.value) }));
   makeChart('mood', {
     type: 'line',
-    data: { datasets: [lineSeries(T, T.teal, ciMood, { label: 'Mood' })] },
-    options: lineOptions(tenScale(), { title: pointTitle, label: (item) => item.raw.y + '/10' }, false, ciMood.length)
+    data: { datasets: [
+      lineSeries(T, T.teal, ciMood, { label: 'Check-in' }),
+      { label: 'Logged between', data: spotMood, borderColor: T.warm, backgroundColor: T.surface, pointBackgroundColor: T.surface, pointBorderColor: T.warm, pointRadius: 4, pointHoverRadius: 7, pointBorderWidth: 2, pointHitRadius: 12, showLine: false, fill: false }
+    ] },
+    options: lineOptions(tenScale(), { title: pointTitle, label: (item) => item.dataset.label + ': ' + item.raw.y + '/10' }, !!spotMood.length, ciMood.length)
   });
 }
 

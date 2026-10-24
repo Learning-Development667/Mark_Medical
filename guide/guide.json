@@ -6,12 +6,12 @@
   {
    "key": "reading",
    "title": "Log a reading",
-   "sub": "Vitals, pain, a drink, food, a note, sleep, bowels, a symptom or a dose, from Today.",
+   "sub": "Vitals, pain, a drink, food, a note, sleep, bowels, a symptom or how you feel, from Today.",
    "intro": "Everything between the check-ins is logged from the tiles on Today, in the same way.",
    "steps": [
     {
      "file": "reading-1.webp",
-     "caption": "On Today, tap Vitals. The other tiles log pain, a drink, food, a note, sleep, bowels, a symptom or a dose the same way.",
+     "caption": "On Today, tap Vitals. The other tiles log pain, a drink, food, a note, sleep, bowels, a symptom or your mood the same way.",
      "tap": {
       "x": 0.187,
       "y": 0.279
@@ -107,7 +107,7 @@
    "key": "meds",
    "title": "Medicines and reminders",
    "sub": "Log a dose, see what is due, set reminder times.",
-   "intro": "The Meds tab is the list; the Medicine tile on Today is the quick way to log a dose.",
+   "intro": "Every dose is logged on the Meds tab: Log now, or Other time for a dose taken earlier.",
    "steps": [
     {
      "file": "meds-1.webp",
@@ -131,18 +131,6 @@
     },
     {
      "file": "meds-4.webp",
-     "caption": "From Today, the Medicine tile logs a dose without leaving the screen.",
-     "tap": {
-      "x": 0.813,
-      "y": 0.435
-     }
-    },
-    {
-     "file": "meds-5.webp",
-     "caption": "Tap the medicine taken. When-needed ones come first, with whether they can be given now."
-    },
-    {
-     "file": "meds-6.webp",
      "caption": "Manage medicines adds one, changes a dose or the times it is taken. Reminders arrive as notifications once they are switched on under Settings.",
      "tap": {
       "x": 0.264,
@@ -150,7 +138,7 @@
      }
     },
     {
-     "file": "meds-7.webp",
+     "file": "meds-5.webp",
      "caption": "Add a medicine sits at the top. Under it, every medicine on the list, with what it is for and Edit. A finished course keeps its history under Medicine history.",
      "tap": {
       "x": 0.163,
@@ -158,7 +146,7 @@
      }
     },
     {
-     "file": "meds-8.webp",
+     "file": "meds-6.webp",
      "caption": "Edit says whether it is regular or when needed, then how it is taken (tablets, gel in pumps and the rest), how many each time and the strength, so Log now records the right amount.",
      "tap": {
       "x": 0.5,
@@ -166,7 +154,7 @@
      }
     },
     {
-     "file": "meds-9.webp",
+     "file": "meds-7.webp",
      "caption": "A regular medicine then asks when you take it: tick Morning, Midday, Teatime or Night and set each time. One in the morning and one at night is Morning and Night. The same times are its reminders.",
      "tap": {
       "x": 0.126,
@@ -257,7 +245,7 @@
      "file": "treatment-4.webp",
      "caption": "On the three days after a session, the morning and evening check-ins ask about side effects: none, mild, moderate or severe for each.",
      "tap": {
-      "x": 0.536,
+      "x": 0.5,
       "y": 0.515
      }
     },
@@ -547,7 +535,7 @@
     },
     {
      "file": "story-3.webp",
-     "caption": "Saved as a card. Through the day the tiles log a dose, a drink, a meal, a symptom or a bowel movement in a few taps.",
+     "caption": "Saved as a card. Through the day the tiles log a drink, a meal, how you feel, a symptom or a bowel movement in a few taps.",
      "tap": {
       "x": 0.813,
       "y": 0.435
@@ -555,10 +543,10 @@
     },
     {
      "file": "story-4.webp",
-     "caption": "A dose is one tap on the medicine. When-needed ones say whether the next can be given yet.",
+     "caption": "The Mood tile logs how you feel right now, between the check-ins. Doses are logged on the Meds tab.",
      "tap": {
       "x": 0.5,
-      "y": 0.38
+      "y": 0.968
      }
     },
     {

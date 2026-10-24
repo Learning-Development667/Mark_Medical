@@ -759,6 +759,7 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 .entry.type-sleep { --cat: var(--cat-sleep); }
 .entry.type-checkin { --cat: var(--teal); }
 .entry.type-pain { --cat: var(--warm); }
+.entry.type-mood { --cat: var(--teal-fill); }
 .entry.type-question { --cat: var(--teal); }
 .entry.type-sent { --cat: var(--teal); }
 /* an email address in a hint or on the legal pages breaks rather than pushing a 320px screen sideways (v159) */
@@ -1601,6 +1602,7 @@ body.is-readonly .workout .btn { display: none; }
 .qa[data-add="bowel"] { --qa-c: var(--cat-bowel); }
 .qa[data-add="symptom"] { --qa-c: var(--cat-symptom); }
 .qa[data-add="medicine"] { --qa-c: var(--teal-fill); }
+.qa[data-add="mood"] { --qa-c: var(--teal-fill); }
 /* The plain reading tiles take the report's soft teal, so no tile is grey */
 .status .tile { background: var(--teal-light); border-top-color: var(--teal-fill); }
 /* Headings in the report's serif read best a touch tighter and in ink */
