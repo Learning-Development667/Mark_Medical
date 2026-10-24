@@ -969,6 +969,12 @@ const MOOD_CSS = `
 .cnote{font-size:7.9pt;color:var(--slate);margin:0 0 1.6mm}
 .crow b{display:block;font-weight:600}
 .crow .ctext{display:block;margin-top:.4mm}
+.morow{display:grid;grid-template-columns:24mm 10mm 1fr;gap:2mm;padding:1.8mm 2mm;border-bottom:1px solid var(--line);font-size:7.9pt;line-height:1.35;border-left:1.2mm solid #E0A030;background:#FBF6EA}
+.morow.hi{border-left-color:#1E7F86;background:#EEF6F6}
+.morow time{font-weight:600;color:var(--slate)}
+.morow b{font-family:Fraunces,serif;font-weight:600;font-size:9.5pt;color:#8A5E10}
+.morow.hi b{color:#18727A}
+.morow .sm{display:block;margin-top:.4mm}
 .wkrow .sm{display:block;color:var(--slate);font-size:7.1pt}
 .wkrow .dots i{display:inline-block;width:2.2mm;height:2.2mm;border-radius:50%;background:var(--line);margin-right:.6mm;vertical-align:middle}
 .wkrow .dots i.on{background:var(--teal)}
@@ -1035,19 +1041,24 @@ export function moodReportHtml(W) {
         html += `<div class="mnotes" data-i="${i}"><h3>Notes from the session</h3><div class="lines">${l}</div></div>`;
         return;
       }
-      if (it.t === 'sec' || (it.t === 'wk' && open !== 'weeks') || (it.t === 'q' && open !== 'q') || (it.t === 'cd' && open !== 'carer')) {
+      if (it.t === 'sec' || (it.t === 'wk' && open !== 'weeks') || (it.t === 'q' && open !== 'q') || (it.t === 'cd' && open !== 'carer') || (it.t === 'mo' && open !== 'moments')) {
         close();
-        const which = it.t === 'sec' ? it.s : it.t === 'wk' ? 'weeks' : it.t === 'cd' ? 'carer' : 'q';
+        const which = it.t === 'sec' ? it.s : it.t === 'wk' ? 'weeks' : it.t === 'cd' ? 'carer' : it.t === 'mo' ? 'moments' : 'q';
         const cont = it.t !== 'sec';
-        const title = which === 'weeks' ? 'Week by week' : which === 'carer' ? W.carer.title : 'Questions';
+        const title = which === 'weeks' ? 'Week by week' : which === 'carer' ? W.carer.title : which === 'moments' ? 'The highs and lows, in ' + esc(W.patient) + "'s words" : 'Questions';
         const C = W.cols || { taps: true, checks: true };
-        const note = which === 'carer' ? '' : which === 'weeks' ? (C.taps ? 'The evening taps (how much, out of four: not at all to a lot) and sleep' : 'Mood, low days and sleep') + (C.checks ? ', and the weekly check in ' + esc(W.patient) + "'s words." : ', week by week.') : 'Labelled Wellbeing in the app. Space under each to write the reply.';
+        const note = which === 'carer' ? '' : which === 'moments' ? 'Every mood of 4 or under, or 8 or over, with the words written beside it.' : which === 'weeks' ? (C.taps ? 'The evening taps (how much, out of four: not at all to a lot) and sleep' : 'Mood, low days and sleep') + (C.checks ? ', and the weekly check in ' + esc(W.patient) + "'s words." : ', week by week.') : 'Labelled Wellbeing in the app. Space under each to write the reply.';
         html += `<div class="wsec"><h2 class="sec"${cont ? '' : ` data-i="${i}"`}>${title}${cont ? ', continued' : ` <small>${note}</small>`}</h2>`;
         if (which === 'carer' && !cont) html += `<p class="cnote">${esc((W.carer.summary + ' ' + W.carer.note).trim())}</p>`;
         if (which === 'weeks') html += `<div class="wkhead" style="grid-template-columns:${wkCols(C)}"><span>Week</span>${C.taps ? '<span>Felt low</span><span>Worried or on edge</span><span>Enjoyed something</span>' : '<span>Mood</span><span>Low days</span>'}<span>Sleep</span>${C.checks ? '<span>The week in a sentence</span>' : ''}</div>`;
         if (which === 'q') html += '<div class="wq">';
         open = which;
         if (it.t === 'sec') return;
+      }
+      if (it.t === 'mo') {
+        const x = W.moments[it.r];
+        html += `<div class="morow${x.high ? ' hi' : ''}" data-i="${i}"><time>${esc(x.when)}</time><b>${x.v}/10</b><span>“${esc(x.text)}”<span class="sm">${esc(x.from[0].toUpperCase() + x.from.slice(1))}</span></span></div>`;
+        return;
       }
       if (it.t === 'cd') {
         const d = W.carer.days[it.r];
