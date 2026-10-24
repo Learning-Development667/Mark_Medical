@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField, runTransaction
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '305';
+const APP_VERSION = '306';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -7286,11 +7286,17 @@ function twoPageCharts(entries, days) {
     legend: [{ c: teal, t: 'Morning check-in', line: true }, { c: ink, t: 'Evening check-in', line: true }, { c: REPORT_WARM, t: 'Worst of the day', line: true },
       { c: red, t: 'Between check-ins', ring: true }, { c: 'amber', t: 'Moderate, 4 to 6' }, { c: 'red', t: 'Severe, 7 to 10' }] });
 
-  const moodDay = days.map((d) => avgOf(ci.filter((e) => e.day === d && e.mood != null), (e) => Number(e.mood)));
-  const lowMood = days.filter((d) => state.days[d] && state.days[d].mood && state.days[d].mood <= 2);
+  /* v306: the Mood tile's readings between the check-ins count in the day's average, and show as rings, like pain's */
+  const moodScores = days.map((d) => [...ci.filter((e) => e.day === d && e.mood != null).map((e) => Number(e.mood)),
+    ...entries.filter((e) => e.type === 'mood' && e.day === d && e.value != null && !isNaN(Number(e.value))).map((e) => Number(e.value))]);
+  const moodDay = moodScores.map((l) => (l.length ? Math.round(l.reduce((t, v) => t + v, 0) / l.length * 10) / 10 : null));
+  const moodBetween = days.map((d) => { const l = entries.filter((e) => e.type === 'mood' && e.day === d && e.value != null && !isNaN(Number(e.value))).map((e) => Number(e.value)); return l.length ? Math.min(...l) : null; });
+  const moodBetweenN = entries.filter((e) => e.type === 'mood' && days.includes(e.day)).length;
+  const lowMood = days.filter((d, i) => (state.days[d] && state.days[d].mood && state.days[d].mood <= 2) || moodScores[i].some((v) => v <= 4));
   charts.push({ key: 'mood', title: 'Mood (1 to 10)', stat: !vals(moodDay).length && !lowMood.length ? 'No scores' : lowMood.length ? 'Low on ' + plural(lowMood.length, 'day') : 'Steady',
-    tone: !vals(moodDay).length && !lowMood.length ? '' : lowMood.length ? 'amber' : 'green', min: 0, max: 10, ticks: [0, 5, 10], series: [{ d: moodDay, c: teal }],
-    legend: [{ c: teal, t: "The day's check-in average", line: true }] });
+    tone: !vals(moodDay).length && !lowMood.length ? '' : lowMood.length ? 'amber' : 'green', min: 0, max: 10, ticks: [0, 5, 10],
+    series: [{ d: moodDay, c: teal }].concat(moodBetweenN ? [{ d: moodBetween, c: REPORT_WARM, hollow: true }] : []),
+    legend: [{ c: teal, t: moodBetweenN ? "The day's average, every score" : "The day's check-in average", line: true }].concat(moodBetweenN ? [{ c: REPORT_WARM, t: 'Lowest between check-ins', ring: true }] : []) });
 
   /* Bowels (v286): only when bowel movements were logged in the period, so a report without them is unchanged. A bar a day
      split into hard (types 1 to 2), the middle of the scale (3 to 5) and loose (6 to 7), a red dot under a day with blood */
@@ -7317,7 +7323,7 @@ function twoPageCharts(entries, days) {
       legend: [{ c: REPORT_SLATE, t: 'Hard (1 to 2)' }, { c: teal, t: 'Types 3 to 5' }, { c: REPORT_WARM, t: 'Loose (6 to 7)' }, { c: red, t: 'Blood', dot: true }] });
   }
 
-  return { charts, facts: { tv, tPeak, hv, hPeak, bpAll, bpRed, bpAmber, ov, oLow, wSorted, wDrop, nights, shortN, pAvg, pDays: pv.length, pWorst, painAll, lowMood, moodDay } };
+  return { charts, facts: { tv, tPeak, hv, hPeak, bpAll, bpRed, bpAmber, ov, oLow, wSorted, wDrop, nights, shortN, pAvg, pDays: pv.length, pWorst, painAll, lowMood, moodDay, moodScores, moodBetweenN } };
 }
 const REPORT_INK = '#17263A', REPORT_TEAL = '#1E7F86', REPORT_AMBER = '#E0A030', REPORT_RED = '#C8453B';
 const REPORT_SLATE = '#8FA6B8', REPORT_WARM = '#C2703D';
@@ -7372,7 +7378,7 @@ function twoPageTiles(entries, from, to, f) {
   }
   const mv = f.moodDay.filter((v) => v != null);
   if (!mv.length) tiles.push(none('Mood', 'mood scores'));
-  else { const a = r1(avg(mv)); tiles.push({ k: 'Mood', v: String(a), unit: '/10 average', note: 'Average of ' + plural(mv.length, 'day') + ' scored.', tone: a <= 4 ? 'amber' : 'green' }); }
+  else { const all = f.moodScores.flat(), a = r1(avg(all)); tiles.push({ k: 'Mood', v: String(a), unit: '/10 average', note: 'Average of ' + plural(all.length, 'score') + ' on ' + plural(mv.length, 'day') + (f.moodBetweenN ? ', ' + f.moodBetweenN + ' between check-ins.' : '.'), tone: a <= 4 ? 'amber' : 'green' }); }
   return tiles;
 }
 
@@ -8600,9 +8606,11 @@ function summaryRows(entries, from, to) {
     push('amber', 'Outside the gut', 'Outside the gut: ' + outside.map((e) => outsideText(e.outside).toLowerCase() + ' (week to ' + fmtDayShort(e.day) + ')').join('; ') + '.', null, 'Outside the gut: ' + joinAnd(kinds.map((k) => SHORT[k])));
   }
 
-  const moodDays = Object.keys(state.days).filter((d) => d >= from && d <= to && state.days[d].mood).sort();
+  /* v306: a Mood tile reading of 4 or under between the check-ins makes a low day too */
+  const moodReads = entries.filter((e) => e.type === 'mood' && e.day >= from && e.day <= to && e.value != null);
+  const moodDays = [...new Set(Object.keys(state.days).filter((d) => d >= from && d <= to && state.days[d].mood).concat(moodReads.map((e) => e.day)))].sort();
   if (moodDays.length) {
-    const low = moodDays.filter((d) => state.days[d].mood <= 2);
+    const low = moodDays.filter((d) => (state.days[d] && state.days[d].mood && state.days[d].mood <= 2) || moodReads.some((e) => e.day === d && Number(e.value) <= 4));
     if (low.length) push('amber', 'Mood', `Mood rough or low on ${plural(low.length, 'day')} of the ${moodDays.length} recorded: ${listDays(low)}.`, low.length === 1 ? `a low mood day on ${fmtDayShort(low[0])}` : null, `Mood low on ${plural(low.length, 'day')}`);
     else fine.push('mood');
   }
@@ -8669,6 +8677,7 @@ function noteContext(e) {
     }
     case 'med': return 'with ' + (e.medName || 'a medicine');
     case 'pain': return 'with pain ' + e.value + '/10';
+    case 'mood': return 'with mood ' + e.value + '/10';
     case 'symptom': return 'with ' + String(e.what || 'a symptom').toLowerCase() + ' ' + e.value + '/10';
     case 'bowel': return e.none ? 'with no bowel movement that day' : 'with bowels ' + bowelTypeText(e) + (bowelFlagWords(e) ? ', ' + bowelFlagWords(e).toLowerCase() : '');
     default: return '';
@@ -8751,7 +8760,7 @@ function buildNotesReport(entries, questionsAll, from, to, rangeLabel) {
   const days = [];
   for (let day = from; day <= to; day = addDays(day, 1)) {
     const list = (byDay[day] || []).slice().sort((a, b) => entryDate(a) - entryDate(b));
-    const notes = list.filter((e) => e.type === 'note' || (e.note && ['temp', 'weight', 'vitals', 'med', 'pain', 'bowel', 'symptom'].includes(e.type)))
+    const notes = list.filter((e) => e.type === 'note' || (e.note && ['temp', 'weight', 'vitals', 'med', 'pain', 'mood', 'bowel', 'symptom'].includes(e.type)))
       .map((e) => ({ time: fmtTime(entryDate(e)), who: e.addedBy || 'unknown', text: e.note, context: e.type === 'note' ? '' : noteContext(e), src: { id: e.id, field: 'note', words: e.note, label: e.type === 'note' ? 'Note' : 'Note ' + (/^with /.test(noteContext(e)) ? '' : 'with ') + noteContext(e), day: e.day, time: fmtTime(entryDate(e)), who: e.addedBy } }));
     list.filter((e) => e.type === 'checkin' && !isWeekSlot(e.slot) && !isCarerDaySlot(e.slot)).forEach((e) => {
       const keys = e.slot === 'carer' ? REPORT_CARER_KEYS : REPORT_CHECKIN_KEYS;
@@ -10672,7 +10681,7 @@ function moodAiText(W, n) {
   W.daysFull.forEach((d) => {
     if (!d.any) return;
     const f = [];
-    if (d.moodM != null || d.moodE != null) f.push('mood ' + [d.moodM != null ? 'morning ' + d.moodM : '', d.moodE != null ? 'evening ' + d.moodE : ''].filter(Boolean).join(', '));
+    if (d.moodM != null || d.moodE != null || d.readings.length) f.push('mood ' + [d.moodM != null ? 'morning ' + d.moodM : '', ...d.readings.map((r) => r.at + ' ' + r.v), d.moodE != null ? 'evening ' + d.moodE : ''].filter(Boolean).join(', '));
     if (d.pain != null) f.push('worst pain ' + d.pain);
     if (d.sleep != null) f.push('slept ' + d.sleep + ' h');
     if (d.wb) f.push('taps: low ' + (d.wb.low ?? '-') + ', worried ' + (d.wb.worried ?? '-') + ', enjoyed ' + (d.wb.enjoyed ?? '-'));
@@ -10726,7 +10735,10 @@ function buildMoodReport(n) {
   const daysFull = days.map((d) => {
     const m = ci.find((e) => e.day === d && e.slot === 'morning'), ev = ci.find((e) => e.day === d && e.slot === 'evening');
     const moodM = score(m, 'mood'), moodE = score(ev, 'mood');
-    const moods = [moodM, moodE].filter((v) => v != null);
+    /* the Mood tile's readings between the check-ins count too (v306, Mark: mood goes up and down through a day) */
+    const readings = entries.filter((e) => e.type === 'mood' && e.day === d && score(e, 'value') != null).sort((a, b) => entryDate(a) - entryDate(b))
+      .map((e) => ({ v: Number(e.value), at: fmtTime(entryDate(e)), note: text(e.note) }));
+    const moods = [moodM, ...readings.map((r) => r.v), moodE].filter((v) => v != null);
     const pains = [score(m, 'pain'), score(ev, 'pain'), score(ev, 'worstPain'), ...entries.filter((e) => e.type === 'pain' && e.day === d).map((e) => Number(e.value))].filter((v) => v != null && !isNaN(v));
     const sleeps = entries.filter((e) => e.type === 'sleep' && e.day === d && Number(e.value) > 0).map((e) => Number(e.value));
     const temps = entries.filter((e) => e.type === 'temp' && e.day === d).map((e) => Number(e.value)).filter((v) => !isNaN(v));
@@ -10737,18 +10749,26 @@ function buildMoodReport(n) {
     if (ev && text(ev.journal)) notes.push(['evening, how was today', text(ev.journal)]);
     if (ev && text(ev.moodNote)) notes.push(['evening, what is behind the mood', text(ev.moodNote)]);
     if (ev && text(ev.goodThing)) notes.push(['one good thing', text(ev.goodThing)]);
-    return { day: d, dow: DOW[parseDay(d).getDay()], moodM, moodE, mood: moods.length ? avg(moods) : null, pain: pains.length ? Math.max(...pains) : null,
+    readings.forEach((r) => { if (r.note) notes.push(['logged at ' + r.at + ', mood ' + r.v + ', what is behind it', r.note]); });
+    return { day: d, dow: DOW[parseDay(d).getDay()], moodM, moodE, readings, mood: moods.length ? avg(moods) : null, moodLow: moods.length ? Math.min(...moods) : null, pain: pains.length ? Math.max(...pains) : null,
       sleep: sleeps.length ? Math.round(Math.max(...sleeps) / 60 * 10) / 10 : null, temp: temps.length ? Math.max(...temps) : null, wb, session: !!(state.days[d] && state.days[d].chemo),
       hospital: hospitalDays.has(d), notes, any: moods.length || pains.length || sleeps.length || wb || notes.length };
   });
   const scored = daysFull.filter((d) => d.mood != null);
-  const allScores = ci.map((e) => score(e, 'mood')).filter((v) => v != null);
-  const lowDays = scored.filter((d) => Math.min(d.moodM ?? 99, d.moodE ?? 99) <= 4);
+  const ciScores = ci.map((e) => score(e, 'mood')).filter((v) => v != null);
+  const between = daysFull.flatMap((d) => d.readings.map((r) => r.v));
+  const allScores = ciScores.concat(between);
+  const lowDays = scored.filter((d) => d.moodLow <= 4);
   const dayWord = (d) => DOW[parseDay(d).getDay()] + ' ' + rDay(d);
   const both = (d) => (d.moodM != null && d.moodE != null ? 1 : 0);
   const best = scored.slice().sort((a, b) => b.mood - a.mood || both(b) - both(a) || b.day.localeCompare(a.day))[0];
   const worst = scored.slice().sort((a, b) => a.mood - b.mood || both(b) - both(a) || b.day.localeCompare(a.day))[0];
-  const moodWords = (d) => { const both = d.moodM != null && d.moodE != null; return 'Mood ' + (both && d.moodM === d.moodE ? d.moodM + ', morning and evening' : both ? d.moodM + ' in the morning, ' + d.moodE + ' in the evening' : (d.moodM ?? d.moodE) + (d.moodM != null ? ' in the morning' : ' in the evening')); };
+  const moodWords = (d) => {
+    const both = d.moodM != null && d.moodE != null, any = d.moodM != null || d.moodE != null;
+    const ci = !any ? '' : both && d.moodM === d.moodE ? d.moodM + ', morning and evening' : both ? d.moodM + ' in the morning, ' + d.moodE + ' in the evening' : (d.moodM ?? d.moodE) + (d.moodM != null ? ' in the morning' : ' in the evening');
+    const rd = d.readings.length ? d.readings.map((r) => r.v + ' at ' + r.at).join(', ') : '';
+    return 'Mood ' + (ci && rd ? ci + '; between, ' + rd : ci || rd) + (d.readings.length && (any || d.readings.length > 1) ? ' (average ' + d.mood + ')' : '');
+  };
   const bestQuote = best ? (best.notes.find(([l]) => /how was today|good thing/.test(l)) || best.notes[0]) : null;
   const worstWhy = worst ? [worst.hospital ? 'in hospital' : '', worst.pain != null && worst.pain >= 7 ? 'pain at ' + worst.pain : '', worst.temp != null && worst.temp >= 38 ? 'a temperature of ' + worst.temp.toFixed(1) : '', worst.sleep != null && worst.sleep < 5 ? 'after ' + worst.sleep + ' hours of sleep' : ''].filter(Boolean) : [];
   const taps = daysFull.filter((d) => d.wb);
@@ -10757,7 +10777,13 @@ function buildMoodReport(n) {
   const nights = daysFull.filter((d) => d.sleep != null).map((d) => d.sleep), shortN = nights.filter((v) => v < 5).length;
   /* Best day, Hardest day and Felt low as they were (v276, Mark: counts stay counts, and the best and hardest days go
      back); Sleep, a reading that goes up and down, is the average coloured by the average (v275) */
+  const avgAll = avg(allScores);
   const tiles = [
+    /* v306, Mark: an average mood score on the Mood tab and the report, every score counted: the check-ins and the Mood tile
+       in between. Added in front of the four below, which stay as they were */
+    allScores.length ? { k: 'Average mood', v: String(avgAll), unit: 'out of 10', tone: avgAll <= 4 ? 'amber' : 'green',
+      n: `From ${plural(allScores.length, 'score')}: ${plural(ciScores.length, 'check-in')}` + (between.length ? ` and ${between.length} logged between them` : '') + '.' }
+      : { k: 'Average mood', v: 'None', unit: '', tone: '', n: 'No mood scores in this period.' },
     /* v233: the quote was cut at 90 characters, which chopped a dictated note mid-sentence; the report tile now takes whole
        sentences up to 260 characters and the screen shows the note whole (full) */
     best ? { k: 'Best day', v: dayWord(best.day), unit: '', tone: 'green', n: moodWords(best) + '.' + (bestQuote ? ' “' + text(bestQuote[1]).replace(/\s+/g, ' ').trim() + '”' : ''),
@@ -10791,13 +10817,14 @@ function buildMoodReport(n) {
     };
     const ns = inW.filter((d) => d.sleep != null).map((d) => d.sleep), sh = ns.filter((v) => v < 5).length;
     const ms = inW.filter((d) => d.mood != null), lows = ms.filter((d) => lowDays.includes(d));
+    const wScores = inW.flatMap((d) => [d.moodM, ...d.readings.map((r) => r.v), d.moodE].filter((v) => v != null));
     const chk = wkChecks.find((e) => e.day >= w.from && e.day <= w.to) || null;
     const extra = chk ? [['Helped', text(chk.helped)], ['Hardest', text(chk.hardest)]].filter(([, v]) => v).map(([k, v]) => k + ': ' + v).join(' ') : '';
     /* the carer's own check on the week (v166), one line after the patient's: "As Shelley saw it: ..." */
     const cchk = carerChecks.find((e) => e.day >= w.from && e.day <= w.to) || null;
     const carer = cchk && (text(cchk.sentence) || text(cchk.hardest) || text(cchk.helped)) ? 'As ' + (cchk.addedBy || 'the carer') + ' saw it: ' + (text(cchk.sentence) || text(cchk.hardest) || text(cchk.helped)) : '';
     return { key: w.key, from: w.from, to: w.to, label: rDay(w.from) + ' to ' + rDay(w.to), low: dots('low', true), worried: dots('worried', true), enjoyed: dots('enjoyed', false),
-      mood: ms.length ? String(avg(ms.map((d) => d.mood))) : 'None', moodSub: ms.length ? 'lowest ' + Math.min(...ms.map((d) => Math.min(d.moodM ?? 99, d.moodE ?? 99))) : 'no scores',
+      mood: wScores.length ? String(avg(wScores)) : 'None', moodSub: ms.length ? 'lowest ' + Math.min(...ms.map((d) => d.moodLow)) : 'no scores',
       lowDays: ms.length ? String(lows.length) : 'None', lowSub: ms.length ? 'of ' + plural(ms.length, 'day') : '',
       sleep: ns.length ? avg(ns) + ' h' : 'None', sleepSub: ns.length ? (sh ? plural(sh, 'short night') : 'no short nights') : 'no sleep logged', sentence: chk ? text(chk.sentence) : '', sub: extra, carer, check: chk || null };
   });
@@ -10812,14 +10839,14 @@ function buildMoodReport(n) {
   } else {
     const half = Math.floor(scored.length / 2), a1 = avg(scored.slice(0, half).map((d) => d.mood)), a2 = avg(scored.slice(half).map((d) => d.mood));
     brief = [];
-    if (scored.length) brief.push({ head: 'Overall', text: `Mood averaged ${avg(allScores)} out of 10 over ${plural(allScores.length, 'score')}, from ${worst.mood} on ${rDay(worst.day)} to ${best.mood} on ${rDay(best.day)}. Mood 4 or under on ${plural(lowDays.length, 'day')}.` + (scored.length >= 6 && a1 != null && a2 != null ? ` The second half of the period averaged ${a2} against ${a1} in the first.` : '') });
+    if (scored.length) brief.push({ head: 'Overall', text: `Mood averaged ${avgAll} out of 10 over ${plural(allScores.length, 'score')}` + (between.length ? ` (${between.length} of them logged between the check-ins)` : '') + `, days averaging from ${worst.mood} on ${rDay(worst.day)} to ${best.mood} on ${rDay(best.day)}. Mood 4 or under on ${plural(lowDays.length, 'day')}.` + (scored.length >= 6 && a1 != null && a2 != null ? ` The second half of the period averaged ${a2} against ${a1} in the first.` : '') });
     else brief.push({ head: 'Overall', text: 'No mood scores were logged in this period. The morning and evening check-ins each ask for one.' });
     if (taps.length) brief.push({ head: 'Feeling', text: `From the three evening taps: felt low quite a bit or a lot on ${tapCount('low')} of ${plural(tapAnswered('low'), 'evening')}, worried or on edge on ${tapCount('worried')}, enjoyed something on ${tapCount('enjoyed')} of ${tapAnswered('enjoyed')}.` });
     const lowPain = lowDays.filter((d) => d.pain != null && d.pain >= 7).length;
     brief.push({ head: 'Sleep and pain', text: (nights.length ? `Sleep averaged ${avg(nights)} hours a night over ${plural(nights.length, 'night')}, ${shortN} under 5 hours.` : 'No sleep was logged.') + (daysFull.some((d) => d.pain != null) ? ` Worst pain averaged ${avg(daysFull.filter((d) => d.pain != null).map((d) => d.pain))} out of 10.` : '') + (lowDays.length ? ` Of the ${plural(lowDays.length, 'low day')}, ${lowPain} had pain at 7 or more.` : '') });
     if (wkChecks.length) brief.push({ head: 'The weeks', text: `${plural(wkChecks.length, 'weekly check')} in the period; what helped and what was hardest are listed below, in ${patient}'s own words.` });
     briefNote = 'Worked out by the app from the scores and the weekly check.';
-    const cands = daysFull.flatMap((d) => d.notes.filter(([l]) => !/good thing/.test(l)).map(([l, t]) => ({ when: rDay(d.day) + (/morning/.test(l) ? ', morning' : ', evening'), text: t, low: d.mood != null && d.mood <= 4 })))
+    const cands = daysFull.flatMap((d) => d.notes.filter(([l]) => !/good thing/.test(l)).map(([l, t]) => ({ when: rDay(d.day) + (/^logged at/.test(l) ? ', ' + l.slice(10, 15) : /morning/.test(l) ? ', morning' : ', evening'), text: t, low: d.mood != null && d.mood <= 4 })))
       .filter((q) => q.text.length > 25 && !isRoutineNote({ text: q.text })).sort((a, b) => b.text.length - a.text.length).slice(0, 3)
       .map((q) => ({ ...q, text: text(q.text).replace(/\s+/g, ' ') }));
     quotes = cands.sort((a, b) => a.when.localeCompare(b.when));

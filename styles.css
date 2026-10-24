@@ -2106,3 +2106,6 @@ details.daymeal[open] .daymeal-sum::after { transform: rotate(90deg); }
 /* The Sleep tile's Last night or A nap switch (v297) */
 .sleep-kind { margin-bottom: var(--s-4); }
 .entry.type-nap { --cat: var(--cat-sleep); }
+
+/* v306: Average mood leads the Mood report's tiles, across the full width above the other four */
+#mood-tiles .tile:first-child { grid-column: 1 / -1; }
