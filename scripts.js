@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField, runTransaction
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '306';
+const APP_VERSION = '307';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -10862,7 +10862,7 @@ function buildMoodReport(n) {
   if (carer) { items.push({ t: 'sec', s: 'carer' }); carer.days.forEach((_, r) => items.push({ t: 'cd', r })); }
   items.push({ t: 'sec', s: 'weeks' }); weeks.forEach((_, r) => items.push({ t: 'wk', r }));
   if (questions.length) { items.push({ t: 'sec', s: 'q' }); questions.forEach((_, q) => items.push({ t: 'q', q })); }
-  items.push({ t: 'notes' });
+  /* v307 (Mark): no Notes from the session panel; the therapist writes in their own notes */
   const period = rPeriod(from, to);
   /* the table shows what was logged: the taps' columns only when some evening has them, the sentence only with a weekly check (v157) */
   const cols = { taps: taps.length > 0, checks: wkChecks.length > 0 || carerChecks.length > 0 };
