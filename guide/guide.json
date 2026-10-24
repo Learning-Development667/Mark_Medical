@@ -1,5 +1,5 @@
 {
- "made": "2026-10-23",
+ "made": "2026-10-24",
  "width": 390,
  "height": 844,
  "topics": [
@@ -58,7 +58,7 @@
      "caption": "One question a screen. Slide to the score, then when you went to bed and woke up: Daybook works out the hours. With Apple Health connected, the night fills itself in.",
      "tap": {
       "x": 0.731,
-      "y": 0.55
+      "y": 0.628
      }
     },
     {
@@ -82,7 +82,7 @@
      "caption": "Pain right now, from 0 no pain to 10 worst imaginable: as you slide it says mild, moderate or severe. Where it is goes in the box underneath.",
      "tap": {
       "x": 0.5,
-      "y": 0.456
+      "y": 0.543
      }
     },
     {
@@ -154,7 +154,7 @@
      "caption": "Add a medicine sits at the top. Under it, every medicine on the list, with what it is for and Edit. A finished course keeps its history under Medicine history.",
      "tap": {
       "x": 0.163,
-      "y": 0.706
+      "y": 0.972
      }
     },
     {
@@ -162,7 +162,7 @@
      "caption": "Edit says whether it is regular or when needed, then how it is taken (tablets, gel in pumps and the rest), how many each time and the strength, so Log now records the right amount.",
      "tap": {
       "x": 0.5,
-      "y": 0.161
+      "y": 0.403
      }
     },
     {
@@ -170,7 +170,7 @@
      "caption": "A regular medicine then asks when you take it: tick Morning, Midday, Teatime or Night and set each time. One in the morning and one at night is Morning and Night. The same times are its reminders.",
      "tap": {
       "x": 0.126,
-      "y": 0.705
+      "y": 0.55
      }
     }
    ]
@@ -374,7 +374,7 @@
      "caption": "Pain and pain relief: two weeks to start, the check-in scores, the worst each day, key points from what you wrote, every dose of pain relief and when the top-ups were taken. Send, Preview and Save as PDF, as on every report.",
      "tap": {
       "x": 0.5,
-      "y": 0.293
+      "y": 0.285
      }
     },
     {
@@ -390,7 +390,7 @@
      "caption": "Mood and wellbeing: the best and hardest days, how often you felt low, sleep and pain behind it, and the weeks, with a carer's view in its own area.",
      "tap": {
       "x": 0.5,
-      "y": 0.293
+      "y": 0.285
      }
     }
    ]
@@ -450,7 +450,7 @@
      "caption": "The Crohn's and colitis report: bowels against your usual, blood, urgency, flares, treatment and results, with your questions for the gastro team.",
      "tap": {
       "x": 0.5,
-      "y": 0.293
+      "y": 0.285
      }
     }
    ]
@@ -558,7 +558,7 @@
      "caption": "A dose is one tap on the medicine. When-needed ones say whether the next can be given yet.",
      "tap": {
       "x": 0.5,
-      "y": 0.329
+      "y": 0.38
      }
     },
     {

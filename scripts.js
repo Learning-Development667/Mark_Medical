@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField, runTransaction
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '302';
+const APP_VERSION = '303';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -864,9 +864,9 @@ const state = {
   trendRange: 7,
   foodRange: 14,
   notesRange: 7,
-  moodRange: 28,
+  moodRange: 30,
   painRange: 14, // two weeks by default (Mark, 22 October 2026)
-  ibdRange: 28,
+  ibdRange: 30,
   foodRangeMode: 'preset',
   notesRangeMode: 'preset',
   foodCustomFrom: null,
@@ -7627,7 +7627,7 @@ function buildTwoPage(n) {
     weeks[0].entries.unshift({ when, text: 'Earlier in the period: ' + (pw.theme ? pw.theme.charAt(0).toLowerCase() + pw.theme.slice(1) : "nothing flagged by the app's checks."), alert: pw.entries.some((e) => e.alert), lead: true });
   }
   const period = rPeriod(from, to);
-  const word = nDays === 7 ? 'Week' : nDays === 14 ? 'Fortnight' : nDays + ' days';
+  const word = nDays === 7 ? 'Week' : nDays === 14 ? 'Fortnight' : nDays === 30 ? 'Month' : nDays + ' days';
   const t = parseDay(to);
   const patient = (state.profile && state.profile.reportName) || state.patientName || state.name || '';
   return {
