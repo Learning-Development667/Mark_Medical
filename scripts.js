@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField, runTransaction
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '303';
+const APP_VERSION = '304';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -862,11 +862,11 @@ const state = {
   unsub: {},
   charts: {},
   trendRange: 7,
-  foodRange: 14,
+  foodRange: 7,
   notesRange: 7,
-  moodRange: 30,
-  painRange: 14, // two weeks by default (Mark, 22 October 2026)
-  ibdRange: 30,
+  moodRange: 7,
+  painRange: 7, // every report opens on 1 week (Mark, 24 October 2026)
+  ibdRange: 7,
   foodRangeMode: 'preset',
   notesRangeMode: 'preset',
   foodCustomFrom: null,
