@@ -60,8 +60,8 @@ const QUALITY = 0.8;
   for (const f of fs.readdirSync(OUT)) if (f.endsWith('.webp')) fs.unlinkSync(path.join(OUT, f));
 
   /* 1. a reading */
-  begin('reading', 'Log a reading', 'Vitals, pain, a drink, food, a note, sleep, bowels, a symptom or a dose, from Today.', 'Everything between the check-ins is logged from the tiles on Today, in the same way.');
-  await shot('On Today, tap Vitals. The other tiles log pain, a drink, food, a note, sleep, bowels, a symptom or a dose the same way.', '.qa[data-add="vitals"]');
+  begin('reading', 'Log a reading', 'Vitals, pain, a drink, food, a note, sleep, bowels, a symptom or how you feel, from Today.', 'Everything between the check-ins is logged from the tiles on Today, in the same way.');
+  await shot('On Today, tap Vitals. The other tiles log pain, a drink, food, a note, sleep, bowels, a symptom or your mood the same way.', '.qa[data-add="vitals"]');
   await page.click('.qa[data-add="vitals"]'); await page.waitForSelector('#sheet:not([hidden])');
   await shot('Type the readings you have. Any box can be left empty, and the time is filled in for you.', '#sheet-body .bigvalue input');
   await page.fill('#sheet-body .bigvalue input', '37.6');
@@ -103,19 +103,13 @@ const QUALITY = 0.8;
   await shot('Done. The check-in is a card on Today: tap it to open it, and Edit to change an answer later.', '#checkin-morning-card .cc-head');
 
   /* 3. medicines */
-  begin('meds', 'Medicines and reminders', 'Log a dose, see what is due, set reminder times.', 'The Meds tab is the list; the Medicine tile on Today is the quick way to log a dose.');
+  begin('meds', 'Medicines and reminders', 'Log a dose, see what is due, set reminder times.', 'Every dose is logged on the Meds tab: Log now, or Other time for a dose taken earlier.');
   await tab('meds');
   await shot('The Meds tab lists today\'s medicines, each with how many doses are done. Tap Log now when one is taken.', '#meds-scheduled .med-log');
   await page.click('#meds-scheduled .med-log'); await settle(700);
   await page.click('#meds-scheduled .med-toggle'); await settle(500);
   await shot('Logged: the line counts it, and the name opens the card with the time of each dose, Other time, Remove and Log a side effect. A when-needed medicine says when the next dose can be given.');
   await shot('The arrows at the foot of an open card, or holding the name for a second and sliding it, put the list in your own order.', '#meds-scheduled .med-order');
-  await tab('today');
-  await shot('From Today, the Medicine tile logs a dose without leaving the screen.', '.qa[data-add="medicine"]');
-  await page.click('.qa[data-add="medicine"]'); await page.waitForSelector('#sheet:not([hidden])');
-  await shot('Tap the medicine taken. When-needed ones come first, with whether they can be given now.');
-  await closeSheet();
-  await tab('meds');
   await shot('Manage medicines adds one, changes a dose or the times it is taken. Reminders arrive as notifications once they are switched on under Settings.', '#meds-manage');
   await page.click('#meds-manage'); await page.waitForSelector('#sheet:not([hidden])');
   await shot('Add a medicine sits at the top. Under it, every medicine on the list, with what it is for and Edit. A finished course keeps its history under Medicine history.', '#sheet-body .medrow:has-text("Diazepam") button');
@@ -259,10 +253,11 @@ const QUALITY = 0.8;
   await shot('How you slept, anything new overnight, pain and mood. Slide to the score, or Tap to speak for the words.', '#sheet-body .btn-next');
   await toReview();
   await page.click('#sheet-body .btn-primary:has-text("Save")'); await settle(700);
-  await shot('Saved as a card. Through the day the tiles log a dose, a drink, a meal, a symptom or a bowel movement in a few taps.', '.qa[data-add="medicine"]');
-  await page.click('.qa[data-add="medicine"]'); await page.waitForSelector('#sheet:not([hidden])'); await settle();
-  await shot('A dose is one tap on the medicine. When-needed ones say whether the next can be given yet.', '#sheet-body .doserow');
-  await page.click('#sheet-body .doserow >> nth=-1'); await settle(700);
+  await shot('Saved as a card. Through the day the tiles log a drink, a meal, how you feel, a symptom or a bowel movement in a few taps.', '.qa[data-add="mood"]');
+  await page.click('.qa[data-add="mood"]'); await page.waitForSelector('#sheet:not([hidden])'); await settle();
+  await slider('#sheet-body input[type="range"]', 7);
+  await shot('The Mood tile logs how you feel right now, between the check-ins. Doses are logged on the Meds tab.', '#sheet-body .btn-primary');
+  await page.click('#sheet-body .btn-primary'); await settle(700);
   if (await page.$('#sheet:not([hidden])')) await closeSheet();
   await shot('A question comes to you at 3am. Write it down and it waits for the appointment.', '#question-now');
   await page.click('#question-now'); await page.waitForSelector('#sheet:not([hidden])'); await settle();
