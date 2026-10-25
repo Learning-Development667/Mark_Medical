@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField, runTransaction
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '315';
+const APP_VERSION = '316';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -377,6 +377,7 @@ function closeSheet(opts) {
   clearSheetDrafts();
   state.checkinProgress = null; /* an unfinished check-in is kept whatever closed the sheet; only Save or Start again clears it (v184) */
   if (state.sheetOnClose) { const fn = state.sheetOnClose; state.sheetOnClose = null; fn(); }
+  $('sheet').classList.remove('is-typing');
   $('sheet').hidden = true;
   $('sheet-body').replaceChildren();
   document.body.style.overflow = '';
@@ -466,6 +467,26 @@ document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && docume
     setTimeout(show, 320); setTimeout(show, 700); // the keyboard can take longer to finish rising
   });
   $('sheet').addEventListener('focusout', () => later(350));
+  /* Typing on a phone (v316, Mark, 25 October: v315's measured lift did not move the sheet on his iPhone, so the
+     keyboard still covered the words box). Whatever the phone reports, while a box in a sheet has focus on a touch
+     screen the sheet stands at the top of the screen and the box is scrolled up to just under it, into the top
+     third, which no keyboard reaches; a words box is capped at a quarter of the screen so the line being typed stays
+     in view. Back to normal once nothing in the sheet is being typed in. */
+  const coarse = window.matchMedia ? window.matchMedia('(pointer: coarse)') : null;
+  const panel = () => $('sheet').querySelector('.sheet-panel');
+  const raise = (el) => {
+    const p = panel(); if (!p) return;
+    $('sheet').classList.add('is-typing');
+    const anchor = (el.previousElementSibling && el.previousElementSibling.classList.contains('draftnote') ? null : el.closest('.field')) || el;
+    p.scrollTop += anchor.getBoundingClientRect().top - p.getBoundingClientRect().top - 16;
+  };
+  $('sheet').addEventListener('focusin', (ev) => {
+    const el = ev.target;
+    if (!coarse || !coarse.matches || !el.matches(TEXTISH)) return;
+    raise(el);
+    setTimeout(() => { if (document.activeElement === el) raise(el); }, 350);
+  });
+  $('sheet').addEventListener('focusout', () => setTimeout(() => { if (!typing()) $('sheet').classList.remove('is-typing'); }, 150));
 })();
 
 /* Unsaved words are kept on this phone (v136, Mark, 7 October: the phone closed while a note was half written, and

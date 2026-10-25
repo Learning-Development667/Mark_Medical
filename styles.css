@@ -2123,3 +2123,8 @@ details.daymeal[open] .daymeal-sum::after { transform: rotate(90deg); }
 .tile.is-red .tile-avg { color: var(--danger); }
 .tile.is-amber .tile-avg { color: var(--warning); }
 .tile.is-green .tile-avg { color: var(--success); }
+
+/* Typing in a sheet on a phone (v316): the sheet stands at the top and the box sits under it, clear of any keyboard */
+.sheet.is-typing .sheet-panel { top: calc(var(--safe-t) + 8px); bottom: auto !important; max-height: none; height: calc(100% - var(--safe-t) - 8px); border-radius: var(--r-lg); transition: none; }
+.sheet.is-typing .sheet-body::after { content: ''; display: block; height: 60vh; }
+.sheet.is-typing .sheet-body textarea { max-height: 26vh; overflow-y: auto; }
