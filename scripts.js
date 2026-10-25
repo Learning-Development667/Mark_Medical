@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField, runTransaction
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '310';
+const APP_VERSION = '311';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -12079,20 +12079,36 @@ const MEAL_MED_WINDOW_MS = 45 * 60 * 1000;
 function promptMealMeds(mealAt) {
   if (state.readOnly || state.viewer) return;
   const day = dayStr(mealAt);
-  const due = state.medicines.filter((m) => m.active !== false && m.kind !== 'prn' && !m.hospital && medWithMeals(m) && (!m.courseEnd || m.courseEnd >= day) && !notStarted(m, day))
+  const due = state.medicines.filter((m) => m.active !== false && !m.hospital && medWithMeals(m) && (!m.courseEnd || m.courseEnd >= day) && !notStarted(m, day))
     .filter((m) => !state.recentEntries.some((e) => e.type === 'med' && e.medId === m.id && Math.abs(entryDate(e) - mealAt) <= MEAL_MED_WINDOW_MS));
   if (!due.length) return;
   const blocks = h('div', null);
   const finish = () => { if (!blocks.childElementCount) closeSheet(); };
   due.forEach((m) => {
+    /* v311: a medicine whose amount varies (Ask how many each time) asks how many here; a fixed one logs its dose in one tap */
+    const vary = asksEachTime(m);
+    const parts = splitDose(m), form = vary ? doseFormOf(parts.form) : null;
+    const doseNow = () => (vary ? composeDose(st.value(), parts.form, parts.strength) : (m.dose || ''));
+    let yes = null;
+    const st = vary ? stepper(parts.count || 1, 0.5, form.key === 'ml' ? 2.5 : 1, form.key === 'ml' ? 'How many ml with this' : 'How many with this', () => sync(), 'each') : null;
+    const sync = () => {
+      if (!st) return;
+      st.unitEl.textContent = st.value() > 1 || form.key === 'ml' ? form.many : form.one;
+      if (yes) yes.textContent = `Yes, ${doseNow()} at ${fmtTime(mealAt)}`;
+    };
+    yes = h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
+      if (st && !(st.value() > 0)) { missing(st.el, 'How many was it?'); return; }
+      const dose = doseNow();
+      block.remove(); finish();
+      const id = await addEntry({ type: 'med', medId: m.id, medName: m.name, dose, note: '', at: mealAt });
+      const ml = addMedWater(id, m, dose, mealAt);
+      toast(`${m.name}, ${dose || 'taken'}, logged at ${fmtTime(mealAt)}` + (ml ? `, and ${ml} ml added to drinks` : ''), { label: 'Undo', onClick: () => deleteEntry(id) });
+    } }, `Yes, ${m.dose || 'taken'} at ${fmtTime(mealAt)}`);
+    sync();
     const block = h('div', { class: 'mealmed' },
-      h('p', { class: 'wiz-q', text: `Did you take ${m.name} with this meal?` }),
-      h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
-        block.remove(); finish();
-        const id = await addEntry({ type: 'med', medId: m.id, medName: m.name, dose: m.dose || '', note: '', at: mealAt });
-        const ml = addMedWater(id, m, m.dose, mealAt);
-        toast(`${m.name} logged at ${fmtTime(mealAt)}` + (ml ? `, and ${ml} ml added to drinks` : ''), { label: 'Undo', onClick: () => deleteEntry(id) });
-      } }, `Yes, ${m.dose || 'taken'} at ${fmtTime(mealAt)}`),
+      h('p', { class: 'wiz-q', text: `Did you take ${m.name} with this?` }),
+      st ? h('div', { class: 'field med-count' }, h('span', { class: 'fieldlabel', text: form.key === 'ml' ? 'How many ml?' : 'How many?' }), st.el) : null,
+      yes,
       state.pushEnabled ? h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: async () => {
         block.remove(); finish();
         const at = new Date(Date.now() + 15 * 60 * 1000);
@@ -12104,7 +12120,7 @@ function promptMealMeds(mealAt) {
     );
     blocks.append(block);
   });
-  openSheet('With this meal', blocks);
+  openSheet('With this food', blocks);
 }
 
 /* ------------------------------------------------------------------ */
@@ -12572,13 +12588,14 @@ function openEditMed(m, prefill) {
     whenLine, perDayField, perDayHint, remindField);
   const withMeals = h('input', { type: 'checkbox' });
   withMeals.checked = medWithMeals(m);
-  const mealBits = [h('label', { class: 'check' }, withMeals, h('span', { text: 'Ask after every meal' })),
-    h('p', { class: 'hint', text: 'After food is logged, Daybook asks whether this was taken with it.' })];
+  /* v311 (Mark, of Creon: "I take it after all meals and snacks ... link it to whenever food is logged"): the tick is
+     offered for regular and when-needed medicines alike, and kept on a when-needed one */
+  const mealBits = [h('label', { class: 'check' }, withMeals, h('span', { text: 'Ask after every meal or snack' })),
+    h('p', { class: 'hint', text: 'Whenever food is logged, Daybook asks whether this was taken with it. With Ask how many each time ticked, it asks how many; without it, one tap logs the usual dose.' })];
   const schedFields = h('div', null, h('div', { class: 'field-row' }, field('Course starts', courseStart), field('Course ends', courseEnd)),
     h('p', { class: 'hint', text: 'Both dates are optional. A course starting later is listed under Starting soon on the Meds tab, and is not counted or reminded about until its first day.' }),
     h('label', { class: 'check' }, steroid, h('span', { text: 'A steroid course (prednisolone, budesonide, dexamethasone)' })),
-    h('p', { class: 'hint', text: 'Ticked, the course is shaded on the Treatment calendar and counted there as a course in the last 12 months.' }),
-    ...mealBits);
+    h('p', { class: 'hint', text: 'Ticked, the course is shaded on the Treatment calendar and counted there as a course in the last 12 months.' }));
   const prnFields = h('div', null, field('Minimum hours between doses', minGap), field('Maximum doses per day', maxPerDay));
   /* when it is taken, the reminders and the after-meal prompt do not apply to a medicine the nurses give */
   const sync = () => {
@@ -12608,7 +12625,7 @@ function openEditMed(m, prefill) {
     h('label', { class: 'check' }, hospital, h('span', { text: 'Given by the hospital (hospital monitored)' })),
     h('p', { class: 'hint', text: 'Tick this for a drip, an injection or anything the nurses give. Its doses are marked as given in hospital, and Daybook sends no reminders for it.' }),
     hospFields,
-    schedFields, prnFields,
+    schedFields, prnFields, ...mealBits,
     isNew ? null : h('label', { class: 'check' }, active, h('span', { text: 'Currently in use' })),
     h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
       if (!name.value.trim()) { missing(name, 'Please enter a name'); return; }
@@ -12642,7 +12659,7 @@ function openEditMed(m, prefill) {
         data.minGapHours = parseFloat(minGap.value) || null;
         data.maxPerDay = parseInt(maxPerDay.value, 10) || null;
         data.perDay = null; data.courseEnd = null; data.courseStart = null; data.steroid = false;
-        data.times = []; data.takenAt = []; data.withMeals = false;
+        data.times = []; data.takenAt = []; data.withMeals = hospital.checked ? false : withMeals.checked;
       }
       closeSheet();
       if (state.demo) {
