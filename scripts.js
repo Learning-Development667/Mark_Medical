@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField, runTransaction
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '312';
+const APP_VERSION = '313';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -10622,8 +10622,9 @@ async function renderMoodReport() {
   $('mood-questions-section').hidden = !qs.length;
   $('mood-questions').replaceChildren(...state.moodPdf.questions.map((q) => questionCard(q, renderMoodReport)));
   const W = buildMoodReport(state.moodPdf);
-  $('mood-tiles').replaceChildren(...W.tiles.map((t) => h('div', { class: 'tile' + (t.tone ? ' is-' + t.tone : '') },
-    h('span', { class: 'tile-label', text: t.k }), h('span', { class: 'tile-value' }, t.v, t.unit ? h('small', { text: t.unit }) : null), h('span', { class: 'tile-sub', text: t.full || t.n }))));
+  $('mood-tiles').replaceChildren(...W.tiles.map((t) => h('div', { class: 'tile' + (t.tone ? ' is-' + t.tone : '') + (t.avg ? ' has-avg' : '') },
+    h('span', { class: 'tile-label', text: t.k }), h('span', { class: 'tile-value' }, t.v, t.unit ? h('small', { text: t.unit }) : null),
+    t.avg ? h('span', { class: 'tile-avg' }, t.avg, h('small', { text: 'average mood' })) : null, h('span', { class: 'tile-sub', text: t.full || t.n }))));
   /* the brief: Daybook Assistant's words for this range, editable, or the app's plain sentences */
   const ai = moodAi();
   $('mood-brief').hidden = !explainAvailable() || state.readOnly || state.viewer;
@@ -10795,7 +10796,7 @@ function buildMoodReport(n) {
     const both = d.moodM != null && d.moodE != null, any = d.moodM != null || d.moodE != null;
     const ci = !any ? '' : both && d.moodM === d.moodE ? d.moodM + ', morning and evening' : both ? d.moodM + ' in the morning, ' + d.moodE + ' in the evening' : (d.moodM ?? d.moodE) + (d.moodM != null ? ' in the morning' : ' in the evening');
     const rd = d.readings.length ? d.readings.map((r) => r.v + ' at ' + r.at).join(', ') : '';
-    return 'Mood ' + (ci && rd ? ci + '; between, ' + rd : ci || rd) + (d.readings.length && (any || d.readings.length > 1) ? ' (average ' + d.mood + ')' : '');
+    return 'Mood ' + (ci && rd ? ci + '; between, ' + rd : ci || rd);
   };
   const bestQuote = best ? (best.notes.find(([l]) => /how was today|good thing/.test(l)) || best.notes[0]) : null;
   const worstWhy = worst ? [worst.hospital ? 'in hospital' : '', worst.pain != null && worst.pain >= 7 ? 'pain at ' + worst.pain : '', worst.temp != null && worst.temp >= 38 ? 'a temperature of ' + worst.temp.toFixed(1) : '', worst.sleep != null && worst.sleep < 5 ? 'after ' + worst.sleep + ' hours of sleep' : ''].filter(Boolean) : [];
@@ -10812,12 +10813,13 @@ function buildMoodReport(n) {
     allScores.length ? { k: 'Average mood', v: String(avgAll), unit: 'out of 10', tone: avgAll <= 4 ? 'amber' : 'green',
       n: `From ${plural(allScores.length, 'score')}: ${plural(ciScores.length, 'check-in')}` + (between.length ? ` and ${between.length} logged between them` : '') + '.' }
       : { k: 'Average mood', v: 'None', unit: '', tone: '', n: 'No mood scores in this period.' },
+    /* v313, Mark: the day's average mood sits large under the date (avg) and decides the colour; the highs and lows are in the words */
     /* v233: the quote was cut at 90 characters, which chopped a dictated note mid-sentence; the report tile now takes whole
        sentences up to 260 characters and the screen shows the note whole (full) */
-    best ? { k: 'Best day', v: dayWord(best.day), unit: '', tone: 'green', n: moodWords(best) + '.' + (bestQuote ? ' “' + text(bestQuote[1]).replace(/\s+/g, ' ').trim() + '”' : ''),
+    best ? { k: 'Best day', v: dayWord(best.day), unit: '', avg: String(best.mood), tone: 'green', n: moodWords(best) + '.' + (bestQuote ? ' “' + text(bestQuote[1]).replace(/\s+/g, ' ').trim() + '”' : ''),
       full: moodWords(best) + '.' + (bestQuote ? ' “' + text(bestQuote[1]).replace(/\s+/g, ' ').trim() + '”' : '') }
       : { k: 'Best day', v: 'None', unit: '', tone: '', n: 'No mood scores in this period.' },
-    worst ? { k: 'Hardest day', v: dayWord(worst.day), unit: '', tone: worst.mood <= 3 ? 'red' : worst.mood <= 5 ? 'amber' : 'green', n: moodWords(worst) + (worstWhy.length ? ', ' + worstWhy.join(', ') : '') + '.' }
+    worst ? { k: 'Hardest day', v: dayWord(worst.day), unit: '', avg: String(worst.mood), tone: worst.mood <= 3 ? 'red' : worst.mood <= 5 ? 'amber' : 'green', n: moodWords(worst) + (worstWhy.length ? ', ' + worstWhy.join(', ') : '') + '.' }
       : { k: 'Hardest day', v: 'None', unit: '', tone: '', n: 'No mood scores in this period.' },
     taps.length ? { k: 'Felt low', v: String(tapCount('low')), unit: 'of ' + plural(tapAnswered('low'), 'evening'), tone: tapCount('low') ? 'amber' : 'green',
       n: `Quite a bit or a lot. Worried or on edge on ${plural(tapCount('worried'), 'evening')}. Enjoyed something on ${tapCount('enjoyed')}.` }
