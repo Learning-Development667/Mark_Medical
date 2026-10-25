@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField, runTransaction
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '313';
+const APP_VERSION = '314';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -10807,6 +10807,8 @@ function buildMoodReport(n) {
   /* Best day, Hardest day and Felt low as they were (v276, Mark: counts stay counts, and the best and hardest days go
      back); Sleep, a reading that goes up and down, is the average coloured by the average (v275) */
   const avgAll = avg(allScores);
+  /* v314, Mark: one limit everywhere, a day's average of 4 or under is low (amber), 3 or under red */
+  const dayTone = (m) => (m <= 3 ? 'red' : m <= 4 ? 'amber' : 'green');
   const tiles = [
     /* v306, Mark: an average mood score on the Mood tab and the report, every score counted: the check-ins and the Mood tile
        in between. Added in front of the four below, which stay as they were */
@@ -10816,10 +10818,10 @@ function buildMoodReport(n) {
     /* v313, Mark: the day's average mood sits large under the date (avg) and decides the colour; the highs and lows are in the words */
     /* v233: the quote was cut at 90 characters, which chopped a dictated note mid-sentence; the report tile now takes whole
        sentences up to 260 characters and the screen shows the note whole (full) */
-    best ? { k: 'Best day', v: dayWord(best.day), unit: '', avg: String(best.mood), tone: 'green', n: moodWords(best) + '.' + (bestQuote ? ' “' + text(bestQuote[1]).replace(/\s+/g, ' ').trim() + '”' : ''),
+    best ? { k: 'Best day', v: dayWord(best.day), unit: '', avg: String(best.mood), tone: dayTone(best.mood), n: moodWords(best) + '.' + (bestQuote ? ' “' + text(bestQuote[1]).replace(/\s+/g, ' ').trim() + '”' : ''),
       full: moodWords(best) + '.' + (bestQuote ? ' “' + text(bestQuote[1]).replace(/\s+/g, ' ').trim() + '”' : '') }
       : { k: 'Best day', v: 'None', unit: '', tone: '', n: 'No mood scores in this period.' },
-    worst ? { k: 'Hardest day', v: dayWord(worst.day), unit: '', avg: String(worst.mood), tone: worst.mood <= 3 ? 'red' : worst.mood <= 5 ? 'amber' : 'green', n: moodWords(worst) + (worstWhy.length ? ', ' + worstWhy.join(', ') : '') + '.' }
+    worst ? { k: 'Hardest day', v: dayWord(worst.day), unit: '', avg: String(worst.mood), tone: dayTone(worst.mood), n: moodWords(worst) + (worstWhy.length ? ', ' + worstWhy.join(', ') : '') + '.' }
       : { k: 'Hardest day', v: 'None', unit: '', tone: '', n: 'No mood scores in this period.' },
     taps.length ? { k: 'Felt low', v: String(tapCount('low')), unit: 'of ' + plural(tapAnswered('low'), 'evening'), tone: tapCount('low') ? 'amber' : 'green',
       n: `Quite a bit or a lot. Worried or on edge on ${plural(tapCount('worried'), 'evening')}. Enjoyed something on ${tapCount('enjoyed')}.` }
