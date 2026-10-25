@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField, runTransaction
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '314';
+const APP_VERSION = '315';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -437,9 +437,14 @@ document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && docume
      a blank band (Mark, 7 October, writing a note). With nothing focused the lift is always 0 now, and the sheet
      is measured again when the app comes back, the window changes and a box loses focus. */
   const typing = () => { const a = document.activeElement; return Boolean(a && a !== document.body && $('sheet').contains(a) && a.matches(TEXTISH)); };
+  /* The height the sheet is laid out in. Until v315 this was window.innerHeight, but a Home Screen app on a newer iPhone
+     shrinks innerHeight with the keyboard while the fixed sheet stays the full screen tall, so the keyboard read as 0
+     and covered the evening check-in's words box (Mark, 25 October). The sheet's own height is the layout it sits in. */
+  const layoutH = () => Math.max(window.innerHeight, $('sheet').offsetHeight || 0, document.documentElement.clientHeight || 0);
+  const kbNow = () => Math.max(0, Math.round(layoutH() - vv.height - vv.offsetTop));
   const fit = () => {
     const on = typing();
-    const kb = on ? Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)) : 0;
+    const kb = on ? kbNow() : 0;
     const st = $('sheet').style;
     st.setProperty('--kb', kb + 'px');
     st.setProperty('--vvh', Math.round(on ? vv.height : window.innerHeight) + 'px');
@@ -457,7 +462,8 @@ document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && docume
     if (!el.matches(TEXTISH)) return;
     /* only when a keyboard has really come up (v287): on a Mac the first box of a sheet takes focus on opening, and
        centring it scrolled the sheet half way down before anything was read (Mark: "it opens at the middle or bottom") */
-    setTimeout(() => { fit(); const kbUp = window.innerHeight - vv.height > 120; if (kbUp && document.activeElement === el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }, 320);
+    const show = () => { fit(); if (kbNow() > 120 && document.activeElement === el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); };
+    setTimeout(show, 320); setTimeout(show, 700); // the keyboard can take longer to finish rising
   });
   $('sheet').addEventListener('focusout', () => later(350));
 })();
