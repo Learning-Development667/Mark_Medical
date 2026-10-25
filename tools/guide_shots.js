@@ -290,7 +290,7 @@ const QUALITY = 0.8;
   await closeSheet();
   await shot('Bowels logs each movement in a few taps.', '.qa[data-add="bowel"]');
   await page.click('.qa[data-add="bowel"]'); await page.waitForSelector('#sheet:not([hidden])'); await settle();
-  await shot('The Bristol chart as seven rows, then any blood and how long you could wait. Tap every type in a mixed one.');
+  await shot('The seven stool types as rows, hard to watery, then any blood and how long you could wait. Tap every type in a mixed one.');
   await closeSheet();
   /* fasting today, in the morning check-in (v258): on a day with no check-in yet, skipped through to the question */
   await page.evaluate(() => { for (let i = 0; i < 20; i++) document.getElementById('day-prev').click(); }); await settle(400);

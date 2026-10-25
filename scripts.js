@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField, runTransaction
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '309';
+const APP_VERSION = '310';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -4393,8 +4393,8 @@ function openAdd(type, editEntry, preset) {
       output.node);
     else body.append(
       h('p', { class: 'wiz-q', text: 'What was it like?' }),
-      h('p', { class: 'wiz-hint', text: 'The Bristol Stool Chart, which the team uses. Tap the nearest. If it was a mix, tap every type in it.' }),
-      h('div', { class: 'bristol', role: 'group', 'aria-label': 'Bristol stool type, tap every type in it' }, ...rows));
+      h('p', { class: 'wiz-hint', text: 'Seven types, from hard lumps (1) to watery (7). Tap the nearest. If it was a mix, tap every type in it.' }),
+      h('div', { class: 'bristol', role: 'group', 'aria-label': 'Stool type, 1 to 7, tap every type in it' }, ...rows));
     if (ibd) body.append(
       h('p', { class: 'wiz-q', text: 'Any blood?' }), bloodPick.node,
       stoma ? '' : h('p', { class: 'wiz-q', text: 'How long could you wait?' }), stoma ? '' : urgePick.node);
