@@ -2115,3 +2115,11 @@ details.daymeal[open] .daymeal-sum::after { transform: rotate(90deg); }
 .moment.is-high { border-left-color: var(--teal-fill); }
 .moment-score { font-weight: 600; color: var(--warning-ink, var(--warning)); }
 .moment.is-high .moment-score { color: var(--teal); }
+
+/* v313: the best and hardest days' average mood, large under the date, coloured by the tile's tone */
+#mood-tiles .tile.has-avg .tile-value { font-size: 22px; }
+.tile-avg { display: flex; align-items: baseline; font-family: var(--font-head); font-weight: 600; font-size: 38px; line-height: 1.05; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.tile-avg small { font-family: var(--font-body); font-weight: 500; font-size: 14px; margin-left: 6px; color: var(--text-muted); }
+.tile.is-red .tile-avg { color: var(--danger); }
+.tile.is-amber .tile-avg { color: var(--warning); }
+.tile.is-green .tile-avg { color: var(--success); }

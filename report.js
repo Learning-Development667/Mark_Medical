@@ -940,6 +940,12 @@ async function paginate(frame, M, render, opts = {}) {
 const MOOD_CSS = `
 .tiles.mood{grid-template-columns:repeat(5,1fr);gap:2.2mm}
 .tiles.mood .tile .v{font-size:13pt}
+.tiles.mood .tile.has-avg .v{font-size:10pt}
+.tiles.mood .tile .avg{font-family:Fraunces,Georgia,serif;font-size:17pt;line-height:1;margin:.4mm 0 .8mm}
+.tiles.mood .tile .avg em{font-style:normal;font-size:7pt;font-family:Inter,sans-serif;font-weight:500;color:var(--slate);margin-left:.8mm}
+.tiles.mood .tile.red .avg{color:var(--red)}
+.tiles.mood .tile.amber .avg{color:#8A5E10}
+.tiles.mood .tile.green .avg{color:#2D7354}
 .c.wide{margin-top:1mm}
 .c .legend{display:flex;flex-wrap:wrap;gap:3.6mm;font-size:6.8pt;color:var(--slate);margin-top:1mm}
 .c .legend i{display:inline-block;width:4mm;height:1.3mm;border-radius:.6mm;margin-right:1.2mm;vertical-align:middle}
@@ -1082,7 +1088,7 @@ export function moodReportHtml(W) {
     const legend = `<div class="legend"><span>${SW('#1E7F86')}Mood (1 to 10), the day's average</span><span>${SW('#C2703D')}Worst pain (0 to 10)</span><span><i class="swb" style="background:#CFE4E6"></i>Hours asleep</span>${c.sessions.length ? '<span><i class="tri"></i>Treatment session</span>' : ''}${c.hospital.length ? '<span><i class="swb" style="background:#F8E1DE"></i>In hospital</span>' : ''}${c.low.length ? '<span><i class="ring"></i>Mood 4 or under</span>' : ''}</div>`;
     const first = p === 0
       ? `<div class="masthead"><div><div class="titlerow"><h1>Mood and wellbeing</h1><span class="madeby">Created with <b>My Medical Daybook</b></span></div><div class="sub">How the period has felt, in scores and in ${esc(W.patient)}'s own words, for a therapist, counsellor or GP.</div></div><div class="who"><strong>${esc(W.patient)}</strong>Period: ${esc(W.period)}<br>Prepared: ${esc(W.prepared)}</div></div>`
-        + `<div class="tiles mood">${W.tiles.map((t) => `<div class="tile ${esc(t.tone || '')}"><div class="k">${esc(t.k)}</div><div class="v">${esc(t.v)}${t.unit ? `<em>${esc(t.unit)}</em>` : ''}</div><div class="n">${esc(t.n)}</div></div>`).join('')}</div>`
+        + `<div class="tiles mood">${W.tiles.map((t) => `<div class="tile ${esc(t.tone || '')}${t.avg ? ' has-avg' : ''}"><div class="k">${esc(t.k)}</div><div class="v">${esc(t.v)}${t.unit ? `<em>${esc(t.unit)}</em>` : ''}</div>${t.avg ? `<div class="avg">${esc(t.avg)}<em>average mood</em></div>` : ''}<div class="n">${esc(t.n)}</div></div>`).join('')}</div>`
         + `<div class="c wide"><div class="h"><h3>Mood, with pain and sleep behind it</h3><span class="stat ${esc(c.tone || '')}">${esc(c.stat)}</span></div>${moodChart(c, W.days)}${legend}</div>`
       : `<div class="runner"><h2>Mood and wellbeing</h2><span>${esc(W.patient)} · ${esc(W.period)}</span></div>`;
     return `<section class="page" id="page${p + 1}">${first}<div class="wbody">${html}</div><div class="foot"><span>Scores and words as logged in Daybook${W.briefNote.startsWith('Written by') ? '; the brief is written by an AI helper and checked by ' + esc(W.patient) : ''}. Not medical advice.</span>${madeBy(p + 1, total)}</div></section>`;
