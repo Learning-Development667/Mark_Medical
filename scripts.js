@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField, runTransaction
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '318';
+const APP_VERSION = '319';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -10353,7 +10353,7 @@ function upcomingCard(m) {
         h('div', { class: 'med-name', text: m.name }),
         h('div', { class: 'med-dose', text: [medDoseLabel(m), medFrequency(m)].filter(Boolean).join(' · ') }),
         medWhenText(m) ? h('div', { class: 'med-how', text: medWhenText(m) }) : null),
-      m.purpose ? h('span', { class: 'med-purpose', text: medUses(m).join(' and ') }) : null),
+      m.purpose ? h('span', { class: 'med-purpose', text: usesWords(medUses(m)) }) : null),
     h('div', { class: 'med-status' }, h('span', { class: 'pill pill-teal', text: 'Starts ' + fmtDayLong(m.courseStart) })),
     h('div', { class: 'med-actions' },
       h('button', { class: 'btn btn-secondary', type: 'button', 'aria-label': 'Edit ' + m.name, onclick: () => openEditMed(m) }, 'Edit')));
@@ -10614,7 +10614,7 @@ function finishedCard(m) {
         h('div', { class: 'med-name', text: m.name }),
         h('div', { class: 'med-dose', text: [shownDose(m), medFrequency(m)].filter(Boolean).join(' \u00b7 ') }),
         m.how ? h('div', { class: 'med-how', text: m.how }) : null),
-      m.purpose ? h('span', { class: 'med-purpose', text: medUses(m).join(' and ') }) : null),
+      m.purpose ? h('span', { class: 'med-purpose', text: usesWords(medUses(m)) }) : null),
     h('div', { class: 'med-status' },
       h('span', { class: 'pill pill-green', text: 'Course complete' }),
       h('span', { class: 'med-last', text: 'Ended ' + fmtDayShort(m.courseEnd) + (last ? ', last dose ' + fmtDayShort(last.day) + ' ' + fmtTime(entryDate(last)) : '') })),
@@ -11045,7 +11045,7 @@ $('pain-brief').addEventListener('click', () => {
 });
 $('pain-brief-undo').addEventListener('click', () => { state.painAI = null; renderPainReport(); });
 function painAiText(P, n) {
-  const meds = state.medicines.filter(isPainMed).map((m) => `${m.name} ${m.dose || ''}, ${m.kind === 'prn' ? 'when needed' + (m.maxPerDay ? ', at most ' + m.maxPerDay + ' a day' : '') : 'regular, ' + (m.how || medFrequency(m) || '')}${medUses(m).length ? ', for ' + medUses(m).join(' and ') : ''}`.replace(/\s+,/g, ','));
+  const meds = state.medicines.filter(isPainMed).map((m) => `${m.name} ${m.dose || ''}, ${m.kind === 'prn' ? 'when needed' + (m.maxPerDay ? ', at most ' + m.maxPerDay + ' a day' : '') : 'regular, ' + (m.how || medFrequency(m) || '')}${medUses(m).length ? ', for ' + usesWords(medUses(m)) : ''}`.replace(/\s+,/g, ','));
   const lines = [`Patient: ${P.patient}. Period: ${n.from} to ${n.to}. Pain relief medicines on the list: ${meds.join('; ') || 'none'}.`, '', 'Day by day (scores out of 10):'];
   P.daysFull.forEach((d) => {
     if (d.now.length === 0 && d.worst == null && !d.dosesN && d.sleep == null && !d.notes.length) return;
@@ -11106,10 +11106,20 @@ function keySentence(text, max = 180) {
   if (s.length > max) { s = s.slice(0, max); s = s.slice(0, Math.max(s.lastIndexOf(' '), 60)).replace(/[,;:\s]+$/, '') + '…'; }
   return s;
 }
-/* A medicine with two uses (v263, Mark: Diazepam for anxiety and for pain): "What it is for" and "Also used for". Each dose
-   then says which (forUse), asked as it is logged. */
-function medUses(m) { return m ? [m.purpose, m.alsoFor].map((x) => String(x || '').trim()).filter(Boolean) : []; }
-function isDualUse(m) { return !!m && !m.hospital && medUses(m).length === 2; }
+/* A medicine with more than one use (v263, Mark: Diazepam for anxiety and for pain; v319: three, anxiety, sleep and pain):
+   "What it is for" and "Also used for", each of which may list several separated by commas. Each dose then says which
+   (forUse), asked as it is logged: one or more of the uses, joined as words ("Anxiety and sleep"). */
+function medUses(m) {
+  if (!m) return [];
+  const seen = new Set(), out = [];
+  [m.purpose, m.alsoFor].forEach((x) => String(x || '').split(',').map((u) => u.trim()).filter(Boolean).forEach((u) => {
+    const k = u.toLowerCase(); if (!seen.has(k)) { seen.add(k); out.push(u.charAt(0).toUpperCase() + u.slice(1)); }
+  }));
+  return out;
+}
+function isDualUse(m) { return !!m && !m.hospital && medUses(m).length >= 2; }
+function usesWords(list) { return list.length ? joinAnd(list.map((u, i) => (i ? u.toLowerCase() : u))) : ''; }
+function usesIn(m, forUse) { const t = String(forUse || '').toLowerCase(); return medUses(m).filter((u) => t.includes(u.toLowerCase())); }
 /* A dose counts as pain relief unless it was said to be for something else */
 function doseForPain(e) { return !e.forUse || PAIN_PURPOSE_RE.test(e.forUse); }
 function buildPainReport(n) {
@@ -11164,9 +11174,9 @@ function buildPainReport(n) {
     const last = mine.slice().sort((a, b) => entryDate(b) - entryDate(a))[0];
     const hitMax = m.kind === 'prn' && m.maxPerDay && most >= m.maxPerDay;
     const dual = isDualUse(m), said = mine.filter((e) => e.forUse).length, other = allMed.filter((e) => e.medId === m.id && !doseForPain(e)).length;
-    const uses = dual ? (said && said < mine.length ? `${said} said for pain, ${mine.length - said} not said` : said ? 'all said for pain' : 'what each was for not said') + (other ? `; ${other} ${other === 1 ? "dose" : "doses"} marked as ${(medUses(m).find((u) => !PAIN_PURPOSE_RE.test(u)) || 'something else').toLowerCase()}` : '') : '';
+    const uses = dual ? (said && said < mine.length ? `${said} said for pain, ${mine.length - said} not said` : said ? 'all said for pain' : 'what each was for not said') + (other ? `; ${other} ${other === 1 ? "dose" : "doses"} marked as ${(medUses(m).filter((u) => !PAIN_PURPOSE_RE.test(u)).map((u) => u.toLowerCase()).join(' or ') || 'something else')}` : '') : '';
     const line = !mine.length ? 'None logged in this period.' : `${plural(mine.length, 'dose')} on ${plural(dayList.length, 'day')} of ${days.length}` + (most > 1 ? `, up to ${most} a day${hitMax ? ' (the maximum)' : m.maxPerDay ? ` (at most ${m.maxPerDay})` : ''}` : '') + `. Last ${rDay(last.day)}, ${fmtTime(entryDate(last))}.` + (uses ? ' ' + uses[0].toUpperCase() + uses.slice(1) + '.' : '');
-    return { id: m.id, name: m.name, dose: m.dose || '', how: m.how || medFrequency(m) || '', uses: medUses(m).join(' and '), kind: m.kind === 'prn' ? 'When needed' : 'Regular', n: mine.length, days: dayList.length, most, maxPerDay: m.maxPerDay || null, hitMax, last: last ? rDay(last.day) + ', ' + fmtTime(entryDate(last)) : '', line, usesNote: uses, active: m.active !== false };
+    return { id: m.id, name: m.name, dose: m.dose || '', how: m.how || medFrequency(m) || '', uses: usesWords(medUses(m)), kind: m.kind === 'prn' ? 'When needed' : 'Regular', n: mine.length, days: dayList.length, most, maxPerDay: m.maxPerDay || null, hitMax, last: last ? rDay(last.day) + ', ' + fmtTime(entryDate(last)) : '', line, usesNote: uses, active: m.active !== false };
   }).filter((r) => r.n || r.active).sort((a, b) => (a.kind === b.kind ? b.n - a.n : a.kind === 'When needed' ? -1 : 1));
   const prnDoses = doses.filter((e) => prnIds.has(e.medId));
   const prnDays = new Set(prnDoses.map((e) => e.day)).size;
@@ -11814,7 +11824,7 @@ function medCard(m, day, section) {
       recentDoseChange(m) && !why ? h('div', { class: 'med-was', text: doseChangeText(recentDoseChange(m)) }) : null,
       m.how ? h('div', { class: 'med-how', text: m.how }) : null,
       m.kind === 'scheduled' && !m.hospital && medWhenText(m) ? h('div', { class: 'med-how med-when', text: medWhenText(m) }) : null),
-    m.purpose ? h('span', { class: 'med-purpose', text: medUses(m).join(' and ') }) : null));
+    m.purpose ? h('span', { class: 'med-purpose', text: usesWords(medUses(m)) }) : null));
   const status = h('div', { class: 'med-status' });
   if (!m.hospital && m.kind === 'scheduled') {
     const dots = h('div', { class: 'dots' });
@@ -11994,27 +12004,31 @@ function askWaterDose(m) {
   });
 }
 
-/* Which use was this dose for? (v263) A medicine with two uses asks as it is logged: one tap, either use or both. */
+/* Which use was this dose for? (v263; v319 any number of uses) A medicine with more than one use asks as it is logged:
+   tap one or more, then Log. */
 function askUseFor(m) {
   return new Promise((resolve) => {
     let result = null;
-    const [a, b] = medUses(m);
-    const pick = (v) => h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => { result = v; closeSheet(); } }, v);
+    const chips = useChips(m);
+    const go = h('button', { class: 'btn btn-primary btn-block', type: 'button', disabled: true, onclick: () => { result = chips.value(); if (result) closeSheet(); } }, 'Log this dose');
+    chips.onChange(() => { const v = chips.value(); go.disabled = !v; go.textContent = v ? 'Log it, for ' + v.toLowerCase() : 'Log this dose'; });
     openSheet(m.name, h('div', { class: 'askuse' },
       h('p', { class: 'wiz-q', text: 'What was this dose for?' }),
-      pick(a), pick(b), pick(a + ' and ' + b.toLowerCase()),
+      chips.el, go,
       h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Cancel'),
-      h('p', { class: 'hint', text: 'Asked because ' + m.name + ' has two uses in Manage medicines. The Pain report counts the doses for pain.' })), () => resolve(result));
+      h('p', { class: 'hint', text: 'Tap one, or more if it was for more than one. Asked because ' + m.name + ' has more than one use in Manage medicines. The Pain report counts the doses for pain.' })), () => resolve(result));
   });
 }
 function useChips(m, initial) {
-  const [a, b] = medUses(m);
-  const opts = [a, b, a + ' and ' + b.toLowerCase()];
-  let value = initial || '';
-  const row = h('div', { class: 'presets', role: 'group', 'aria-label': 'What it was for' });
-  const draw = () => row.replaceChildren(...opts.map((o) => h('button', { class: 'preset' + (o === value ? ' is-active' : ''), type: 'button', 'aria-pressed': String(o === value), onclick: () => { value = value === o ? '' : o; draw(); } }, o)));
+  const uses = medUses(m);
+  const on = new Set(usesIn(m, initial).map((u) => u.toLowerCase()));
+  let changed = () => {};
+  const value = () => usesWords(uses.filter((u) => on.has(u.toLowerCase())));
+  const row = h('div', { class: 'presets', role: 'group', 'aria-label': 'What it was for, tap one or more' });
+  const draw = () => row.replaceChildren(...uses.map((u) => { const k = u.toLowerCase(), act = on.has(k);
+    return h('button', { class: 'preset' + (act ? ' is-active' : ''), type: 'button', 'aria-pressed': String(act), onclick: () => { if (on.has(k)) on.delete(k); else on.add(k); draw(); changed(); } }, u); }));
   draw();
-  return { el: h('div', { class: 'field' }, h('span', { class: 'fieldlabel', text: 'What was it for?' }), row), value: () => value };
+  return { el: h('div', { class: 'field' }, h('span', { class: 'fieldlabel', text: 'What was it for?' }), row), value, onChange: (fn) => { changed = fn; } };
 }
 async function logMed(m, at, note, doseText, forUse) {
   if (forUse === undefined && isDualUse(m)) { forUse = await askUseFor(m); if (!forUse) return; }
@@ -12694,7 +12708,7 @@ function openEditMed(m, prefill) {
       : 'This medicine is no longer being taken. The dose typed here is what its card and the Medicine history show for it, so if it was put up before the course ended, type the dose it was really taken at. The doses already logged keep their own amounts.' }),
     field('How and when', how), field('What it is for', purpose),
     field('Also used for (optional)', alsoFor),
-    h('p', { class: 'hint', text: 'Each dose then asks which it was for.' }),
+    h('p', { class: 'hint', text: 'More than one? Separate them with commas, for example: Sleep, Pain. Each dose then asks which it was for.' }),
     h('label', { class: 'check' }, hospital, h('span', { text: 'Given by the hospital (hospital monitored)' })),
     h('p', { class: 'hint', text: 'Tick this for a drip, an injection or anything the nurses give. Its doses are marked as given in hospital, and Daybook sends no reminders for it.' }),
     hospFields,
