@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField, runTransaction
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '320';
+const APP_VERSION = '321';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -5111,16 +5111,24 @@ function savedVitalsText(list) {
 
 /* A minus / number / plus control. step is the button step; the number can also be typed (halves are fine) */
 function stepper(initial, min, step, label, onChange, unit) {
-  const input = h('input', { type: 'number', inputmode: 'decimal', min: String(min), step: 'any', value: String(initial), 'aria-label': label });
-  const set = (v) => { input.value = fmtQtyNumber(Math.max(min, v)); if (onChange) onChange(parseFloat(input.value)); };
+  /* A text box with the number keypad (v321): Mark could not get the cursor past "25" in the small number box on his
+     iPhone. Tapping it now selects the number, so typing replaces it. */
+  const input = h('input', { type: 'text', inputmode: 'decimal', autocomplete: 'off', value: String(initial), 'aria-label': label });
+  const num = () => parseFloat(String(input.value).replace(',', '.'));
+  const selectAll = () => setTimeout(() => { try { input.setSelectionRange(0, input.value.length); } catch (e) { input.select(); } }, 0);
+  let fresh = false; // the tap that focused the box must not put the cursor back in the middle
+  input.addEventListener('focus', () => { fresh = true; selectAll(); });
+  input.addEventListener('mouseup', (e) => { if (fresh) { e.preventDefault(); selectAll(); } fresh = false; });
+  input.addEventListener('touchend', () => { if (fresh) selectAll(); fresh = false; });
+  const set = (v) => { input.value = fmtQtyNumber(Math.max(min, v)); if (onChange) onChange(num()); };
   const unitEl = unit ? h('span', { class: 'unit', text: unit }) : null;
   const el = h('div', { class: 'stepper' },
-    h('button', { class: 'iconbtn', type: 'button', 'aria-label': 'Fewer', onclick: () => { const v = parseFloat(input.value) || 0; set(v - step < min && v > min ? min : v - step); } }, '\u2212'),
+    h('button', { class: 'iconbtn', type: 'button', 'aria-label': 'Fewer', onclick: () => { const v = num() || 0; set(v - step < min && v > min ? min : v - step); } }, '\u2212'),
     input, unitEl,
-    h('button', { class: 'iconbtn', type: 'button', 'aria-label': 'More', onclick: () => set((parseFloat(input.value) || 0) + step) }, '+')
+    h('button', { class: 'iconbtn', type: 'button', 'aria-label': 'More', onclick: () => set((num() || 0) + step) }, '+')
   );
-  input.addEventListener('input', () => { if (onChange) onChange(parseFloat(input.value) || 0); });
-  return { el, unitEl, value: () => parseFloat(input.value) || 0, set };
+  input.addEventListener('input', () => { if (onChange) onChange(num() || 0); });
+  return { el, unitEl, value: () => num() || 0, set };
 }
 
 /* Each value is a string, or { value, label } when the button should read differently from what it fills in */
@@ -12593,8 +12601,25 @@ function openEditMed(m, prefill) {
   /* the dose: how it is taken, how many each time, the strength of one (v191) */
   const { formIn, formChips, count, countField, dose, doseField, dosePreview, ivHint, askField, askBox } = doseControls(splitDose(m), { ask: m.askCount !== false });
   const how = h('input', { type: 'text', value: m.how || '' });
-  const purpose = h('input', { type: 'text', value: m.purpose || '' });
-  const alsoFor = h('input', { type: 'text', value: m.alsoFor || '', placeholder: 'e.g. pain' });
+  /* Uses (v321, Mark: commas were not obvious): What it is for is the main one, Also used for one more, and
+     + Add another use a box at a time. Saved as before, the extra uses joined into alsoFor with commas, so
+     doses and reports read them as v319 did; uses typed with commas before v321 open as separate boxes. */
+  const useList = String(m.purpose || '').split(',').map((u) => u.trim()).filter(Boolean);
+  const purpose = h('input', { type: 'text', value: useList[0] || '' });
+  const extraUses = useList.slice(1).concat(String(m.alsoFor || '').split(',').map((u) => u.trim()).filter(Boolean));
+  const alsoFor = h('input', { type: 'text', value: extraUses[0] || '', placeholder: 'e.g. pain' });
+  const moreUses = h('div', { class: 'more-uses' });
+  const addUseBox = (value, focus) => {
+    const n = moreUses.children.length + 3;
+    const box = h('input', { type: 'text', class: 'input', value: value || '', 'aria-label': 'Another use, ' + n });
+    const row = h('div', { class: 'more-use' }, box,
+      h('button', { class: 'btn-plain more-use-remove', type: 'button', 'aria-label': 'Remove this use', onclick: () => { row.remove(); addUse.focus(); } }, 'Remove'));
+    moreUses.append(row);
+    if (focus) box.focus();
+  };
+  extraUses.slice(1).forEach((u) => addUseBox(u));
+  const addUse = h('button', { class: 'btn-plain add-use', type: 'button', onclick: () => addUseBox('', true) }, '+ Add another use');
+  const allAlso = () => [alsoFor.value].concat([...moreUses.querySelectorAll('input')].map((i) => i.value)).map((u) => u.trim().replace(/,/g, ' ')).filter(Boolean).join(', ');
   /* Regular or when needed, as two chips under the name (v251): a select at the foot of the sheet was missed by a tester */
   const kind = h('input', { type: 'hidden', value: m.kind === 'prn' ? 'prn' : 'scheduled' });
   const kindChips = presets([{ value: 'scheduled', label: 'Regular, on a schedule' }, { value: 'prn', label: 'When needed' }], kind, kind.value);
@@ -12708,7 +12733,8 @@ function openEditMed(m, prefill) {
       : 'This medicine is no longer being taken. The dose typed here is what its card and the Medicine history show for it, so if it was put up before the course ended, type the dose it was really taken at. The doses already logged keep their own amounts.' }),
     field('How and when', how), field('What it is for', purpose),
     field('Also used for (optional)', alsoFor),
-    h('p', { class: 'hint', text: 'More than one? Separate them with commas, for example: Sleep, Pain. Each dose then asks which it was for.' }),
+    moreUses, addUse,
+    h('p', { class: 'hint', text: 'Taken for more than one thing? Each dose then asks which it was for, so the Pain report only counts the doses for pain.' }),
     h('label', { class: 'check' }, hospital, h('span', { text: 'Given by the hospital (hospital monitored)' })),
     h('p', { class: 'hint', text: 'Tick this for a drip, an injection or anything the nurses give. Its doses are marked as given in hospital, and Daybook sends no reminders for it.' }),
     hospFields,
@@ -12717,7 +12743,7 @@ function openEditMed(m, prefill) {
     h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
       if (!name.value.trim()) { missing(name, 'Please enter a name'); return; }
       const data = {
-        name: name.value.trim(), dose: composeDose(count.value(), formIn.value, dose.value), how: how.value.trim(), purpose: purpose.value.trim(), alsoFor: alsoFor.value.trim(),
+        name: name.value.trim(), dose: composeDose(count.value(), formIn.value, dose.value), how: how.value.trim(), purpose: purpose.value.trim().replace(/,/g, ' '), alsoFor: allAlso(),
         doseForm: formIn.value || 'none', doseCount: doseFormOf(formIn.value) ? count.value() || 1 : null, strength: dose.value.trim(),
         askCount: doseFormOf(formIn.value) ? askBox.checked : false,
         kind: kind.value, active: active.checked,

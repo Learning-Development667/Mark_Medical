@@ -2138,3 +2138,10 @@ details.daymeal[open] .daymeal-sum::after { transform: rotate(90deg); }
 .treatday-fold > summary .pill { font-family: var(--font-body); font-size: 14px; }
 .med-line .med-treatpill { margin-right: var(--s-1); }
 .pill-treat { background: var(--warm-light); color: var(--warm-dark); }
+
+/* More uses for a medicine (v321): a box at a time under Also used for */
+.more-uses { display: grid; gap: var(--s-2); margin: calc(-1 * var(--s-2)) 0 var(--s-2); }
+.more-use { display: flex; gap: var(--s-2); align-items: center; }
+.more-use input { flex: 1; min-width: 0; }
+.more-use-remove { color: var(--danger); min-height: var(--tap); padding: 0 var(--s-2); }
+.add-use { color: var(--teal); font-weight: 600; min-height: var(--tap); padding: 0; margin-bottom: var(--s-1); }
