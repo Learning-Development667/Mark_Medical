@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField, runTransaction
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '316';
+const APP_VERSION = '317';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -1879,7 +1879,7 @@ function buildIbdFixture() {
 
 function startDemoData(pack) {
   /* a hook for the Playwright harness, preview only: nothing here can reach Firestore */
-  window.daybookPreview = { state, addEntry, renderExercise, exerciseLogFor, syncUsageRow, openUsage, logMed, deleteEntry, doseWaterMl, syncMedWater, renderDocsList };
+  window.daybookPreview = { state, addEntry, renderExercise, exerciseLogFor, syncUsageRow, openUsage, logMed, deleteEntry, doseWaterMl, syncMedWater, renderDocsList, renderMeds };
   state.previewPack = pack === 'ibd' ? 'ibd' : 'cancer';
   const fixture = state.previewPack === 'ibd' ? buildIbdFixture() : buildDemoFixture();
   const seed = state.previewPack === 'ibd' ? IBD_MEDICINES : DEMO_MEDICINES;
@@ -2598,6 +2598,7 @@ function watchDays() {
     snap.docs.forEach((d) => { days[d.id] = d.data(); });
     state.days = days;
     renderChemo();
+    renderMeds();
   }, (e) => console.error(e));
 }
 
@@ -10315,8 +10316,31 @@ $('question-now').addEventListener('click', () => (openQuestions().length ? open
    day he added it, since only the end date was ever read. Until its first day it is listed under Starting soon,
    is never owed, never asked about with a meal and sends no reminder (the bridge reads courseStart too). */
 function notStarted(m, day) { return !!(m.courseStart && m.courseStart > day); }
+/* Treatment-day medicines (v317). Mark's chemo drugs (and the steroid with them) are given by the nurse on chemo
+   day only, and the day can move. A hospital medicine ticked Only on treatment days follows the Treatment calendar:
+   on a day marked as a session it is under Scheduled, marked Treatment day; on any other day it waits, folded, under
+   On treatment days with the next date. Nothing is copied: change the calendar and the Meds tab follows. */
+function onTreatmentDays(m) { return m.kind === 'scheduled' && m.hospital === true && m.treatmentDays === true; }
+function isTreatmentDay(day) { return !!(state.days[day] && state.days[day].chemo); }
+function nextTreatmentDay(day) { return chemoDays().find((k) => k > day) || null; }
 function activeScheduled(day) {
-  return state.medicines.filter((m) => m.active !== false && m.kind === 'scheduled' && (!m.courseEnd || m.courseEnd >= day) && !notStarted(m, day));
+  return state.medicines.filter((m) => m.active !== false && m.kind === 'scheduled' && (!m.courseEnd || m.courseEnd >= day) && !notStarted(m, day)
+    && (!onTreatmentDays(m) || isTreatmentDay(day)));
+}
+function waitingForTreatment(day) {
+  return state.medicines.filter((m) => m.active !== false && onTreatmentDays(m) && !isTreatmentDay(day) && (!m.courseEnd || m.courseEnd >= day) && !notStarted(m, day));
+}
+function treatmentWaitCard(m, day) {
+  const next = nextTreatmentDay(day);
+  return h('div', { class: 'card med is-upcoming is-treatday', 'data-med': m.id },
+    h('div', { class: 'med-head' },
+      h('div', null,
+        h('div', { class: 'med-name', text: m.name }),
+        medClass(m) ? h('div', { class: 'med-tag', text: medClass(m) }) : null,
+        h('div', { class: 'med-dose', text: [medDoseLabel(m), m.route ? ROUTE_WORDS[m.route] : ''].filter(Boolean).join(' · ') }))),
+    h('div', { class: 'med-status' }, h('span', { class: 'pill pill-teal', text: next ? 'Next: ' + fmtDayLong(next) : 'No treatment day on the calendar yet' })),
+    state.readOnly || state.viewer ? null : h('div', { class: 'med-actions' },
+      h('button', { class: 'btn btn-secondary', type: 'button', 'aria-label': 'Edit ' + m.name, onclick: () => openEditMed(m) }, 'Edit')));
 }
 function upcomingCourses(day) {
   return state.medicines.filter((m) => m.active !== false && m.kind === 'scheduled' && notStarted(m, day))
@@ -10472,6 +10496,10 @@ function renderMeds() {
   const done = finishedCourses(day).filter((m) => m.courseEnd >= addDays(day, -FINISHED_SHOW_DAYS));
   $('meds-done').replaceChildren(...done.map((m) => finishedCard(m)));
   $('meds-done-section').hidden = !done.length;
+  const wait = waitingForTreatment(day);
+  $('meds-treatday').replaceChildren(...wait.map((m) => treatmentWaitCard(m, day)));
+  $('meds-treatday-count').textContent = String(wait.length);
+  $('meds-treatday-section').hidden = !wait.length;
   const soon = upcomingCourses(day);
   $('meds-upcoming').replaceChildren(...soon.map((m) => upcomingCard(m)));
   $('meds-upcoming-section').hidden = !soon.length;
@@ -11744,6 +11772,7 @@ function medCard(m, day, section) {
   /* the one status line on the compact card */
   const line = h('div', { class: 'med-line' });
   const perDay = m.perDay || 1;
+  if (onTreatmentDays(m)) line.append(h('span', { class: 'pill pill-treat med-treatpill', text: 'Treatment day' }));
   if (m.hospital) line.append(h('span', { text: count ? `${count} given ` + (isToday ? 'today' : 'this day') : (isToday ? 'Nothing given today' : 'Not given this day') }));
   else if (m.kind === 'scheduled') {
     line.append(h('span', { text: `${Math.min(count, perDay)} of ${perDay}` + (isToday ? ' today' : '') }));
@@ -12574,7 +12603,12 @@ function openEditMed(m, prefill) {
   const routeIn = h('input', { type: 'hidden', value: m.route || 'drip' });
   const routeChips = presets(['drip', 'injection', 'mouth', 'other'].map((k) => ({ value: k, label: ROUTE_WORDS[k] })), routeIn, routeIn.value);
   routeChips.setAttribute('role', 'group'); routeChips.setAttribute('aria-label', 'How it is given');
-  const hospFields = h('div', null, h('p', { class: 'fieldlabel', text: 'How it is given' }), routeChips);
+  const treatDays = h('input', { type: 'checkbox', id: 'med-treatdays' });
+  treatDays.checked = m.treatmentDays === true;
+  const treatBox = h('div', { class: 'med-treatdays' },
+    h('label', { class: 'check' }, treatDays, h('span', { text: 'Only on treatment days' })),
+    h('p', { class: 'hint', text: 'For chemo and anything given with it. It shows under Scheduled on the days marked on the Treatment calendar, and waits under On treatment days the rest of the time. If a session moves, it moves too.' }));
+  const hospFields = h('div', null, h('p', { class: 'fieldlabel', text: 'How it is given' }), routeChips, treatBox);
 
   /* When it is taken (v254). Mark added Apixaban, one in the morning and one at night, and found no way to
      say so: Doses per day was a bare number under the course dates, and the times were a separate, optional
@@ -12639,6 +12673,7 @@ function openEditMed(m, prefill) {
   const sync = () => {
     schedFields.hidden = kind.value !== 'scheduled'; prnFields.hidden = kind.value !== 'prn';
     hospFields.hidden = !hospital.checked;
+    treatBox.hidden = kind.value !== 'scheduled';
     whenBlock.hidden = kind.value !== 'scheduled' || hospital.checked;
     mealBits.forEach((el) => { el.hidden = hospital.checked; });
   };
@@ -12673,6 +12708,7 @@ function openEditMed(m, prefill) {
         askCount: doseFormOf(formIn.value) ? askBox.checked : false,
         kind: kind.value, active: active.checked,
         hospital: hospital.checked, route: hospital.checked ? routeIn.value : null,
+        treatmentDays: hospital.checked && kind.value === 'scheduled' && treatDays.checked,
         order: m.order || (Math.max(0, ...state.medicines.map((x) => x.order || 0)) + 1)
       };
       /* a new dose on a medicine still being taken is noted, so its history says when it changed (v187) */

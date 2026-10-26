@@ -2128,3 +2128,13 @@ details.daymeal[open] .daymeal-sum::after { transform: rotate(90deg); }
 .sheet.is-typing .sheet-panel { top: calc(var(--safe-t) + 8px); bottom: auto !important; max-height: none; height: calc(100% - var(--safe-t) - 8px); border-radius: var(--r-lg); transition: none; }
 .sheet.is-typing .sheet-body::after { content: ''; display: block; height: 60vh; }
 .sheet.is-typing .sheet-body textarea { max-height: 26vh; overflow-y: auto; }
+
+/* Treatment-day medicines waiting for the next session (v317) */
+.treatday-fold { margin-top: var(--s-6); }
+.treatday-fold > summary { display: flex; align-items: center; gap: var(--s-2); min-height: 44px; cursor: pointer; list-style: none; margin: 0; }
+.treatday-fold > summary::-webkit-details-marker { display: none; }
+.treatday-fold > summary::after { content: ''; width: 10px; height: 10px; margin-left: auto; border-right: 2px solid var(--text-secondary); border-bottom: 2px solid var(--text-secondary); transform: rotate(45deg); transition: transform .2s; }
+.treatday-fold[open] > summary::after { transform: rotate(-135deg); }
+.treatday-fold > summary .pill { font-family: var(--font-body); font-size: 14px; }
+.med-line .med-treatpill { margin-right: var(--s-1); }
+.pill-treat { background: var(--warm-light); color: var(--warm-dark); }
