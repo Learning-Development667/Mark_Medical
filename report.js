@@ -299,6 +299,17 @@ function tailPageHtml(R, items, p, total) {
 
 /* R: { title, subtitle, patient, period, prepared, latest?, tiles[8], meds, hospital?, steady?,
    questions[{ team, text, by }], more, lines, otherBy, charts[], days[], weeks[], foot, bar? } */
+/* A chart's key, under it inside its card (v289; the Pain report too since v322). c.legend: [{ c: colour or
+   'amber'/'red' for the band shades, t: words, dot?, ring?, line?, tri? (a treatment-session triangle) }] */
+function chartLegend(c) {
+  const AMB = 'rgba(224,160,48,.45)', RD = 'rgba(200,69,59,.45)';
+  const sw = (it) => it.c === 'amber' ? AMB : it.c === 'red' ? RD : it.c;
+  if (!c.legend || !c.legend.length) return '';
+  return `<div class="blegend">${c.legend.map((it) => it.tri
+    ? `<span><i style="width:0;height:0;border-radius:0;background:none;border-left:1.2mm solid transparent;border-right:1.2mm solid transparent;border-bottom:1.8mm solid ${it.c || '#17263A'}"></i>${esc(it.t)}</span>`
+    : `<span><i style="background:${it.ring ? '#fff' : sw(it)}${it.ring ? ';width:1.8mm;height:1.8mm;border-radius:50%;box-sizing:border-box;border:.25mm solid ' + sw(it) : it.dot ? ';width:1.6mm;height:1.6mm;border-radius:50%' : it.line ? ';height:.7mm' : ''}"></i>${esc(it.t)}</span>`).join('')}</div>`;
+}
+
 export function reportHtml(R) {
   const strip = [];
   const medsHtml = `<div data-sec="Medicines"><b>When-needed medicines.</b> ${esc(R.meds)}${R.hospital ? `<br><b>${esc(R.hospital.label)}</b> ${esc(R.hospital.text)}` : ''}</div>`;
@@ -318,9 +329,7 @@ export function reportHtml(R) {
   const noneLine = R.questions.length ? '' : '<p class="none" data-sec="No questions">No new questions this time.</p>';
   /* Every chart carries its own key under it, inside its card (v287 for the bowels, v289 for all, Mark: "the key to the
      chart should sit underneath the chart and be inside the same rectangle"). c.legend: [{ c: colour, t: words, dot?, ring?, line? }] */
-  const AMB = 'rgba(224,160,48,.45)', RD = 'rgba(200,69,59,.45)';
-  const sw = (it) => it.c === 'amber' ? AMB : it.c === 'red' ? RD : it.c;
-  const legend = (c) => (c.legend && c.legend.length ? `<div class="blegend">${c.legend.map((it) => `<span><i style="background:${it.ring ? '#fff' : sw(it)}${it.ring ? ';width:1.8mm;height:1.8mm;border-radius:50%;box-sizing:border-box;border:.25mm solid ' + sw(it) : it.dot ? ';width:1.6mm;height:1.6mm;border-radius:50%' : it.line ? ';height:.7mm' : ''}"></i>${esc(it.t)}</span>`).join('')}</div>` : '');
+  const legend = chartLegend;
   const charts = R.charts.map((c) => `<div class="c" data-sec="${esc(c.title)}"><div class="h"><h3>${esc(c.title)}</h3><span class="stat ${esc(c.tone || '')}">${esc(c.stat)}</span></div>${renderChart(c, R.days)}${legend(c)}</div>`).join('');
   const key = '';
   const weeks = R.weeks.length ? R.weeks.map((w) => weekHtml(w, R.weeks.length === 1)).join('')
@@ -1235,8 +1244,8 @@ export function painReportHtml(P) {
       if (it.t === 'q') { const q = P.questions[it.q]; html += `<article class="q" data-i="${i}"><header><div>${q.team ? `<div class="team">${esc(q.team)}</div>` : ''}<h3>${esc(q.text)}</h3><div class="by">${esc(q.by)}</div></div></header><div class="lines" style="min-height:16.2mm">${lines(3)}</div></article>`; }
     });
     close();
-    const charts = (P.charts || []).map((c) => `<div class="c"><div class="h"><h3>${esc(c.title)}</h3><span class="stat ${esc(c.tone || '')}">${esc(c.stat)}</span></div>${renderChart(c, P.days)}</div>`).join('');
-    const key = `<div class="c key">${P.key || ''}</div>`;
+    const charts = (P.charts || []).map((c) => `<div class="c"><div class="h"><h3>${esc(c.title)}</h3><span class="stat ${esc(c.tone || '')}">${esc(c.stat)}</span></div>${renderChart(c, P.days)}${chartLegend(c)}</div>`).join('');
+    const key = P.key ? `<div class="c key">${P.key}</div>` : '';
     const first = p === 0
       ? `<div class="masthead"><div><div class="titlerow"><h1>Pain and pain relief</h1><span class="madeby">Created with <b>My Medical Daybook</b></span></div><div class="sub">Over the ${P.spanDays} days, ${esc(P.spanDates)}: pain scores from the morning and evening check-ins, key points from ${esc(P.patient)}'s own words, and the pain relief taken, for the pain nurse or team.</div></div><div class="who"><strong>${esc(P.patient)}</strong>Period: ${esc(P.period)}<br>Prepared: ${esc(P.prepared)}</div></div>`
         + `<div class="tiles pain">${P.tiles.map((t) => `<div class="tile ${esc(t.tone || '')}"><div class="k">${esc(t.k)}</div><div class="v">${esc(t.v)}${t.unit ? `<em>${esc(t.unit)}</em>` : ''}</div><div class="n">${esc(t.n)}</div></div>`).join('')}</div>`
