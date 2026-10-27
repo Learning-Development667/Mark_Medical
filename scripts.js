@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField, runTransaction
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '322';
+const APP_VERSION = '323';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -2748,7 +2748,7 @@ function drinkInfo(name) {
   const n = String(name || '').trim();
   if (!n) return null;
   const custom = customFoodByName(n);
-  if (custom && (custom.drink || custom.ml)) return { ml: custom.ml || (DRINK_ML.find(([re]) => re.test(n)) || [0, 250])[1], nutri: Boolean(custom.kcal || custom.prot) };
+  if (custom && (custom.drink || custom.ml)) return { ml: custom.ml || (DRINK_ML.find(([re]) => re.test(n)) || [0, 250])[1], nutri: custom.noFigures ? NUTRI_DRINK_RE.test(n) : Boolean(custom.kcal || custom.prot) };
   if (NOT_A_DRINK_RE.test(n) && !/hot chocolate/i.test(n)) return null;
   if (!NUTRI_DRINK_RE.test(n)) return null;
   return { ml: (DRINK_ML.find(([re]) => re.test(n)) || [0, 250])[1], nutri: true };
@@ -3587,6 +3587,111 @@ function foodScanControl(onFood) {
   return h('div', { class: 'scanwrap' }, btn, box);
 }
 
+/* A photo of the nutrition panel (v323, Mark: a scanned Yop had no figures in Open Food Facts, so only its ml counted).
+   Daybook Assistant reads the per 100 g (or 100 ml) column; the figures come back into boxes in the same sheet to check,
+   and Save keeps them in My foods under the product's name, with its barcode, so the next scan has them. Nothing is
+   saved without that tap. One Assistant use per product. opts: { name() -> the product's name, drink, onSaved() } */
+const LABEL_FIELDS = [['kcal', 'Energy (kcal)'], ['prot', 'Protein (g)'], ['carb', 'Carbs (g)'], ['sugar', 'Sugars (g)'], ['fat', 'Fat (g)'], ['sat', 'Saturates (g)'], ['fibre', 'Fibre (g)'], ['salt', 'Salt (g)']];
+function labelNum(v) {
+  if (v == null || v === '') return null;
+  const x = parseFloat(String(v).replace(',', '.').replace(/[^\d.]/g, ''));
+  return isFinite(x) && x >= 0 ? x : null;
+}
+function parseLabelReply(text) {
+  let t = String(text || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  const a = t.indexOf('{'), b = t.lastIndexOf('}');
+  if (a >= 0 && b > a) t = t.slice(a, b + 1);
+  let d = {};
+  try { d = JSON.parse(t); } catch (e) { d = {}; }
+  const out = { name: d.name ? String(d.name).trim().slice(0, 80) : '', basis: d.basis === '100ml' ? '100ml' : '100g' };
+  LABEL_FIELDS.forEach(([k]) => { out[k] = labelNum(d[k]); });
+  const kj = labelNum(d.kj);
+  if (out.kcal == null && kj != null) out.kcal = Math.round(kj / 4.184);
+  if (out.kcal != null && out.kcal > 950) out.kcal = null; // no food has more than about 900 kcal per 100 g: a misread
+  out.packG = labelNum(d.packG); out.packMl = labelNum(d.packMl); out.servingG = labelNum(d.servingG);
+  out.any = LABEL_FIELDS.some(([k]) => out[k] != null);
+  return out;
+}
+function labelPhotoControl(opts) {
+  const status = h('p', { class: 'hint', role: 'status', 'aria-live': 'polite' });
+  status.hidden = true;
+  const panel = h('div', { class: 'labelread', role: 'group', 'aria-label': 'Figures read from the label' });
+  panel.hidden = true;
+  const btn = h('button', { class: 'btn btn-secondary label-photo', type: 'button' }, icon('image'), ' Photo of the nutrition label');
+  let busy = false;
+  const showPanel = (d) => {
+    const boxes = {};
+    const box = (k, label, v) => {
+      const inp = h('input', { class: 'input', type: 'text', inputmode: 'decimal', autocomplete: 'off', value: v == null ? '' : String(v) });
+      boxes[k] = inp;
+      return field(label, inp);
+    };
+    const rows = [];
+    for (let i = 0; i < LABEL_FIELDS.length; i += 2) rows.push(h('div', { class: 'field-row' }, ...LABEL_FIELDS.slice(i, i + 2).map(([k, l]) => box(k, l, d[k]))));
+    const packV = opts.drink ? (d.packMl || '') : (d.servingG || d.packG || '');
+    const packBox = h('input', { class: 'input', type: 'text', inputmode: 'decimal', autocomplete: 'off', value: String(packV) });
+    const save = h('button', { class: 'btn btn-primary btn-block', type: 'button' }, 'Save to My foods');
+    const drop = h('button', { class: 'btn btn-plain btn-block', type: 'button' }, 'Not right, leave it');
+    panel.replaceChildren(
+      h('p', { class: 'macro-row-label', text: 'Per 100 ' + (d.basis === '100ml' ? 'ml' : 'g') + ', as read from the label' }),
+      h('p', { class: 'hint hint-warn', text: 'Check every number against the label before saving. Change any that are wrong.' }),
+      ...rows,
+      field(opts.drink ? 'Pack size (ml, optional)' : 'One pot, pack or serving (g, optional)', packBox),
+      save, drop);
+    panel.hidden = false;
+    status.hidden = true;
+    drop.addEventListener('click', () => { panel.hidden = true; panel.replaceChildren(); btn.hidden = false; btn.focus(); });
+    save.addEventListener('click', async () => {
+      const name = String(opts.name() || '').trim();
+      if (!name) { toast('Type the name of the food or drink first'); return; }
+      const per100 = {};
+      for (const [k, l] of LABEL_FIELDS) {
+        const raw = boxes[k].value.trim();
+        const v = labelNum(raw);
+        if (raw && v == null) return missing(boxes[k], 'Could not read ' + l.toLowerCase() + '. Type just the number.', CHECK);
+        per100[k] = v;
+      }
+      if (per100.kcal == null && per100.prot == null) return missing(boxes.kcal, 'Add at least the energy or the protein');
+      const before = customFoodByName(name) || {};
+      const size = labelNum(packBox.value);
+      const extra = { barcode: before.barcode, source: before.barcode ? (before.source || 'Open Food Facts') + ', figures from the label' : 'Label photo', drink: opts.drink || before.drink, ml: opts.drink ? (size || before.ml) : before.ml };
+      if (!opts.drink && size) extra.g = size;
+      save.disabled = true;
+      await saveCustomFood(name, per100, extra);
+      panel.hidden = true; panel.replaceChildren(); btn.hidden = true;
+      toast(name + ': figures saved to My foods. Next time it is counted straight away.');
+      if (opts.onSaved) opts.onSaved();
+    });
+    const first = boxes.kcal; if (first) first.focus({ preventScroll: true });
+    panel.scrollIntoView({ block: 'nearest' });
+  };
+  btn.addEventListener('click', () => {
+    if (busy) return;
+    const input = h('input', { type: 'file', accept: 'image/*', style: 'display:none' });
+    document.body.append(input);
+    input.addEventListener('change', async () => {
+      const files = Array.from(input.files || []);
+      input.remove();
+      if (!files.length) return;
+      busy = true; btn.disabled = true; status.hidden = false;
+      status.textContent = 'Reading the label, about half a minute';
+      try {
+        const read = await processFiles(files.slice(0, 1), (l) => { status.textContent = l; });
+        status.textContent = 'Reading the label, about half a minute';
+        const reply = await bridgeExplain({ kind: 'label', pages: read.pages.slice(0, 1).map((pg) => pg.data) });
+        if (!btn.isConnected) return;
+        const d = parseLabelReply(reply.text);
+        if (!d.any) { status.textContent = 'Could not read the figures in that photo. Try again closer, flat on, in good light, or enter them from the packet.'; return; }
+        btn.hidden = true;
+        showPanel(d);
+      } catch (e) { console.warn(e); status.textContent = e.message || 'Could not read the photo. Try again.'; }
+      finally { busy = false; btn.disabled = false; }
+    });
+    input.click();
+  });
+  return h('div', { class: 'labelwrap' }, btn, status, panel);
+}
+
 const SPEAK_HINT = 'Tap, say it, tap again to stop. The words appear in the box and can be changed like typed text.';
 const SPEAK_HINT_TIMES = 3;
 function speakHintsShown() { try { return Number(localStorage.getItem('daybook.speak.hints') || 0); } catch (e) { return SPEAK_HINT_TIMES; } }
@@ -3930,20 +4035,38 @@ function openAdd(type, editEntry, preset) {
       nutriLine.hidden = !(info && info.nutri);
       nutriLine.textContent = info && info.nutri ? what.value.trim() + ' has food in it, so it counts in the food totals as well as the drinks. One entry on the timeline.' : '';
     };
+    /* a drink with food in it and no figures known: a photo of the label adds them (v323) */
+    const labelBox = h('div');
+    let labelFor = null;
+    const syncLabel = () => {
+      const name = what.value.trim();
+      const info = !editEntry && drinkInfo(name);
+      const custom = customFoodByName(name);
+      const want = explainAvailable() && name && info && (info.nutri || (custom && custom.noFigures)) && !(custom && !custom.noFigures && (custom.kcal || custom.prot));
+      if (!want) { labelBox.replaceChildren(); labelFor = null; return; }
+      if (labelFor === name.toLowerCase()) return;
+      labelFor = name.toLowerCase();
+      labelBox.replaceChildren(h('p', { class: 'hint', text: 'No nutrition figures for this yet, so only the ml would count. A photo of the label adds them.' }),
+        labelPhotoControl({ name: () => what.value, drink: true, onSaved: () => { const c = customFoodByName(what.value); if (c && c.ml) ml.value = String(c.ml); labelFor = null; syncNutri(); syncLabel(); } }));
+    };
     what.addEventListener('input', syncNutri);
+    what.addEventListener('input', syncLabel);
     whatPresets.addEventListener('click', syncNutri);
+    whatPresets.addEventListener('click', syncLabel);
     syncNutri();
+    syncLabel();
     const drinkScan = !editEntry && scanAvailable() ? foodScanControl((r) => {
       what.value = r.name;
       const ml0 = packMl(r.quantity) || packMl(r.serving);
       if (ml0) ml.value = String(ml0);
-      if (r.hasFigures) saveCustomFood(r.name, r.per100, { barcode: r.code, source: r.source, drink: true, ml: ml0 });
+      /* saved with no figures too (v323), so the name is kept whole and the barcode is there for the label's figures */
+      saveCustomFood(r.name, r.hasFigures ? r.per100 : {}, { barcode: r.code, source: r.source, drink: true, ml: ml0, noFigures: !r.hasFigures });
       what.dispatchEvent(new Event('input')); ml.dispatchEvent(new Event('input'));
-      syncNutri();
-      toast('Found ' + r.name + (ml0 ? ', ' + ml0 + ' ml' : '') + (r.hasFigures ? '. Its nutrition counts in the food totals too.' : ''));
+      syncNutri(); syncLabel();
+      toast('Found ' + r.name + (ml0 ? ', ' + ml0 + ' ml' : '') + (r.hasFigures ? '. Its nutrition counts in the food totals too.' : '. No nutrition figures for it yet: take a photo of the label to add them.'));
     }) : null;
     body.append(
-      field('Drink', what), ...(drinkScan ? [drinkScan] : []), whatPresets, nutriLine,
+      field('Drink', what), ...(drinkScan ? [drinkScan] : []), whatPresets, nutriLine, labelBox,
       field('Amount of each (ml)', ml), mlPresets,
       h('p', { class: 'fieldlabel', text: 'How many' }), howMany.el,
       field('Time', time)
@@ -4102,6 +4225,8 @@ function openAdd(type, editEntry, preset) {
       }
       /* a scanned product the database had no figures for: said plainly, so the total is never read as complete (v302) */
       if (macroOn && c.food && c.food.noFigures && !portion.override) row.append(h('p', { class: 'hint hint-warn', text: 'Not counted in the estimate: the food database has no figures for this. Enter them from the packet below to count it.' }));
+      /* no figures, or not in the table: a photo of the label fills them in (v323) */
+      if (macroOn && explainAvailable() && ((c.food && c.food.noFigures) || !known)) row.append(labelPhotoControl({ name: () => product || c.phrase, drink: Boolean(drinkHint), onSaved: rebuild }));
       if (macroOn) row.append(h('button', { class: 'btn btn-link btn-small', type: 'button', onclick: () => {
         portion.override = { kcal: null, prot: null, carb: null, fat: null, per: 'portion', grams: portionGrams(c.food, portion.size, scale, portion.qty) };
         rebuild();

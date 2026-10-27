@@ -736,6 +736,11 @@ const EXPLAIN_SYSTEM = {
     'Reply with JSON only, no prose and no code fence, in exactly this shape: {"day": "YYYY-MM-DD" or null, "source": string or null, "results": [{"test": string, "value": string, "unit": string, "range": string or null}]}. ' +
     '"day" is the date the sample was taken (the collection or sample date, else the report date), "source" who issued them (a GP surgery, a hospital, a lab, a team), one item per test with "test" the name as printed, "value" the number as printed (keep a leading < or > when the lab printed one), "unit" as printed, "range" the reference range exactly as printed ("0 - 5", "<50", "120-150") or null when none is printed. ' +
     'Copy only what the document says: never add a range, a flag, a comment or advice of your own, and leave out anything you cannot read clearly. No em dashes.',
+  label: 'You read the nutrition panel on a food or drink packet from a photo, for a patient recording what they eat and drink in an app. ' +
+    'Reply with JSON only, no prose and no code fence, in exactly this shape: {"name": string or null, "basis": "100g" or "100ml", "kcal": number or null, "kj": number or null, "prot": number or null, "carb": number or null, "sugar": number or null, "fat": number or null, "sat": number or null, "fibre": number or null, "salt": number or null, "packG": number or null, "packMl": number or null, "servingG": number or null}. ' +
+    '"name" is the product name if it is printed in the photo, else null. Take every figure from the per 100 g or per 100 ml column, never the per serving or per portion column, and say which in "basis". "kcal" and "kj" are the energy as printed. "carb" is total carbohydrate, "sugar" the "of which sugars", "sat" the "of which saturates". ' +
+    '"packG" or "packMl" is the pack size when it is printed ("500 g", "180 ml"), "servingG" the weight of one serving in grams when printed. Use a full stop for decimals. A figure printed as "<0.5" or "trace" is 0. ' +
+    'Never guess a figure that is not printed or cannot be read clearly: use null. No em dashes.',
   medicine: 'You read a photo of a medicine for a patient recording it in an app: a hospital drip bag, a box, a bottle, a blister pack or a pharmacy dispensing label. ' +
     'Reply with JSON only, no prose and no code fence, in exactly this shape: {"name": string, "amount": string or null, "route": "drip" or "injection" or "mouth" or "skin" or "inhaled" or "other" or null, "how": string or null, "purpose": string or null, "whenNeeded": true or false, "perDay": number or null, "maxPerDay": number or null, "minGapHours": number or null}. ' +
     '"name" is the medicine as a patient would say it, with its strength when that is part of the name ("Sodium chloride 0.9%", "Paracetamol 500 mg"). "amount" is the amount in one dose or in the container ("1000 ml", "2 tablets"). "route" is how it is given: drip for an intravenous infusion bag. ' +
@@ -1515,7 +1520,7 @@ async function handleExplain(request, env) {
 
   let body;
   try { body = await request.json(); } catch (e) { return json({ error: 'bad-request', message: 'Could not read what was sent. Try again.' }, 400); }
-  const kind = ['notes', 'programme', 'medicine', 'weekly', 'report', 'mood', 'pain', 'flare', 'results'].includes(body.kind) ? body.kind : 'document';
+  const kind = ['notes', 'programme', 'medicine', 'weekly', 'report', 'mood', 'pain', 'flare', 'results', 'label'].includes(body.kind) ? body.kind : 'document';
   const text = String(body.text || '').slice(0, EXPLAIN_MAX_TEXT_CHARS);
   const pages = Array.isArray(body.pages) ? body.pages.slice(0, EXPLAIN_MAX_PAGES).filter((p) => typeof p === 'string' && p.length > 100 && p.length <= EXPLAIN_MAX_PAGE_CHARS) : [];
   if (!text.trim() && !pages.length) return json({ error: 'bad-request', message: 'Nothing to explain.' }, 400);
@@ -1547,6 +1552,7 @@ async function handleExplain(request, env) {
     ? 'Document: ' + String(body.title || 'Untitled').slice(0, 200) + (body.date ? ' (dated ' + String(body.date).slice(0, 40) + ').' : '.')
     : kind === 'programme' ? 'The exercise or physiotherapy plan follows, as page photos or as text.'
     : kind === 'medicine' ? 'A photo of a medicine follows.'
+    : kind === 'label' ? 'A photo of the nutrition panel on a food or drink packet follows.'
     : kind === 'flare' ? 'The flare plan or letter follows, as page photos or as text.'
     : kind === 'results' ? 'The test results follow, as page photos or as text: a results sheet, a clinic letter or a screenshot from an app.'
     : kind === 'weekly' ? 'Care notes from Daybook, grouped by week.'
