@@ -2145,3 +2145,9 @@ details.daymeal[open] .daymeal-sum::after { transform: rotate(90deg); }
 .more-use input { flex: 1; min-width: 0; }
 .more-use-remove { color: var(--danger); min-height: var(--tap); padding: 0 var(--s-2); }
 .add-use { color: var(--teal); font-weight: 600; min-height: var(--tap); padding: 0; margin-bottom: var(--s-1); }
+
+/* A photo of the nutrition label (v323) */
+.labelwrap { margin: var(--s-2) 0 var(--s-3); }
+.labelwrap .label-photo { width: 100%; }
+.labelread { margin-top: var(--s-3); padding: var(--s-4); border-radius: var(--r-md); background: var(--surface-sunken); box-shadow: var(--elev-sunken); }
+.labelread .btn-block + .btn-block { margin-top: var(--s-2); }
