@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField, runTransaction
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '323';
+const APP_VERSION = '324';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -4042,11 +4042,16 @@ function openAdd(type, editEntry, preset) {
       const name = what.value.trim();
       const info = !editEntry && drinkInfo(name);
       const custom = customFoodByName(name);
-      const want = explainAvailable() && name && info && (info.nutri || (custom && custom.noFigures)) && !(custom && !custom.noFigures && (custom.kcal || custom.prot));
+      /* v324: offered for any drink with food in it, figures or not, so wrong or partial figures can be put right too */
+      const want = explainAvailable() && name && info && (info.nutri || (custom && custom.noFigures));
       if (!want) { labelBox.replaceChildren(); labelFor = null; return; }
-      if (labelFor === name.toLowerCase()) return;
-      labelFor = name.toLowerCase();
-      labelBox.replaceChildren(h('p', { class: 'hint', text: 'No nutrition figures for this yet, so only the ml would count. A photo of the label adds them.' }),
+      const has = custom && !custom.noFigures && (custom.kcal || custom.prot);
+      const key = name.toLowerCase() + (has ? '|has' : '');
+      if (labelFor === key) return;
+      labelFor = key;
+      labelBox.replaceChildren(h('p', { class: 'hint', text: has
+          ? `Saved figures: about ${Math.round(custom.kcal)} kcal and ${custom.prot} g protein per 100. Wrong or missing? A photo of the label replaces them.`
+          : 'No nutrition figures for this yet, so only the ml would count. A photo of the label adds them.' }),
         labelPhotoControl({ name: () => what.value, drink: true, onSaved: () => { const c = customFoodByName(what.value); if (c && c.ml) ml.value = String(c.ml); labelFor = null; syncNutri(); syncLabel(); } }));
     };
     what.addEventListener('input', syncNutri);
@@ -4226,7 +4231,7 @@ function openAdd(type, editEntry, preset) {
       /* a scanned product the database had no figures for: said plainly, so the total is never read as complete (v302) */
       if (macroOn && c.food && c.food.noFigures && !portion.override) row.append(h('p', { class: 'hint hint-warn', text: 'Not counted in the estimate: the food database has no figures for this. Enter them from the packet below to count it.' }));
       /* no figures, or not in the table: a photo of the label fills them in (v323) */
-      if (macroOn && explainAvailable() && ((c.food && c.food.noFigures) || !known)) row.append(labelPhotoControl({ name: () => product || c.phrase, drink: Boolean(drinkHint), onSaved: rebuild }));
+      if (macroOn && explainAvailable() && ((c.food && c.food.noFigures) || !known || product)) row.append(labelPhotoControl({ name: () => product || c.phrase, drink: Boolean(drinkHint), onSaved: rebuild }));
       if (macroOn) row.append(h('button', { class: 'btn btn-link btn-small', type: 'button', onclick: () => {
         portion.override = { kcal: null, prot: null, carb: null, fat: null, per: 'portion', grams: portionGrams(c.food, portion.size, scale, portion.qty) };
         rebuild();
