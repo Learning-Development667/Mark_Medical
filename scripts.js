@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField, runTransaction
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '324';
+const APP_VERSION = '325';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -3539,8 +3539,23 @@ async function lookupBarcode(code) {
   const d = String(code || '').replace(/\D/g, '');
   return bridgeCall('/food', { barcode: d.length === 12 ? '0' + d : d }, 'Could not look that up just now. Try again, or type the food in.');
 }
-/* The button and the little camera panel under the search box. onFood(result) gets a found product. */
-function foodScanControl(onFood) {
+/* A product saved to My foods with its barcode (a scan, or a label photo for a barcode the database did not know,
+   v325) is found by that barcode first, so its own figures win and an unknown barcode is known from then on. */
+function barcodeKey(code) { const d = String(code || '').replace(/\D/g, ''); return d.length === 12 ? '0' + d : d; }
+function customFoodByBarcode(code) {
+  const k = barcodeKey(code);
+  if (!k) return null;
+  return ((state.profile && state.profile.customFoods) || []).find((f) => f.barcode && barcodeKey(f.barcode) === k) || null;
+}
+function foundFromCustom(f, code) {
+  const per100 = {};
+  ['kcal', 'prot', 'carb', 'fat', 'sat', 'sugar', 'fibre', 'salt'].forEach((k) => { if (f[k] != null) per100[k] = f[k]; });
+  return { found: true, mine: true, code: barcodeKey(f.barcode || code), name: f.name, per100, hasFigures: true, drink: Boolean(f.drink),
+    quantity: f.ml ? f.ml + ' ml' : (f.packG && f.packUnit !== 'serving' ? f.packG + ' g' : ''), serving: f.packUnit === 'serving' ? f.packG + ' g' : '', source: f.source || 'My foods' };
+}
+/* The button and the little camera panel under the search box. onFood(result) gets a found product.
+   opts.drink: the Drink sheet, so a label photo for an unknown barcode asks for the pack in ml. */
+function foodScanControl(onFood, opts = {}) {
   const status = h('p', { class: 'hint scan-status', role: 'status', 'aria-live': 'polite' });
   const video = h('video', { class: 'scan-video', playsinline: '', muted: '', autoplay: '', 'aria-label': 'Camera view for scanning a barcode' });
   video.muted = true;
@@ -3551,23 +3566,52 @@ function foodScanControl(onFood) {
     h('div', { class: 'scan-view' }, video, h('div', { class: 'scan-frame', 'aria-hidden': 'true' })),
     status,
     h('label', { class: 'field', for: 'scan-number' }, h('span', { class: 'field-label', text: 'Or type the number under the barcode' }), numberIn),
+    h('div', { class: 'scan-unknown' }), // filled when a barcode is not in the database (v325)
     h('div', { class: 'btnrow' }, goBtn, closeBtn));
+  const unknown = box.querySelector('.scan-unknown');
+  unknown.hidden = true;
   const btn = h('button', { class: 'btn btn-secondary scan-btn', type: 'button', id: 'food-scan', 'aria-expanded': 'false' }, icon('barcode'), ' Scan a barcode');
   let stop = null, busy = false;
-  const close = () => { if (stop) { stop(); stop = null; } box.hidden = true; btn.setAttribute('aria-expanded', 'false'); busy = false; };
+  const close = () => { if (stop) { stop(); stop = null; } box.hidden = true; btn.setAttribute('aria-expanded', 'false'); busy = false; unknown.hidden = true; unknown.replaceChildren(); };
   const say = (t) => { status.textContent = t; };
   const handle = async (code) => {
     if (busy) return;
     if (!barcodeValid(code)) { say('That number does not look right. Check it against the barcode and try again.'); return; }
+    unknown.hidden = true; unknown.replaceChildren();
+    const mine = customFoodByBarcode(code);
+    if (mine && !mine.noFigures) { close(); onFood(foundFromCustom(mine, code)); return; }
     busy = true; say('Found ' + code + '. Looking it up…');
     try {
       const r = await lookupBarcode(code);
       busy = false;
       if (!box.isConnected) return;
       if (r.found) { close(); onFood(r); return; }
+      if (explainAvailable()) { offerLabel(barcodeKey(code)); return; }
       say('That barcode is not in the food database yet. Type its name in the box above, then "Enter from the packet" to add the label figures.');
       if (!stop) startAgainSoon();
     } catch (e) { busy = false; say(e.message || 'Could not look that up just now.'); }
+  };
+  /* Not in the database (v325, Mark: the label photo should be offered on food when a barcode is not recognised):
+     a name and the label photo, saved to My foods with this barcode, so the next scan finds it straight away */
+  const offerLabel = (code) => {
+    if (stop) { stop(); stop = null; }
+    clearTimeout(againTimer);
+    say('That barcode is not in the food database yet. Add it from a photo of its nutrition label: it is saved with this barcode, so the next scan finds it.');
+    const nameIn = h('input', { type: 'text', class: 'input', id: 'scan-new-name', autocomplete: 'off', maxlength: '80', placeholder: '' });
+    const again = h('button', { class: 'btn btn-plain btn-block', type: 'button', text: 'Scan a different barcode' });
+    const photo = labelPhotoControl({
+      name: () => nameIn.value, nameEl: nameIn, drink: Boolean(opts.drink), barcode: code,
+      onRead: (d) => { if (!nameIn.value.trim() && d.name) nameIn.value = d.name; },
+      onSaved: (name) => { const f = customFoodByBarcode(code) || customFoodByName(name); close(); if (f) onFood(foundFromCustom(f, code)); }
+    });
+    again.addEventListener('click', () => { unknown.hidden = true; unknown.replaceChildren(); say('Point the camera at a barcode.'); startCamera(); });
+    unknown.replaceChildren(
+      field('What is it called? (as on the packet)', nameIn),
+      photo,
+      h('p', { class: 'hint', text: 'Or type its name in the box above, then "Enter from the packet".' }),
+      again);
+    unknown.hidden = false;
+    unknown.scrollIntoView({ block: 'nearest' });
   };
   const startCamera = () => {
     stop = startBarcodeCamera(video, (code) => { stop = null; handle(code); }, (msg) => { say(msg); numberIn.focus(); });
@@ -3643,7 +3687,7 @@ function labelPhotoControl(opts) {
     drop.addEventListener('click', () => { panel.hidden = true; panel.replaceChildren(); btn.hidden = false; btn.focus(); });
     save.addEventListener('click', async () => {
       const name = String(opts.name() || '').trim();
-      if (!name) { toast('Type the name of the food or drink first'); return; }
+      if (!name) { if (opts.nameEl) return missing(opts.nameEl, 'Give it a name first'); toast('Type the name of the food or drink first'); return; }
       const per100 = {};
       for (const [k, l] of LABEL_FIELDS) {
         const raw = boxes[k].value.trim();
@@ -3654,13 +3698,14 @@ function labelPhotoControl(opts) {
       if (per100.kcal == null && per100.prot == null) return missing(boxes.kcal, 'Add at least the energy or the protein');
       const before = customFoodByName(name) || {};
       const size = labelNum(packBox.value);
-      const extra = { barcode: before.barcode, source: before.barcode ? (before.source || 'Open Food Facts') + ', figures from the label' : 'Label photo', drink: opts.drink || before.drink, ml: opts.drink ? (size || before.ml) : before.ml };
+      const code = opts.barcode || before.barcode;
+      const extra = { barcode: code, source: before.barcode ? (before.source || 'Open Food Facts') + ', figures from the label' : 'Label photo', drink: opts.drink || before.drink, ml: opts.drink ? (size || before.ml) : before.ml };
       if (!opts.drink && size) extra.g = size;
       save.disabled = true;
       await saveCustomFood(name, per100, extra);
       panel.hidden = true; panel.replaceChildren(); btn.hidden = true;
       toast(name + ': figures saved to My foods. Next time it is counted straight away.');
-      if (opts.onSaved) opts.onSaved();
+      if (opts.onSaved) opts.onSaved(name);
     });
     const first = boxes.kcal; if (first) first.focus({ preventScroll: true });
     panel.scrollIntoView({ block: 'nearest' });
@@ -3683,6 +3728,7 @@ function labelPhotoControl(opts) {
         const d = parseLabelReply(reply.text);
         if (!d.any) { status.textContent = 'Could not read the figures in that photo. Try again closer, flat on, in good light, or enter them from the packet.'; return; }
         btn.hidden = true;
+        if (opts.onRead) opts.onRead(d);
         showPanel(d);
       } catch (e) { console.warn(e); status.textContent = e.message || 'Could not read the photo. Try again.'; }
       finally { busy = false; btn.disabled = false; }
@@ -4069,7 +4115,7 @@ function openAdd(type, editEntry, preset) {
       what.dispatchEvent(new Event('input')); ml.dispatchEvent(new Event('input'));
       syncNutri(); syncLabel();
       toast('Found ' + r.name + (ml0 ? ', ' + ml0 + ' ml' : '') + (r.hasFigures ? '. Its nutrition counts in the food totals too.' : '. No nutrition figures for it yet: take a photo of the label to add them.'));
-    }) : null;
+    }, { drink: true }) : null;
     body.append(
       field('Drink', what), ...(drinkScan ? [drinkScan] : []), whatPresets, nutriLine, labelBox,
       field('Amount of each (ml)', ml), mlPresets,
@@ -4400,7 +4446,7 @@ function openAdd(type, editEntry, preset) {
       saveCustomFood(r.name, r.hasFigures ? r.per100 : {}, { barcode: r.code, source: r.source, drink: r.drink, ml: packMl(r.quantity) || packMl(r.serving), ...labelSize(r), noFigures: !r.hasFigures });
       drinkHint = r.drink ? { ml: packMl(r.quantity) || packMl(r.serving) || (DRINK_ML.find(([re]) => re.test(r.name)) || [0, 250])[1] } : null;
       choose(r.name, null);
-      toast(r.hasFigures ? 'Found ' + label + ' (Open Food Facts)' : 'Found ' + r.name + ', but the database has no nutrition figures for it. Enter them from the packet to count it.');
+      toast(r.hasFigures ? 'Found ' + label + (r.mine ? ' (My foods)' : ' (Open Food Facts)') : 'Found ' + r.name + ', but the database has no nutrition figures for it. Enter them from the packet to count it.');
     }) : null;
     pick.append(field('Food', what), ...(scanControl ? [scanControl] : []), list); // no camera: nothing between (v201; `null` drew the word)
 
