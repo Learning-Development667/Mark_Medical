@@ -1773,6 +1773,12 @@ body.is-readonly #more-setup, body.is-readonly .settings-setup-hint { display: n
 
 /* ---------- Barcode scanner on the Food sheet (v172) ---------- */
 .scanwrap { margin: 0 0 var(--s-3); }
+.scan-btns { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-2); }
+.scan-btns.is-one { grid-template-columns: 1fr; }
+.scan-btns [hidden] { display: none; }
+@media (min-width: 360px) { .scan-btns:not(.is-one) .scan-btn { flex-direction: column; gap: 4px; padding: var(--s-2); line-height: 1.2; } }
+@media (max-width: 359px) { .scan-btns { grid-template-columns: 1fr; } }
+.scan-label { margin-top: var(--s-3); }
 .scan-btn { width: 100%; min-height: 52px; display: flex; align-items: center; justify-content: center; gap: 10px; }
 .scan-btn .icon { width: 22px; height: 22px; }
 .scanbox { margin-top: var(--s-3); padding: var(--s-3); border-radius: var(--r-md); background: var(--surface-sunken); box-shadow: var(--elev-sunken); }
