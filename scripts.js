@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField, runTransaction
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '326';
+const APP_VERSION = '327';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -3571,7 +3571,13 @@ function foodScanControl(onFood, opts = {}) {
   const unknown = box.querySelector('.scan-unknown');
   unknown.hidden = true;
   const btn = h('button', { class: 'btn btn-secondary scan-btn', type: 'button', id: 'food-scan', 'aria-expanded': 'false' }, icon('barcode'), ' Scan a barcode');
+  btn.hidden = !scanAvailable(); // no camera: the label photo alone (v327)
+  /* No barcode at all (v327, Mark: a little carton of orange juice with a nutrition panel and no barcode):
+     the label photo beside Scan a barcode, saved to My foods by its name */
+  const labelBtn = h('button', { class: 'btn btn-secondary scan-btn', type: 'button', id: 'food-label-photo', 'aria-expanded': 'false' }, icon('image'), ' Photo of the label');
+  const labelBox = h('div', { class: 'scanbox scan-label', hidden: true, role: 'group', 'aria-label': 'Add from a photo of the nutrition label' });
   let stop = null, busy = false;
+  const closeLabel = () => { labelBox.hidden = true; labelBox.replaceChildren(); labelBtn.setAttribute('aria-expanded', 'false'); };
   const close = () => { if (stop) { stop(); stop = null; } box.hidden = true; btn.setAttribute('aria-expanded', 'false'); busy = false; unknown.hidden = true; unknown.replaceChildren(); };
   const say = (t) => { status.textContent = t; };
   const handle = async (code) => {
@@ -3618,8 +3624,29 @@ function foodScanControl(onFood, opts = {}) {
   };
   let againTimer = null;
   const startAgainSoon = () => { clearTimeout(againTimer); againTimer = setTimeout(() => { if (!box.hidden && !stop && !busy) { say('Point the camera at a barcode.'); startCamera(); } }, 3500); };
+  labelBtn.addEventListener('click', () => {
+    if (!labelBox.hidden) { closeLabel(); return; }
+    clearTimeout(againTimer); close();
+    const nameIn = h('input', { type: 'text', class: 'input', id: 'label-new-name', autocomplete: 'off', maxlength: '80', placeholder: '' });
+    const photo = labelPhotoControl({
+      name: () => nameIn.value, nameEl: nameIn, drink: Boolean(opts.drink),
+      onRead: (d) => { if (!nameIn.value.trim() && d.name) nameIn.value = d.name; },
+      onSaved: (name) => { const f = customFoodByName(name); closeLabel(); if (f) onFood(foundFromCustom(f, '')); }
+    });
+    const shut = h('button', { class: 'btn btn-plain btn-block', type: 'button', text: 'Close' });
+    shut.addEventListener('click', () => { closeLabel(); labelBtn.focus(); });
+    labelBox.replaceChildren(
+      h('p', { class: 'hint', text: 'Take a photo of the nutrition panel. Daybook Assistant reads the figures for you to check, and it is saved to My foods, so next time it is counted straight away.' }),
+      field('What is it called?', nameIn),
+      photo, shut);
+    labelBox.hidden = false; labelBtn.setAttribute('aria-expanded', 'true');
+    const take = photo.querySelector('.label-photo');
+    if (take) take.click(); // the same tap opens the camera or Photos
+    labelBox.scrollIntoView({ block: 'nearest' });
+  });
   btn.addEventListener('click', () => {
     if (!box.hidden) { close(); return; }
+    closeLabel();
     box.hidden = false; btn.setAttribute('aria-expanded', 'true');
     say('Point the camera at the barcode. Hold it steady, about 15 cm away, with good light.');
     startCamera();
@@ -3628,7 +3655,7 @@ function foodScanControl(onFood, opts = {}) {
   closeBtn.addEventListener('click', () => { clearTimeout(againTimer); close(); });
   goBtn.addEventListener('click', () => handle(numberIn.value));
   numberIn.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); handle(numberIn.value); } });
-  return h('div', { class: 'scanwrap' }, btn, box);
+  return h('div', { class: 'scanwrap' }, h('div', { class: 'scan-btns' + (btn.hidden ? ' is-one' : '') }, btn, labelBtn), box, labelBox);
 }
 
 /* A photo of the nutrition panel (v323, Mark: a scanned Yop had no figures in Open Food Facts, so only its ml counted).
@@ -4106,12 +4133,13 @@ function openAdd(type, editEntry, preset) {
     whatPresets.addEventListener('click', syncLabel);
     syncNutri();
     syncLabel();
-    const drinkScan = !editEntry && scanAvailable() ? foodScanControl((r) => {
+    const drinkScan = !editEntry && explainAvailable() ? foodScanControl((r) => {
       what.value = r.name;
       const ml0 = packMl(r.quantity) || packMl(r.serving);
       if (ml0) ml.value = String(ml0);
-      /* saved with no figures too (v323), so the name is kept whole and the barcode is there for the label's figures */
-      saveCustomFood(r.name, r.hasFigures ? r.per100 : {}, { barcode: r.code, source: r.source, drink: true, ml: ml0, noFigures: !r.hasFigures });
+      /* saved with no figures too (v323), so the name is kept whole and the barcode is there for the label's figures;
+         one already in My foods (a label photo, v327) is not saved again */
+      if (!r.mine) saveCustomFood(r.name, r.hasFigures ? r.per100 : {}, { barcode: r.code, source: r.source, drink: true, ml: ml0, noFigures: !r.hasFigures });
       what.dispatchEvent(new Event('input')); ml.dispatchEvent(new Event('input'));
       syncNutri(); syncLabel();
       toast('Found ' + r.name + (ml0 ? ', ' + ml0 + ' ml' : '') + (r.hasFigures ? '. Its nutrition counts in the food totals too.' : '. No nutrition figures for it yet: take a photo of the label to add them.'));
@@ -4441,9 +4469,9 @@ function openAdd(type, editEntry, preset) {
     what.addEventListener('input', renderPick);
     what.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' && what.value.trim()) { ev.preventDefault(); choose(what.value.trim(), findMeal(what.value) || findMeal(cleanName(what.value))); } });
     loadFoodTable().then(() => { if (!pick.hidden) renderPick(); syncFood(); });
-    const scanControl = scanAvailable() ? foodScanControl((r) => {
+    const scanControl = explainAvailable() ? foodScanControl((r) => {
       const label = r.name + (r.hasFigures ? ': ' + (r.per100.kcal != null ? Math.round(r.per100.kcal) + ' kcal' : '') + (r.per100.prot != null ? ', ' + r.per100.prot + ' g protein' : '') + ' per 100 g' : '');
-      saveCustomFood(r.name, r.hasFigures ? r.per100 : {}, { barcode: r.code, source: r.source, drink: r.drink, ml: packMl(r.quantity) || packMl(r.serving), ...labelSize(r), noFigures: !r.hasFigures });
+      if (!r.mine) saveCustomFood(r.name, r.hasFigures ? r.per100 : {}, { barcode: r.code, source: r.source, drink: r.drink, ml: packMl(r.quantity) || packMl(r.serving), ...labelSize(r), noFigures: !r.hasFigures });
       drinkHint = r.drink ? { ml: packMl(r.quantity) || packMl(r.serving) || (DRINK_ML.find(([re]) => re.test(r.name)) || [0, 250])[1] } : null;
       choose(r.name, null);
       toast(r.hasFigures ? 'Found ' + label + (r.mine ? ' (My foods)' : ' (Open Food Facts)') : 'Found ' + r.name + ', but the database has no nutrition figures for it. Enter them from the packet to count it.');
