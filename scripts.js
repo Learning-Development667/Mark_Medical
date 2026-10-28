@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField, runTransaction
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '325';
+const APP_VERSION = '326';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -16133,6 +16133,9 @@ function openContactsSheet(addNew) {
       h('div', { class: 'contactrow-head' }, h('span', { class: 'contactrow-n' }),
         h('button', { class: 'btn-inline btn-remove', type: 'button', onclick: () => { row.remove(); number_(); } }, 'Remove')),
       field('Name', label), field('Role (optional)', role), field('Phone', number), field('Extension or option (optional)', ext), field('Email', email));
+    /* a Save button on the new block itself (v326, Mark: scrolling to the foot of a long list was annoying, and a new
+       contact was easily lost by closing without it); it saves the whole list, like the one at the foot */
+    if (atTop) row.append(h('button', { class: 'btn btn-primary btn-block contact-save', type: 'button', onclick: () => save() }, 'Save contact'));
     if (atTop) rows.prepend(row); else rows.append(row);
     number_();
     if (atTop) { if (row.scrollIntoView) row.scrollIntoView({ block: 'start', behavior: 'smooth' }); label.focus(); }
@@ -16143,11 +16146,9 @@ function openContactsSheet(addNew) {
   const saved = (state.profile && state.profile.calls) || [];
   saved.forEach((c) => addRow(c));
   if (!saved.length) addRow(null, addNew);
-  const body = h('div', null,
-    h('p', { class: 'hint', text: 'A phone number, an email address, or both.' }),
-    h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => addRow(null, true) }, 'Add a new contact'),
-    rows,
-    h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
+  /* what is typed, empty blocks left out, so closing with nothing changed never asks */
+  const snapshot = () => JSON.stringify([...rows.querySelectorAll('.contactrow')].map((r) => [...r.querySelectorAll('input')].map((i) => i.value.trim())).filter((v) => v.some(Boolean)));
+  const save = async () => {
       const calls = [];
       for (const r of rows.querySelectorAll('.contactrow')) {
         const [l, ro, n, x, em] = [...r.querySelectorAll('input')];
@@ -16159,15 +16160,36 @@ function openContactsSheet(addNew) {
         if (c.email && !EMAIL_RE.test(c.email)) { missing(em, 'Check the email address for ' + c.label, CHECK); return; }
         calls.push(c);
       }
-      closeSheet();
+      closeSheet({ force: true });
       if (state.demo) { state.profile = { ...state.profile, calls }; renderCalls(); toast('Contacts saved'); return; }
       try { await setDoc(hdoc('profile', 'main'), { calls }, { merge: true }); toast('Contacts saved'); }
       catch (e) { console.error(e); toast('Could not save'); }
-    } }, 'Save'),
-    h('button', { class: 'btn btn-link btn-block', type: 'button', onclick: closeSheet }, 'Cancel')
+  };
+  const unsaved = h('div', { class: 'nudge contacts-unsaved', role: 'alert' });
+  unsaved.hidden = true;
+  const body = h('div', null,
+    unsaved,
+    h('p', { class: 'hint', text: 'A phone number, an email address, or both.' }),
+    h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => addRow(null, true) }, 'Add a new contact'),
+    rows,
+    h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => save() }, 'Save'),
+    h('button', { class: 'btn btn-link btn-block', type: 'button', onclick: () => closeSheet({ force: true }) }, 'Cancel')
   );
   openSheet(addNew ? 'Add a new contact' : 'Who to contact', body);
   if (addNew) { if (saved.length) addRow(null, true); else rows.querySelector('input').focus(); }
+  /* the X, the backdrop or Escape with something typed and not saved asks first (v326), as the Food sheet does */
+  const before = snapshot();
+  state.sheetGuard = () => {
+    if (snapshot() === before) return true;
+    unsaved.replaceChildren(
+      h('p', { text: 'Your contact changes are not saved yet.' }),
+      h('div', { class: 'btnrow' },
+        h('button', { class: 'btn btn-primary', type: 'button', onclick: () => { unsaved.hidden = true; save(); } }, 'Save them'),
+        h('button', { class: 'btn btn-secondary', type: 'button', onclick: () => closeSheet({ force: true }) }, "Don't save")));
+    unsaved.hidden = false;
+    unsaved.scrollIntoView({ block: 'nearest' });
+    return false;
+  };
 }
 
 /* ------------------------------------------------------------------ */
