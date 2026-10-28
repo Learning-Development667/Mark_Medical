@@ -13,7 +13,7 @@ import {
   query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField, runTransaction
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '327';
+const APP_VERSION = '328';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -3608,7 +3608,7 @@ function foodScanControl(onFood, opts = {}) {
     const photo = labelPhotoControl({
       name: () => nameIn.value, nameEl: nameIn, drink: Boolean(opts.drink), barcode: code,
       onRead: (d) => { if (!nameIn.value.trim() && d.name) nameIn.value = d.name; },
-      onSaved: (name) => { const f = customFoodByBarcode(code) || customFoodByName(name); close(); if (f) onFood(foundFromCustom(f, code)); }
+      onSaved: (name) => { const f = customFoodByBarcode(code) || customFoodByName(name); close(); if (f) onFood({ ...foundFromCustom(f, code), fresh: true }); }
     });
     again.addEventListener('click', () => { unknown.hidden = true; unknown.replaceChildren(); say('Point the camera at a barcode.'); startCamera(); });
     unknown.replaceChildren(
@@ -3631,7 +3631,7 @@ function foodScanControl(onFood, opts = {}) {
     const photo = labelPhotoControl({
       name: () => nameIn.value, nameEl: nameIn, drink: Boolean(opts.drink),
       onRead: (d) => { if (!nameIn.value.trim() && d.name) nameIn.value = d.name; },
-      onSaved: (name) => { const f = customFoodByName(name); closeLabel(); if (f) onFood(foundFromCustom(f, '')); }
+      onSaved: (name) => { const f = customFoodByName(name); closeLabel(); if (f) onFood({ ...foundFromCustom(f, ''), fresh: true }); }
     });
     const shut = h('button', { class: 'btn btn-plain btn-block', type: 'button', text: 'Close' });
     shut.addEventListener('click', () => { closeLabel(); labelBtn.focus(); });
@@ -3701,13 +3701,16 @@ function labelPhotoControl(opts) {
     for (let i = 0; i < LABEL_FIELDS.length; i += 2) rows.push(h('div', { class: 'field-row' }, ...LABEL_FIELDS.slice(i, i + 2).map(([k, l]) => box(k, l, d[k]))));
     const packV = opts.drink ? (d.packMl || '') : (d.servingG || d.packG || '');
     const packBox = h('input', { class: 'input', type: 'text', inputmode: 'decimal', autocomplete: 'off', value: String(packV) });
-    const save = h('button', { class: 'btn btn-primary btn-block', type: 'button' }, 'Save to My foods');
+    /* v328, Mark: "one was save to my foods and the other was save to my log": this button only keeps the figures,
+       so it is worded and coloured apart from the sheet's own Save, which logs what was had */
+    const save = h('button', { class: 'btn btn-secondary btn-block label-keep', type: 'button' }, 'Keep these figures in My foods');
     const drop = h('button', { class: 'btn btn-plain btn-block', type: 'button' }, 'Not right, leave it');
     panel.replaceChildren(
       h('p', { class: 'macro-row-label', text: 'Per 100 ' + (d.basis === '100ml' ? 'ml' : 'g') + ', as read from the label' }),
       h('p', { class: 'hint hint-warn', text: 'Check every number against the label before saving. Change any that are wrong.' }),
       ...rows,
       field(opts.drink ? 'Pack size (ml, optional)' : 'One pot, pack or serving (g, optional)', packBox),
+      h('p', { class: 'hint', text: 'This keeps the figures for next time. It does not log what you had: do that with Save at the bottom.' }),
       save, drop);
     panel.hidden = false;
     status.hidden = true;
@@ -3731,7 +3734,7 @@ function labelPhotoControl(opts) {
       save.disabled = true;
       await saveCustomFood(name, per100, extra);
       panel.hidden = true; panel.replaceChildren(); btn.hidden = true;
-      toast(name + ': figures saved to My foods. Next time it is counted straight away.');
+      toast(name + ': figures kept in My foods. Now tap Save at the bottom to log it.');
       if (opts.onSaved) opts.onSaved(name);
     });
     const first = boxes.kcal; if (first) first.focus({ preventScroll: true });
@@ -4111,8 +4114,16 @@ function openAdd(type, editEntry, preset) {
     /* a drink with food in it and no figures known: a photo of the label adds them (v323) */
     const labelBox = h('div');
     let labelFor = null;
+    let labelSaved = '';
     const syncLabel = () => {
       const name = what.value.trim();
+      if (labelSaved && labelSaved === name.toLowerCase()) {
+        if (labelFor === 'saved') return;
+        labelFor = 'saved';
+        labelBox.replaceChildren(h('p', { class: 'hint label-next', role: 'status', text: 'Figures kept in My foods. Not logged yet: check how much you drank, then tap Save at the bottom.' }));
+        return;
+      }
+      labelSaved = '';
       const info = !editEntry && drinkInfo(name);
       const custom = customFoodByName(name);
       /* v324: offered for any drink with food in it, figures or not, so wrong or partial figures can be put right too */
@@ -4125,7 +4136,7 @@ function openAdd(type, editEntry, preset) {
       labelBox.replaceChildren(h('p', { class: 'hint', text: has
           ? `Saved figures: about ${Math.round(custom.kcal)} kcal and ${custom.prot} g protein per 100. Wrong or missing? A photo of the label replaces them.`
           : 'No nutrition figures for this yet, so only the ml would count. A photo of the label adds them.' }),
-        labelPhotoControl({ name: () => what.value, drink: true, onSaved: () => { const c = customFoodByName(what.value); if (c && c.ml) ml.value = String(c.ml); labelFor = null; syncNutri(); syncLabel(); } }));
+        labelPhotoControl({ name: () => what.value, drink: true, onSaved: () => { const c = customFoodByName(what.value); if (c && c.ml) ml.value = String(c.ml); labelSaved = what.value.trim().toLowerCase(); labelFor = null; syncNutri(); syncLabel(); ml.scrollIntoView({ block: 'center' }); } }));
     };
     what.addEventListener('input', syncNutri);
     what.addEventListener('input', syncLabel);
@@ -4140,9 +4151,11 @@ function openAdd(type, editEntry, preset) {
       /* saved with no figures too (v323), so the name is kept whole and the barcode is there for the label's figures;
          one already in My foods (a label photo, v327) is not saved again */
       if (!r.mine) saveCustomFood(r.name, r.hasFigures ? r.per100 : {}, { barcode: r.code, source: r.source, drink: true, ml: ml0, noFigures: !r.hasFigures });
+      if (r.fresh) labelSaved = r.name.trim().toLowerCase(); // just read from a label photo (v328)
       what.dispatchEvent(new Event('input')); ml.dispatchEvent(new Event('input'));
       syncNutri(); syncLabel();
-      toast('Found ' + r.name + (ml0 ? ', ' + ml0 + ' ml' : '') + (r.hasFigures ? '. Its nutrition counts in the food totals too.' : '. No nutrition figures for it yet: take a photo of the label to add them.'));
+      if (r.fresh) toast(r.name + (ml0 ? ', ' + ml0 + ' ml' : '') + ': figures kept. Tap Save at the bottom to log the drink.');
+      else toast('Found ' + r.name + (ml0 ? ', ' + ml0 + ' ml' : '') + (r.hasFigures ? '. Its nutrition counts in the food totals too.' : '. No nutrition figures for it yet: take a photo of the label to add them.'));
     }, { drink: true }) : null;
     body.append(
       field('Drink', what), ...(drinkScan ? [drinkScan] : []), whatPresets, nutriLine, labelBox,
