@@ -916,6 +916,7 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 .contactrow .field { margin-bottom: var(--s-2); }
 .contactrow.is-new { box-shadow: var(--elev-sunken), 0 0 0 2px var(--teal); }
 .contactrow.is-new .contactrow-n { color: var(--teal); }
+.contactrow .contact-save { margin-top: var(--s-2); }
 .contactrow-head { display: flex; justify-content: space-between; align-items: center; }
 .contactrow-head .btn-remove { min-height: 44px; padding: 0 var(--s-2); }
 .contactrow-n { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--fs-sm); letter-spacing: .06em; text-transform: uppercase; color: var(--text-secondary); }
