@@ -1,0 +1,9 @@
+{
+  "appId": "uk.co.mark1apps.daybook",
+  "appName": "Daybook",
+  "webDir": "www",
+  "ios": {
+    "contentInset": "never",
+    "limitsNavigationsToAppBoundDomains": false
+  }
+}
