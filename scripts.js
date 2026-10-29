@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '332';
+const APP_VERSION = '333';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -7731,7 +7731,14 @@ function alertReasons(inWeek) {
       if (Number(e.oxygen) > 0 && Number(e.oxygen) <= 90) note(e.day, 'oxygen ' + Math.round(e.oxygen) + '%');
     }
     if (e.type === 'med' && e.hospital) note(e.day, 'given in hospital: ' + medListName(e.medName));
-    if (e.type === 'symptom' && Number(e.value) >= 7) note(e.day, String(e.what || 'symptom').toLowerCase() + ' ' + e.value + '/10');
+    /* v333: a symptom says where it came from, so a score never sits in the Logged line without context (Mark: "no context") */
+    if (e.type === 'symptom' && Number(e.value) >= 7) {
+      const what = String(e.what || 'symptom').toLowerCase();
+      const cause = e.causeName ? ' after ' + e.causeName.toLowerCase().replace(/^(chemo|radiotherapy|immunotherapy)$/, '$1') : '';
+      note(e.day, e.fromCheckin && e.grade != null
+        ? `${what} ${FX_WORDS[e.grade].toLowerCase()} (side effect${cause}${e.sessionDay ? ' on ' + rDay(e.sessionDay) : ''}, ${e.fromCheckin} check-in)`
+        : `${what} ${e.value}/10 (${e.causeName ? 'side effect of ' + e.causeName : 'Symptom tile'}, ${fmtTime(entryDate(e))})`);
+    }
     const pain = e.type === 'pain' ? Number(e.value) : isPatientCheckin(e) ? Math.max(Number(e.pain ?? 0), Number(e.worstPain ?? 0)) : 0;
     if (pain >= 7) worstPain.set(e.day, Math.max(worstPain.get(e.day) || 0, pain));
     /* with Crohn's or colitis, streaks of blood are everyday; blood mixed in or more is the alert (v145) */
