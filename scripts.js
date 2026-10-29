@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '333';
+const APP_VERSION = '334';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -7689,9 +7689,10 @@ function twoPageMeds(entries, from, to) {
 }
 
 /* Side effects for the strip (v174): symptoms that name a cause, by cause, worst first, as facts */
-function twoPageSideFx(entries) {
-  /* the check-ins' own side effects have their own block since v289 (afterTreatmentLog), so only the rest are listed here */
-  const fx = entries.filter((e) => e.type === 'symptom' && e.value != null && causeOf(e) && !e.fromCheckin);
+function twoPageSideFx(entries, shown) {
+  /* the check-ins' own side effects have their own block since v289 (afterTreatmentLog), so only the rest are listed here;
+     since v334 that block's table also holds the Symptom tile's entries on those days (shown), left out here */
+  const fx = entries.filter((e) => e.type === 'symptom' && e.value != null && causeOf(e) && !e.fromCheckin && !(shown && shown.has(e.id)));
   if (!fx.length) return null;
   const byCause = new Map();
   fx.forEach((e) => { const c = causeOf(e); if (!byCause.has(c.name)) byCause.set(c.name, []); byCause.get(c.name).push(e); });
@@ -7869,13 +7870,20 @@ function carerLog(entries, from, to) {
 function afterTreatmentLog(entries, from, to) {
   const sessions = sessionDays().filter((d) => d <= to && addDays(d, FX_DAYS) >= from);
   const cis = entries.filter((e) => isPatientCheckin(e) && e.sidefx && e.sidefx.session);
+  /* v334, Mark: anything logged on the Symptom tile in the three days after a session goes in the same table, on its
+     own row marked as not from the check-ins, so the reader sees it beside the side effects without the app saying
+     what caused it; a table, side effects down the side and the days across, reads more clearly than lines */
+  const tile = entries.filter((e) => e.type === 'symptom' && !e.fromCheckin && e.value != null);
   let answered = 0;
+  const used = new Set();
   const days = sessions.map((sd) => {
     const info = state.days[sd] || {};
     const t = treatmentOf(info);
     const name = isRepeat(t) ? capFirst(sessionLabel(info)) : t.label;
     const worst = {};
     const lines = [];
+    const cols = [];
+    const perDay = [];
     for (let n = 1; n <= FX_DAYS; n++) {
       const day = addDays(sd, n);
       if (day > to || day > todayStr()) break;
@@ -7888,18 +7896,35 @@ function afterTreatmentLog(entries, from, to) {
       const bad = SIDEFX_ALL.filter((k) => grades[k] > 0);
       bad.forEach((k) => { worst[k] = Math.max(worst[k] || 0, grades[k]); });
       lines.push(`Day ${n}, ${rDay(day)}: ` + (bad.length ? capFirst(bad.map((k) => k.toLowerCase() + ' ' + FX_WORDS[grades[k]].toLowerCase()).join(', ')) : keys.length ? 'none of these' : 'not answered'));
+      cols.push({ head: `Day ${n}`, sub: rDay(day), answered: keys.length > 0 });
+      perDay.push({ day, grades });
     }
+    const rows = SIDEFX_ALL.filter((k) => worst[k] > 0).sort((a, b) => worst[b] - worst[a])
+      .map((k) => ({ name: k, cells: perDay.map((p, i) => (cols[i].answered ? { word: FX_WORDS[p.grades[k] || 0], g: p.grades[k] || 0 } : { word: 'Not answered', g: -1 })) }));
+    const extra = new Map();
+    perDay.forEach((p, i) => tile.filter((e) => e.day === p.day).forEach((e) => {
+      used.add(e.id);
+      const k = String(e.what || 'Symptom');
+      if (!extra.has(k)) extra.set(k, perDay.map(() => []));
+      extra.get(k)[i].push(e);
+    }));
+    const also = [...extra.entries()].map(([k, byDay]) => ({ name: k, cells: byDay.map((list) => {
+      if (!list.length) return { word: '', g: -2 };
+      const top = list.reduce((a, b) => (Number(b.value) > Number(a.value) ? b : a));
+      return { word: `${top.value}/10 at ${fmtTime(entryDate(top))}` + (list.length > 1 ? `, ${list.length} times` : ''), g: Number(top.value) >= 7 ? 3 : Number(top.value) >= 4 ? 2 : 1, cause: top.causeName || '' };
+    }) }));
+    if (also.length) lines.push('Also on the Symptom tile: ' + also.map((a) => a.name.toLowerCase()).join(', '));
     const w = Object.entries(worst).sort((a, b) => b[1] - a[1]);
     const moods = w.length ? 'Worst: ' + w.map(([k, g]) => k.toLowerCase() + ' ' + FX_WORDS[g].toLowerCase()).join(', ') : '';
-    return { day: sd, when: name + ', ' + rDay(sd), moods, texts: lines };
-  }).filter((d) => d.texts.length);
-  if (!answered || !days.length) return null;
+    return { day: sd, when: name + ', ' + rDay(sd), moods, texts: lines, table: { cols, rows, also, anyAnswered: cols.some((c) => c.answered) } };
+  }).filter((d) => d.texts.length && (d.table.anyAnswered || d.table.also.length));
+  if ((!answered && !used.size) || !days.length) return null;
   return {
     title: 'Side effects after treatment',
     range: days.length > 1 ? rRange(days[0].day, days[days.length - 1].day) : '',
     summary: '',
-    note: 'From the morning and evening check-ins on the three days after each session: none, mild, moderate or severe, the worse of the two each day.',
-    days
+    note: 'From the morning and evening check-ins on the three days after each session: the worse of the two answers each day. Anything logged on the Symptom tile on those days is shown below it, as logged.',
+    days, used: [...used]
   };
 }
 
@@ -7937,6 +7962,7 @@ function buildTwoPage(n) {
   const { charts, facts } = twoPageCharts(entries, days);
   const tiles = twoPageTiles(entries, from, to, facts);
   const { meds, hospital } = twoPageMeds(entries, from, to);
+  const fxLog = afterTreatmentLog(entries, from, to);
   /* Steady: the areas outside the tiles that the app's checks did not flag */
   const fine = (report.glance.fine || []).filter((t) => !/^(temperature|heart rate|blood pressure|oxygen|pain|sleep|eating|mood)$/i.test(t));
   const steady = fine.length ? capFirst(joinAnd(fine)) + (fine.length === 1 ? ' showed' : ' showed') + ' no flags in the app\'s checks.' : null;
@@ -7970,10 +7996,10 @@ function buildTwoPage(n) {
     title: 'Notes for the team',
     subtitle: `A patient summary for the nursing and medical team. ${word} to ${t.getDate()} ${MON_LONG[t.getMonth()]} ${t.getFullYear()}.`,
     patient, period, prepared: rDay(today) + ' ' + parseDay(today).getFullYear(),
-    latest, tiles, meds, hospital, steady, sideFx: twoPageSideFx(entries), results: twoPageResults(entries),
+    latest, tiles, meds, hospital, steady, sideFx: twoPageSideFx(entries, new Set(fxLog ? fxLog.used : [])), results: twoPageResults(entries),
     questions: qs, more: 0, older: report.older.length, olderFrom: rDay(from), extraQ: [], weeksPage3: false, lines: 3,
     charts, days: labels, weeks, carer: carerWeekLog(entries, from, to), carerTail: false, carerPage1: false,
-    fx: afterTreatmentLog(entries, from, to), fxTail: false,
+    fx: fxLog, fxTail: false,
     weeksNote: ai ? 'Summarised from the daily notes by Daybook Assistant, an AI helper. Every note is in Daybook.' : 'The most telling note of each day. Every note is in Daybook.',
     foot: 'Notes for the team'
   };
