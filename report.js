@@ -105,7 +105,13 @@ h2.sec small{font-family:Inter,sans-serif;font-weight:400;font-size:7.6pt;color:
 .week li{display:grid;grid-template-columns:11.5mm 1fr;gap:1.6mm;font-size:7.5pt;line-height:1.33}
 .week li time{font-weight:600;color:var(--teal)}
 .week li.alert time{color:var(--red)}
-.week li.alert{background:var(--red-soft);margin:0 -1.6mm;padding:.8mm 1.6mm;border-radius:1mm}
+.week li.alert:not(:has(.ent)){background:var(--red-soft);margin:0 -1.6mm;padding:.8mm 1.6mm;border-radius:1mm}
+.week .ent{display:flex;flex-direction:column;gap:.7mm;min-width:0}
+.week .lg{background:var(--red-soft);border-left:2px solid var(--red);padding:.5mm 1.4mm;border-radius:0 1mm 1mm 0;font-weight:500}
+.week .lg b,.week .wr b{font-size:6.4pt;text-transform:uppercase;letter-spacing:.06em;margin-right:1.2mm}
+.week .lg b{color:var(--red)}
+.week .wr b{display:block;color:var(--slate);font-weight:600}
+.week .wr b i{text-transform:none;letter-spacing:0;font-style:normal;font-weight:400}
 .week .ai{font-size:6.6pt;color:var(--slate);margin-top:auto;padding-top:1.4mm}
 .week .none{color:var(--slate)}
 .foot{display:flex;justify-content:space-between;font-size:6.6pt;color:var(--slate);border-top:1px solid var(--line);padding-top:1.6mm;margin-top:auto;align-items:baseline;gap:4mm}
@@ -215,11 +221,23 @@ function questionHtml(q, extra) {
   return `<article class="q${extra ? ' extra' : ''}" data-sec="${extra ? 'Other points' : 'Question ' + esc(q.i)}"><header>${extra ? '<div class="no">+</div>' : ''}<div>${q.team ? `<div class="team">${esc(q.team)}</div>` : ''}<h3>${esc(q.text)}</h3><div class="by">${esc(q.by)}</div></div></header><div class="lines" style="min-height:${(q.lines || 1) * 4.6 + 2.4}mm">${lines(40)}</div></article>`;
 }
 
+/* One day of the weeks (v332): what the app logged, then what was written, as two separate lines, so a reading
+   and a note on the same day are never read as one causing the other. An entry without the two parts (the lead-in,
+   or a report built before v332) prints its text as before. */
+function entryHtml(e) {
+  const cls = e.alert ? ' class="alert"' : '';
+  if (e.logged == null && e.words == null) return `<li${cls}><time>${esc(e.when)}</time><span>${esc(e.text)}</span></li>`;
+  const logged = e.logged ? `<div class="lg"><b>Logged</b> ${esc(e.logged)}</div>` : '';
+  const head = e.ai ? 'From the notes' : `${e.who ? esc(e.who) + ' wrote' : 'Written'}${e.from ? ` <i>(${esc(e.from)})</i>` : ''}`;
+  const words = e.words ? `<div class="wr"><b>${head}</b><span>${e.ai ? esc(e.words) : '“' + esc(e.words) + '”'}</span></div>` : '';
+  return `<li${cls}><time>${esc(e.when)}</time><div class="ent">${logged}${words}</div></li>`;
+}
+
 function weekHtml(w, wide, o = {}) {
   const from = o.from || 0, to = o.to == null ? w.entries.length : o.to;
   const shown = w.entries.slice(from, to);
   const items = w.entries.length
-    ? `<ul>${shown.map((e) => `<li${e.alert ? ' class="alert"' : ''}><time>${esc(e.when)}</time><span>${esc(e.text)}</span></li>`).join('')}</ul>`
+    ? `<ul>${shown.map(entryHtml).join('')}</ul>`
     : '<p class="none">No written notes this week.</p>';
   const last = to >= w.entries.length;
   return `<div class="week${wide ? ' wide' : ''}${o.nat ? ' nat' : ''}" data-sec="${esc(w.title)}"${o.ti == null ? '' : ` data-ti="${o.ti}"`}><div class="wh"><h3>${esc(w.title)}${from ? ' <small>(continued)</small>' : ''}</h3><span>${esc(w.range)}</span></div>${w.theme && !from ? `<div class="theme">${esc(w.theme)}</div>` : ''}${items}${w.foot && last ? `<p class="ai">${esc(w.foot)}</p>` : ''}</div>`;
@@ -949,6 +967,9 @@ async function paginate(frame, M, render, opts = {}) {
 const MOOD_CSS = `
 .tiles.mood{grid-template-columns:repeat(5,1fr);gap:2.2mm}
 .tiles.mood .tile .v{font-size:13pt}
+.tiles.mood .tile .tq{font-size:7pt;line-height:1.35;margin-top:1.2mm;padding-top:1.2mm;border-top:1px solid var(--line)}
+.tiles.mood .tile .tq b{display:block;font-size:6pt;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--slate)}
+.tiles.mood .tile .tq b i{text-transform:none;letter-spacing:0;font-style:normal;font-weight:400}
 .tiles.mood .tile.has-avg .v{font-size:10pt}
 .tiles.mood .tile .avg{font-family:Fraunces,Georgia,serif;font-size:17pt;line-height:1;margin:.4mm 0 .8mm}
 .tiles.mood .tile .avg em{font-style:normal;font-size:7pt;font-family:Inter,sans-serif;font-weight:500;color:var(--slate);margin-left:.8mm}
@@ -1097,7 +1118,7 @@ export function moodReportHtml(W) {
     const legend = `<div class="legend"><span>${SW('#1E7F86')}Mood (1 to 10), the day's average</span><span>${SW('#C2703D')}Worst pain (0 to 10)</span><span><i class="swb" style="background:#CFE4E6"></i>Hours asleep</span>${c.sessions.length ? '<span><i class="tri"></i>Treatment session</span>' : ''}${c.hospital.length ? '<span><i class="swb" style="background:#F8E1DE"></i>In hospital</span>' : ''}${c.low.length ? '<span><i class="ring"></i>Mood 4 or under</span>' : ''}</div>`;
     const first = p === 0
       ? `<div class="masthead"><div><div class="titlerow"><h1>Mood and wellbeing</h1><span class="madeby">Created with <b>My Medical Daybook</b></span></div><div class="sub">How the period has felt, in scores and in ${esc(W.patient)}'s own words, for a therapist, counsellor or GP.</div></div><div class="who"><strong>${esc(W.patient)}</strong>Period: ${esc(W.period)}<br>Prepared: ${esc(W.prepared)}</div></div>`
-        + `<div class="tiles mood">${W.tiles.map((t) => `<div class="tile ${esc(t.tone || '')}${t.avg ? ' has-avg' : ''}"><div class="k">${esc(t.k)}</div><div class="v">${esc(t.v)}${t.unit ? `<em>${esc(t.unit)}</em>` : ''}</div>${t.avg ? `<div class="avg">${esc(t.avg)}<em>average mood</em></div>` : ''}<div class="n">${esc(t.n)}</div></div>`).join('')}</div>`
+        + `<div class="tiles mood">${W.tiles.map((t) => `<div class="tile ${esc(t.tone || '')}${t.avg ? ' has-avg' : ''}"><div class="k">${esc(t.k)}</div><div class="v">${esc(t.v)}${t.unit ? `<em>${esc(t.unit)}</em>` : ''}</div>${t.avg ? `<div class="avg">${esc(t.avg)}<em>average mood</em></div>` : ''}<div class="n">${esc(t.n)}</div>${t.q ? `<div class="tq"><b>${esc(W.patient ? W.patient + ' wrote' : 'Written')}${t.qFrom ? ` <i>(${esc(t.qFrom)})</i>` : ''}</b>“${esc(t.q)}”</div>` : ''}</div>`).join('')}</div>`
         + `<div class="c wide"><div class="h"><h3>Mood, with pain and sleep behind it</h3><span class="stat ${esc(c.tone || '')}">${esc(c.stat)}</span></div>${moodChart(c, W.days)}${legend}</div>`
       : `<div class="runner"><h2>Mood and wellbeing</h2><span>${esc(W.patient)} · ${esc(W.period)}</span></div>`;
     return `<section class="page" id="page${p + 1}">${first}<div class="wbody">${html}</div><div class="foot"><span>Scores and words as logged in Daybook${W.briefNote.startsWith('Written by') ? '; the brief is written by an AI helper and checked by ' + esc(W.patient) : ''}. Not medical advice.</span>${madeBy(p + 1, total)}</div></section>`;
@@ -1248,7 +1269,7 @@ export function painReportHtml(P) {
     const key = P.key ? `<div class="c key">${P.key}</div>` : '';
     const first = p === 0
       ? `<div class="masthead"><div><div class="titlerow"><h1>Pain and pain relief</h1><span class="madeby">Created with <b>My Medical Daybook</b></span></div><div class="sub">Over the ${P.spanDays} days, ${esc(P.spanDates)}: pain scores from the morning and evening check-ins, key points from ${esc(P.patient)}'s own words, and the pain relief taken, for the pain nurse or team.</div></div><div class="who"><strong>${esc(P.patient)}</strong>Period: ${esc(P.period)}<br>Prepared: ${esc(P.prepared)}</div></div>`
-        + `<div class="tiles pain">${P.tiles.map((t) => `<div class="tile ${esc(t.tone || '')}"><div class="k">${esc(t.k)}</div><div class="v">${esc(t.v)}${t.unit ? `<em>${esc(t.unit)}</em>` : ''}</div><div class="n">${esc(t.n)}</div></div>`).join('')}</div>`
+        + `<div class="tiles pain">${P.tiles.map((t) => `<div class="tile ${esc(t.tone || '')}"><div class="k">${esc(t.k)}</div><div class="v">${esc(t.v)}${t.unit ? `<em>${esc(t.unit)}</em>` : ''}</div><div class="n">${esc(t.n)}</div>${t.q ? `<div class="tq"><b>${esc(W.patient ? W.patient + ' wrote' : 'Written')}${t.qFrom ? ` <i>(${esc(t.qFrom)})</i>` : ''}</b>“${esc(t.q)}”</div>` : ''}</div>`).join('')}</div>`
         + `<div class="cgrid pain">${charts}${key}</div>`
       : `<div class="runner"><h2>Pain and pain relief</h2><span>${esc(P.patient)} · ${esc(P.period)}</span></div>`;
     return `<section class="page" id="page${p + 1}">${first}<div class="wbody">${html}</div><div class="foot"><span>Scores, words and doses as logged in Daybook${P.ai ? '; the key points are written by an AI helper and checked by ' + esc(P.patient) : ''}. Not medical advice.</span>${madeBy(p + 1, total)}</div></section>`;
@@ -1347,7 +1368,7 @@ export function ibdReportHtml(I) {
     const strip = `<div class="strip ibd${I.strip.length > 2 ? ' three' : ''}">${I.strip.map((s) => `<div data-sec="${esc(s.head)}"><span class="pre">${esc(s.head)}</span>${esc(s.text)}</div>`).join('')}</div>`;
     const first = p === 0
       ? `<div class="masthead"><div><div class="titlerow"><h1>Crohn's and colitis</h1><span class="madeby">Created with <b>My Medical Daybook</b></span></div><div class="sub">Bowels, blood and urgency against ${esc(I.patient)}'s usual, flares, treatment and results as logged, for the IBD team.${I.condition ? ' ' + esc(I.condition.charAt(0).toUpperCase() + I.condition.slice(1)) + '.' : ''}</div></div><div class="who"><strong>${esc(I.patient)}</strong>Period: ${esc(I.period)}<br>Prepared: ${esc(I.prepared)}</div></div>`
-        + `<div class="tiles ibd">${I.tiles.map((t) => `<div class="tile ${esc(t.tone || '')}"><div class="k">${esc(t.k)}</div><div class="v">${esc(t.v)}${t.unit ? `<em>${esc(t.unit)}</em>` : ''}</div><div class="n">${esc(t.n)}</div></div>`).join('')}</div>`
+        + `<div class="tiles ibd">${I.tiles.map((t) => `<div class="tile ${esc(t.tone || '')}"><div class="k">${esc(t.k)}</div><div class="v">${esc(t.v)}${t.unit ? `<em>${esc(t.unit)}</em>` : ''}</div><div class="n">${esc(t.n)}</div>${t.q ? `<div class="tq"><b>${esc(W.patient ? W.patient + ' wrote' : 'Written')}${t.qFrom ? ` <i>(${esc(t.qFrom)})</i>` : ''}</b>“${esc(t.q)}”</div>` : ''}</div>`).join('')}</div>`
         + `<div class="cgrid ibd">${charts}${key}</div>` + strip
       : `<div class="runner"><h2>Crohn's and colitis</h2><span>${esc(I.patient)} · ${esc(I.period)}</span></div>`;
     return `<section class="page" id="page${p + 1}">${first}<div class="wbody">${html}</div><div class="foot"><span>As logged in Daybook, against ${esc(I.patient)}'s own usual. Results as the team gave them. Not medical advice.</span>${madeBy(p + 1, total)}</div></section>`;
