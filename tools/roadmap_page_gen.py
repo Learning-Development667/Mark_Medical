@@ -61,7 +61,7 @@ s1 = [
  row('Recordings turned into text', 'Claude', None, 'open', '4'),
  row('Finish the households move', 'Mark', 'Verify and cleanup on the Actions tab, then Claude trims the rules.', 'open', '5'),
  row('Move to app.mymedicaldaybook.co.uk', 'Mark', 'Built and live (v231). Left: Mark and Shelley add Daybook to the Home Screen again and switch reminders on; the demo project’s authorised domain.', 'now', '6'),
- row('Security tightening', 'Claude', 'Part 2 of the review done 29 Oct (v329): libraries kept in the app, a security policy, the PDF reader fixed, sign-out clears the phone. Left: a new Apple Health key for your circle, keys out of web addresses, the author lock in the rules.', 'now', '7'),
+ row('Security tightening', 'Claude', 'Part 2 of the review done 29 Oct (v329): libraries kept in the app, a security policy, the PDF reader fixed, sign-out clears the phone. Beta code check names no one (v330). Left: the master key, with the iPhone app; keys out of web addresses; the author lock in the rules.', 'now', '7'),
  row('Export and delete', 'Claude', 'Built in v295: More, Settings, Your records. Download every record as a zip; the patient deletes the whole circle, anyone else leaves and deletes their own sign-in, after typing DELETE.', 'done', '8'),
  row("Condition packs: Crohn's and colitis, then menopause", 'Claude, with testers', "All five Crohn's builds are done (v204 to v221). Next: two friends with Crohn's log through to an appointment and take the report; an IBD nurse reads it. Then menopause.", 'now', '9'),
  row('Firebase to pay-as-you-go', 'Mark', "Done: the project has been on Blaze for some time (Mark, 23 October 2026). A budget alert keeps an eye on the bill.", 'done', '9b'),
