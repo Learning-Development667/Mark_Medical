@@ -2,6 +2,8 @@
 <html lang="en-GB">
 <head>
   <meta charset="utf-8">
+  <!-- v329: only Daybook's own files and Google's database code may run; no plugins, no base or form changes -->
+  <meta http-equiv="Content-Security-Policy" content="script-src 'self' https://www.gstatic.com; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <title>My Medical Daybook</title>
   <meta name="description" content="Private shared health tracker">
@@ -17,7 +19,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=328">
+  <link rel="stylesheet" href="styles.css?v=329">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -1085,7 +1087,7 @@
   <!-- Privacy, terms and About (since v90): plain English, opened in the sheet from the Settings App card,
        the sign-in and sign-up screens, or ?page=privacy|terms|about in the address (openLegal()). -->
   <template id="tpl-privacy">
-    <p class="legal-date mono">Last updated 23 October 2026</p>
+    <p class="legal-date mono">Last updated 29 October 2026</p>
     <p>My Medical Daybook (Daybook for short) is made and run by Mark 1 Apps Ltd, a company registered in England and Wales (company number 17510025), which is responsible for the information the app holds (the "data controller" in UK law). Mark 1 Apps Ltd is registered with the Information Commissioner's Office, registration number ZC275185. <span data-contact></span></p>
     <h3>The short version</h3>
     <ul>
@@ -1102,7 +1104,7 @@
     <h3>What Daybook stores</h3>
     <p><b>Your sign-in:</b> your email address and password (held by Google's Firebase Authentication; Daybook never sees the password), your first name, your role in the circle (family, read only, or medicines and treatment only), whether you are the patient or a carer, and which circle you belong to.</p>
     <p><b>What your circle records:</b> check-ins (pain, mood, sleep, sickness, appetite, energy, how much you felt low, worried or enjoyed something each evening, a weekly check whose questions follow the conditions Daybook is set up for, a carer's own weekly check, and their own mood score and notes at the patient's morning and evening times, all on how the patient seemed, with Crohn's or colitis tummy pain, whether your gut stopped you doing anything, nights up for the toilet, whether you are fasting that day and which kind, and a weekly question about joints, eyes, skin and mouth, and what you write), readings (temperature, heart rate, blood pressure, oxygen, weight and BMI), food and drink, notes, questions for the care team and their answers, including any voice recordings you choose to make, medicines, doses and reminder times, letters and documents you photograph or paste in and the explanations saved with them, bowel movements (the type, any blood, urgency and accidents, and with Crohn's or colitis your usual number a day and whether you have a stoma), blood test and calprotectin results you type in or read from a photo, as the team gave them, with Crohn's or colitis the flare plan your team gave you, which days you mark as flare days and the calls you log to the advice line, symptoms between check-ins, each night's sleep (when you went to bed and woke, whether you felt rested, whether it was broken, what broke it and roughly for how long), whether you use a watch or health app, which conditions Daybook is set up for, treatment sessions and the calendar, exercise ticks, steps, sleep, workouts and food totals if you connect Apple Health, saved meals, who to contact (names, roles, phone numbers, any extension or menu option, and email addresses), and your settings.</p>
-    <p><b>On your phone:</b> a copy of your account record and of the records you have opened, so the app works on a weak signal, and a few settings (which charts you view as tables, the exercise filter, the weight unit, the opener). Words typed into a note or a question are kept on the phone until you save or close that screen, so they are not lost if the phone closes the app; they are cleared when you save, cancel or clear them, and after 7 days at most. A check-in you have started is kept whole (the scores, the words and the step you were on) on the phone and in your circle's space until it is saved or closed, so it comes back as you left it on either phone. Your browser holds these and they go when you clear its data.</p>
+    <p><b>On your phone:</b> a copy of your account record and of the records you have opened, so the app works on a weak signal, and a few settings (which charts you view as tables, the exercise filter, the weight unit, the opener). Words typed into a note or a question are kept on the phone until you save or close that screen, so they are not lost if the phone closes the app; they are cleared when you save, cancel or clear them, and after 7 days at most. A check-in you have started is kept whole (the scores, the words and the step you were on) on the phone and in your circle's space until it is saved or you start it again, 7 days at most, so it comes back as you left it on either phone. When you sign out, Daybook clears its copy of the records, the words kept as typed and the unfinished check-ins from that phone; only settings such as the weight unit stay. Your browser holds these and they go when you clear its data.</p>
     <p><b>If you turn on reminders:</b> each phone's push address and browser type, so the reminder reaches it. <b>For Daybook Assistant:</b> a daily count per circle of how many requests were made and how many words they used, for the cost.</p>
     <h3>Where it is kept</h3>
     <p>In Google Cloud's Firestore database in London (the europe-west2 region), through Google's Firebase service and under Google's security measures. Everything travels encrypted (HTTPS), and Google encrypts it when stored. It is not end-to-end encrypted, so Google's systems and the operator can technically reach it. Anything you send with an AI button goes to Anthropic in the United States. The app itself is served from GitHub Pages.</p>
@@ -1126,7 +1128,7 @@
       <li><b>Provide feedback</b> (while Daybook is in Beta) sends what you type, any picture you add, which screen you were on, the app version and the kind of phone to Mark 1 Apps Ltd through the bridge, so the app can be put right. It is kept only until the Beta is over, is never part of your circle's records and is read by Mark alone. Never put health details in it unless the problem needs them.</li>
       <li><b>Apple Health.</b> Nothing goes to Apple from Daybook. If you set up the Health Auto Export app to send steps, sleep, workouts, weight and BMI, and food totals, that data comes from your phone to Daybook's bridge and into your circle's space. The bridge keeps the last message it received, trimmed, so a problem with the feed can be checked.</li>
       <li><b>Reminders.</b> If you turn on medicine reminders, each notification goes through your browser's push service (Apple, Google or Mozilla). The message is encrypted so that service cannot read it, and unless you switch it off it names no medicine ("A medicine is due"), so no medicine name shows on your lock screen.</li>
-      <li><b>Fonts and chart code.</b> The app loads its fonts from Google Fonts and some code libraries from Cloudflare's cdnjs. Those servers see your phone's internet address when the app loads, as with any website. None of your entries go to them.</li>
+      <li><b>Fonts and database code.</b> The app loads its fonts from Google Fonts and the database's code from Google. Those servers see your phone's internet address when the app loads, as with any website. None of your entries go to them. Every other code library is kept inside Daybook itself.</li>
       <li><b>Daybook's bridge.</b> A small service on Cloudflare that handles sign-up, invites, the Apple Health feed, reminders, the emailed reports and Daybook Assistant's requests. It checks your sign-in, or for the Apple Health feed your circle's inbox key, and writes only your circle's records and your own sign-up record. Cloudflare keeps standard request logs for a short time.</li>
     </ul>
     <h3>Why it is held</h3>
@@ -1225,6 +1227,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=328"></script>
+  <script type="module" src="scripts.js?v=329"></script>
 </body>
 </html>

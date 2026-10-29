@@ -22,6 +22,14 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Daybook uses the camera to scan a food barcode, or to photograph a label, a letter or a medicine so you can keep it.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Daybook uses the microphone for Tap to speak, and to record an appointment or an answer when you ask it to.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Daybook opens Photos when you choose a picture of a letter, a label or a medicine to add.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Daybook turns what you say into words in the box when you tap Tap to speak.</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>
