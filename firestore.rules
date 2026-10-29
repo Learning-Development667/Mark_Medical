@@ -79,9 +79,24 @@ service cloud.firestore {
         allow write: if false;
       }
 
+      // Entries (v331): family write as before, but a check-in belongs to whoever filled it in. Each entry carries the
+      // writer's sign-in id (uid) since v331; nobody may stamp a new entry with someone else's, an existing stamp may be kept, a
+      // check-in with a stamp can be changed or deleted only by that person. Entries saved before v331 have no stamp.
       match /entries/{entryId} {
+        function stampOk() {
+          return !('uid' in request.resource.data) || request.resource.data.uid == request.auth.uid
+            || ('uid' in resource.data && request.resource.data.uid == resource.data.uid);
+        }
+        function notSomeoneElsesCheckin() {
+          return resource.data.type != 'checkin' || !('uid' in resource.data) || resource.data.uid == request.auth.uid;
+        }
         allow read: if canRead(hid) || (isViewer(hid) && resource.data.type in ['med', 'temp', 'vitals', 'weight', 'sleep', 'drink']);
-        allow write: if isFamily(hid);
+        allow create: if isFamily(hid) && (!('uid' in request.resource.data) || request.resource.data.uid == request.auth.uid);
+        function staysWhatItWas() { // nothing turns into a check-in, or stops being one, after it is written
+          return (request.resource.data.get('type', null) == 'checkin') == (resource.data.get('type', null) == 'checkin');
+        }
+        allow update: if isFamily(hid) && notSomeoneElsesCheckin() && stampOk() && staysWhatItWas();
+        allow delete: if isFamily(hid) && notSomeoneElsesCheckin();
       }
 
       match /medicines/{medId} {

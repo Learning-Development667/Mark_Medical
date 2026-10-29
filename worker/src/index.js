@@ -41,10 +41,11 @@ export default {
       if (url.pathname === '/plan' && request.method === 'POST') return withCors(request, await handlePlan(request, env));
       if (url.pathname === '/usage' && request.method === 'POST') return withCors(request, await handleUsage(request, env));
       /* Diagnostic: what the phone last sent and what was written, for checking the field names.
-         Opened in a browser with ?key=<the household's inbox key>. Health data only, no secrets. */
+         The household's inbox key goes in the X-Care-Log-Key header (v331: never in the address, where it lands in logs and
+         history), e.g. curl -H 'X-Care-Log-Key: ...' https://.../last. Health data only, no secrets. */
       if (url.pathname === '/last' && request.method === 'GET') {
         const fs = await firestore(env);
-        const hid = await householdForKey(fs, url.searchParams.get('key') || '');
+        const hid = await householdForKey(fs, headerKey(request));
         if (!hid) return json({ error: 'Unauthorised' }, 401);
         const doc = await fs.get(hp(hid, 'bridge/last'));
         if (!doc) return json({ note: 'Nothing received yet' });
@@ -53,31 +54,31 @@ export default {
         try { sample = JSON.parse(f.sample && f.sample.stringValue || 'null'); } catch (e) { sample = f.sample && f.sample.stringValue; }
         return json({ receivedAt: f.receivedAt && f.receivedAt.timestampValue, result: f.result && f.result.stringValue, sample });
       }
-      /* Sends a test notification to every phone with reminders on in that key's household: ?key=<the household's inbox key> */
+      /* Sends a test notification to every phone with reminders on in that key's household (the inbox key in the header) */
       if (url.pathname === '/push-test' && request.method === 'GET') {
         const fs = await firestore(env);
-        const hid = await householdForKey(fs, url.searchParams.get('key') || '');
+        const hid = await householdForKey(fs, headerKey(request));
         if (!hid) return json({ error: 'Unauthorised' }, 401);
         const subs = await fs.list(hp(hid, 'pushSubs'));
         const results = [];
         for (const d of subs) results.push(await sendPush(env, fs, d, { title: 'Daybook', body: 'Reminders are working on this phone.', tag: 'test', url: appUrl('meds') }));
         return json({ phones: subs.length, results });
       }
-      /* Runs the reminder check by hand for every household: ?key=<BRIDGE_KEY> (the operator's key) */
+      /* Runs the reminder check by hand for every household: BRIDGE_KEY (the operator's key) in the header */
       if (url.pathname === '/remind-now' && request.method === 'GET') {
-        if (!env.BRIDGE_KEY || url.searchParams.get('key') !== env.BRIDGE_KEY) return json({ error: 'Unauthorised' }, 401);
+        if (!isOperatorKey(request, env)) return json({ error: 'Unauthorised' }, 401);
         return json(await runReminders(env, { rebuild: url.searchParams.get('rebuild') === '1' }));
       }
-      /* The usage counts (v211), the same document the app's Usage page reads: ?key=<BRIDGE_KEY>, &rebuild=1 counts again now */
+      /* The usage counts (v211), the same document the app's Usage page reads: BRIDGE_KEY in the header, ?rebuild=1 counts again now */
       if (url.pathname === '/usage' && request.method === 'GET') {
-        if (!env.BRIDGE_KEY || url.searchParams.get('key') !== env.BRIDGE_KEY) return json({ error: 'Unauthorised' }, 401);
+        if (!isOperatorKey(request, env)) return json({ error: 'Unauthorised' }, 401);
         if (url.searchParams.get('rebuild') === '1') return json(await buildUsage(env));
         const fs = await firestore(env);
-        return json(readUsageDoc(await fs.get(USAGE_PATH)) || { error: 'none', message: 'No counts yet. Add &rebuild=1 to count now.' });
+        return json(readUsageDoc(await fs.get(USAGE_PATH)) || { error: 'none', message: 'No counts yet. Add ?rebuild=1 to count now.' });
       }
-      /* Daybook Assistant use this month, every circle: ?key=<BRIDGE_KEY> (v209, so the Anthropic bill is never a surprise) */
+      /* Daybook Assistant use this month, every circle: BRIDGE_KEY in the header (v209, so the Anthropic bill is never a surprise) */
       if (url.pathname === '/ai-usage' && request.method === 'GET') {
-        if (!env.BRIDGE_KEY || url.searchParams.get('key') !== env.BRIDGE_KEY) return json({ error: 'Unauthorised' }, 401);
+        if (!isOperatorKey(request, env)) return json({ error: 'Unauthorised' }, 401);
         return json(await aiUsage(env));
       }
       return withCors(request, json({ error: 'Not found' }, 404));
@@ -95,6 +96,18 @@ export default {
     if (now.minutes >= USAGE_AT && now.minutes < USAGE_AT + 5) ctx.waitUntil(buildUsage(env, { ifNotToday: true }).catch((e) => console.error('usage', e)));
   }
 };
+
+
+/* The maintenance routes take their key in the X-Care-Log-Key header only (v331, security review): a key in the web
+   address ends up in Cloudflare's request logs, browser history and any page it is shared from. */
+function headerKey(request) { return request.headers.get('X-Care-Log-Key') || ''; }
+function isOperatorKey(request, env) {
+  const a = headerKey(request), b = env.BRIDGE_KEY || '';
+  if (!a || !b || a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
 
 /* ------------------------------------------------------------------ */
 /* Apple Health inbox                                                    */

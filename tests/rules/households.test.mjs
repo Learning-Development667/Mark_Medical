@@ -221,3 +221,40 @@ test('the old shared layout answers to nobody, even an old role record', async (
   await assertFails(read(JANE, `entries/old1`));
   await assertFails(read(null, `entries/old1`));
 });
+
+test('a check-in belongs to whoever filled it in (v331)', async () => {
+  const p = (id) => `households/${A}/entries/${id}`;
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const db = ctx.firestore();
+    await setDoc(doc(db, p('2026-09-29_morning')), { type: 'checkin', slot: 'morning', day: '2026-09-29', pain: 3, addedBy: 'Mark', uid: MARK });
+    await setDoc(doc(db, p('2026-09-29_carermorning')), { type: 'checkin', slot: 'carermorning', day: '2026-09-29', mood: 6, addedBy: 'Shelley', uid: SHELLEY });
+    await setDoc(doc(db, p('2026-09-28_morning')), { type: 'checkin', slot: 'morning', day: '2026-09-28', pain: 2, addedBy: 'Mark' });
+    await setDoc(doc(db, p('e-food-stamped')), { type: 'food', day: '2026-09-29', note: 'Toast', addedBy: 'Mark', uid: MARK });
+  });
+  // the author changes and deletes their own
+  await assertSucceeds(updateDoc(doc(as(MARK), p('2026-09-29_morning')), { pain: 4 }));
+  await assertSucceeds(updateDoc(doc(as(SHELLEY), p('2026-09-29_carermorning')), { mood: 5 }));
+  // anyone else in the family cannot change, overwrite or delete it
+  await assertFails(updateDoc(doc(as(SHELLEY), p('2026-09-29_morning')), { pain: 9 }));
+  await assertFails(setDoc(doc(as(SHELLEY), p('2026-09-29_morning')), { type: 'checkin', slot: 'morning', day: '2026-09-29', pain: 9, uid: SHELLEY }));
+  await assertFails(deleteDoc(doc(as(SHELLEY), p('2026-09-29_morning'))));
+  await assertFails(updateDoc(doc(as(MARK), p('2026-09-29_carermorning')), { mood: 1 }));
+  await assertFails(deleteDoc(doc(as(MARK), p('2026-09-29_carermorning'))));
+  // the author cannot hand it to someone else's name either
+  await assertFails(updateDoc(doc(as(MARK), p('2026-09-29_morning')), { uid: SHELLEY }));
+  // nobody may stamp a new entry with someone else's id; their own, or none, is fine
+  await assertFails(setDoc(doc(as(SHELLEY), p('2026-09-30_morning')), { type: 'checkin', slot: 'morning', day: '2026-09-30', uid: MARK }));
+  await assertSucceeds(setDoc(doc(as(SHELLEY), p('2026-09-30_carermorning')), { type: 'checkin', slot: 'carermorning', day: '2026-09-30', uid: SHELLEY }));
+  await assertSucceeds(setDoc(doc(as(SHELLEY), p('e-new-nostamp')), { type: 'note', day: '2026-09-30', note: 'Hi' }));
+  // other entries stay shared: Shelley may fix Mark's stamped food entry, the stamp kept as Mark's
+  await assertSucceeds(updateDoc(doc(as(SHELLEY), p('e-food-stamped')), { note: 'Toast and jam' }));
+  // but nobody turns an entry into a check-in (in someone else's name or their own), or a check-in into anything else
+  await assertFails(updateDoc(doc(as(SHELLEY), p('e-food-stamped')), { type: 'checkin', slot: 'morning' }));
+  await assertFails(updateDoc(doc(as(MARK), p('2026-09-29_morning')), { type: 'note' }));
+  await assertSucceeds(deleteDoc(doc(as(SHELLEY), p('e-food-stamped'))));
+  // a check-in saved before v331 (no stamp) stays as it was: family may change it
+  await assertSucceeds(updateDoc(doc(as(SHELLEY), p('2026-09-28_morning')), { pain: 3 }));
+  // read only and other circles still cannot write at all
+  await assertFails(updateDoc(doc(as(HAYLEY), p('2026-09-29_morning')), { pain: 1 }));
+  await assertFails(updateDoc(doc(as(JANE), p('2026-09-29_morning')), { pain: 1 }));
+});

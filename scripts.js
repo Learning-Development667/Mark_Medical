@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '330';
+const APP_VERSION = '331';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -2668,6 +2668,7 @@ async function addEntry(data, fixedId) {
     day: dayStr(at),
     at: state.demo ? demoTs(at) : Timestamp.fromDate(at),
     addedBy: state.name,
+    ...(!state.demo && myUid() ? { uid: myUid() } : {}),
     createdAt: state.demo ? demoTs(new Date()) : serverTimestamp()
   };
   if (state.demo) {
@@ -8259,6 +8260,7 @@ function aiWeek(w) { const s = state.notesAI; return s && state.notesPdf && s.ra
 function notesAllOpen() { if (!state.notesAllOpen) state.notesAllOpen = new Set(); return state.notesAllOpen; }
 function fixWordsLink(src, redraw) {
   if (!src || !src.id || state.readOnly || state.viewer) return '';
+  if (src.checkin && !ownsCheckin({ addedBy: src.who, uid: src.uid })) return ''; // someone else's check-in: theirs to fix (v331, the database says so too)
   return h('button', { class: 'btn btn-link btn-small fixwords', type: 'button', 'aria-label': 'Fix the words of the ' + src.label.toLowerCase() + ', ' + fmtDayShort(src.day) + ' ' + (src.time || ''), onclick: () => openFixWords(src, redraw) },
     icon('edit'), 'Fix the words');
 }
@@ -9044,11 +9046,11 @@ function buildNotesReport(entries, questionsAll, from, to, rangeLabel) {
     list.filter((e) => e.type === 'checkin' && !isWeekSlot(e.slot) && !isCarerDaySlot(e.slot)).forEach((e) => {
       const keys = e.slot === 'carer' ? REPORT_CARER_KEYS : REPORT_CHECKIN_KEYS;
       keys.forEach(([k, label]) => {
-        if (e[k]) notes.push({ time: fmtTime(entryDate(e)), who: e.addedBy || 'unknown', text: label + ': ' + e[k], context: e.slot === 'carer' ? "carer's view" : e.slot + ' check-in', src: { id: e.id, field: k, words: e[k], label: checkinTitle(e.slot, e) + ': ' + label, day: e.day, time: fmtTime(entryDate(e)), who: e.addedBy, checkin: true } });
+        if (e[k]) notes.push({ time: fmtTime(entryDate(e)), who: e.addedBy || 'unknown', text: label + ': ' + e[k], context: e.slot === 'carer' ? "carer's view" : e.slot + ' check-in', src: { id: e.id, field: k, words: e[k], label: checkinTitle(e.slot, e) + ': ' + label, day: e.day, time: fmtTime(entryDate(e)), who: e.addedBy, uid: e.uid, checkin: true } });
       });
       /* the words under a pain slider (v128): "Pain 8/10: lower back, worse when I stand" */
       (CHECKIN_QUESTIONS[e.slot] || []).filter((q) => q.note && e[q.note]).forEach((q) => {
-        notes.push({ time: fmtTime(entryDate(e)), who: e.addedBy || 'unknown', text: CHECKIN_LABELS[q.key] + (e[q.key] != null ? ' ' + e[q.key] + '/10' : '') + ': ' + e[q.note], context: e.slot + ' check-in', src: { id: e.id, field: q.note, words: e[q.note], label: checkinTitle(e.slot, e) + ': words under ' + CHECKIN_LABELS[q.key].toLowerCase(), day: e.day, time: fmtTime(entryDate(e)), who: e.addedBy, checkin: true } });
+        notes.push({ time: fmtTime(entryDate(e)), who: e.addedBy || 'unknown', text: CHECKIN_LABELS[q.key] + (e[q.key] != null ? ' ' + e[q.key] + '/10' : '') + ': ' + e[q.note], context: e.slot + ' check-in', src: { id: e.id, field: q.note, words: e[q.note], label: checkinTitle(e.slot, e) + ': words under ' + CHECKIN_LABELS[q.key].toLowerCase(), day: e.day, time: fmtTime(entryDate(e)), who: e.addedBy, uid: e.uid, checkin: true } });
       });
     });
     notes.sort((a, b) => a.time.localeCompare(b.time));
@@ -9633,7 +9635,15 @@ function checkinSteps(slot, day, existing) {
 }
 /* A saved check-in belongs to whoever filled it in (v208, Mark: a carer's view should be locked for him, and his
    for the carer). The other person reads it; only its author changes or deletes it. The preview is open to all. */
-function ownsCheckin(c) { return Boolean(c) && (state.demo || !c.addedBy || c.addedBy === state.name); }
+/* Whose check-in it is: since v331 every check-in carries the writer's sign-in id (uid), and the database refuses a change
+   or delete by anyone else (firestore.rules); a check-in saved before v331 has none and is judged by the name, as before. */
+function myUid() { return (auth && auth.currentUser && auth.currentUser.uid) || null; }
+function ownsCheckin(c) {
+  if (!c) return false;
+  if (state.demo) return true;
+  if (c.uid) return c.uid === myUid();
+  return !c.addedBy || c.addedBy === state.name;
+}
 function checkinOwnerWords(c) { return (c && c.addedBy ? c.addedBy + "'s check-in. " : 'This check-in. ') + 'Only the person who filled it in can change it.'; }
 function openCheckin(slot, initialDay) {
   if (isWeekSlot(slot)) { openWeekCheck(initialDay, slot); return; }
@@ -9894,6 +9904,8 @@ async function saveCheckin(slot, day, answers, existing, opts = {}) {
   const today = todayStr();
   const at = existing ? entryDate(existing) : atFromInputs(day, day === today ? fmtTime(new Date()) : (slot === 'morning' || slot === 'carermorning' ? '09:00' : slot === 'carer' ? '20:00' : '21:00'));
   const data = { type: 'checkin', slot, day, addedBy: existing && existing.addedBy ? existing.addedBy : state.name };
+  const uid = (existing && existing.uid) || (!state.demo && myUid());
+  if (uid) data.uid = uid; // the writer's sign-in id: the database lets only them change or delete it (v331)
   CHECKIN_QUESTIONS[slot].forEach((q) => { if (q.key in answers) data[q.key] = answers[q.key]; });
   if (slot === 'morning') { data.sleepHours = answers.sleepHours; if ('night' in answers) data.night = answers.night || null; }
   checkinNoteKeys(slot).forEach((k) => { data[k] = answers[k] || ''; });
@@ -11389,7 +11401,7 @@ function buildPainReport(n) {
     const dDoses = doses.filter((e) => e.day === d).sort((a, b) => entryDate(a) - entryDate(b));
     const sleeps = entries.filter((e) => e.type === 'sleep' && e.day === d && Number(e.value) > 0).map((e) => Number(e.value));
     const notes = [];
-    const ciSrc = (c, field, label) => ({ id: c.id, field, words: c[field], label, day: d, time: fmtTime(entryDate(c)), who: c.addedBy, checkin: true });
+    const ciSrc = (c, field, label) => ({ id: c.id, field, words: c[field], label, day: d, time: fmtTime(entryDate(c)), who: c.addedBy, uid: c.uid, checkin: true });
     if (m && text(m.painNote)) notes.push({ day: d, when: dayWord(d) + ', morning', text: text(m.painNote), score: pm, src: ciSrc(m, 'painNote', 'Morning check-in: where the pain is') });
     readings.forEach((r) => { if (r.note) notes.push({ day: d, when: dayWord(d) + ', ' + fmtTime(r.at), text: r.note, score: r.v, src: { id: r.id, field: 'note', words: r.note, label: 'Pain reading ' + r.v + '/10', day: d, time: fmtTime(r.at), who: r.who } }); });
     if (ev && text(ev.painNote)) notes.push({ day: d, when: dayWord(d) + ', evening', text: text(ev.painNote), score: pe, src: ciSrc(ev, 'painNote', 'Evening check-in: where the pain is') });
