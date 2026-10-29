@@ -103,6 +103,7 @@ after = [row(t, None, None, 'open') for t in ['Menopause', 'Long-term pain, fibr
 parked = [
  row('Mark 1 Apps website and storefront', None, 'A page of the apps Mark has built, linking to each store listing. Not started.', 'open'),
  row('First sign-in tour', None, 'Welcome to Daybook, a short tour of the real screens with Quit, signposting the guides in More. Parked by Mark on 20 Oct until the guides are up to date.', 'open'),
+ row('Share label figures with Open Food Facts', 'Claude', 'After the App Store. Opt-in, barcoded products only, filling gaps never overwriting, with the label photo so their volunteers can check it, anonymous, agreed with Open Food Facts first.', 'open'),
  row('A sleep report', None, 'From the night answers since v260: hours, short nights, how rested, how often broken and by what. If wanted.', 'open'),
  row('IBD-Control for Crohn\'s circles', 'Mark', 'Free for non-commercial use only; Daybook needs Professor Bodger\'s written agreement first. Claude can draft the request.', 'open'),
  row('Barcode scanner check', 'Mark', 'Built (v172). Try it on a few real UK products and add any Open Food Facts lacks.', 'open'),
