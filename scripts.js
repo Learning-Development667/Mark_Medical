@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '331';
+const APP_VERSION = '332';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -7717,11 +7717,9 @@ function reportWeeks(from, to) {
 
 /* A plain version of a week, when Daybook Assistant has not been asked: the few most telling
    notes, one a day, with alert days marked from the readings themselves */
-function plainWeek(w, report, entries) {
-  const inWeek = entries.filter((e) => e.day >= w.from && e.day <= w.to);
-  const rows = summaryRows(inWeek, w.from, w.to).filter((r) => r.level === 'red' || r.level === 'amber').slice(0, 2);
-  const theme = rows.length ? rows.map((r) => (r.short || r.text).replace(/\.$/, '')).join('. ') + '.' : inWeek.length ? "Nothing flagged by the app's checks." : '';
-  /* Alert days and why, from the readings themselves, so a red row always says what made it red */
+/* Alert days and why, from the readings themselves, so a red row always says what made it red.
+   Kept apart from the words since v332 (Mark: "Diarrhoea 9/10. Family are here" read as if one caused the other). */
+function alertReasons(inWeek) {
   const why = new Map();
   const note = (day, text) => { if (!why.has(day)) why.set(day, []); if (!why.get(day).includes(text)) why.get(day).push(text); };
   const worstPain = new Map();
@@ -7740,22 +7738,47 @@ function plainWeek(w, report, entries) {
     if (e.type === 'bowel' && (bowelRules() === 'ibd' ? bloodGradeOf(e) >= 2 || e.black : e.blood || e.black)) note(e.day, bloodGradeOf(e) ? 'blood in a stool' : 'a black stool');
   });
   worstPain.forEach((v, day) => note(day, 'pain ' + v + '/10'));
-  const reason = (day) => (why.has(day) ? capFirst(joinAnd(why.get(day).slice(0, 3))) + '.' : '');
+  return why;
+}
+/* What was logged on a day or a run of days, in words, for the Logged line ('' when nothing flagged) */
+function loggedWords(why, from, to) {
+  const all = [];
+  why.forEach((list, day) => { if (day >= from && day <= (to || from)) list.forEach((t) => { if (!all.includes(t)) all.push(t); }); });
+  return all.length ? capFirst(joinAnd(all.slice(0, 4))) : '';
+}
+/* A note's words on their own, and where they came from ("evening check-in, mood 7/10"), so a report can
+   print what was logged and what was written as two separate things (v332) */
+function noteParts(n) {
+  const words = fixMedWords(String((n.src && n.src.words) || n.text || '').trim());
+  const full = String(n.text || '').trim();
+  let label = full.endsWith(words.trim()) || (n.src && full.endsWith(String(n.src.words || '').trim())) ? full.slice(0, full.length - String((n.src && n.src.words) || words).trim().length).replace(/[:\s]+$/, '') : '';
+  if (/^What the carer noticed$/i.test(label)) label = '';
+  const from = [n.context, label ? label.charAt(0).toLowerCase() + label.slice(1) : ''].filter(Boolean).join(', ')
+    .replace(/^with /, 'a note with ');
+  return { words: capFirst(words), from, who: n.who && n.who !== 'unknown' ? n.who : '' };
+}
+function plainWeek(w, report, entries) {
+  const inWeek = entries.filter((e) => e.day >= w.from && e.day <= w.to);
+  const rows = summaryRows(inWeek, w.from, w.to).filter((r) => r.level === 'red' || r.level === 'amber').slice(0, 2);
+  const theme = rows.length ? rows.map((r) => (r.short || r.text).replace(/\.$/, '')).join('. ') + '.' : inWeek.length ? "Nothing flagged by the app's checks." : '';
+  const why = alertReasons(inWeek);
+  const reason = (day) => loggedWords(why, day);
   const alertDays = new Set(why.keys());
   const byDay = new Map();
   report.days.filter((d) => d.day >= w.from && d.day <= w.to).forEach((d) => {
     const telling = d.notes.filter((n) => !isRoutineNote(n)).map((n) => ({ ...n, body: n.text.replace(/^(New or worse symptoms|Settled since yesterday|What the carer noticed): /, '') }));
     if (!telling.length) return;
     const best = telling.slice().sort((a, b) => (/check-in|carer/.test(a.context) ? 1 : 0) - (/check-in|carer/.test(b.context) ? 1 : 0) || b.body.length - a.body.length)[0];
-    let text = fixMedWords(best.body.trim());
+    const parts = noteParts(best);
     /* a note of a new or worsening symptom is an alert in its own right */
     const worse = /^New or worse symptoms: /.test(best.text) || WORSE_WORDS.test(best.body);
-    byDay.set(d.day, { day: d.day, text: (alertDays.has(d.day) ? reason(d.day) + ' ' : '') + capFirst(text), alert: alertDays.has(d.day) || worse });
+    const logged = reason(d.day);
+    byDay.set(d.day, { day: d.day, logged, ...parts, text: (logged ? logged + '. ' : '') + parts.words, alert: alertDays.has(d.day) || worse });
   });
   /* an alert day with no written note still gets its row */
-  alertDays.forEach((day) => { if (!byDay.has(day)) byDay.set(day, { day, text: reason(day), alert: true }); });
+  alertDays.forEach((day) => { if (!byDay.has(day)) byDay.set(day, { day, logged: reason(day), words: '', text: reason(day) + '.', alert: true }); });
   let entriesOut = [...byDay.values()].sort((a, b) => a.day.localeCompare(b.day));
-  return { theme, entries: entriesOut.map((e) => ({ when: rDay(e.day), text: e.text, alert: e.alert })) };
+  return { theme, why, entries: entriesOut.map((e) => ({ when: rDay(e.day), logged: e.logged, words: e.words, from: e.from || '', who: e.who || '', text: e.text, alert: e.alert })) };
 }
 
 /* The banner: the most recent note, if it is a new or worsening symptom, from the last two days of the period */
@@ -7917,7 +7940,11 @@ function buildTwoPage(n) {
   const shown = allWeeks.slice(-2);
   const weeks = shown.map((w) => {
     const fromAi = ai && ai.weeks[w.key];
-    const body = fromAi ? { theme: fixMedWords(fromAi.theme), entries: fromAi.entries.map((e) => ({ when: e.to && e.to !== e.day ? rRange(e.day, e.to).replace(/ (\w{3})$/, (m) => (e.day.slice(0, 7) === e.to.slice(0, 7) ? '' : m)) : rDay(e.day), text: fixMedWords(e.text), alert: Boolean(e.alert) })) }
+    const why = fromAi ? alertReasons(entries.filter((e) => e.day >= w.from && e.day <= w.to)) : null;
+    const body = fromAi ? { theme: fixMedWords(fromAi.theme), entries: fromAi.entries.map((e) => {
+      const logged = loggedWords(why, e.day, e.to);
+      return { when: e.to && e.to !== e.day ? rRange(e.day, e.to).replace(/ (\w{3})$/, (m) => (e.day.slice(0, 7) === e.to.slice(0, 7) ? '' : m)) : rDay(e.day), logged, words: fixMedWords(e.text), ai: true, text: (logged ? logged + '. ' : '') + fixMedWords(e.text), alert: Boolean(e.alert) || Boolean(logged) };
+    }) }
       : plainWeek(w, report, entries);
     return { title: 'Week ' + (shown.indexOf(w) + 1), range: rRange(w.from, w.to), theme: body.theme, entries: body.entries };
   }).filter((w) => w.entries.length || w.theme);
@@ -10935,7 +10962,8 @@ async function renderMoodReport() {
   const W = buildMoodReport(state.moodPdf);
   $('mood-tiles').replaceChildren(...W.tiles.map((t) => h('div', { class: 'tile' + (t.tone ? ' is-' + t.tone : '') + (t.avg ? ' has-avg' : '') },
     h('span', { class: 'tile-label', text: t.k }), h('span', { class: 'tile-value' }, t.v, t.unit ? h('small', { text: t.unit }) : null),
-    t.avg ? h('span', { class: 'tile-avg' }, t.avg, h('small', { text: 'average mood' })) : null, h('span', { class: 'tile-sub', text: t.full || t.n }))));
+    t.avg ? h('span', { class: 'tile-avg' }, t.avg, h('small', { text: 'average mood' })) : null, h('span', { class: 'tile-sub', text: t.full || t.n }),
+    t.q ? h('span', { class: 'tile-quote' }, h('b', { text: 'You wrote' + (t.qFrom ? ' (' + t.qFrom + ')' : '') }), '“' + t.q + '”') : null)));
   /* the brief: Daybook Assistant's words for this range, editable, or the app's plain sentences */
   const ai = moodAi();
   $('mood-brief').hidden = !explainAvailable() || state.readOnly || state.viewer;
@@ -11129,10 +11157,11 @@ function buildMoodReport(n) {
     /* v313, Mark: the day's average mood sits large under the date (avg) and decides the colour; the highs and lows are in the words */
     /* v233: the quote was cut at 90 characters, which chopped a dictated note mid-sentence; the report tile now takes whole
        sentences up to 260 characters and the screen shows the note whole (full) */
-    best ? { k: 'Best day', v: dayWord(best.day), unit: '', avg: String(best.mood), tone: dayTone(best.mood), n: moodWords(best) + '.' + (bestQuote ? ' “' + text(bestQuote[1]).replace(/\s+/g, ' ').trim() + '”' : ''),
-      full: moodWords(best) + '.' + (bestQuote ? ' “' + text(bestQuote[1]).replace(/\s+/g, ' ').trim() + '”' : '') }
+    /* v332: the scores and the words on separate lines, so neither reads as the cause of the other */
+    best ? { k: 'Best day', v: dayWord(best.day), unit: '', avg: String(best.mood), tone: dayTone(best.mood), n: moodWords(best) + '.',
+      q: bestQuote ? text(bestQuote[1]).replace(/\s+/g, ' ').trim() : '', qFrom: bestQuote ? bestQuote[0] : '' }
       : { k: 'Best day', v: 'None', unit: '', tone: '', n: 'No mood scores in this period.' },
-    worst ? { k: 'Hardest day', v: dayWord(worst.day), unit: '', avg: String(worst.mood), tone: dayTone(worst.mood), n: moodWords(worst) + (worstWhy.length ? ', ' + worstWhy.join(', ') : '') + '.' }
+    worst ? { k: 'Hardest day', v: dayWord(worst.day), unit: '', avg: String(worst.mood), tone: dayTone(worst.mood), n: moodWords(worst) + '.' + (worstWhy.length ? ' Also logged that day: ' + joinAnd(worstWhy) + '.' : '') }
       : { k: 'Hardest day', v: 'None', unit: '', tone: '', n: 'No mood scores in this period.' },
     taps.length ? { k: 'Felt low', v: String(tapCount('low')), unit: 'of ' + plural(tapAnswered('low'), 'evening'), tone: tapCount('low') ? 'amber' : 'green',
       n: `Quite a bit or a lot. Worried or on edge on ${plural(tapCount('worried'), 'evening')}. Enjoyed something on ${tapCount('enjoyed')}.` }
@@ -11254,7 +11283,8 @@ async function renderPainReport() {
   $('pain-questions').replaceChildren(...state.painPdf.questions.map((q) => questionCard(q, renderPainReport)));
   const P = buildPainReport(state.painPdf);
   $('pain-tiles').replaceChildren(...P.tiles.map((t) => h('div', { class: 'tile' + (t.tone ? ' is-' + t.tone : '') },
-    h('span', { class: 'tile-label', text: t.k }), h('span', { class: 'tile-value' }, t.v, t.unit ? h('small', { text: t.unit }) : null), h('span', { class: 'tile-sub', text: t.full || t.n }))));
+    h('span', { class: 'tile-label', text: t.k }), h('span', { class: 'tile-value' }, t.v, t.unit ? h('small', { text: t.unit }) : null), h('span', { class: 'tile-sub', text: t.full || t.n }),
+    t.q ? h('span', { class: 'tile-quote' }, h('b', { text: 'You wrote' + (t.qFrom ? ' (' + t.qFrom + ')' : '') }), '“' + t.q + '”') : null)));
   /* the key points: Daybook Assistant's for this range, editable, or the app's own, one a line */
   $('pain-brief').hidden = !explainAvailable() || state.readOnly || state.viewer;
   $('pain-brief-undo').hidden = !P.ai;
