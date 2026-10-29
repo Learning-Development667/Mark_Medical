@@ -10,10 +10,11 @@ import {
 import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager, memoryLocalCache,
   collection, doc, setDoc, updateDoc, deleteDoc, getDoc, getDocs,
-  query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField, runTransaction
+  query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, writeBatch, deleteField, runTransaction,
+  terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '328';
+const APP_VERSION = '329';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -30,13 +31,14 @@ const TEXT_LIMIT_BYTES = 800 * 1024;
 const PAGE_MAX_DIM = 1600;
 const MAX_PAGES = 30;
 
-const CDN = {
-  chart: 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js',
-  pdf: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',
-  pdfWorker: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js',
-  mammoth: 'https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js',
-  jspdf: 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
-  html2canvas: 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'
+const CDN = { // kept in vendor/ at fixed versions since v329, so no outside server can change them
+  chart: 'vendor/chart-4.4.1.umd.min.js',
+  pdf: 'vendor/pdf-3.11.174.min.js',
+  pdfWorker: 'vendor/pdf-3.11.174.worker.min.js',
+  mammoth: 'vendor/mammoth-1.6.0.browser.min.js',
+  jspdf: 'vendor/jspdf-2.5.1.umd.min.js',
+  html2canvas: 'vendor/html2canvas-1.4.1.min.js',
+  jszip: 'vendor/jszip-3.10.1.min.js'
 };
 
 /* The medicines of the cancer preview and the shared demo only (v248). Until v248 every new real circle was given this list
@@ -1059,7 +1061,7 @@ $('nohousehold-form').addEventListener('submit', async (ev) => {
   } catch (e) { err.textContent = e.message; err.hidden = false; }
   finally { btn.disabled = false; }
 });
-$('nohousehold-signout').addEventListener('click', async () => { $('nohousehold').hidden = true; await signOut(auth); $('signin').hidden = false; });
+$('nohousehold-signout').addEventListener('click', () => { $('nohousehold').hidden = true; signOutAndForget(); });
 /* ?invite=CODE in the address: remember it, say what it is for, and lead with Create an account */
 /* Privacy, terms and About (since v90): the three documents are <template>s in index.html, shown in the
    sheet so they open from the sign-in screen as well as from Settings; ?page=privacy in the address opens
@@ -1421,9 +1423,25 @@ async function leaveDemo() {
   if (await confirmSheet('Leave the demo', live ? 'Go back to the sign-in screen? Anything you added to the shared demo stays there until it is wiped tonight.' : 'Go back to the sign-in screen? Nothing you tried in the demo is kept.', 'Leave demo', false)) { if (live) exitLiveDemo(); else exitPreview(); }
 }
 $('guest-pill').addEventListener('click', leaveDemo);
+/* Signing out leaves nothing of the circle's records on the phone (v329, security review part 2): the
+   database's offline copy is cleared, and so are the words kept as typed, unfinished check-ins, the cached
+   account and the feedback draft. Settings that say nothing about anyone's health (the weight unit, chart
+   or table, the speech check) stay. The page then reloads on the sign-in screen. */
+const FORGET_ON_SIGNOUT = ['daybook.drafts', 'daybook.draft.offered', 'daybook.checkin.', 'daybook.account.', 'daybook.feedback.', 'daybook.operator.', 'daybook.meds.autoOpened'];
+function forgetPhoneData() {
+  try {
+    for (const k of Object.keys(localStorage)) if (FORGET_ON_SIGNOUT.some((p) => k === p || (p.endsWith('.') && k.startsWith(p)))) localStorage.removeItem(k);
+  } catch (e) { /* storage blocked: nothing kept */ }
+}
+async function signOutAndForget(waitMs = 0) {
+  try { await signOut(auth); } catch (e) { /* the sign-in is already gone */ }
+  forgetPhoneData();
+  try { await terminate(mainDb); await clearIndexedDbPersistence(mainDb); } catch (e) { console.warn('Could not clear the offline copy', e); }
+  setTimeout(() => location.reload(), waitMs);
+}
 $('signout').addEventListener('click', async () => {
   if (state.demo || state.demoLive) { leaveDemo(); return; }
-  if (await confirmSheet('Sign out', 'You will need your password to sign back in.', 'Sign out', true)) signOut(auth);
+  if (await confirmSheet('Sign out', 'You will need your password to sign back in. Daybook clears its copy of the records from this phone.', 'Sign out', true)) signOutAndForget();
 });
 
 /* ------------------------------------------------------------------ */
@@ -2349,12 +2367,12 @@ async function syncRecordsCard() {
 $('settings-export').addEventListener('click', () => exportRecords());
 /* Everything the circle can read, gathered into one zip: the records as JSON (dates as ISO text), the entries also as a
    spreadsheet, each letter's pages as pictures with its explanation, each recording as its sound file, and a README. JSZip
-   comes from cdnjs on first use. The file is offered with a second tap, since a phone only shares straight after a tap. */
+   comes from vendor/ on first use. The file is offered with a second tap, since a phone only shares straight after a tap. */
 async function exportRecords() {
   const btn = $('settings-export'), said = $('settings-export-said'), saveBox = $('settings-export-save');
   btn.disabled = true; saveBox.replaceChildren(); said.textContent = 'Gathering the records. This can take a minute with a lot of letters or recordings.';
   try {
-    await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js');
+    await loadScript(CDN.jszip);
     const zip = new window.JSZip();
     const plain = (v) => v == null ? v : typeof v.toDate === 'function' ? v.toDate().toISOString() : Array.isArray(v) ? v.map(plain)
       : typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, plain(x)])) : v;
@@ -2447,8 +2465,8 @@ function openDeleteSheet(whole) {
     } catch (e) { said.textContent = e.message; go.disabled = false; box.disabled = false; return; }
     try { if (uid) localStorage.removeItem('daybook.account.' + uid); } catch (e) { /* nothing kept */ }
     closeSheet({ force: true });
-    try { await signOut(auth); } catch (e) { /* the sign-in is already gone */ }
     toast(whole ? 'The care circle and your sign-in have been deleted.' : 'Your sign-in has been deleted.', { label: 'OK', onClick() {} });
+    signOutAndForget(3500);
   });
   const body = h('div', { class: 'deletesheet' },
     h('p', { text: whole
@@ -7933,7 +7951,7 @@ function reportFrame(kind) {
   const id = 'report-frame-' + (kind || 'notes');
   let f = document.getElementById(id);
   if (!f) {
-    f = h('iframe', { id, class: 'report-frame', title: REPORT_NAMES[kind || 'notes'], 'aria-hidden': 'true', tabindex: '-1' });
+    f = h('iframe', { id, class: 'report-frame', title: REPORT_NAMES[kind || 'notes'], 'aria-hidden': 'true', tabindex: '-1', sandbox: 'allow-same-origin allow-modals' });
     document.body.append(f);
   }
   return f;
@@ -8386,7 +8404,7 @@ async function openReportViewer(kind, printNow) {
   const html = K.html(res.R);
   const nPages = res.doc ? res.doc.querySelectorAll('.page').length : 2;
   const pagesWord = nPages === 1 ? 'one A4 page' : nPages === 2 ? 'two A4 pages' : nPages + ' A4 pages';
-  const frame = h('iframe', { class: 'viewer-frame', title: name + ', ' + pagesWord });
+  const frame = h('iframe', { class: 'viewer-frame', title: name + ', ' + pagesWord, sandbox: 'allow-same-origin allow-modals' }); // no scripts can run in a report (v329)
   const print = h('button', { class: 'btn btn-tint tint-green', type: 'button', id: 'viewer-print' }, icon('print'), 'Print');
   const save = h('button', { class: 'btn btn-tint tint-warm', type: 'button', id: 'viewer-save' }, icon('download'), 'Save as PDF');
   const doPrint = () => {
@@ -10130,7 +10148,7 @@ function openFlareSheet(day) {
     contact ? h('div', { class: 'call-info' }, h('b', { text: contact.label }), contact.role ? h('span', { text: ' · ' + contact.role }) : null, contact.number ? h('span', { class: 'mono', text: ' · ' + contact.number }) : null, contact.ext ? h('span', { text: ' · ' + extWords(contact.ext) }) : null) : h('p', { class: 'hint', text: 'Choose who the advice line is in the flare plan, from Who to contact.' }),
     contact ? h('div', { class: 'btnrow' },
       contact.number ? h('a', { class: 'btn btn-primary', href: telHref(contact.number), 'aria-label': 'Call ' + contact.label + (contact.ext ? ', ' + extWords(contact.ext).toLowerCase() : '') }, 'Call') : null,
-      contact.email ? h('a', { class: 'btn btn-secondary', href: 'mailto:' + contact.email }, 'Email') : null) : null);
+      contact.email ? h('a', { class: 'btn btn-secondary', href: 'mailto:' + encodeURIComponent(contact.email) }, 'Email') : null) : null);
   const lines = flareSummaryLines(day);
   const text = lines.join('\n');
   const sumBox = h('div', { class: 'flare-summary', role: 'region', 'aria-label': 'The last 7 days' },
@@ -10142,7 +10160,7 @@ function openFlareSheet(day) {
       h('button', { class: 'btn btn-primary', type: 'button', onclick: async () => {
         const subject = 'Flare summary, last 7 days' + (patientFullName() ? ': ' + patientFullName() : '');
         if (navigator.share) { try { await navigator.share({ title: subject, text: subject + '\n\n' + text }); return; } catch (e) { if (e && e.name === 'AbortError') return; } }
-        const to = contact && contact.email ? contact.email : '';
+        const to = contact && contact.email ? encodeURIComponent(contact.email) : '';
         window.location.href = 'mailto:' + to + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(text);
       } }, 'Share or send')));
   const calls = (state.recentEntries || []).filter((e) => e.type === 'call').sort((a, b) => entryDate(b) - entryDate(a)).slice(0, 10);
@@ -13701,7 +13719,7 @@ async function processFiles(files, onProgress) {
       onProgress('Opening PDF', step / total);
       await loadScript(CDN.pdf);
       window.pdfjsLib.GlobalWorkerOptions.workerSrc = CDN.pdfWorker;
-      const pdf = await window.pdfjsLib.getDocument({ data: await f.arrayBuffer() }).promise;
+      const pdf = await window.pdfjsLib.getDocument({ data: await f.arrayBuffer(), isEvalSupported: false }).promise;
       for (let p = 1; p <= pdf.numPages; p++) {
         if (pages.length >= MAX_PAGES) throw new Error(`Too many pages. The limit is ${MAX_PAGES} pages per document.`);
         onProgress(`PDF page ${p} of ${pdf.numPages}`, (step + (p - 1) / pdf.numPages) / total);
@@ -16148,7 +16166,7 @@ function renderCalls() {
       c.email ? h('div', { class: 'call-email', text: c.email }) : ''),
     h('div', { class: 'call-btns' },
       c.number ? h('a', { class: 'btn btn-primary', href: telHref(c.number), 'aria-label': 'Call ' + c.label + (c.ext ? ', ' + extWords(c.ext).toLowerCase() : '') }, 'Call') : '',
-      c.email ? h('a', { class: 'btn btn-secondary', href: 'mailto:' + c.email, 'aria-label': 'Email ' + c.label }, 'Email') : '')
+      c.email ? h('a', { class: 'btn btn-secondary', href: 'mailto:' + encodeURIComponent(c.email), 'aria-label': 'Email ' + c.label }, 'Email') : '')
   )));
   if (!calls.length) wrap.append(h('p', { class: 'empty', 'data-art': 'call', text: 'No contacts saved yet. Add the ward, your nurse, the hospice or GP so they are one tap away.' }));
   $('calls-edit').hidden = !calls.length; // nothing to edit yet: Add a new contact is the one button

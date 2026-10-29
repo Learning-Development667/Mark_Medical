@@ -64,7 +64,8 @@ self.addEventListener('push', function (event) {
 /* Tapping the notification opens Daybook on the Meds tab (an open window is reused) */
 self.addEventListener('notificationclick', function (event) {
   event.notification.close();
-  const target = (event.notification.data && event.notification.data.url) || './';
+  let target = (event.notification.data && event.notification.data.url) || './';
+  try { if (new URL(target, self.location.href).origin !== self.location.origin) target = './'; } catch (e) { target = './'; } // only ever opens Daybook itself
   event.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (list) {
     for (const client of list) {
       if ('focus' in client) { client.navigate(target).catch(function () {}); return client.focus(); }

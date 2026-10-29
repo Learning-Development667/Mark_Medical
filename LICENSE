@@ -17,9 +17,10 @@ Third-party components keep their own licences: the McCance and Widdowson
 food table (data/cofid.json) is Crown copyright under the Open Government
 Licence v3.0; the ZXing barcode reader (vendor/zxing-library.min.js, with its
 licence beside it) is under the Apache License 2.0; product data scanned from
-barcodes comes from Open Food Facts under the Open Database Licence; Chart.js,
-pdf.js, mammoth.js, jsPDF and html2canvas are loaded from their own CDNs under
-their own licences; the fonts Fraunces and Inter
+barcodes comes from Open Food Facts under the Open Database Licence; Chart.js
+(MIT), pdf.js (Apache 2.0), mammoth.js (BSD), jsPDF (MIT), html2canvas (MIT) and
+JSZip (MIT or GPLv3, used under MIT) are kept in vendor/ with their licences
+beside them; the fonts Fraunces and Inter
 are under the SIL Open Font Licence.
 
 No warranty. Daybook is a personal record-keeping tool and is not medical
