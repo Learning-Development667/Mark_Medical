@@ -15,7 +15,7 @@ Endpoints:
   (deterministic id, so re-sends update), `exercise/{day}.workouts` and `nutrition/{day}`
   ({ kcal, prot, carb, fat, source "apple-health" }) inside that household, and keeps the last raw
   payload at `households/{id}/bridge/last`.
-- `GET /last?key=<inbox key>` the last send into that key's household, for checking field names.
+- `GET /last` (the inbox key in the `X-Care-Log-Key` header, since v331) the last send into that key's household, for checking field names.
 - `GET /ping` health check.
 - `POST /send-report` with the ID token and JSON `{ kind, to, toName, subject, text, filename, pdf (base64), fromName }`
   (v159): a family member's report emailed through Resend (the `RESEND_API_KEY` secret; the domain
@@ -39,9 +39,9 @@ Endpoints:
   household for a sign-in that has none; `POST /invite` { name, role, relation } (family only) makes a one-use link
   that expires in seven days; `GET /invite-info?code=` says what a link is for; `POST /join` { code, name? } takes
   the invite up; `POST /member-remove` { uid } (the owner only). The demo project refuses all five.
-- `GET /push-test?key=<inbox key>` sends a test notification to every phone in that household.
-- `GET /usage?key=<BRIDGE_KEY>` (`&rebuild=1` counts now) and `POST /usage` from a sign-in in the operator's circle: the usage counts (v211), counted nightly at 03:30 London into `bridge/usage`; counts only, pseudonymous rows, no content.
-- `GET /remind-now?key=<BRIDGE_KEY>` runs the reminder check for every household by hand (the
+- `GET /push-test` (inbox key in the header) sends a test notification to every phone in that household.
+- `GET /usage` (`BRIDGE_KEY` in the header, `?rebuild=1` counts now) and `POST /usage` from a sign-in in the operator's circle: the usage counts (v211), counted nightly at 03:30 London into `bridge/usage`; counts only, pseudonymous rows, no content.
+- `GET /remind-now` (`BRIDGE_KEY` in the header) runs the reminder check for every household by hand (the
   same thing the five-minute cron does).
 
 Deployed by `.github/workflows/deploy-worker.yml` from four GitHub repository secrets:
