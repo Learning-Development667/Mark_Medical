@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '329';
+const APP_VERSION = '330';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -1113,7 +1113,8 @@ document.addEventListener('click', (ev) => {
   try {
     const r = await fetch(BRIDGE.url.replace(/\/$/, '') + '/beta-info?code=' + encodeURIComponent(code));
     const info = await r.json();
-    if (info.valid) banner.textContent = 'Your Beta code' + (info.label ? ' from ' + info.label : '') + forWords + ' is filled in. Tap Create an account to start.';
+    if (info.valid) banner.textContent = 'Your Beta code' + forWords + ' is filled in. Tap Create an account to start.';
+    else if (r.status === 429) banner.textContent = info.message;
     else { banner.textContent = info.message || 'That Beta code is not right.'; state.pendingBeta = null; state.pendingPacks = null; }
   } catch (e) { /* the banner already says enough */ }
 })();

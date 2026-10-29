@@ -25,7 +25,7 @@ export default {
       /* Households (since v78): sign-up, invites, joining, removing a member. The app never writes
          the records that decide access; these do, with the service account, after checking who asks. */
       if (url.pathname === '/household' && request.method === 'POST') return withCors(request, await handleCreateHousehold(request, env));
-      if (url.pathname === '/beta-info' && request.method === 'GET') return withCors(request, await handleBetaInfo(url, env));
+      if (url.pathname === '/beta-info' && request.method === 'GET') return withCors(request, await handleBetaInfo(request, url, env));
       if (url.pathname === '/feedback' && request.method === 'POST') return withCors(request, await handleFeedback(request, env));
       if (url.pathname === '/feedback-info' && request.method === 'POST') return withCors(request, await handleFeedbackInfo(request, env));
       if (url.pathname === '/food' && request.method === 'POST') return withCors(request, await handleFood(request, env));
@@ -828,12 +828,30 @@ async function betaCodeRecord(fs, code) {
   if (!rec || f(rec.fields, 'active') === false) return null;
   return { code, label: f(rec.fields, 'label') || '', uses: Number(f(rec.fields, 'uses') || 0) };
 }
-/* GET /beta-info?code=: whether a Beta code in a link is good, and whose it is, shown on the sign-up screen before anyone types */
-async function handleBetaInfo(url, env) {
+/* GET /beta-info?code=: whether a Beta code in a link is good, shown on the sign-up screen and the website's Beta box before
+   anyone types. Since v330 it never says whose a code is (a label may be a nurse's name, and the codes are words anyone
+   could try), and one internet address gets BETA_INFO_A_DAY lookups a day, counted in Cloudflare's own cache at the
+   nearest data centre: no database read or write, so it costs nothing. */
+const BETA_INFO_A_DAY = 30;
+async function betaLookupAllowed(request) {
+  try {
+    const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+    const hash = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode('beta:' + ip)))].slice(0, 12).map((b) => b.toString(16).padStart(2, '0')).join('');
+    const key = new Request('https://ratelimit.daybook.invalid/beta-info/' + new Date().toISOString().slice(0, 10) + '/' + hash);
+    const cache = caches.default;
+    const hit = await cache.match(key);
+    const n = hit ? Number(await hit.text()) || 0 : 0;
+    if (n >= BETA_INFO_A_DAY) return false;
+    await cache.put(key, new Response(String(n + 1), { headers: { 'Cache-Control': 'max-age=86400' } }));
+    return true;
+  } catch (e) { return true; } // no cache to count in (tests): let it through
+}
+async function handleBetaInfo(request, url, env) {
   if (!env.BETA_CODES_REQUIRED) return json({ required: false, valid: true });
+  if (!(await betaLookupAllowed(request))) return json({ error: 'busy', message: 'Too many tries today. Email support@mymedicaldaybook.co.uk if your code is not working.' }, 429);
   const fs = await firestore(env);
   const rec = await betaCodeRecord(fs, normaliseBetaCode(url.searchParams.get('code')));
-  return json(rec ? { required: true, valid: true, label: rec.label } : { required: true, valid: false, message: BETA_CODE_MESSAGE });
+  return json(rec ? { required: true, valid: true } : { required: true, valid: false, message: BETA_CODE_MESSAGE });
 }
 
 /* Tell Mark what you think (v153, the Beta feedback). POST /feedback { kind "note"|"survey", text, image? (base64 JPEG),
