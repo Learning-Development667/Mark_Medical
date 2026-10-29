@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '334';
+const APP_VERSION = '335';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -7262,7 +7262,8 @@ function openSendSheet(kind) {
   const compose = (c) => {
     const fname = K.file(n);
     let blob = null, blobError = null;
-    (async () => { try { blob = await K.blob(); } catch (e) { console.error(e); blobError = e; } })();
+    const makeBlob = () => (async () => { blobError = null; try { blob = await K.blob(); } catch (e) { console.error(e); blobError = e; } })();
+    let blobP = makeBlob();
     const subject = h('input', { type: 'text', id: 'send-subject', value: emailSubject(K, range) });
     const note = h('textarea', { id: 'send-note', rows: '6' });
     note.value = `${greetingFor(c)}\n\n${K.words(range, n)} The PDF is attached.\n\nThank you,\n${emailSignOff()}`.trim() + '\n\n' + SENT_FROM;
@@ -7321,9 +7322,18 @@ function openSendSheet(kind) {
         try { await user.reload(); if (user.emailVerified) await user.getIdToken(true); } catch (e) { /* offline: the bridge call says so */ }
         if (!user.emailVerified) { showVerify(); return; }
       }
-      if (!blob) { toast(blobError ? pdfErrorText(blobError) : 'Still making the PDF. Try again in a moment.'); return; }
+      /* v335 (Mark, on a phone over 4G: "Still making the PDF. Try again in a moment."): the bridge needs no tap
+         gesture, so Send waits for the PDF and then sends, rather than asking for a second tap; a failed one is tried again once */
+      const label = 'Send to ' + String(c.label).split(/\s+/)[0];
+      send.disabled = true;
+      if (!blob) {
+        send.textContent = 'Making the PDF, then sending';
+        if (blobError) blobP = makeBlob();
+        await blobP;
+        if (!blob) { send.disabled = false; send.textContent = label; toast(pdfErrorText(blobError || new Error('no PDF'))); return; }
+      }
       const subj = subject.value.trim() || emailSubject(K, range);
-      send.disabled = true; send.textContent = 'Sending';
+      send.textContent = 'Sending';
       try {
         const pdf = await blobToB64(blob);
         const res = await bridgeCall('/send-report', { kind, to: c.email, toName: c.label, subject: subj, text: note.value.trim(), filename: fname, fromName: emailSignOff().replace(/, for .*$/, '') },
@@ -7334,13 +7344,18 @@ function openSendSheet(kind) {
         closeSheet();
         toast('Sent to ' + c.label + '. A copy is in your own inbox.');
       } catch (e) {
-        send.disabled = false; send.textContent = 'Send to ' + String(c.label).split(/\s+/)[0];
+        send.disabled = false; send.textContent = label;
         if (e && e.code === 'unverified') { showVerify(); return; }
         toast(e && e.message ? e.message : 'Could not send. Use Send from my own Mail app.');
       }
     };
     const share = () => {
-      if (!blob) { toast(blobError ? pdfErrorText(blobError) : 'Still making the PDF. Try again in a moment.'); return; }
+      if (!blob) {
+        /* the share sheet needs the tap itself, so it cannot wait: say so, and make the PDF again if it failed */
+        if (blobError) blobP = makeBlob();
+        toast('The PDF is still being made. Tap again in a few seconds.');
+        return;
+      }
       const file = new File([blob], fname, { type: 'application/pdf' });
       copyText(c.email); // copied inside the tap, before the share sheet, for pasting into To
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
