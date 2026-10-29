@@ -132,6 +132,21 @@ h2.sec small{font-family:Inter,sans-serif;font-weight:400;font-size:7.6pt;color:
 .fxbox li b{font-weight:600}
 .fxbox li .cmood{display:block}
 .fxbox li .ctext{display:block;margin-top:.4mm}
+.fxsess{margin-top:1.6mm}
+.fxs-h{display:flex;flex-wrap:wrap;gap:0 3mm;align-items:baseline;font-size:7.6pt;margin-bottom:1mm}
+.fxs-h b{color:#8A5E10;font-weight:600}
+.fxs-h span{color:var(--slate);font-size:7.2pt}
+.fxt{width:100%;border-collapse:collapse;font-size:7.3pt;line-height:1.3;background:#fff}
+.fxt th,.fxt td{border:1px solid var(--line);padding:.7mm 1.6mm;text-align:left;vertical-align:top}
+.fxt tr:first-child th{background:#F3EBD8;font-size:6.6pt;text-transform:uppercase;letter-spacing:.05em;font-weight:600}
+.fxt tr:first-child th span{display:block;text-transform:none;letter-spacing:0;font-weight:400;color:var(--slate)}
+.fxt th[scope=row]{font-weight:600;width:28%}
+.fxt td.none{color:var(--slate)}
+.fxt td.na{color:var(--slate);font-style:italic}
+.fxt td.mild{background:#FBF3DC}
+.fxt td.mod{background:#F6DFA8;font-weight:600}
+.fxt td.sev{background:var(--red-soft);color:#8E2A22;font-weight:600}
+.fxt tr.sub th{background:#FBF6EA;font-size:6.6pt;font-weight:600;color:var(--slate);text-transform:uppercase;letter-spacing:.05em}
 .tail .more{margin:0}
 `;
 
@@ -254,6 +269,26 @@ function carerHtml(C, o = {}) {
   return `<div class="week ${cls} wide${o.nat ? ' nat' : ''}" data-sec="${esc(C.title)}"${o.ti == null ? '' : ` data-ti="${o.ti}"`}><div class="wh"><h3>${esc(C.title)}${from ? ' <small>(continued)</small>' : ''}</h3><span>${esc(C.range)}</span></div>${C.summary && !from ? `<div class="theme">${esc(C.summary)}</div>` : ''}${items}${C.note && last ? `<p class="ai">${esc(C.note)}</p>` : ''}</div>`;
 }
 
+/* Side effects after treatment as a table (v334, Mark: "could be in a table to make it clearer"): one table a session,
+   the side effects down the side, the three days across, each cell the word given in the check-ins; anything logged
+   on the Symptom tile on those days on its own rows under a heading saying so. F has the carer box's shape (days are
+   sessions, so a long list still carries on onto the next page), with d.table on each. */
+function fxHtml(F, o = {}) {
+  const from = o.from || 0, to = o.to == null ? F.days.length : o.to;
+  const shown = F.days.slice(from, to);
+  const last = to >= F.days.length;
+  const tone = (g) => (g === 3 ? 'sev' : g === 2 ? 'mod' : g === 1 ? 'mild' : g === -1 ? 'na' : g === -2 ? 'blank' : 'none');
+  const tables = shown.map((d) => {
+    const T = d.table || { cols: [], rows: [], also: [] };
+    const head = `<tr><th scope="col">Side effect</th>${T.cols.map((c) => `<th scope="col">${esc(c.head)}<span>${esc(c.sub)}</span></th>`).join('')}</tr>`;
+    const row = (r) => `<tr><th scope="row">${esc(r.name)}</th>${r.cells.map((c) => `<td class="${tone(c.g)}">${esc(c.word)}</td>`).join('')}</tr>`;
+    const none = !T.rows.length && T.anyAnswered ? `<tr><th scope="row">None of these</th>${T.cols.map((c) => `<td class="${c.answered ? 'none' : 'na'}">${c.answered ? 'None' : 'Not answered'}</td>`).join('')}</tr>` : '';
+    const also = T.also.length ? `<tr class="sub"><th colspan="${T.cols.length + 1}">Also logged on the Symptom tile those days, score out of 10</th></tr>${T.also.map(row).join('')}` : '';
+    return `<div class="fxsess"><div class="fxs-h"><b>${esc(d.when)}</b>${d.moods ? `<span>${esc(d.moods)}</span>` : ''}</div><table class="fxt">${head}${T.rows.map(row).join('')}${none}${also}</table></div>`;
+  }).join('');
+  return `<div class="week fxbox wide${o.nat ? ' nat' : ''}" data-sec="${esc(F.title)}"${o.ti == null ? '' : ` data-ti="${o.ti}"`}><div class="wh"><h3>${esc(F.title)}${from ? ' <small>(continued)</small>' : ''}</h3><span>${esc(F.range)}</span></div>${tables}${F.note && last ? `<p class="ai">${esc(F.note)}</p>` : ''}</div>`;
+}
+
 /* The pages after the two fixed ones (since v236). Nothing on a report is cut short: whatever page 1 or page 2
    cannot hold is laid out here, page after page, in the order it was moved: the latest note when page 1 could
    not hold it, the questions that did not fit, then the weekly notes (a long week carries on, headed
@@ -286,7 +321,7 @@ function tailPageHtml(R, items, p, total) {
     }
     flushQ();
     if (it.k === 'f') {
-      body += `<div class="weeks nat">${carerHtml(R.fx, { nat: true, ti, from: it.from, to: it.to, cls: 'fxbox' })}</div>`;
+      body += `<div class="weeks nat">${fxHtml(R.fx, { nat: true, ti, from: it.from, to: it.to })}</div>`;
       return;
     }
     if (it.k === 'c') {
@@ -394,7 +429,7 @@ ${bar}
 <section class="page" id="page2">
   <div class="runner"><h2>${R.weeksPage3 ? 'Readings' : 'Readings and weekly notes'}</h2><span>${esc(R.patient)} · ${esc(R.period)}</span></div>
   <div class="cgrid" data-sec="Charts">${charts}${key}</div>
-  ${R.fx && !R.fxTail ? carerHtml(R.fx, { cls: 'fxbox' }) : ''}
+  ${R.fx && !R.fxTail ? fxHtml(R.fx) : ''}
   ${R.weeksPage3 ? '' : weeksHtml}
   ${R.carer && !R.carerTail && !R.carerPage1 ? carerHtml(R.carer) : ''}
   <div class="foot"><span>${esc(R.foot)}</span>${madeBy(2, total)}</div>
