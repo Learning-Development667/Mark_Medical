@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '335';
+const APP_VERSION = '336';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -8028,7 +8028,10 @@ function reportFrame(kind) {
   const id = 'report-frame-' + (kind || 'notes');
   let f = document.getElementById(id);
   if (!f) {
-    f = h('iframe', { id, class: 'report-frame', title: REPORT_NAMES[kind || 'notes'], 'aria-hidden': 'true', tabindex: '-1', sandbox: 'allow-same-origin allow-modals' });
+    /* v336: not sandboxed. On iPhone Safari html2canvas never finished inside a sandboxed frame (the PDF hung on
+       "Making the PDF, then sending"). Scripts in the report are still stopped: a srcdoc frame takes the app's
+       Content Security Policy, which allows no inline script or handler. The viewer the person sees keeps its sandbox. */
+    f = h('iframe', { id, class: 'report-frame', title: REPORT_NAMES[kind || 'notes'], 'aria-hidden': 'true', tabindex: '-1' });
     document.body.append(f);
   }
   return f;
@@ -8091,7 +8094,11 @@ async function reportPdfBlob(res) {
     const canvas = res.doc.createElement('canvas');
     canvas.width = Math.floor(r.width * scale); canvas.height = Math.floor(r.height * scale);
     canvas.style.width = r.width + 'px'; canvas.style.height = r.height + 'px';
-    await window.html2canvas(pages[i], { canvas, scale, width: r.width, height: r.height, backgroundColor: '#ffffff', logging: false, useCORS: true });
+    /* never wait for ever: a page that takes over 45 seconds is reported, so Send and Save as PDF say so instead of freezing (v336) */
+    await Promise.race([
+      window.html2canvas(pages[i], { canvas, scale, width: r.width, height: r.height, backgroundColor: '#ffffff', logging: false, useCORS: true }),
+      new Promise((_, no) => setTimeout(() => no(new Error('the phone took too long drawing page ' + (i + 1))), 45000))
+    ]);
     const data = canvas.toDataURL('image/jpeg', 0.9);
     if (!data || data.length < 2000) throw new Error('the phone ran out of memory drawing page ' + (i + 1));
     if (i) pdf.addPage();
