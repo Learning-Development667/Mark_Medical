@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '358';
+const APP_VERSION = '359';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -1989,8 +1989,15 @@ function renderPacksCard() {
           saveProfilePatch({ packs: next }, p.name + (ev.target.checked ? ' on' : ' off')).then((ok) => { if (!ok) ev.target.checked = !ev.target.checked; });
         } }),
         h('span', { text: p.name })),
-      h('p', { class: 'hint', text: p.hint }))));
+      h('p', { class: 'hint', text: p.hint }),
+      p.key === 'general' ? h('div', { id: 'settings-condition-box', class: 'condition-box' },
+        field('What is it? (optional)', h('input', { id: 'settings-condition', type: 'text', class: 'input', maxlength: '60', autocomplete: 'off', placeholder: 'e.g. chronic pain', onchange: (ev) => {
+          saveProfilePatch({ condition: ev.target.value.trim().slice(0, 60) }, 'Saved');
+        } })),
+        h('p', { class: 'hint', text: 'Only used to name your reports. Nothing changes because of what you type.' })) : null)));
   }
+  { const cb = $('settings-condition-box'), ci = $('settings-condition');
+    if (cb) { cb.hidden = !packOn('general'); ci.disabled = locked; if (document.activeElement !== ci) ci.value = (state.profile && state.profile.condition) || ''; } }
   PACKS.forEach((p) => { const box = $('pack-' + p.key); const v = Boolean(on[p.key]) && !p.later; if (box.checked !== v) box.checked = v; box.disabled = p.later || locked; });
   ibdBox.hidden = !packOn('ibd');
   if (ibdBox.hidden) return;
@@ -2332,7 +2339,7 @@ async function exportRecords() {
       const rows = await read(c); counts[c] = rows.length;
       zip.file('records/' + c + '.json', JSON.stringify(rows, null, 2));
       if (c === 'entries') {
-        const cols = ['day', 'time', 'type', 'addedBy', 'medName', 'dose', 'value', 'systolic', 'diastolic', 'heartRate', 'oxygen', 'what', 'slot', 'note'];
+        const cols = ['day', 'time', 'type', 'addedBy', 'medName', 'dose', 'value', 'systolic', 'diastolic', 'heartRate', 'oxygen', 'peakFlow', 'what', 'slot', 'note'];
         const cell = (x) => { const t = x == null ? '' : typeof x === 'object' ? JSON.stringify(x) : String(x); return /[",\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
         const time = (e) => (typeof e.at === 'string' ? new Date(e.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/London' }) : '');
         const lines = rows.slice().sort((x, y) => String(x.day).localeCompare(String(y.day)) || String(x.at).localeCompare(String(y.at)))
@@ -2956,7 +2963,7 @@ const PACKS = [
   /* Something else (v359, Mark: open Daybook to any condition, the reports going to a GP or any team). It adds nothing
      condition-specific: the everyday tracking and every report, appointments on the calendar, and its own words in
      profile/main.condition, used only to name the reports. */
-  { key: 'general', name: 'Something else', hint: 'Any other condition, or more than one: chronic pain, migraines, a heart or lung condition, long COVID. Everything everyday is there, and the reports go to your GP or any team.' }
+  { key: 'general', name: 'Something else', hint: 'Chronic pain, or any long-term condition. Everything everyday is there, you can add your own symptoms on the Symptom tile, and the reports go to your GP or any team.' }
 ];
 /* what the person typed under Something else ("Chronic pain"), or '' */
 function conditionWords() { return packOn('general') && state.profile && state.profile.condition ? String(state.profile.condition).trim().slice(0, 60) : ''; }
@@ -3027,6 +3034,7 @@ function entryTitle(e) {
       if (e.heartRate) parts.push(Math.round(e.heartRate) + ' bpm');
       if (e.systolic && e.diastolic) parts.push(Math.round(e.systolic) + '/' + Math.round(e.diastolic));
       if (e.oxygen) parts.push(Math.round(e.oxygen) + '% O2');
+      if (e.peakFlow) parts.push('peak flow ' + Math.round(e.peakFlow));
       return [h('span', { class: 'val', text: parts.join('  ·  ') || 'Vitals' })];
     }
     default: return [h('span', { text: e.note || 'Note' })];
@@ -3140,6 +3148,7 @@ function readingRows(e) {
   if (e.heartRate) rows.push(['Heart rate', Math.round(e.heartRate) + ' bpm', e.heartRate >= 120 || e.heartRate <= 50 ? 'red' : e.heartRate >= 100 ? 'amber' : null]);
   if (e.systolic && e.diastolic) rows.push(['Blood pressure', Math.round(e.systolic) + '/' + Math.round(e.diastolic) + ' mmHg', e.systolic >= 160 || e.diastolic >= 100 || e.systolic <= 90 ? 'red' : e.systolic >= 140 || e.diastolic >= 90 ? 'amber' : null]);
   if (e.oxygen) rows.push(['Oxygen', Math.round(e.oxygen) + '%', e.oxygen <= 90 ? 'red' : e.oxygen <= 93 ? 'amber' : null]);
+  if (e.peakFlow) rows.push(['Peak flow', Math.round(e.peakFlow) + ' L/min', null]);
   return rows;
 }
 
@@ -4883,6 +4892,9 @@ function openAdd(type, editEntry, preset) {
     const sys = h('input', { type: 'text', inputmode: 'numeric', autocomplete: 'off' });
     const dia = h('input', { type: 'text', inputmode: 'numeric', autocomplete: 'off' });
     const o2 = h('input', { type: 'text', inputmode: 'numeric', autocomplete: 'off' });
+    /* Peak flow (v359), for asthma or COPD: litres a minute, the best of three blows. No level is judged: a good peak
+       flow is the person's own best, which only their team knows. */
+    const pf = h('input', { type: 'text', inputmode: 'numeric', autocomplete: 'off', id: 'vitals-peakflow' });
     const lastW = state.recentEntries.find((e) => e.type === 'weight');
     const wIn = weightEntry(null);
     /* Editing one saved reading (since v105): a temperature shows only the temperature box, a vitals entry only heart rate,
@@ -4899,7 +4911,9 @@ function openAdd(type, editEntry, preset) {
     const vitalsBlock = h('div', null,
       field('Heart rate (bpm)', hr),
       h('div', { class: 'field-row' }, field('Systolic', sys), field('Diastolic', dia)),
-      field('Oxygen (%)', o2));
+      field('Oxygen (%)', o2),
+      field('Peak flow (L/min)', pf),
+      h('p', { class: 'hint hint-small', text: 'For asthma or COPD: the best of three blows. Leave it empty if you do not use a peak flow meter.' }));
     const weightBlock = h('div', null, ...wIn.nodes,
       lastW ? h('p', { class: 'hint hint-small', text: 'Last: ' + fmtKg(lastW.value) + ' (' + fmtStLb(lastW.value) + '), ' + whenLabel(lastW) + '.' }) : '');
     /* Weight once a day (v127): when the chosen day already has a weight, typed or from Apple Health, the box gives way to
@@ -4939,6 +4953,7 @@ function openAdd(type, editEntry, preset) {
       if (editEntry.systolic) sys.value = String(editEntry.systolic);
       if (editEntry.diastolic) dia.value = String(editEntry.diastolic);
       if (editEntry.oxygen) o2.value = String(editEntry.oxygen);
+      if (editEntry.peakFlow) pf.value = String(editEntry.peakFlow);
     }
     tempBlock.hidden = editing === 'vitals';
     vitalsBlock.hidden = editing === 'temp';
@@ -4960,7 +4975,7 @@ function openAdd(type, editEntry, preset) {
       const w = wIn.read();
       const boxes = [
         { name: 'temperature', el: temp, lo: 30, hi: 45, ...tRead },
-        ...[['heart rate', hr, 20, 250], ['systolic', sys, 50, 260], ['diastolic', dia, 20, 160], ['oxygen', o2, 50, 100]].map(([name, el, lo, hi]) => ({ name, el, lo, hi, ...readNum(el) })),
+        ...[['heart rate', hr, 20, 250], ['systolic', sys, 50, 260], ['diastolic', dia, 20, 160], ['oxygen', o2, 50, 100], ['peak flow', pf, 50, 900]].map(([name, el, lo, hi]) => ({ name, el, lo, hi, ...readNum(el) })),
         { name: 'weight', el: w.el || wIn.first, lo: 20, hi: 300, empty: w.empty, value: w.kg, raw: w.raw }
       ];
       const bad = boxes.find((b) => !b.empty && (b.value == null || b.value < b.lo || b.value > b.hi));
@@ -4977,8 +4992,8 @@ function openAdd(type, editEntry, preset) {
       if (editing === 'vitals') {
         if ((val('systolic') != null) !== (val('diastolic') != null)) return missing(val('systolic') == null ? sys : dia, 'Blood pressure needs both numbers, systolic and diastolic');
         const r = (n) => (val(n) != null ? Math.round(val(n)) : null);
-        const one = { type: 'vitals', note: noteV, heartRate: r('heart rate'), systolic: r('systolic'), diastolic: r('diastolic'), oxygen: r('oxygen') };
-        if (one.heartRate == null && one.systolic == null && one.oxygen == null) { missing(hr, 'Type at least one reading, or use Delete to remove it'); return { hold: true }; }
+        const one = { type: 'vitals', note: noteV, heartRate: r('heart rate'), systolic: r('systolic'), diastolic: r('diastolic'), oxygen: r('oxygen'), peakFlow: r('peak flow') };
+        if (one.heartRate == null && one.systolic == null && one.oxygen == null && one.peakFlow == null) { missing(hr, 'Type at least one reading, or use Delete to remove it'); return { hold: true }; }
         return [one];
       }
       const out = [];
@@ -4989,6 +5004,7 @@ function openAdd(type, editEntry, preset) {
       if ((val('systolic') != null) !== (val('diastolic') != null)) return missing(val('systolic') == null ? sys : dia, 'Blood pressure needs both numbers, systolic and diastolic');
       if (val('systolic') != null) { data.systolic = Math.round(val('systolic')); data.diastolic = Math.round(val('diastolic')); has = true; }
       if (val('oxygen') != null) { data.oxygen = Math.round(val('oxygen')); has = true; }
+      if (val('peak flow') != null) { data.peakFlow = Math.round(val('peak flow')); has = true; }
       if (has) out.push(data);
       if (val('weight') != null) out.push({ type: 'weight', value: Math.round(val('weight') * 10) / 10, note: noteV, ...(replaceW ? { _replace: replaceW } : {}) });
       return out.length ? out : missing(tempBlock.hidden ? hr : temp, 'Type at least one reading');
@@ -5295,6 +5311,7 @@ function savedVitalsText(list) {
       if (d.heartRate) bits.push('heart rate ' + d.heartRate);
       if (d.systolic) bits.push('blood pressure ' + d.systolic + '/' + d.diastolic);
       if (d.oxygen) bits.push('oxygen ' + d.oxygen + '%');
+      if (d.peakFlow) bits.push('peak flow ' + d.peakFlow + ' L/min');
     }
   }
   return bits.join(', ');
@@ -7989,7 +8006,7 @@ function buildTwoPage(n) {
   const patient = (state.profile && state.profile.reportName) || state.patientName || state.name || '';
   return {
     title: 'Notes for the team',
-    subtitle: `A patient summary for the nursing and medical team. ${word} to ${t.getDate()} ${MON_LONG[t.getMonth()]} ${t.getFullYear()}.`,
+    subtitle: `A patient summary for the nursing and medical team.${conditionWords() ? ' ' + conditionWords().replace(/^./, (c) => c.toUpperCase()).replace(/\.?$/, '.') : ''} ${word} to ${t.getDate()} ${MON_LONG[t.getMonth()]} ${t.getFullYear()}.`,
     patient, period, prepared: rDay(today) + ' ' + parseDay(today).getFullYear(),
     latest, tiles, meds, hospital, steady, sideFx: twoPageSideFx(entries, new Set(fxLog ? fxLog.used : [])), results: twoPageResults(entries),
     questions: qs, more: 0, older: report.older.length, olderFrom: rDay(from), extraQ: [], weeksPage3: false, lines: 3,
@@ -8682,6 +8699,14 @@ function summaryRows(entries, from, to) {
     else if (lo.oxygen <= 93) push('amber', 'Oxygen', `Oxygen a little low, ${Math.round(lo.oxygen)}% on ${when(lo)} (${plural(oxs.length, 'reading')} in all).`, oxs.filter((e) => e.oxygen <= 93).length === 1 ? `oxygen ${Math.round(lo.oxygen)}% on ${when(lo)}` : null, `Oxygen down to ${Math.round(lo.oxygen)}%`);
     else fine.push(`oxygen (lowest ${Math.round(lo.oxygen)}%)`);
   }
+  /* Peak flow (v359): context only, the range and the latest; what is good is the person's own best, which the team knows */
+  const pfs = entries.filter((e) => e.type === 'vitals' && Number(e.peakFlow) > 0).sort((a, b) => entryDate(a) - entryDate(b));
+  if (pfs.length) {
+    const lo = minBy(pfs, (e) => Number(e.peakFlow)), hi = maxBy(pfs, (e) => Number(e.peakFlow)), last = pfs[pfs.length - 1];
+    push('teal', 'Peak flow', pfs.length === 1 ? `Peak flow ${Math.round(last.peakFlow)} L/min on ${when(last)} (one reading).`
+      : `Peak flow from ${Math.round(lo.peakFlow)} L/min on ${when(lo)} to ${Math.round(hi.peakFlow)} L/min on ${when(hi)}, latest ${Math.round(last.peakFlow)} L/min (${plural(pfs.length, 'reading')}).`, null,
+      pfs.length === 1 ? `Peak flow ${Math.round(last.peakFlow)} L/min` : `Peak flow ${Math.round(lo.peakFlow)} to ${Math.round(hi.peakFlow)} L/min, latest ${Math.round(last.peakFlow)}`);
+  }
 
   const checkins = entries.filter(isPatientCheckin);
   const painScores = [];
@@ -8782,7 +8807,16 @@ function summaryRows(entries, from, to) {
   const weights = entries.filter((e) => e.type === 'weight' && Number(e.value) > 0).sort((a, b) => entryDate(a) - entryDate(b));
   if (weights.length >= 2) {
     const first = Number(weights[0].value), last = Number(weights[weights.length - 1].value), drop = first - last;
+    /* a quick gain (v359): 2 kg or more within three days, which heart teams watch for as fluid; the biggest such rise */
+    let gain = null;
+    weights.forEach((a, i) => weights.slice(i + 1).forEach((b) => {
+      const up = Number(b.value) - Number(a.value);
+      if (dayGap(a.day, b.day) <= 3 && up >= 2 && (!gain || up > gain.up)) gain = { a, b, up };
+    }));
+    if (gain) push('amber', 'Weight', `Weight up ${gain.up.toFixed(1)} kg in ${plural(Math.max(1, dayGap(gain.a.day, gain.b.day)), 'day')}, from ${Number(gain.a.value).toFixed(1)} kg on ${when(gain.a)} to ${Number(gain.b.value).toFixed(1)} kg on ${when(gain.b)}.`, null,
+      `Weight up ${gain.up.toFixed(1)} kg in ${plural(Math.max(1, dayGap(gain.a.day, gain.b.day)), 'day')}`);
     if (drop >= 2) push(drop >= 4 ? 'red' : 'amber', 'Weight', `Weight down ${drop.toFixed(1)} kg, from ${first.toFixed(1)} kg on ${when(weights[0])} to ${last.toFixed(1)} kg on ${when(weights[weights.length - 1])}.`, null, `Weight down ${drop.toFixed(1)} kg, now ${last.toFixed(1)} kg`);
+    else if (gain) { /* already said */ }
     else if (drop <= -2) fine.push(`weight (up ${(-drop).toFixed(1)} kg to ${last.toFixed(1)} kg)`);
     else fine.push(`weight (steady at about ${last.toFixed(1)} kg)`);
   } else if (weights.length === 1) fine.push(`weight (${Number(weights[0].value).toFixed(1)} kg, one reading)`);
@@ -8830,12 +8864,12 @@ function summaryRows(entries, from, to) {
   if (symptoms.length) {
     const byWhat = {};
     symptoms.forEach((e) => { const k = String(e.what || 'Symptom'); (byWhat[k] = byWhat[k] || []).push(e); });
-    const items = Object.keys(byWhat).map((k) => { const w = maxBy(byWhat[k], (e) => Number(e.value)); return { what: k, worst: Number(w.value), day: w.day, n: byWhat[k].length, causes: [...new Set(byWhat[k].map((e) => e.causeName).filter(Boolean))] }; }).sort((a, b) => b.worst - a.worst);
+    const items = Object.keys(byWhat).map((k) => { const w = maxBy(byWhat[k], (e) => Number(e.value)); return { what: k, worst: Number(w.value), day: w.day, n: byWhat[k].length, days: new Set(byWhat[k].map((e) => e.day)).size, causes: [...new Set(byWhat[k].map((e) => e.causeName).filter(Boolean))] }; }).sort((a, b) => b.worst - a.worst);
     const worst = items[0];
     if (worst.worst >= 4) {
-      const text = items.filter((i) => i.worst >= 4).map((i) => `${i.what.toLowerCase()}${i.causes.length ? ' (side effect of ' + i.causes.join(' and ') + ')' : ''} up to ${i.worst}/10 on ${fmtDayShort(i.day)}${i.n > 1 ? ' (' + plural(i.n, 'reading') + ')' : ''}`).join('; ');
+      const text = items.filter((i) => i.worst >= 4).map((i) => `${i.what.toLowerCase()}${i.causes.length ? ' (side effect of ' + i.causes.join(' and ') + ')' : ''} up to ${i.worst}/10 on ${fmtDayShort(i.day)}${i.days > 1 ? ' (on ' + plural(i.days, 'day') + (i.n > i.days ? ', ' + plural(i.n, 'reading') : '') + ')' : i.n > 1 ? ' (' + plural(i.n, 'reading') + ')' : ''}`).join('; ');
       push(worst.worst >= 7 ? 'red' : 'amber', 'Symptoms', `Symptoms logged between check-ins: ${text}.`, worst.worst < 7 && symptoms.filter((e) => Number(e.value) >= 4).length === 1 ? `${worst.what.toLowerCase()} ${worst.worst}/10 on ${fmtDayShort(worst.day)}` : null,
-        'Symptoms: ' + items.filter((i) => i.worst >= 4).map((i) => `${i.what.toLowerCase()} up to ${i.worst}/10`).join(', '));
+        'Symptoms: ' + items.filter((i) => i.worst >= 4).map((i) => `${i.what.toLowerCase()}${i.days > 1 ? ' on ' + plural(i.days, 'day') + ',' : ''} up to ${i.worst}/10`).join('; '));
     } else fine.push(`symptoms (${plural(symptoms.length, 'reading')}, none above ${worst.worst}/10)`);
   }
   /* Side effects (v173): every symptom with a cause, mild ones too, since a team wants to know what a treatment
@@ -9020,6 +9054,7 @@ function noteContext(e) {
       if (e.heartRate) p.push(Math.round(e.heartRate) + ' bpm');
       if (e.systolic && e.diastolic) p.push(Math.round(e.systolic) + '/' + Math.round(e.diastolic));
       if (e.oxygen) p.push(Math.round(e.oxygen) + '% oxygen');
+      if (e.peakFlow) p.push('peak flow ' + Math.round(e.peakFlow));
       return 'with vitals ' + p.join(', ');
     }
     case 'med': return 'with ' + (e.medName || 'a medicine');
@@ -13221,7 +13256,7 @@ document.querySelectorAll('#view-vitals .seg[data-range]').forEach((b) => b.addE
    table of the same readings, newest first, date, time and value, with the same amber and red
    as the chart. The choice is remembered per card on this phone. The tables are built from the
    entries before Chart.js is fetched, so they work with no connection at all. ---- */
-const CHART_TABLE_KEYS = ['temp', 'pain', 'mood', 'heart', 'bp', 'oxygen', 'weight', 'sleep', 'drink', 'bowel'];
+const CHART_TABLE_KEYS = ['temp', 'pain', 'mood', 'heart', 'bp', 'oxygen', 'peakflow', 'weight', 'sleep', 'drink', 'bowel'];
 const TABLE_VIEW_STORE = 'daybook.trends.tables';
 function tableViews() {
   if (!state.tableViews) {
@@ -13297,6 +13332,7 @@ function renderChartTables(entries, from) {
     heart: { rows: inRange.filter((e) => e.type === 'vitals' && e.heartRate), head: 'Heart rate', cell: (e) => [Math.round(Number(e.heartRate)) + ' bpm', sub(e.note)] },
     bp: { rows: inRange.filter((e) => e.type === 'vitals' && e.systolic && e.diastolic), head: 'Blood pressure', cell: (e) => [Math.round(Number(e.systolic)) + '/' + Math.round(Number(e.diastolic)) + ' mmHg', sub(e.note)] },
     oxygen: { rows: inRange.filter((e) => e.type === 'vitals' && e.oxygen), head: 'Oxygen', cell: (e) => [Math.round(Number(e.oxygen)) + '%', sub(e.note)] },
+    peakflow: { rows: inRange.filter((e) => e.type === 'vitals' && e.peakFlow), head: 'Peak flow', cell: (e) => [Math.round(Number(e.peakFlow)) + ' L/min', sub(e.note)] },
     weight: { rows: inRange.filter((e) => e.type === 'weight' && Number(e.value) > 0), head: 'Weight', cell: (e) => [weightPref() === 'stlb' ? fmtStLb(e.value) : fmtKg(e.value), sub([weightPref() === 'stlb' ? fmtKg(e.value) : '', Number(e.bmi) > 0 ? 'BMI ' + Number(e.bmi).toFixed(1) : '', e.note].filter(Boolean).join(' · '))] },
     sleep: { rows: inRange.filter((e) => e.type === 'sleep' || e.type === 'nap'), head: 'Asleep', timeHead: 'Bed to up',
       time: (e) => e.type === 'nap' ? fmtTime(entryDate(e)) + ' to ' + addMinutesHm(fmtTime(entryDate(e)), e.value) : e.bedAt && e.wokeAt ? e.bedAt + ' to ' + e.wokeAt : '--',
@@ -13571,6 +13607,17 @@ async function renderVitals() {
     type: 'line',
     data: { datasets: [lineSeries(T, T.teal, o2Points, { label: 'Oxygen' })] },
     options: lineOptions(Object.assign(yAxisBase(T), { min: 80, max: 100, ticks: Object.assign(yAxisBase(T).ticks, { callback: (v) => v + '%' }) }), { title: pointTitle, label: (item) => Math.round(item.raw.y) + '%' }, false, o2Points.length)
+  });
+
+  /* Peak flow (v359): its card only shows once there is a reading, so it never clutters Trends for anyone without a meter */
+  const pfAll = entries.filter((e) => e.type === 'vitals' && Number(e.peakFlow) > 0);
+  const pfCard = $('chart-peakflow') && $('chart-peakflow').closest('.chart-card');
+  if (pfCard) pfCard.hidden = !pfAll.length;
+  const pfPoints = vitalsEntries.filter((e) => e.peakFlow).map((e) => ({ x: entryDate(e).getTime(), y: Number(e.peakFlow) }));
+  if (pfAll.length) makeChart('peakflow', {
+    type: 'line',
+    data: { datasets: [lineSeries(T, T.teal, pfPoints, { label: 'Peak flow' })] },
+    options: lineOptions(Object.assign(yAxisBase(T), { beginAtZero: false, ticks: Object.assign(yAxisBase(T).ticks, { callback: (v) => v + ' L/min' }) }), { title: pointTitle, label: (item) => Math.round(item.raw.y) + ' L/min' }, false, pfPoints.length)
   });
 
   /* Pain: the check-in scores make the line; extra readings are hollow warm points. A calm scale, no red. */
