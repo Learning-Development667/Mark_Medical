@@ -19,7 +19,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=342">
+  <link rel="stylesheet" href="styles.css?v=343">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -478,13 +478,6 @@
           </div>
         </div>
 
-        <div class="card" id="chemo-progress">
-          <div class="progress-head"><span class="tile-label">Sessions</span><span class="mono" id="chemo-count">0 of 0 done</span></div>
-          <div class="progress-bar"><div id="chemo-bar"></div></div>
-          <p class="muted" id="chemo-next">Tap a day on the calendar to mark a treatment session.</p>
-          <button id="chemo-add-run" class="btn btn-secondary btn-block" type="button">Add sessions</button>
-        </div>
-
         <div class="card cal">
           <div class="cal-head">
             <button id="cal-prev" class="iconbtn" type="button" aria-label="Previous month">&#8249;</button>
@@ -495,6 +488,13 @@
           <div class="cal-grid" id="cal-grid"></div>
           <ul class="cal-cycles" id="cal-cycles" hidden></ul>
           <p class="cal-key"><span class="key-dot key-chemo"></span> Session <span class="key-dot key-gold"></span> Done  <span class="key-dot key-next"></span> Planned <span class="key-dot key-rest"></span> Rest week <span id="cal-key-flare" hidden><span class="key-dot key-flare"></span> Flare day</span><span id="cal-key-steroid" hidden><span class="key-dot key-steroid"></span> Steroid course</span><span class="key-letters" id="cal-key-letters">C chemo · R radiotherapy · I immunotherapy · O other</span> <span class="key-mood"><svg class="cal-face mood-5" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="5" class="mood-fill"/></svg><svg class="cal-face mood-3" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="5" class="mood-fill"/></svg><svg class="cal-face mood-1" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="4" class="mood-ring"/></svg> Mood, good to rough</span></p>
+        </div>
+
+        <div class="card" id="chemo-progress">
+          <div class="progress-head"><span class="tile-label">Sessions</span><span class="mono" id="chemo-count">0 of 0 done</span></div>
+          <div class="progress-bar"><div id="chemo-bar"></div></div>
+          <p class="muted" id="chemo-next">Tap a day on the calendar to mark a treatment session.</p>
+          <button id="chemo-add-run" class="btn btn-secondary btn-block" type="button">Add sessions</button>
         </div>
 
         <div id="chemo-cycle-section">
@@ -1219,6 +1219,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=342"></script>
+  <script type="module" src="scripts.js?v=343"></script>
 </body>
 </html>
