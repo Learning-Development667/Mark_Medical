@@ -89,7 +89,7 @@
      "file": "checkin-6.webp",
      "caption": "The review: every answer, tap one to change it, then Save.",
      "tap": {
-      "x": 0.536,
+      "x": 0.5,
       "y": 0.868
      }
     },
@@ -305,16 +305,16 @@
      "file": "reports-1.webp",
      "caption": "The Reports tab: Notes for the team first, then Pain, the Food diary, Mood and wellbeing, Documents and Results. Trends, at the top, switches to your readings.",
      "tap": {
-      "x": 0.724,
-      "y": 0.102
+      "x": 0.737,
+      "y": 0.104
      }
     },
     {
      "file": "reports-2.webp",
      "caption": "Trends: the latest of each reading, then a chart of each over 1 week, 2 weeks or 30 days. Each chart can show as a table too.",
      "tap": {
-      "x": 0.276,
-      "y": 0.102
+      "x": 0.263,
+      "y": 0.104
      }
     },
     {
@@ -358,7 +358,7 @@
      "caption": "Beside Notes for the team: Pain and pain relief for the pain team, the Food diary for the dietitian, Mood and wellbeing for a therapist or GP.",
      "tap": {
       "x": 0.5,
-      "y": 0.387
+      "y": 0.389
      }
     },
     {
@@ -582,7 +582,7 @@
      "caption": "Before the appointment, open Reports. Everything since the last one is already there.",
      "tap": {
       "x": 0.5,
-      "y": 0.254
+      "y": 0.257
      }
     },
     {
