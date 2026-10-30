@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '343';
+const APP_VERSION = '344';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -12969,8 +12969,8 @@ function openEditMed(m, prefill) {
     h('p', { class: 'hint', text: 'Whenever food is logged, Daybook asks whether this was taken with it. With Ask how many each time ticked, it asks how many; without it, one tap logs the usual dose.' })];
   const schedFields = h('div', null, h('div', { class: 'field-row' }, field('Course starts', courseStart), field('Course ends', courseEnd)),
     h('p', { class: 'hint', text: 'Both dates are optional. A course starting later is listed under Starting soon on the Meds tab, and is not counted or reminded about until its first day.' }),
-    h('label', { class: 'check' }, steroid, h('span', { text: 'A steroid course (prednisolone, budesonide, dexamethasone)' })),
-    h('p', { class: 'hint', text: 'Ticked, the course is shaded on the Treatment calendar and counted there as a course in the last 12 months.' }));
+    ...(packOn('ibd') ? [h('label', { class: 'check' }, steroid, h('span', { text: 'A steroid course (prednisolone, budesonide, dexamethasone)' })),
+    h('p', { class: 'hint', text: 'Ticked, the course is shaded on the Treatment calendar and counted there as a course in the last 12 months.' })] : []));
   const prnFields = h('div', null, field('Minimum hours between doses', minGap), field('Maximum doses per day', maxPerDay));
   /* when it is taken, the reminders and the after-meal prompt do not apply to a medicine the nurses give */
   const sync = () => {
@@ -14552,7 +14552,7 @@ function renderChemo() {
   renderFlareCard();
   renderChemoProgress();
   renderCalendar();
-  renderCycleTile();
+  renderSteroidLine();
   renderSideEffects();
   renderCarerRow();
   renderCarerMoodRows();
@@ -14592,7 +14592,8 @@ function repeatInfo(today = todayStr()) {
   return { last, next, lastInfo: last ? state.days[last] : null, nextInfo: next ? state.days[next] : null };
 }
 /* Steroid courses (v204): a medicine ticked as a steroid course with its start and end dates shades the calendar */
-function steroidCourses() { return (state.medicines || []).filter((m) => m.steroid && m.courseStart).sort((a, b) => a.courseStart.localeCompare(b.courseStart)); }
+/* steroid courses are a Crohn's or colitis measure (v344): nothing about them shows without that pack */
+function steroidCourses() { if (!packOn('ibd')) return []; return (state.medicines || []).filter((m) => m.steroid && m.courseStart).sort((a, b) => a.courseStart.localeCompare(b.courseStart)); }
 function steroidOn(day) { return steroidCourses().filter((m) => m.courseStart <= day && (!m.courseEnd || m.courseEnd >= day)); }
 function chemoDays() { return Object.keys(state.days).filter((k) => state.days[k].chemo).sort(); }
 /* ---- Cycles (v189). A cycle is the run of sessions up to the next one that starts a cycle: for Mark, three weekly
@@ -14675,53 +14676,7 @@ function renderSideEffects() {
   add.dataset.key = key; add.textContent = 'Log a side effect';
   add.onclick = () => logSideEffect(t && t.key !== 'other' && treatmentsFor().includes(t) ? { kind: 'treatment', id: t.key, name: t.label } : null);
 }
-function renderCycleTile() {
-  const val = $('cycle-value'), sub = $('cycle-sub');
-  if (!val) return;
-  const today = todayStr(), c0 = cycleInfo(today);
-  const c = c0 && isRepeat(c0.type) ? null : c0;
-  const tileLabel = document.querySelector('#cycle-tile .tile-label');
-  renderSteroidLine();
-  /* a repeating treatment (an injection or infusion): when the next one is due, and when the last one was */
-  const rep = repeatInfo(today);
-  if (rep && !c) {
-    if (tileLabel) tileLabel.textContent = 'Next treatment';
-    const nextInfo = rep.nextInfo || rep.lastInfo;
-    const what = sessionLabel(nextInfo);
-    if (rep.next) {
-      const g = dayGap(today, rep.next);
-      val.textContent = g === 0 ? 'Today' : g === 1 ? 'Tomorrow' : 'In ' + g + ' days';
-      sub.textContent = 'Next ' + what + ' ' + fmtDayShort(rep.next) + '.' + (rep.last ? ' Last one ' + fmtDayShort(rep.last) + (rep.lastInfo.chemoDone ? ', done.' : ', not ticked done.') : '');
-    } else {
-      const g = dayGap(rep.last, today);
-      val.textContent = g === 0 ? 'Today' : 'Day ' + (g + 1);
-      sub.textContent = (g === 0 ? sessionLabel(rep.lastInfo) + ' today.' : 'Last ' + what + ' ' + fmtDayShort(rep.last) + ', ' + g + (g === 1 ? ' day' : ' days') + ' ago.') + ' No next one marked yet: tap a day, or Add sessions.';
-    }
-    return;
-  }
-  if (tileLabel) tileLabel.textContent = 'Treatment cycle';
-  const next = chemoDays().find((k) => k > today);
-  const nextText = next ? 'Next session ' + fmtDayShort(next) + ', ' + (dayGap(today, next) === 1 ? 'tomorrow' : 'in ' + dayGap(today, next) + ' days') + '.' : '';
-  const nextStart = cycleStarts().find((x) => x.day > today);
-  if (!c && nextStart && cycleStarts().some((x) => x.day <= today)) {
-    const g = dayGap(today, nextStart.day);
-    val.textContent = 'Next cycle';
-    sub.textContent = 'Cycle ' + (cycleStarts().indexOf(nextStart) + 1) + ' starts ' + fmtDayShort(nextStart.day) + ', ' + (g === 1 ? 'tomorrow' : 'in ' + g + ' days') + '.';
-    return;
-  }
-  if (!c) {
-    val.textContent = '--';
-    sub.textContent = !chemoDays().length ? 'No sessions marked yet. Tap a day on the calendar, or Add sessions.' : (nextText || 'No session in a cycle yet.');
-    return;
-  }
-  const of = c.length ? ' of ' + c.length : '';
-  const name = c.type.label.toLowerCase();
-  if (c.session) { val.textContent = 'Session day'; sub.textContent = cycleWords(c) + ' (' + name + '), day ' + c.dayNo + of + '.' + (nextText ? ' ' + nextText : ''); return; }
-  val.textContent = c.rest ? 'Rest week' : 'Day ' + c.dayNo;
-  sub.textContent = 'Cycle ' + c.index + ' (' + name + '), day ' + c.dayNo + of + '.' + (nextText ? ' ' + nextText : '');
-}
-
-/* Steroid courses in the last 12 months, under the tile (v204): the figure IBD teams ask for, with each course named */
+/* Steroid courses in the last 12 months, under the calendar key (v204; the tile went in v344): the figure IBD teams ask for, with each course named */
 function renderSteroidLine() {
   const el = $('ibd-courses');
   if (!el) return;
