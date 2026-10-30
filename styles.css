@@ -486,7 +486,6 @@ body.is-viewer #vitals-log,
 body.is-viewer #meds-manage,
 body.is-viewer #meds-hospital-add,
 body.is-viewer .med-actions, body.is-viewer .med-log,
-body.is-viewer #chemo-cycle-section,
 body.is-viewer #chemo-add-run,
 body.is-viewer #chemo-docs-section,
 body.is-viewer #meds-docs-section { display: none; }
@@ -1379,8 +1378,7 @@ body.is-readonly .workout .btn { display: none; }
 
 /* ---------- Chemo: the cycle and the carer's view ---------- */
 .tiles-1 { grid-template-columns: 1fr; }
-#chemo-cycle-section .section-title, #chemo-docs-section .section-title { margin-top: var(--s-6); } /* first children of their own wrappers, like the Meds documents section */
-#chemo-cycle-section > .card:first-child { margin-top: var(--s-3); } /* the chart card follows the Sessions card (the heading and cycle tile went in v344) */
+#chemo-docs-section .section-title { margin-top: var(--s-6); } /* first children of their own wrappers, like the Meds documents section */
 .cal .ibd-courses { margin: var(--s-2) 0 0; }
 #vt-weight-sub, #mood-tiles .tile-sub, #pain-tiles .tile-sub { white-space: normal; overflow: visible; text-overflow: clip; } /* "today 07:30, BMI 24.8" (v126) may take two lines on a small phone */
 #carer-card { margin-top: var(--s-3); }
@@ -1865,7 +1863,6 @@ button.sidefx-inner { cursor: pointer; }
 .cyc-where { font-weight: 600; color: var(--teal); margin: 0 0 var(--s-2); }
 .cyc-move { margin: var(--s-2) 0; }
 .cyc-preview { margin: var(--s-3) 0; padding: var(--s-3); border-radius: var(--r-sm); background: var(--surface-sunken); color: var(--text-primary); }
-.cycle-views { margin-bottom: var(--s-2); }
 .fx-row .taps-label { margin-bottom: var(--s-1); }
 
 /* How many each time (v191): the line saying what each dose is logged as */

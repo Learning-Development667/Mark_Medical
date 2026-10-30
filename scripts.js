@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '344';
+const APP_VERSION = '345';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -864,7 +864,6 @@ const state = {
   nutrition: {},
   exerciseDay: todayStr(),
   chemoMonth: todayStr().slice(0, 7),
-  cycleMeasure: 'energy',
   cycleEntries: null,
   cycleFrom: null,
   cycleFetched: 0,
@@ -7852,16 +7851,34 @@ function afterTreatmentLog(entries, from, to) {
       return { word: `${top.value}/10 at ${fmtTime(entryDate(top))}` + (list.length > 1 ? `, ${list.length} times` : ''), g: Number(top.value) >= 7 ? 3 : Number(top.value) >= 4 ? 2 : 1, cause: top.causeName || '' };
     }) }));
     if (also.length) lines.push('Also on the Symptom tile: ' + also.map((a) => a.name.toLowerCase()).join(', '));
+    /* v345, Mark: how the patient felt on those three days matters to the team as much as the side effects, so the
+       check-in scores sit in the same table: the day's worst pain, the evening's energy and appetite, the day's mood */
+    const scoreOf = (day, pick) => {
+      const vals = entries.filter((e) => isPatientCheckin(e) && e.day === day && (e.slot === 'morning' || e.slot === 'evening'))
+        .flatMap(pick).map(Number).filter((v) => Number.isFinite(v));
+      return vals;
+    };
+    const SCORE_ROWS = [
+      ['Worst pain', (e) => [e.pain, e.worstPain], (v) => Math.max(...v)],
+      ['Energy', (e) => (e.slot === 'evening' ? [e.energy] : []), (v) => v[0]],
+      ['Appetite', (e) => (e.slot === 'evening' ? [e.appetite] : []), (v) => v[0]],
+      ['Mood', (e) => [e.mood], (v) => Math.round((v.reduce((a, b) => a + b, 0) / v.length) * 10) / 10]
+    ];
+    const scores = SCORE_ROWS.map(([name, pick, sum]) => ({ name, cells: perDay.map((p) => {
+      const v = scoreOf(p.day, (e) => pick(e).filter((x) => x != null));
+      return v.length ? { word: sum(v) + '/10', g: -3 } : { word: 'Not answered', g: -1 };
+    }) })).filter((r) => r.cells.some((c) => c.g === -3));
+    if (scores.length) lines.push('Scores: ' + scores.map((r) => r.name.toLowerCase() + ' ' + r.cells.map((c) => (c.g === -3 ? c.word : '-')).join(', ')).join('; '));
     const w = Object.entries(worst).sort((a, b) => b[1] - a[1]);
     const moods = w.length ? 'Worst: ' + w.map(([k, g]) => k.toLowerCase() + ' ' + FX_WORDS[g].toLowerCase()).join(', ') : '';
-    return { day: sd, when: name + ', ' + rDay(sd), moods, texts: lines, table: { cols, rows, also, anyAnswered: cols.some((c) => c.answered) } };
-  }).filter((d) => d.texts.length && (d.table.anyAnswered || d.table.also.length));
-  if ((!answered && !used.size) || !days.length) return null;
+    return { day: sd, when: name + ', ' + rDay(sd), moods, texts: lines, table: { cols, rows, also, scores, anyAnswered: cols.some((c) => c.answered) } };
+  }).filter((d) => d.texts.length && (d.table.anyAnswered || d.table.also.length || d.table.scores.length));
+  if ((!answered && !used.size && !days.some((d) => d.table.scores.length)) || !days.length) return null;
   return {
-    title: 'Side effects after treatment',
+    title: 'The three days after treatment',
     range: days.length > 1 ? rRange(days[0].day, days[days.length - 1].day) : '',
     summary: '',
-    note: 'From the morning and evening check-ins on the three days after each session: the worse of the two answers each day. Anything logged on the Symptom tile on those days is shown below it, as logged.',
+    note: 'From the morning and evening check-ins on the three days after each session: for side effects, the worse of the two answers each day; the scores are the day\'s worst pain, the evening\'s energy and appetite, and the day\'s average mood. Anything logged on the Symptom tile on those days is shown as logged.',
     days, used: [...used]
   };
 }
@@ -14556,7 +14573,6 @@ function renderChemo() {
   renderSideEffects();
   renderCarerRow();
   renderCarerMoodRows();
-  renderCycleChart();
   renderChemoDocs();
 }
 
@@ -14702,22 +14718,8 @@ function renderCarerRow() {
 }
 if ($('checkin-carer')) $('checkin-carer').addEventListener('click', () => openCheckin('carer', todayStr()));
 
-/* ---- By day after chemo: every check-in score averaged by its day in the cycle, across every cycle ---- */
-const CYCLE_MEASURES = [
-  { key: 'energy', label: 'Energy', highGood: true, slots: ['evening'], carer: true },
-  { key: 'sickness', label: 'Sickness', highGood: false, slots: ['evening'], carer: true },
-  { key: 'appetite', label: 'Appetite', highGood: true, slots: ['evening'], carer: true },
-  { key: 'pain', label: 'Pain', highGood: false, slots: ['morning', 'evening'], carer: true },
-  { key: 'mood', label: 'Mood', highGood: true, slots: ['morning', 'evening'], carer: true },
-  { key: 'sleep', label: 'Sleep', highGood: true, slots: ['morning'], carer: false },
-  /* the worst side effect the check-in rated, None 0, Mild 3, Moderate 6, Severe 9 (v189) */
-  { key: 'sidefx', label: 'Side effects', highGood: false, slots: ['morning', 'evening'], carer: false, value: (e) => { const w = fxWorst(e.sidefx); return w == null ? null : FX_VALUE[w]; } }
-];
-/* Two ways to look (v189): after each session (day 0 is the session, up to a week) or through the cycle (day 1 is its first session) */
-const CYCLE_VIEWS = [['session', 'After each session'], ['cycle', 'Through the cycle']];
-const SESSION_WINDOW = 7;
-const CYCLE_WINDOW = 42;
-const CYCLE_MAX_DAY = 28;
+/* The How treatment goes chart went in v345 (Mark: how the three days after a session went belongs on Notes for the
+   team, in the side-effects table); the check-ins since the first session are still read for the calendar's day sheet */
 const CYCLE_LOOKBACK_DAYS = 180;
 
 /* Every check-in since the first session (at most 180 days back). One query by type, filtered by day
@@ -14738,104 +14740,6 @@ async function cycleEntries() {
   } catch (e) { console.error(e); return null; }
 }
 
-function cycleSeries(entries, m, view = 'session') {
-  const today = todayStr();
-  const anchors = (view === 'cycle' ? cycleStarts().map((x) => x.day) : sessionDays()).filter((k) => k <= today);
-  const byDay = {};
-  entries.forEach((e) => { (byDay[e.day] = byDay[e.day] || []).push(e); });
-  const mean = (list) => list.reduce((s, v) => s + v, 0) / list.length;
-  const read = (e) => (m.value ? m.value(e) : e[m.key] != null ? Number(e[m.key]) : null);
-  const cap = view === 'cycle' ? CYCLE_WINDOW : SESSION_WINDOW;
-  const sums = {}, carerSums = {}, used = new Set();
-  anchors.forEach((start, i) => {
-    const end = i + 1 < anchors.length ? anchors[i + 1] : addDays(today, 1);
-    for (let d = start, n = 0; d < end && d <= today && n <= cap; d = addDays(d, 1), n++) {
-      const list = byDay[d] || [];
-      const pv = list.filter((e) => e.slot !== 'carer' && m.slots.includes(e.slot)).map(read).filter((v) => v != null);
-      const cv = m.carer ? list.filter((e) => (e.slot === 'carer' || isCarerDaySlot(e.slot)) && e[m.key] != null).map((e) => Number(e[m.key])) : [];
-      if (pv.length) { const s = sums[n] || (sums[n] = { sum: 0, n: 0 }); s.sum += mean(pv); s.n++; used.add(start); }
-      if (cv.length) { const s = carerSums[n] || (carerSums[n] = { sum: 0, n: 0 }); s.sum += mean(cv); s.n++; used.add(start); }
-    }
-  });
-  const maxDay = Math.max(-1, ...Object.keys(sums).map(Number), ...Object.keys(carerSums).map(Number));
-  const labels = [], patient = [], carer = [];
-  for (let n = 0; n <= maxDay; n++) {
-    labels.push(n);
-    patient.push(sums[n] ? Math.round((sums[n].sum / sums[n].n) * 10) / 10 : null);
-    carer.push(carerSums[n] ? Math.round((carerSums[n].sum / carerSums[n].n) * 10) / 10 : null);
-  }
-  return { labels, patient, carer, cycles: used.size, anchors: anchors.length, carerAny: carer.some((v) => v != null), view };
-}
-
-function cycleDayWord(d, view = 'session') { return view === 'cycle' ? 'day ' + (d + 1) : d === 0 ? 'the session day' : 'day ' + d; }
-function cycleSentence(m, s) {
-  const unit = s.view === 'cycle' ? 'cycle' : 'session';
-  if (!s.anchors) return 'Mark a session on the calendar (tap its day, or Add sessions). This then fills in from your check-ins on the days after it.';
-  if (!s.cycles) return m.key === 'sidefx' ? 'No side effects answered yet. The check-ins ask on the three days after a session.' : 'No check-ins on the days after a session yet. The pattern appears as they come in.';
-  const base = s.cycles === 1 ? 'Based on 1 ' + unit + ' so far; the pattern gets clearer with each one.' : 'Based on ' + s.cycles + ' ' + unit + 's.';
-  const pts = s.patient.map((v, i) => (v == null ? null : { d: i, v })).filter(Boolean);
-  if (pts.length < 2) return base;
-  const lo = pts.reduce((a, b) => (b.v < a.v ? b : a)), hi = pts.reduce((a, b) => (b.v > a.v ? b : a));
-  if (hi.v - lo.v < 1) return m.label + (m.key === 'sidefx' ? ' are' : ' is') + ' much the same through the ' + (s.view === 'cycle' ? 'cycle' : 'days after a session') + '. ' + base;
-  const tail = s.view === 'cycle' ? ' of the cycle.' : ', counting from the session.';
-  const text = m.highGood
-    ? m.label + ' is usually lowest on ' + cycleDayWord(lo.d, s.view) + ' and best on ' + cycleDayWord(hi.d, s.view) + tail
-    : m.label + (m.key === 'sidefx' ? ' are' : ' is') + ' usually worst on ' + cycleDayWord(hi.d, s.view) + ' and easiest on ' + cycleDayWord(lo.d, s.view) + tail;
-  return text + ' ' + base;
-}
-
-function renderCycleChips() {
-  const views = $('cycle-views');
-  if (views) views.replaceChildren(...CYCLE_VIEWS.map(([k, label]) => h('button', {
-    class: 'seg' + (k === (state.cycleView || 'session') ? ' is-active' : ''), type: 'button', 'aria-pressed': k === (state.cycleView || 'session') ? 'true' : 'false',
-    onclick: () => { state.cycleView = k; renderCycleChart(); }
-  }, label)));
-  const box = $('cycle-measures');
-  box.replaceChildren(...CYCLE_MEASURES.map((m) => h('button', {
-    class: 'seg' + (m.key === state.cycleMeasure ? ' is-active' : ''), type: 'button', 'aria-pressed': m.key === state.cycleMeasure ? 'true' : 'false',
-    onclick: () => { state.cycleMeasure = m.key; renderCycleChart(); }
-  }, m.label)));
-}
-
-async function renderCycleChart() {
-  if (!$('cycle-card') || $('view-chemo').hidden || state.viewer) return;
-  renderCycleChips();
-  const m = CYCLE_MEASURES.find((x) => x.key === state.cycleMeasure) || CYCLE_MEASURES[0];
-  const entries = await cycleEntries();
-  if (!entries) return;
-  const view = state.cycleView || 'session';
-  const s = cycleSeries(entries, m, view);
-  $('cycle-note').textContent = cycleSentence(m, s);
-  const legend = $('cycle-legend');
-  if (legend) legend.textContent = (view === 'cycle'
-    ? 'Each point is the average of every cycle so far, day 1 being the cycle\'s first session (a cycle is its sessions and any rest week, up to the next one).'
-    : 'Each point is the average after every session so far, day 0 being the session itself, up to a week after.')
-    + (m.key === 'sidefx' ? ' Side effects are the worst one rated that day: none 0, mild 3, moderate 6, severe 9.' : ' Your check-ins make the solid line, the carer\'s view the dashed one.');
-  $('cycle-wrap').hidden = !s.cycles;
-  if (!s.cycles) { if (state.charts.cycle) { state.charts.cycle.destroy(); delete state.charts.cycle; } return; }
-  try { await loadScript(CDN.chart); } catch (e) { return; }
-  const T = chartTheme();
-  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const datasets = [lineSeries(T, T.teal, s.patient, { label: 'Check-ins', spanGaps: true })];
-  if (s.carerAny) datasets.push({ label: "Carer's view", data: s.carer, borderColor: T.warm, borderWidth: 2.5, borderDash: [6, 4], borderCapStyle: 'round', tension: 0.3, cubicInterpolationMode: 'monotone', fill: false, spanGaps: true, pointRadius: 3, pointHoverRadius: 7, pointHitRadius: 12, pointBackgroundColor: T.warm, pointBorderColor: 'transparent' });
-  makeChart('cycle', {
-    type: 'line',
-    data: { labels: s.labels, datasets },
-    options: {
-      responsive: true, maintainAspectRatio: false, layout: { padding: { top: 8, right: 10 } },
-      interaction: { mode: 'index', intersect: false },
-      animation: reduced ? false : drawIn(s.labels.length),
-      scales: {
-        x: Object.assign(xAxisBase(T), { ticks: Object.assign(xAxisBase(T).ticks, { maxTicksLimit: 8, callback: (v, i) => (view === 'cycle' ? String(s.labels[i] + 1) : i === 0 ? 'Session' : String(s.labels[i])) }), title: { display: true, text: view === 'cycle' ? 'Day of the cycle' : 'Days after a session', color: T.muted, font: { family: T.mono, size: 11 } } }),
-        y: Object.assign(yAxisBase(T), { min: 0, max: 10, ticks: Object.assign(yAxisBase(T).ticks, { stepSize: 2, maxTicksLimit: 6 }) })
-      },
-      plugins: { legend: s.carerAny ? legendStyle(T) : { display: false }, tooltip: Object.assign(tooltipStyle(T), { callbacks: {
-        title: (items) => items.length ? (view === 'cycle' ? 'Day ' + (items[0].dataIndex + 1) + ' of the cycle' : items[0].dataIndex === 0 ? 'Session day' : 'Day ' + items[0].dataIndex + ' after a session') : '',
-        label: (i) => i.raw == null ? '' : i.dataset.label + ': ' + (m.key === 'sidefx' ? FX_WORDS[Math.min(3, Math.round(i.raw / 3))].toLowerCase() + ' (' + i.raw + ')' : i.raw + '/10')
-      } }) }
-    }
-  });
-}
 
 function renderChemoProgress() {
   const keys = Object.keys(state.days).filter((k) => state.days[k].chemo).sort();
@@ -15169,7 +15073,7 @@ function openAddSessions() {
     h('p', { class: 'field-label', text: 'What is it?' }), typeRow,
     nameRow,
     field('First session', firstIn),
-    field('How many sessions', countIn), h('p', { class: 'hint', id: 'run-count-hint', text: 'Just this run, for example 3 for a cycle of three, or 6 for the next three months of fortnightly injections. Add more when the dates are confirmed.' }),
+    field('How many sessions', countIn), h('p', { class: 'hint', id: 'run-count-hint', text: packOn('cancer') ? 'Just this run, for example 3 for a cycle of three. Add more when the dates are confirmed.' : 'Just this run, for example 6 for the next three months of fortnightly injections. Add more when the dates are confirmed.' }),
     h('p', { class: 'field-label', text: 'How often?' }), everyRow,
     (cycleLabel.append(cbNew, h('span', { text: 'The first one starts a new cycle' })), cycleLabel),
     preview,
