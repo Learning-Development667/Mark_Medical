@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '346';
+const APP_VERSION = '347';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -4008,7 +4008,7 @@ function bristolArt(t) {
 
 /* Symptom (since v92): a between-times symptom with a 1 to 10 score, the way the Pain tile works, for
    the things the evening check-in only asks about once a day. Stored { type "symptom", what, value, note }. */
-const SYMPTOMS = ['Sickness', 'Mouth', 'Skin', 'Breathing', 'Dizziness', 'Tingling', 'Tiredness', 'Taste changes', 'Poor appetite', 'Constipation', 'Aches and pains', 'Headache', 'Hair loss', 'Sore hands or feet'];
+const SYMPTOMS = ['Sickness', 'Mouth', 'Skin', 'Breathing', 'Dizziness', 'Tingling', 'Tiredness', 'Taste changes', 'Poor appetite', 'Constipation', 'Aches and pains', 'Headache', 'Hair loss', 'Sore hands or feet', 'Bloating', 'Tingling in fingers', 'Unsure where your hands or feet are (proprioception)'];
 /* Side effects (v173): a symptom can say what caused it, a medicine on the list or a kind of treatment.
    Stored beside the symptom as causeKind ('med' or 'treatment'), causeId (the medicine's id or the treatment's key)
    and causeName (as it was called then), so it reads the same on the timeline, in Notes for the team and under
