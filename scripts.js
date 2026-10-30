@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '363';
+const APP_VERSION = '364';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -7973,8 +7973,8 @@ function carerLog(entries, from, to) {
    Shaped like the carer's block so it lays out, moves and carries on the same way. Null when no session in the period
    was answered at all, so a report without check-ins is unchanged. */
 function afterTreatmentLog(entries, from, to) {
-  const sessions = sessionDays().filter((d) => d <= to && addDays(d, FX_DAYS) >= from);
   const cis = entries.filter((e) => isPatientCheckin(e) && e.sidefx && e.sidefx.session);
+  const sessions = sessionDays().filter((d) => d <= to && addDays(d, FX_DAYS) >= from && (fxSessionsOn() || cis.some((c) => c.sidefx.session === d)));
   /* v334, Mark: anything logged on the Symptom tile in the three days after a session goes in the same table, on its
      own row marked as not from the check-ins, so the reader sees it beside the side effects without the app saying
      what caused it; a table, side effects down the side and the days across, reads more clearly than lines */
@@ -9437,7 +9437,7 @@ const CHECKIN_QUESTIONS = {
     { key: 'painStop', kind: 'scale', q: 'Did pain stop you doing anything today?', hint: 'Going out, work, sleep, seeing people. One tap.' },
     { key: 'reliefHelp', kind: 'scale', q: 'Did your pain relief help today?', words: ['No', 'A bit', 'Yes'], hint: (day) => 'You logged ' + prnPainNames(day) + ' today. One tap.', when: (day) => prnPainDosesOn(day).length > 0 },
     /* sickness belongs to chemo: with Crohn's or colitis alone it gives way to tummy pain (v221); with both packs both are asked */
-    { key: 'sickness', kind: 'pain', nrs: 'sickness', q: 'Sickness today', low: '0 no sickness', high: '10 worst imaginable', when: () => packOn('cancer') || !packOn('ibd') },
+    { key: 'sickness', kind: 'pain', nrs: 'sickness', q: 'Sickness today', low: '0 no sickness', high: '10 worst imaginable', when: () => packOn('cancer') },
     { key: 'gutPain', kind: 'pain', nrs: true, pack: 'ibd', q: 'Tummy pain or cramps today', low: '0 no pain', high: '10 worst imaginable' },
     { key: 'appetite', kind: 'slider', q: 'Appetite today', low: '1 nothing', high: '10 normal' },
     { key: 'energy', kind: 'slider', q: 'Energy today', low: '1 wiped out', high: '10 plenty' },
@@ -9637,7 +9637,12 @@ const FX_WORDS = ['None', 'Mild', 'Moderate', 'Severe'];
 const FX_VALUE = [0, 3, 6, 9];
 const FX_DAYS = 3;
 /* The latest session in the three days before this one, if any */
+/* The side-effects questions and the three-days-after table belong to a chemo session or an IBD injection or infusion
+   (v364): with Something else alone a session on the calendar is an appointment or a treatment of the person's own, and
+   nothing asks about it after. A circle that answered them before the packs changed keeps what it answered. */
+function fxSessionsOn() { return packOn('cancer') || packOn('ibd'); }
 function sessionBefore(day) {
+  if (!fxSessionsOn()) return null;
   const s = sessionDays().filter((d) => d < day && dayGap(d, day) <= FX_DAYS);
   if (!s.length) return null;
   const d = s[s.length - 1];
@@ -11617,8 +11622,8 @@ async function moodReportBlob() {
    pain is scored at the two check-ins): a few lines from the figures and a few from the words, Daybook Assistant's when
    written; the pain relief table; the weeks; questions labelled Pain team; a panel to write on. Every note stays on the
    screen, each with Fix the words. Facts only, never advice. */
-const PAIN_MED_RE = /morphin|oramorph|zomorph|mst\b|oxycod|oxynorm|oxycontin|codeine|co-codamol|kapake|paracetamol|ibuprofen|naproxen|diclofenac|tramadol|gabapentin|pregabalin|amitriptyline|duloxetine|fentanyl|buprenorphine|nefopam|lidocaine|ketamine|nortriptyline|celecoxib|etoricoxib/i;
-const PAIN_PURPOSE_RE = /pain|ache|sore|nerve|neuropath|spasm|cramp|relief|analges|breakthrough/i;
+const PAIN_MED_RE = /morphin|oramorph|zomorph|mst\b|oxycod|oxynorm|oxycontin|codeine|co-codamol|kapake|paracetamol|ibuprofen|naproxen|diclofenac|tramadol|gabapentin|pregabalin|amitriptyline|duloxetine|fentanyl|buprenorphine|nefopam|lidocaine|ketamine|nortriptyline|celecoxib|etoricoxib|triptan|ergotamine|migraleve|syndol|solpadeine|nurofen|anadin|voltarol|meloxicam|mefenamic/i;
+const PAIN_PURPOSE_RE = /pain|ache|sore|nerve|neuropath|spasm|cramp|relief|analges|breakthrough|migraine|headache|neuralgia|sciatica|arthritis|fibromyalgia/i;
 function isPainMed(m) { return !!m && (PAIN_PURPOSE_RE.test(m.purpose || '') || PAIN_PURPOSE_RE.test(m.alsoFor || '') || PAIN_MED_RE.test(m.name || '')); }
 async function renderPainReport() {
   const range = reportRange('pain');
