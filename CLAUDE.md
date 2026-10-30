@@ -35,6 +35,9 @@ Mark, on Notes for the team: a red day read "Diarrhoea 9/10. Family are here. My
 - Already separate and unchanged: the Mood report's highs and lows (score, words, source), the carer's area, the Pain report's notes (each under its own pain score, which is what it describes), the Crohn's flare log and the Food diary (facts only).
 - Tested in the scratchpad's `h/t46.cjs` (a diarrhoea 9 and a family note on one day: Logged holding the readings only, the words on their own line with who and where from, no page overflowing, the Mood tiles on the screen and report, 390 light and 320 dark, no page errors), `h/t3`, `h/t17`, `h/t31` and `h/t32`.
 
+## UI tidy-up, 30 October 2026 (from v338)
+Mark: "keep each screen as simple as possible". **v338:** Notes for the team lost **Send to my AI app** and **Copy for my AI app** (`#notes-share`, `#notes-copy` and their handlers); Daybook Assistant's two buttons cover it. `state.notesText` and `NOTES_PROMPT` stay (Suggest questions to ask uses the text). The letter screen's two AI app buttons stay until Mark says otherwise.
+
 ## "Tidy up my notes" (v337, 30 October 2026)
 Mark did not know Summarise with Daybook Assistant tidied his notes. The Notes for the team button is now **Tidy up my notes with Daybook Assistant** (`#notes-weekly`), with a line under it (`#notes-weekly-hint`, hidden once used): "Optional. Puts dictation slips and spelling right, joins days that say the same thing and writes a line for each week. Without it, the report uses your own words exactly as written." The Notes heading's hint (`#notes-days-hint`) reads "in your own words", or after tidying, that Preview and Send to the team use the tidied version; **Use my own words instead** (was Show the notes instead). The bridge kind (`report`) and what it does are unchanged; the privacy page names the new label. Tested in the scratchpad's `h/t51.cjs` (390 light and 320 dark).
 
