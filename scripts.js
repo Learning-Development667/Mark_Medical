@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '360';
+const APP_VERSION = '361';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -8838,6 +8838,19 @@ function summaryRows(entries, from, to) {
       if (level === 'green') fine.push('the gut in the way (not much)'); else push(level, 'Gut and nights', text, null, 'Gut and nights: ' + shorts.join(', '));
     }
   }
+  /* for everyone (v361): evenings pain got in the way, and whether the when-needed relief helped. Counted, never interpreted */
+  {
+    const ps = evenings.filter((e) => e.painStop != null), psBad = ps.filter((e) => Number(e.painStop) >= 2);
+    const rh = evenings.filter((e) => e.reliefHelp != null), rhNo = rh.filter((e) => Number(e.reliefHelp) === 0), rhBit = rh.filter((e) => Number(e.reliefHelp) === 1), rhYes = rh.filter((e) => Number(e.reliefHelp) === 2);
+    const parts = [], shorts = [];
+    if (ps.length) { parts.push(psBad.length ? `pain stopped ${patientWord()} doing things, quite a bit or a lot, on ${psBad.length} of ${plural(ps.length, 'evening')}` : `pain did not get in the way much on the ${plural(ps.length, 'evening')} asked`); if (psBad.length) shorts.push(`in the way on ${plural(psBad.length, 'evening')}`); }
+    if (rh.length) { parts.push(`the when-needed pain relief helped on ${rhYes.length} of ${plural(rh.length, 'day')} asked, a bit on ${rhBit.length}, not at all on ${rhNo.length}`); if (rhNo.length || rhBit.length) shorts.push(`relief not helping on ${plural(rhNo.length, 'day')}${rhBit.length ? ', a bit on ' + rhBit.length : ''}`); }
+    if (parts.length) {
+      const level = psBad.length * 2 > ps.length || rhNo.length * 2 > rh.length ? 'amber' : psBad.length || rhNo.length || rhBit.length ? 'teal' : 'green';
+      const text = 'Pain and daily life: ' + parts.join('; ') + '.';
+      if (level === 'green') fine.push('pain in the way (not much)'); else push(level, 'Pain and daily life', text, null, 'Pain: ' + shorts.join(', '));
+    }
+  }
   /* fasting (v258): context for the team, never a level */
   {
     const ft = fastTally(checkins.filter((e) => e.slot === 'morning'));
@@ -9387,6 +9400,9 @@ const CHECKIN_QUESTIONS = {
     /* the body first, then the words, then mood as the last score beside one good thing (v147, as the morning in v146) */
     { key: 'pain', kind: 'pain', nrs: true, q: 'Pain right now', low: '0 no pain', high: '10 worst imaginable', note: 'painNote' },
     { key: 'worstPain', kind: 'pain', nrs: true, q: 'Worst pain today', low: '0 no pain', high: '10 worst imaginable', note: 'worstPainNote' },
+    /* for everyone (v361): what the pain stopped, and whether the when-needed relief helped (asked only on a day one was logged) */
+    { key: 'painStop', kind: 'scale', q: 'Did pain stop you doing anything today?', hint: 'Going out, work, sleep, seeing people. One tap.' },
+    { key: 'reliefHelp', kind: 'scale', q: 'Did your pain relief help today?', words: ['No', 'A bit', 'Yes'], hint: (day) => 'You logged ' + prnPainNames(day) + ' today. One tap.', when: (day) => prnPainDosesOn(day).length > 0 },
     /* sickness belongs to chemo: with Crohn's or colitis alone it gives way to tummy pain (v221); with both packs both are asked */
     { key: 'sickness', kind: 'pain', nrs: 'sickness', q: 'Sickness today', low: '0 no sickness', high: '10 worst imaginable', when: () => packOn('cancer') || !packOn('ibd') },
     { key: 'gutPain', kind: 'pain', nrs: true, pack: 'ibd', q: 'Tummy pain or cramps today', low: '0 no pain', high: '10 worst imaginable' },
@@ -9455,6 +9471,20 @@ const CHECKIN_QUESTIONS = {
 const WB_WORDS = ['Not at all', 'A little', 'Quite a bit', 'A lot'];
 const WB_ROWS = [['low', 'Feel low?', 'Felt low'], ['worried', 'Feel worried or on edge?', 'Worried or on edge'], ['enjoyed', 'Enjoy something?', 'Enjoyed something']];
 /* A one-tap scale question in the daily check-ins (v221): four wellbeing words unless the question brings its own */
+/* when-needed pain relief logged on a day (v361), for the evening question "Did your pain relief help today?" */
+function prnPainDosesOn(day) {
+  const seen = new Set();
+  return [...(state.recentEntries || []), ...(state.dayEntries || [])].filter((e) => {
+    if (e.type !== 'med' || e.day !== day || seen.has(e.id)) return false;
+    seen.add(e.id);
+    const m = state.medicines.find((x) => x.id === e.medId);
+    return !!m && m.kind === 'prn' && isPainMed(m) && doseForPain(e);
+  });
+}
+function prnPainNames(day) {
+  const names = [...new Set(prnPainDosesOn(day).map((e) => e.medName || 'pain relief'))];
+  return names.length > 1 ? names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1] : names[0] || 'pain relief';
+}
 function scaleWords(q) { return Array.isArray(q.words) ? q.words : WB_WORDS; }
 function scaleText(q, v) { return v == null ? 'Skipped' : (scaleWords(q)[Number(v)] || String(v)); }
 /* Fasting (v258, a Crohn's Beta tester: being able to track fasting would be really useful). With Crohn's or colitis
@@ -9624,7 +9654,7 @@ const CHECKIN_LABELS = {
   sleep: 'Sleep', sleepHours: 'Hours slept', pain: 'Pain now', mood: 'Mood', symptoms: 'New or worse symptoms',
   lookingForward: 'Looking forward to', worstPain: 'Worst pain', sickness: 'Sickness', appetite: 'Appetite',
   energy: 'Energy', settled: 'Settled since yesterday', goodThing: 'One good thing', noticed: 'What you noticed', outside: 'Outside the gut, last week',
-  wb: 'How much', journal: 'How was today', gutPain: 'Tummy pain or cramps', gutStop: 'Gut got in the way', nightToilet: 'Up in the night for the toilet', fast: 'Fasting today', wkResults: 'Worried about results or scans', wkCutOff: 'Felt cut off from people', wkTired: 'Tiredness got in the way',
+  wb: 'How much', journal: 'How was today', gutPain: 'Tummy pain or cramps', gutStop: 'Gut got in the way', painStop: 'Pain got in the way', reliefHelp: 'Pain relief helped', nightToilet: 'Up in the night for the toilet', fast: 'Fasting today', wkResults: 'Worried about results or scans', wkCutOff: 'Felt cut off from people', wkTired: 'Tiredness got in the way',
   wkGutOut: 'Gut stopped me going out', wkToilet: 'Worried about getting to a toilet', wkSwings: 'Mood swings or irritability', wkAnxious: 'Anxious or panicky',
   wkFog: 'Brain fog or memory', wkSweats: 'Sleep broken by sweats', helped: 'What helped', hardest: 'What was hardest', sentence: 'The week in a sentence',
   wkcTired: 'Tiredness got in the way', wkcLow: 'Seemed low or withdrawn', wkcSymptoms: 'Pain or symptoms got in the way', wkcHelp: 'Needed more help than usual'
@@ -9885,7 +9915,7 @@ function checkinSteps(slot, day, existing) {
   return CHECKIN_QUESTIONS[slot].filter((q) => {
     if (existing && existing[q.key] !== undefined) return true;
     if (q.pack && !(Array.isArray(q.pack) ? q.pack.some(packOn) : packOn(q.pack))) return false;
-    if (q.when && !q.when()) return false;
+    if (q.when && !q.when(day)) return false;
     if (q.kind === 'sidefx') return Boolean(sessionBefore(day));
     if (q.weekly) {
       const from = addDays(day, -6);
@@ -10080,7 +10110,7 @@ function openCheckin(slot, initialDay) {
           cur = cur === i ? null : i;
           [...chips.children].forEach((b, j) => { b.classList.toggle('is-active', cur === j); b.setAttribute('aria-pressed', cur === j ? 'true' : 'false'); });
         } }, w)));
-        wrap.append(h('p', { class: 'wiz-hint', text: q.hint || 'One tap.' }), chips);
+        wrap.append(h('p', { class: 'wiz-hint', text: (typeof q.hint === 'function' ? q.hint(day) : q.hint) || 'One tap.' }), chips);
         getVal = () => cur;
       } else if (q.kind === 'fast') {
         /* one tap (v258); Other opens a box for the person's own words */
@@ -11844,6 +11874,13 @@ function buildPainReport(n) {
       if (parts.length) points.push(`At the check-ins: ${parts.join(', ')}.` + (readingsAll.length ? ` ${plural(readingsAll.length, 'score')} between check-ins averaged ${avg(readingsAll)}.` : ''));
     } else points.push('No pain scores were logged in this period. The check-ins ask morning and evening.');
     if (painMeds.length) points.push(doses.length ? (prnDoses.length ? `When-needed relief on ${plural(prnDays, 'day')} of ${days.length}: ${relief.filter((r) => r.n && r.kind === 'When needed').map((r) => r.name.split(/\s+/)[0] + ' ' + plural(r.days, 'day') + (r.most > 1 ? ' (up to ' + r.most + ' a day)' : '')).join(', ')}.` : `${plural(doses.length, 'dose')} of regular pain relief.`) + (relief.some((r) => r.hitMax) ? ' The daily maximum was reached.' : '') : 'No pain relief logged in this period.');
+    { /* v361: what the evening check-in said about daily life and the relief */
+      const ev = ci.filter((e) => e.slot === 'evening' && e.day >= from && e.day <= to);
+      const ps = ev.filter((e) => e.painStop != null), psBad = ps.filter((e) => Number(e.painStop) >= 2);
+      const rh = ev.filter((e) => e.reliefHelp != null), cnt = (v) => rh.filter((e) => Number(e.reliefHelp) === v).length;
+      if (ps.length) points.push(`Pain stopped ${patientWord()} doing things quite a bit or a lot on ${psBad.length} of ${plural(ps.length, 'evening')} asked.`);
+      if (rh.length) points.push(`Did the when-needed relief help? Yes on ${plural(cnt(2), 'day')}, a bit on ${cnt(1)}, no on ${cnt(0)}.`);
+    }
     if (nights.length) points.push(`Sleep ${avg(nights.map((d) => d.sleep))} h a night; ${shortN.length ? plural(shortN.length, 'night') + ' under 5 hours' + (shortBad ? `, ${shortBad} beside a day at 7 or more` : '') : 'no night under 5 hours'}.`);
     briefNote = 'Worked out by the app from the scores, the doses and the nights.';
   }
