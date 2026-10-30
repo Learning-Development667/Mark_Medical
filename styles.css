@@ -795,6 +795,8 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 .chart-card + .chart-card { margin-top: 20px; }
 .chart-card .section-title { margin: 0 0 var(--s-3); }
 .chart-wrap { position: relative; height: 240px; }
+/* v365: a canvas not yet drawn (v354 waits for it to come into view) is 300px wide by default, past a 320px phone's card */
+.chart-wrap canvas { max-width: 100%; }
 /* Chart or table (v79): the heading and a small two-way switch on one line; the table underneath
    shares the chart's amber and red. */
 .chart-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); margin: 0 0 var(--s-3); }
@@ -2369,3 +2371,17 @@ body[data-accent] .view .section-title::before { content: ""; display: block; wi
 .own-numrow .own-num { width: 120px; }
 .chips.own-score { display: grid; grid-template-columns: repeat(6, 1fr); gap: var(--s-2); }
 .chips.own-score .preset { min-width: 0; padding-left: 0; padding-right: 0; }
+
+/* Things I track and symptoms on Trends (v365): the sub line under the name, the large figures, the yes or no squares */
+.chart-own .section-title .chart-sub { display: block; font: 400 14px var(--font-body); color: var(--text-secondary); letter-spacing: 0; margin-top: 2px; }
+.chart-stat { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 0 0 var(--s-3); font-variant-numeric: tabular-nums; }
+.chart-stat .v { display: block; font-family: var(--font-head); font-weight: 600; font-size: 28px; line-height: 1; color: var(--text-primary); }
+.chart-stat .l { display: block; font-size: 14px; color: var(--text-secondary); margin-top: 3px; }
+.yn-wrap { height: auto; }
+.yn { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.yn-day { aspect-ratio: 1; border-radius: 10px; display: grid; place-content: center; text-align: center; background: var(--surface-sunken); color: var(--text-muted); font: 600 14px var(--font-body); box-shadow: var(--elev-sunken); }
+.yn-day small { display: block; font-size: 11px; font-weight: 500; margin-top: 2px; opacity: 0.85; }
+.yn-day.is-yes { background: var(--success); color: #fff; box-shadow: none; } /* 5.7:1; dark: the lighter fill with page-dark text, 9.5:1 */
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .yn-day.is-yes { background: var(--success-fill); color: var(--bg); } }
+.yn-day.is-no { background: var(--border-subtle); color: var(--text-primary); box-shadow: none; }
+.chart-own-foot { margin-top: var(--s-2); }
