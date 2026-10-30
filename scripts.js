@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '356';
+const APP_VERSION = '357';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -9476,7 +9476,20 @@ function findCheckin(day, slot) {
   const id = checkinId(day, slot);
   return state.dayEntries.find((e) => e.id === id) || state.recentEntries.find((e) => e.id === id) || null;
 }
-function dueSlot() { return new Date().getHours() < 15 ? 'morning' : 'evening'; }
+/* Which check-in is due now (v357, Mark: the evening check-in runs 18:00 to 05:59). Morning 06:00 to 17:59 is today's
+   morning; 18:00 to midnight is today's evening; midnight to 05:59 is still the evening just gone, filed against yesterday. */
+function checkinDue() {
+  const now = new Date(), hr = now.getHours();
+  if (hr < 6) { const y = new Date(now); y.setDate(y.getDate() - 1); return { slot: 'evening', day: dayStr(y), late: true }; }
+  return { slot: hr < 18 ? 'morning' : 'evening', day: todayStr(), late: false };
+}
+function dueSlot() { return checkinDue().slot; }
+/* The day a Today row opens: after midnight, the evening row on today's page opens last night's check-in until it is done. */
+function checkinRowDay(slot) {
+  const d = checkinDue();
+  if (slot === 'evening' && d.late && state.selectedDay === todayStr() && !findCheckin(d.day, 'evening')) return d.day;
+  return state.selectedDay;
+}
 function slotWord(slot) { return slot === 'morning' ? 'Morning' : slot === 'evening' ? 'Evening' : slot === 'week' ? 'Your week' : slot === 'weekcarer' ? 'Your week, as you see it' : slot === 'carermorning' ? 'Morning, as you see it' : slot === 'carerevening' ? 'Evening, as you see it' : "Carer's view"; }
 
 function checkinSummary(e) {
@@ -9561,7 +9574,9 @@ function renderCheckins() {
   const day = state.selectedDay, isToday = day === todayStr();
   ['morning', 'evening'].forEach((slot) => {
     const row = $('checkin-' + slot), sub = $('checkin-' + slot + '-sub'), holder = $('checkin-' + slot + '-card');
-    const c = findCheckin(day, slot);
+    const due = checkinDue(), early = isToday && due.late;
+    const lastNight = early && slot === 'evening' && !findCheckin(due.day, 'evening');
+    const c = lastNight ? null : findCheckin(day, slot);
     row.classList.remove('is-due', 'is-done');
     row.disabled = state.readOnly;
     row.hidden = !!c;
@@ -9571,9 +9586,18 @@ function renderCheckins() {
       return;
     }
     holder.replaceChildren();
-    if (!state.readOnly && readProgress(slot, day)) { if (isToday && dueSlot() === slot) row.classList.add('is-due'); sub.textContent = 'Unfinished, kept as you left it. Tap to carry on'; }
-    else if (isToday && dueSlot() === slot) { row.classList.add('is-due'); sub.textContent = state.readOnly ? 'Due now' : 'Due now, about a minute'; }
+    if (lastNight) {
+      row.classList.add('is-due');
+      sub.textContent = !state.readOnly && readProgress('evening', due.day) ? "Last night's, unfinished. Tap to carry on" : state.readOnly ? "Last night's is due now" : "Last night's is due now, up to 06:00";
+      return;
+    }
+    const dueHere = isToday && due.slot === slot && due.day === day;
+    if (!state.readOnly && readProgress(slot, day)) { if (dueHere) row.classList.add('is-due'); sub.textContent = 'Unfinished, kept as you left it. Tap to carry on'; }
+    else if (dueHere) { row.classList.add('is-due'); sub.textContent = state.readOnly ? 'Due now' : 'Due now, about a minute'; }
+    else if (isToday && slot === 'morning' && early) sub.textContent = 'From 06:00';
+    else if (isToday && slot === 'evening' && early) sub.textContent = 'From 18:00';
     else if (isToday && slot === 'morning') sub.textContent = state.readOnly ? 'Missed this morning' : 'Missed this morning, tap to fill in';
+    else if (isToday && slot === 'evening') sub.textContent = 'From 18:00';
     else if (isToday) sub.textContent = 'Later today';
     else sub.textContent = state.readOnly ? 'Not filled in' : 'Not filled in, tap to add';
   });
@@ -9588,11 +9612,13 @@ function carerMoodRow(slot, day, isToday) {
   const c = findCheckin(day, slot);
   if (c) return checkinCard(c, false);
   const morning = slot === 'carermorning';
-  const due = isToday && dueSlot() === (morning ? 'morning' : 'evening');
+  const cd = checkinDue();
+  const due = isToday && cd.slot === (morning ? 'morning' : 'evening') && cd.day === day;
   const sub = !state.readOnly && readProgress(slot, day) ? 'Unfinished, kept as you left it. Tap to carry on'
     : due ? (state.readOnly ? 'Due now' : 'Due now, about a minute')
+    : isToday && cd.late ? (morning ? 'From 06:00' : 'From 18:00')
     : isToday && morning ? (state.readOnly ? 'Missed this morning' : 'Missed this morning, tap to fill in')
-    : isToday ? 'Later today'
+    : isToday ? 'From 18:00'
     : (state.readOnly ? 'Not filled in' : 'Not filled in, tap to add');
   const row = h('button', { class: 'checkin-row' + (due || (!state.readOnly && readProgress(slot, day)) ? ' is-due' : ''), type: 'button', id: 'carer-' + slot + (isToday ? '' : '-d'), disabled: state.readOnly, onclick: () => openCheckin(slot, day) },
     icon(morning ? 'sun' : 'moon', 'checkin-icon'),
@@ -9600,14 +9626,19 @@ function carerMoodRow(slot, day, isToday) {
     icon('chevron', 'checkin-chev'));
   return row;
 }
+/* after midnight the carer's evening row shows last night's until it is done, as the patient's does (v357) */
+function carerRowDay(slot, day) {
+  const d = checkinDue();
+  return slot === 'carerevening' && d.late && day === todayStr() && !findCheckin(d.day, slot) ? d.day : day;
+}
 function renderCarerMoodRows() {
   const today = $('carer-mood-today'), chemo = $('carer-mood-chemo');
   if (today) {
     const show = isCarerUser() && !state.viewer;
     today.hidden = !show;
-    today.replaceChildren(...(show ? CARER_DAY_SLOTS.map((slot) => carerMoodRow(slot, state.selectedDay, state.selectedDay === todayStr())) : []));
+    today.replaceChildren(...(show ? CARER_DAY_SLOTS.map((slot) => carerMoodRow(slot, carerRowDay(slot, state.selectedDay), state.selectedDay === todayStr())) : []));
   }
-  if (chemo) chemo.replaceChildren(...(state.viewer ? [] : CARER_DAY_SLOTS.map((slot) => carerMoodRow(slot, todayStr(), true))));
+  if (chemo) chemo.replaceChildren(...(state.viewer ? [] : CARER_DAY_SLOTS.map((slot) => carerMoodRow(slot, carerRowDay(slot, todayStr()), true))));
 }
 /* Open questions for the team: a live list, so the Today row can say how many are waiting */
 function watchQuestions() {
@@ -9650,7 +9681,7 @@ function openQuestionsList() {
   openSheet('Questions for the team', body);
 }
 $('checkin-morning').addEventListener('click', () => openCheckin('morning', state.selectedDay));
-$('checkin-evening').addEventListener('click', () => openCheckin('evening', state.selectedDay));
+$('checkin-evening').addEventListener('click', () => openCheckin('evening', checkinRowDay('evening')));
 
 function sliderBlock(q, current, onChange) {
   const lo = q.nrs ? 0 : 1;
