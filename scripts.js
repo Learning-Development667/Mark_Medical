@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '350';
+const APP_VERSION = '351';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -2212,7 +2212,6 @@ function openSetup(kind, opts = {}) {
   draw(1);
 }
 $('more-setup').addEventListener('click', () => openSetup('full'));
-$('settings-setup').addEventListener('click', () => openSetup('full'));
 
 /* Gentle nudge at 10:00 (v83): one notification if nothing has been logged on the Exercise tab by then. Household-wide, sent by the bridge to the phones with reminders on. */
 $('settings-stretch-nudge').addEventListener('change', async (ev) => {
@@ -3298,7 +3297,6 @@ function openWhatsNewSheet() {
     h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => closeSheet() }, 'Close'));
   openSheet('What\'s new', body);
 }
-$('more-whatsnew').addEventListener('click', openWhatsNewSheet);
 function openFeedbackSheet() {
   const screen = document.title;
   const draft = fbRead('draft', {});
@@ -5544,7 +5542,20 @@ function guideStop() {
   clearInterval(guide.timer); guide.timer = 0;
   $('guide-play').textContent = 'Play'; $('guide-play').setAttribute('aria-pressed', 'false');
 }
-$('more-guide').addEventListener('click', openGuide);
+/* Help and what's new (v351): one row on More opens the Guide, What's new and, in the Beta, Provide feedback */
+function openHelpSheet() {
+  const row = (name, title, sub, go) => h('button', { class: 'checkin-row menu-row', type: 'button', onclick: () => { closeSheet({ force: true }); go(); } },
+    icon(name, 'checkin-icon'),
+    h('span', { class: 'checkin-main' }, h('span', { class: 'checkin-title', text: title }), h('span', { class: 'checkin-sub', text: sub })),
+    icon('chevron', 'checkin-chev'));
+  const rows = [
+    row('eye', 'Guide', 'How to do each thing, shown on screen step by step', openGuide),
+    row('sun', "What's new", 'The changes made to Daybook, newest first', openWhatsNewSheet),
+  ];
+  if (feedbackShown()) rows.push(row('send', 'Provide feedback', 'Tell Mark what you think', openFeedbackSheet));
+  openSheet("Help and what's new", h('div', { class: 'menu' }, ...rows));
+}
+$('more-guide').addEventListener('click', openHelpSheet);
 $('guide-back').addEventListener('click', () => { guideStop(); showTab('more'); });
 $('guide-all').addEventListener('click', () => { guideStop(); $('guide-player').hidden = true; $('guide-topics').hidden = false; setBrand(PAGE_TITLES.guide); window.scrollTo(0, 0); });
 $('guide-prev').addEventListener('click', () => { guideStop(); guideShow(guide.i - 1); });
@@ -5644,7 +5655,7 @@ function renderUsage() {
     tiles, features, from, trend, table, countBtn);
 }
 $('more-usage').addEventListener('click', openUsage);
-$('usage-back').addEventListener('click', () => showTab('more'));
+$('usage-back').addEventListener('click', () => showTab('settings'));
 
 function openManageMeals() {
   const list = h('div', { class: 'medlist' });
@@ -13260,7 +13271,31 @@ function renderVitalsLatest(entries) {
 
 function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
 
+/* Reports | Trends (v351): the Reports tab opens on the reports, with Trends (the latest readings and the
+   charts) one tap away, remembered on this phone. A viewer sees only Trends, so has no switch. */
+function reportsSide() {
+  if (state.viewer) return 'trends';
+  try { return localStorage.getItem('daybook.reports.side') === 'trends' ? 'trends' : 'reports'; } catch (e) { return 'reports'; }
+}
+function syncReportsSide() {
+  const side = reportsSide();
+  $('reports-switch').hidden = !!state.viewer;
+  $('trends-reports').hidden = side !== 'reports';
+  $('trends-body').hidden = side !== 'trends';
+  [['reports-show-reports', 'reports'], ['reports-show-trends', 'trends']].forEach(([id, k]) => {
+    $(id).classList.toggle('is-active', side === k); $(id).setAttribute('aria-pressed', String(side === k));
+  });
+}
+function setReportsSide(side) {
+  try { localStorage.setItem('daybook.reports.side', side); } catch (e) {}
+  syncReportsSide();
+  window.scrollTo(0, 0);
+  if (side === 'trends') renderVitals();
+}
+$('reports-show-reports').addEventListener('click', () => setReportsSide('reports'));
+$('reports-show-trends').addEventListener('click', () => setReportsSide('trends'));
 async function renderVitals() {
+  syncReportsSide();
   $('rep-ibd').hidden = !packOn('ibd');
   document.querySelectorAll('#view-vitals .unitswitch').forEach((w) => w.sync && w.sync());
   const from = addDays(todayStr(), -(state.trendRange - 1));
@@ -13581,7 +13616,6 @@ $('doc-edit').addEventListener('click', () => {
   openSheet('Edit details', body);
 });
 $('docs-back').addEventListener('click', () => showTab(state.docsReturn || 'more'));
-$('more-docs').addEventListener('click', () => openDocs('more'));
 $('chemo-doc-add').addEventListener('click', () => openAddDocument('chemo'));
 
 function docItem(d, i) {
