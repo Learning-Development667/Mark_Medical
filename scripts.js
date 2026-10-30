@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '337';
+const APP_VERSION = '338';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -7080,21 +7080,6 @@ const NOTES_PROMPT = 'Please turn these care notes into a short, clear list of q
 $('notes-back').addEventListener('click', () => showTab(state.reportReturn || 'vitals'));
 /* The range buttons (presets and Custom) are wired by wireReportRange('notes', ...) with the Food diary's */
 
-$('notes-share').addEventListener('click', async () => {
-  const text = state.notesText;
-  if (!text) return;
-  if (!navigator.share) {
-    await copyText(text);
-    toast('Sharing is not available here. Copied instead.');
-    return;
-  }
-  try {
-    await navigator.share({ title: 'Daybook notes', text });
-  } catch (e) {
-    if (e && e.name !== 'AbortError') { await copyText(text); toast('Could not share. Copied instead.'); }
-  }
-});
-
 /* Suggest questions to ask: the notes go to the bridge, the reply comes back as a numbered list,
    and each line can be added to Questions for the team with one tap (a question entry, like
    typing it in). Nothing is added without that tap. */
@@ -7136,12 +7121,6 @@ function openSuggestedQuestions(text) {
     h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => { closeSheet(); renderNotesReport(); } }, 'Done'));
   openSheet('Questions to ask', body, () => { renderNotesReport(); });
 }
-
-$('notes-copy').addEventListener('click', async () => {
-  if (!state.notesText) return;
-  await copyText(state.notesText);
-  toast('Copied. Paste it into your AI app.');
-});
 
 /* Send to the team (since v112): the notes PDF, with the charts ticked, handed to the phone's own
    Mail app (the share sheet) with a subject and a short covering message, for a contact from Who to
