@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '361';
+const APP_VERSION = '362';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -13912,7 +13912,7 @@ function barChart(T, labels, data, o) {
    drawn when it first comes into view, its line or bars filling from the first day to the last over about two
    seconds (CHART_DRAW_MS), once a session; redrawn after that (a new reading, another range) it appears at once.
    Under reduced motion every chart appears at once. */
-const CHART_DRAW_MS = 2000;
+const CHART_DRAW_MS = 2000, CHART_START_DELAY = 250;
 const chartPlayed = new Set(), chartPending = {};
 let chartWatcher = null;
 function makeChart(key, cfg) {
@@ -13928,15 +13928,24 @@ function makeChart(key, cfg) {
   else if (!('IntersectionObserver' in window)) { chartPlayed.add(key); draw(); }
   else {
     chartPending[key] = cfg;
+    /* v362 (Mark: they finished before he got to them): wait until the whole chart is on screen, clear of the
+       top bar and the tab bar (or fills most of the view), then a quarter of a second more, so a chart still
+       sliding up from under the tabs, or flicked past, does not play unseen */
     if (!chartWatcher) chartWatcher = new IntersectionObserver((seen) => seen.forEach((en) => {
-      if (!en.isIntersecting) return;
-      const k = en.target.id.replace(/^chart-/, ''), c = chartPending[k];
-      chartWatcher.unobserve(en.target);
-      if (!c) return;
-      delete chartPending[k]; chartPlayed.add(k);
-      if (state.charts[k]) state.charts[k].destroy();
-      state.charts[k] = new window.Chart(en.target.getContext('2d'), c);
-    }), { threshold: 0.35 });
+      const t = en.target, k = t.id.replace(/^chart-/, '');
+      const inView = en.isIntersecting && (en.intersectionRatio >= 0.95 || (en.rootBounds && en.intersectionRect.height >= en.rootBounds.height * 0.8));
+      t._inView = inView;
+      if (!inView || t._chartTimer) return;
+      t._chartTimer = setTimeout(() => {
+        t._chartTimer = null;
+        const c = chartPending[k];
+        if (!c || !t._inView) return;
+        chartWatcher.unobserve(t);
+        delete chartPending[k]; chartPlayed.add(k);
+        if (state.charts[k]) state.charts[k].destroy();
+        state.charts[k] = new window.Chart(t.getContext('2d'), c);
+      }, CHART_START_DELAY);
+    }), { threshold: [0, 0.25, 0.5, 0.75, 0.9, 0.95, 1], rootMargin: '-64px 0px -96px 0px' });
     chartWatcher.observe(canvas);
   }
   function draw() { delete chartPending[key]; state.charts[key] = new window.Chart(canvas.getContext('2d'), cfg); }
