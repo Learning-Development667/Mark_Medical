@@ -1182,7 +1182,7 @@ body.is-med-dragging { overflow: hidden; }
 #chemo-progress .progress-bar { margin: 0 0 10px; }
 #chemo-progress .progress-bar > div { background: var(--success); }
 .cal { padding: var(--s-2) 6px 10px; margin-top: var(--s-3); }
-.card + .card.cal { margin-top: var(--s-3); } /* .card + .card zeroes the gap; the calendar wants one under the Sessions card */
+.card + .card.cal, .card.cal + #chemo-progress { margin-top: var(--s-3); } /* .card + .card zeroes the gap; the calendar and the Sessions card want one between them */
 .cal-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 6px; }
 .cal-title { flex: 1; min-height: var(--tap); border: 0; background: none; font-family: var(--font-head); font-weight: 600; font-size: 22px; letter-spacing: 0.04em; color: var(--text-primary); cursor: pointer; }
 .cal-dow { display: grid; grid-template-columns: repeat(7, 1fr); text-align: center; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); margin-bottom: var(--s-1); }
