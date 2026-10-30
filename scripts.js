@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '362';
+const APP_VERSION = '363';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -1992,7 +1992,7 @@ function renderTilesCard() {
   const tiles = [...document.querySelectorAll('#view-today .qa[data-add]')];
   list.replaceChildren(...tiles.map((b) => {
     const key = b.dataset.add, name = b.textContent.trim();
-    const box = h('input', { type: 'checkbox', id: 'tile-' + key, checked: !off.has(key), onchange: (ev) => {
+    const box = h('input', { type: 'checkbox', id: 'tiletick-' + key, checked: !off.has(key), onchange: (ev) => {
       const now = hiddenTiles();
       if (ev.target.checked) now.delete(key); else now.add(key);
       if (now.size >= tiles.length) { ev.target.checked = true; toast('Keep at least one tile on Today'); return; }
@@ -2026,9 +2026,9 @@ function openTrackSheet(t) {
   const example = h('p', { class: 'hint' });
   const sync = () => {
     unitField.hidden = kindIn.value !== 'number';
-    const n = name.value.trim() || 'It';
+    const n = name.value.trim() || 'Caffeine';
     example.textContent = 'Asked in the evening check-in each day, and shown on Notes for the team, for example: "' +
-      (kindIn.value === 'yesno' ? n + ': yes on 4 of 7 days answered."' : kindIn.value === 'score' ? n + ': about 4.3/10, highest 7, 7 days answered."' : n + ': about 2.5' + (unit.value.trim() ? ' ' + unit.value.trim() : '') + ' a day, 7 days answered."');
+      (kindIn.value === 'yesno' ? n + ': yes on 4 of 7 days answered."' : kindIn.value === 'score' ? n + ': about 4.3/10, highest 7, 7 days answered."' : n + ': about 2.5' + (unit.value.trim() ? ' ' + unit.value.trim() : '') + ' on average, from 1 to 4, 7 days answered."');
   };
   kinds.addEventListener('click', () => setTimeout(sync, 0));
   name.addEventListener('input', sync); unit.addEventListener('input', sync);
@@ -7576,12 +7576,12 @@ function twoPageCharts(entries, days) {
 
   /* Blood pressure: each day's reading with the highest systolic, so the pair stays together */
   const bpDay = by((e) => e.type === 'vitals' && Number(e.systolic) > 0 && Number(e.diastolic) > 0).map((l) => (l.length ? l.reduce((a, b) => (Number(b.systolic) > Number(a.systolic) ? b : a)) : null));
-  const bpAll = entries.filter((e) => e.type === 'vitals' && Number(e.systolic) > 0 && Number(e.diastolic) > 0);
+  const bpAll = bpSittings(entries.filter((e) => e.type === 'vitals' && Number(e.systolic) > 0 && Number(e.diastolic) > 0));
   const bpRed = bpAll.filter((e) => e.systolic >= 160 || e.diastolic >= 100), bpAmber = bpAll.filter((e) => e.systolic >= 140 || e.diastolic >= 90);
   const sysV = bpAll.map((e) => Number(e.systolic)), diaV = bpAll.map((e) => Number(e.diastolic));
   const hiBp = bpAll.length ? bpAll.reduce((a, b) => (Number(b.systolic) > Number(a.systolic) ? b : a)) : null;
   charts.push({ key: 'bp', title: 'Blood pressure (mmHg)',
-    stat: !bpAll.length ? 'No readings' : bpRed.length ? plural(bpRed.length, 'reading') + ' over 160/100' : bpAmber.length ? plural(bpAmber.length, 'reading') + ' over 140/90' : 'Highest ' + Math.round(hiBp.systolic) + '/' + Math.round(hiBp.diastolic),
+    stat: !bpAll.length ? 'No readings' : bpRed.length ? bpWord(bpAll, bpRed.length) + ' over 160/100' : bpAmber.length ? bpWord(bpAll, bpAmber.length) + ' over 140/90' : 'Highest ' + Math.round(hiBp.systolic) + '/' + Math.round(hiBp.diastolic),
     tone: !bpAll.length ? '' : toneOf(bpRed.length, bpAmber.length || sysV.some((v) => v <= 90)),
     min: Math.min(60, ...diaV.map((v) => Math.floor(v / 20) * 20 - 20)), max: Math.max(180, ...sysV.map((v) => Math.ceil(v / 20) * 20 + 20)), ticks: [80, 120, 160],
     bands: [{ from: 140, to: 160, c: amber }, { from: 160, to: 300, c: red }],
@@ -7600,10 +7600,12 @@ function twoPageCharts(entries, days) {
   const wv = vals(wt);
   const wSorted = entries.filter((e) => e.type === 'weight' && Number(e.value) > 0).sort((a, b) => entryDate(a) - entryDate(b));
   const wDrop = wSorted.length >= 2 ? Number(wSorted[0].value) - Number(wSorted[wSorted.length - 1].value) : 0;
+  /* v363: a quick rise (2 kg or more within three days, the same test as the Summary's Weight line) is named, not "Steady" */
+  const wGain = quickWeightGain(wSorted);
   let wLo = wv.length ? Math.floor(Math.min(...wv) - 1) : 70, wHi = wv.length ? Math.ceil(Math.max(...wv) + 1) : 80;
   if (wHi - wLo < 4) { const extra = 4 - (wHi - wLo); wLo -= Math.floor(extra / 2); wHi += Math.ceil(extra / 2); }
   const wStep = Math.max(1, Math.round((wHi - wLo) / 4));
-  charts.push({ key: 'weight', title: 'Weight (kg)', stat: !wv.length ? 'No readings' : wDrop >= 2 ? 'Down ' + wDrop.toFixed(1) + ' kg' : 'Steady', tone: !wv.length ? '' : toneOf(wDrop >= 4, wDrop >= 2),
+  charts.push({ key: 'weight', title: 'Weight (kg)', stat: !wv.length ? 'No readings' : wGain ? 'Up ' + wGain.up.toFixed(1) + ' kg in ' + plural(Math.max(1, dayGap(wGain.a.day, wGain.b.day)), 'day') : wDrop >= 2 ? 'Down ' + wDrop.toFixed(1) + ' kg' : 'Steady', tone: !wv.length ? '' : toneOf(wDrop >= 4, wDrop >= 2 || !!wGain),
     min: wLo, max: wHi, ticks: [wLo + wStep, wLo + 2 * wStep, wLo + 3 * wStep].filter((t) => t < wHi), series: [{ d: wt, c: ink }] });
 
   const nights = entries.filter((e) => e.type === 'sleep' && Number(e.value) > 0);
@@ -7706,7 +7708,7 @@ function twoPageTiles(entries, from, to, f) {
     const vHigh = byTime.filter((e) => e.systolic >= 160 || e.diastolic >= 100), vLow = byTime.filter((e) => e.systolic <= 90);
     const named = (list) => list.slice(0, 3).map(bpText).join(', ') + (list.length > 3 ? ' and ' + (list.length - 3) + ' more' : '');
     const extra = [vHigh.length ? 'Very high: ' + named(vHigh) + '.' : '', vLow.length ? 'Very low: ' + named(vLow) + '.' : ''].filter(Boolean).join(' ');
-    tiles.push({ k: 'Blood pressure', v: sy + '/' + di, unit: 'average', note: nRead(bps.length) + (extra ? ' ' + extra : ''), tone: toneOf(sy >= 160 || di >= 100, sy >= 140 || di >= 90 || sy <= 90) });
+    tiles.push({ k: 'Blood pressure', v: sy + '/' + di, unit: 'average', note: (bps.some((x) => x.n > 1) ? 'Average of ' + plural(bps.length, 'sitting') + ' (readings a few minutes apart count as one).' : nRead(bps.length)) + (extra ? ' ' + extra : ''), tone: toneOf(sy >= 160 || di >= 100, sy >= 140 || di >= 90 || sy <= 90) });
   }
   const oxs = entries.filter((e) => e.type === 'vitals' && Number(e.oxygen) > 0).map((e) => Number(e.oxygen));
   if (!oxs.length) tiles.push(none('Oxygen', 'readings'));
@@ -7743,11 +7745,13 @@ function twoPageMeds(entries, from, to) {
   entries.filter((e) => e.type === 'med' && prnIds.has(e.medId) && !e.hospital).forEach((e) => {
     const name = medListName(prnIds.get(e.medId).name || e.medName);
     const key = name.toLowerCase();
-    if (!byName.has(key)) byName.set(key, { name, days: new Set() });
+    if (!byName.has(key)) byName.set(key, { name, days: new Set(), perDay: {}, max: prnIds.get(e.medId).maxPerDay });
     byName.get(key).days.add(e.day);
+    byName.get(key).perDay[e.day] = (byName.get(key).perDay[e.day] || 0) + 1;
   });
+  /* v363: "daily maximum reached" prints as the Summary says it (the strip used to leave it out) */
   const prn = [...byName.values()].sort((a, b) => b.days.size - a.days.size || a.name.localeCompare(b.name))
-    .map((m) => m.name + (m.days.size >= nDays ? ' daily' : ' on ' + plural(m.days.size, 'day')));
+    .map((m) => m.name + (m.days.size >= nDays ? ' daily' : ' on ' + plural(m.days.size, 'day')) + (m.max && Math.max(...Object.values(m.perDay)) >= m.max ? ' (daily maximum reached)' : ''));
   const meds = prn.length ? capFirst(prn.join(', ')) + '.' : 'None taken in this period.';
   const hosp = entries.filter((e) => e.type === 'med' && e.hospital);
   let hospital = null;
@@ -7838,9 +7842,37 @@ function noteParts(n) {
     .replace(/^with /, 'a note with ');
   return { words: capFirst(words), from, who: n.who && n.who !== 'unknown' ? n.who : '' };
 }
+/* Blood pressure by sitting (v363, from the heart review): home readings are taken in pairs a minute apart (NICE NG136),
+   so readings within BP_SITTING_MIN minutes of each other are one sitting, averaged, and a high pair counts once, not
+   twice. Each sitting keeps its first reading's day, time and id, with n for how many readings it folds. */
+const BP_SITTING_MIN = 10;
+function bpSittings(list) {
+  const sorted = list.slice().sort((a, b) => entryDate(a) - entryDate(b));
+  const out = [];
+  sorted.forEach((e) => {
+    const last = out[out.length - 1];
+    if (last && entryDate(e) - entryDate(last.readings[last.readings.length - 1]) <= BP_SITTING_MIN * 60000) last.readings.push(e);
+    else out.push({ readings: [e] });
+  });
+  return out.map((g) => {
+    const n = g.readings.length;
+    const av = (k) => Math.round(g.readings.reduce((t, e) => t + Number(e[k]), 0) / n);
+    return Object.assign({}, g.readings[0], { systolic: av('systolic'), diastolic: av('diastolic'), n, readings: g.readings });
+  });
+}
+function bpWord(sittings, n, word) { return plural(n, sittings.some((s) => s.n > 1) ? 'sitting' : word || 'reading'); }
+/* The biggest rise of 2 kg or more within three days among weights sorted by time (v359; shared with the report's weight chart since v363) */
+function quickWeightGain(weights) {
+  let gain = null;
+  weights.forEach((a, i) => weights.slice(i + 1).forEach((b) => {
+    const up = Number(b.value) - Number(a.value);
+    if (dayGap(a.day, b.day) <= 3 && up >= 2 && (!gain || up > gain.up)) gain = { a, b, up };
+  }));
+  return gain;
+}
 function plainWeek(w, report, entries) {
   const inWeek = entries.filter((e) => e.day >= w.from && e.day <= w.to);
-  const rows = summaryRows(inWeek, w.from, w.to).filter((r) => r.level === 'red' || r.level === 'amber').slice(0, 2);
+  const rows = summaryRows(inWeek, w.from, w.to).filter((r) => r.level === 'red' || r.level === 'amber');
   const theme = rows.length ? rows.map((r) => (r.short || r.text).replace(/\.$/, '')).join('. ') + '.' : inWeek.length ? "Nothing flagged by the app's checks." : '';
   const why = alertReasons(inWeek);
   const reason = (day) => loggedWords(why, day);
@@ -8755,20 +8787,22 @@ function summaryRows(entries, from, to) {
     else fine.push(`heart rate (${Math.round(lo.heartRate)} to ${Math.round(hi.heartRate)} bpm)`);
   }
 
-  const bps = entries.filter((e) => e.type === 'vitals' && Number(e.systolic) > 0 && Number(e.diastolic) > 0);
+  const bps = bpSittings(entries.filter((e) => e.type === 'vitals' && Number(e.systolic) > 0 && Number(e.diastolic) > 0));
   if (bps.length) {
     const bp = (e) => `${Math.round(e.systolic)}/${Math.round(e.diastolic)}`;
     const hi = maxBy(bps, (e) => Number(e.systolic)), lo = minBy(bps, (e) => Number(e.systolic));
-    const range = `readings ranged ${bp(lo)} to ${bp(hi)}`;
+    const paired = bps.some((x) => x.n > 1), plural_ = (n, w) => bpWord(bps, n, w);
+    const meanBp = `${Math.round(avg(bps.map((e) => Number(e.systolic))))}/${Math.round(avg(bps.map((e) => Number(e.diastolic))))}`;
+    const range = `${paired ? 'sittings (readings a few minutes apart averaged as one)' : 'readings'} ranged ${bp(lo)} to ${bp(hi)}, averaging ${meanBp}`;
     const red = bps.filter((e) => e.systolic >= 160 || e.diastolic >= 100);
     const amber = bps.filter((e) => e.systolic >= 140 || e.diastolic >= 90);
     const low = bps.filter((e) => e.systolic <= 90);
     /* The reading that crossed its line by the most, whichever number did the crossing */
     const worstOf = (list) => maxBy(list, (e) => Math.max(e.systolic - 140, (e.diastolic - 90) * 2));
-    if (red.length) { const w = worstOf(red); push('red', 'Blood pressure', `Blood pressure ${bp(w)} on ${when(w)}${red.length > 1 ? ', and over the 160/100 line on ' + plural(red.length, 'reading') + ' in all' : ''}; ${range}.`, null, `Blood pressure over 160/100 ${times(red.length)}${red.length <= 3 ? ': ' + red.slice().sort((a, b) => entryDate(a) - entryDate(b)).map(bp).join(', ') : ', highest systolic ' + bp(hi)}`); }
-    else if (amber.length) { const w = worstOf(amber); push('amber', 'Blood pressure', `Blood pressure over the 140/90 line on ${plural(amber.length, 'reading')} of ${bps.length}, highest ${bp(w)} on ${when(w)}; ${range}.`, amber.length === 1 ? `blood pressure ${bp(w)} on ${when(w)}` : null, `Blood pressure over 140/90 ${times(amber.length)}${amber.length <= 3 ? ': ' + amber.slice().sort((a, b) => entryDate(a) - entryDate(b)).map(bp).join(', ') : ', highest systolic ' + bp(hi)}`); }
-    else if (low.length) { const w = minBy(low, (e) => Number(e.systolic)); push('amber', 'Blood pressure', `Low blood pressure ${bp(w)} on ${when(w)}${low.length > 1 ? ' and on ' + (low.length - 1) + ' other ' + (low.length === 2 ? 'reading' : 'readings') : ''}; ${range}.`, null, `Low blood pressure ${times(low.length)}, down to ${bp(w)}`); }
-    else fine.push(`blood pressure (${bp(lo)} to ${bp(hi)})`);
+    if (red.length) { const w = worstOf(red); push('red', 'Blood pressure', `Blood pressure ${bp(w)} on ${when(w)}${red.length > 1 ? ', and over the 160/100 line on ' + plural_(red.length, 'reading') + ' in all' : ''}; ${range}.`, null, `Blood pressure over 160/100 ${times(red.length)}${red.length <= 3 ? ': ' + red.slice().sort((a, b) => entryDate(a) - entryDate(b)).map(bp).join(', ') : ', highest systolic ' + bp(hi)}`); }
+    else if (amber.length) { const w = worstOf(amber); push('amber', 'Blood pressure', `Blood pressure over the 140/90 line on ${plural_(amber.length, 'reading')} of ${bps.length}, highest ${bp(w)} on ${when(w)}; ${range}.`, amber.length === 1 ? `blood pressure ${bp(w)} on ${when(w)}` : null, `Blood pressure over 140/90 ${times(amber.length)}${amber.length <= 3 ? ': ' + amber.slice().sort((a, b) => entryDate(a) - entryDate(b)).map(bp).join(', ') : ', highest systolic ' + bp(hi)}`); }
+    else if (low.length) { const w = minBy(low, (e) => Number(e.systolic)); push('amber', 'Blood pressure', `Low blood pressure ${bp(w)} on ${when(w)}${low.length > 1 ? ' and on ' + (low.length - 1) + ' other ' + (low.length === 2 ? bpWord(bps, 1).replace(/^1 /, '') : bpWord(bps, 2).replace(/^2 /, '')) : ''}; ${range}.`, null, `Low blood pressure ${times(low.length)}, down to ${bp(w)}`); }
+    else fine.push(`blood pressure (${bp(lo)} to ${bp(hi)}, averaging ${meanBp})`);
   }
 
   const oxs = entries.filter((e) => e.type === 'vitals' && Number(e.oxygen) > 0);
@@ -8844,7 +8878,7 @@ function summaryRows(entries, from, to) {
     const rh = evenings.filter((e) => e.reliefHelp != null), rhNo = rh.filter((e) => Number(e.reliefHelp) === 0), rhBit = rh.filter((e) => Number(e.reliefHelp) === 1), rhYes = rh.filter((e) => Number(e.reliefHelp) === 2);
     const parts = [], shorts = [];
     if (ps.length) { parts.push(psBad.length ? `pain stopped ${patientWord()} doing things, quite a bit or a lot, on ${psBad.length} of ${plural(ps.length, 'evening')}` : `pain did not get in the way much on the ${plural(ps.length, 'evening')} asked`); if (psBad.length) shorts.push(`in the way on ${plural(psBad.length, 'evening')}`); }
-    if (rh.length) { parts.push(`the when-needed pain relief helped on ${rhYes.length} of ${plural(rh.length, 'day')} asked, a bit on ${rhBit.length}, not at all on ${rhNo.length}`); if (rhNo.length || rhBit.length) shorts.push(`relief not helping on ${plural(rhNo.length, 'day')}${rhBit.length ? ', a bit on ' + rhBit.length : ''}`); }
+    if (rh.length) { parts.push(`the when-needed pain relief helped on ${rhYes.length} of ${plural(rh.length, 'day')} asked, a bit on ${rhBit.length}, not at all on ${rhNo.length}`); if (rhNo.length || rhBit.length) shorts.push(rhNo.length ? `relief not helping on ${plural(rhNo.length, 'day')}${rhBit.length ? ', a bit on ' + rhBit.length : ''}` : `relief helped only a bit on ${plural(rhBit.length, 'day')}`); }
     if (parts.length) {
       const level = psBad.length * 2 > ps.length || rhNo.length * 2 > rh.length ? 'amber' : psBad.length || rhNo.length || rhBit.length ? 'teal' : 'green';
       const text = 'Pain and daily life: ' + parts.join('; ') + '.';
@@ -8900,11 +8934,7 @@ function summaryRows(entries, from, to) {
   if (weights.length >= 2) {
     const first = Number(weights[0].value), last = Number(weights[weights.length - 1].value), drop = first - last;
     /* a quick gain (v359): 2 kg or more within three days, which heart teams watch for as fluid; the biggest such rise */
-    let gain = null;
-    weights.forEach((a, i) => weights.slice(i + 1).forEach((b) => {
-      const up = Number(b.value) - Number(a.value);
-      if (dayGap(a.day, b.day) <= 3 && up >= 2 && (!gain || up > gain.up)) gain = { a, b, up };
-    }));
+    const gain = quickWeightGain(weights);
     if (gain) push('amber', 'Weight', `Weight up ${gain.up.toFixed(1)} kg in ${plural(Math.max(1, dayGap(gain.a.day, gain.b.day)), 'day')}, from ${Number(gain.a.value).toFixed(1)} kg on ${when(gain.a)} to ${Number(gain.b.value).toFixed(1)} kg on ${when(gain.b)}.`, null,
       `Weight up ${gain.up.toFixed(1)} kg in ${plural(Math.max(1, dayGap(gain.a.day, gain.b.day)), 'day')}`);
     if (drop >= 2) push(drop >= 4 ? 'red' : 'amber', 'Weight', `Weight down ${drop.toFixed(1)} kg, from ${first.toFixed(1)} kg on ${when(weights[0])} to ${last.toFixed(1)} kg on ${when(weights[weights.length - 1])}.`, null, `Weight down ${drop.toFixed(1)} kg, now ${last.toFixed(1)} kg`);
@@ -8925,7 +8955,9 @@ function summaryRows(entries, from, to) {
     else fine.push(`drinks (${mean} a day)`);
   }
   if (loggedDays.length) {
-    const noFood = loggedDays.filter((d) => !byDay[d].some((e) => e.type === 'food') && !loggedTotals(d));
+    /* v363: a circle that never uses the Food tile (nothing eaten logged on any day of the period) is not told it ate nothing */
+    const anyFood = loggedDays.some((d) => byDay[d].some((e) => e.type === 'food') || loggedTotals(d));
+    const noFood = anyFood ? loggedDays.filter((d) => !byDay[d].some((e) => e.type === 'food') && !loggedTotals(d)) : [];
     /* Each eating day's totals: from the food app where logged, else the app's own estimate */
     const perDay = loggedDays.filter((d) => byDay[d].some((e) => e.type === 'food') || loggedTotals(d)).map((d) => {
       const l = loggedTotals(d);
@@ -8948,7 +8980,7 @@ function summaryRows(entries, from, to) {
     }
     if (noFood.length) push('amber', 'Eating', `Nothing eaten logged on ${plural(noFood.length, 'day')} of the ${loggedDays.length} logged (${listDays(noFood)})${est ? '; on the other days ' + est : ''}${targetText}.`, noFood.length === 1 && !underDays ? `nothing eaten logged on ${fmtDayShort(noFood[0])}` : null, `Nothing eaten logged on ${plural(noFood.length, 'day')}${underDays ? `; ${protWord.toLowerCase()} under target on ${underDays} of ${targetDays} days` : ''}`);
     else if (target && macros) push(underDays > targetDays / 2 ? 'amber' : 'green', 'Eating', `Eating: something every logged day, ${est}${targetText}.`, null, underDays ? `${protWord} under target on ${underDays} of ${targetDays} days` : `Eating every day, ${protWord.toLowerCase()} at the target`);
-    else fine.push(`eating (something every logged day${est ? ', ' + est : ''})`);
+    else if (anyFood) fine.push(`eating (something every logged day${est ? ', ' + est : ''})`);
   }
 
   /* Symptoms logged between check-ins: worst per symptom; 7 or more red, 4 to 6 amber (5 to 6 before v244), like pain */
@@ -8959,9 +8991,10 @@ function summaryRows(entries, from, to) {
     const items = Object.keys(byWhat).map((k) => { const w = maxBy(byWhat[k], (e) => Number(e.value)); return { what: k, worst: Number(w.value), day: w.day, n: byWhat[k].length, days: new Set(byWhat[k].map((e) => e.day)).size, causes: [...new Set(byWhat[k].map((e) => e.causeName).filter(Boolean))] }; }).sort((a, b) => b.worst - a.worst);
     const worst = items[0];
     if (worst.worst >= 4) {
-      const text = items.filter((i) => i.worst >= 4).map((i) => `${i.what.toLowerCase()}${i.causes.length ? ' (side effect of ' + i.causes.join(' and ') + ')' : ''} up to ${i.worst}/10 on ${fmtDayShort(i.day)}${i.days > 1 ? ' (on ' + plural(i.days, 'day') + (i.n > i.days ? ', ' + plural(i.n, 'reading') : '') + ')' : i.n > 1 ? ' (' + plural(i.n, 'reading') + ')' : ''}`).join('; ');
+      /* v363: every symptom logged is named (a mild one is not lost behind a worse one); the worst score sets the colour */
+      const text = items.map((i) => `${i.what.toLowerCase()}${i.causes.length ? ' (side effect of ' + i.causes.join(' and ') + ')' : ''} up to ${i.worst}/10 on ${fmtDayShort(i.day)}${i.days > 1 ? ' (on ' + plural(i.days, 'day') + (i.n > i.days ? ', ' + plural(i.n, 'reading') : '') + ')' : i.n > 1 ? ' (' + plural(i.n, 'reading') + ')' : ''}`).join('; ');
       push(worst.worst >= 7 ? 'red' : 'amber', 'Symptoms', `Symptoms logged between check-ins: ${text}.`, worst.worst < 7 && symptoms.filter((e) => Number(e.value) >= 4).length === 1 ? `${worst.what.toLowerCase()} ${worst.worst}/10 on ${fmtDayShort(worst.day)}` : null,
-        'Symptoms: ' + items.filter((i) => i.worst >= 4).map((i) => `${i.what.toLowerCase()}${i.days > 1 ? ' on ' + plural(i.days, 'day') + ',' : ''} up to ${i.worst}/10`).join('; '));
+        'Symptoms: ' + items.map((i) => `${i.what.toLowerCase()}${i.days > 1 ? ' on ' + plural(i.days, 'day') + ',' : ''} up to ${i.worst}/10`).join('; '));
     } else fine.push(`symptoms (${plural(symptoms.length, 'reading')}, none above ${worst.worst}/10)`);
   }
   /* Things I track (v360): one teal line each, facts only */
@@ -9543,7 +9576,9 @@ function ownTally(entries, from, to) {
     }
     const u = t.unit ? ' ' + t.unit : '';
     const range = lo === hi ? '' : `, from ${fmtQtyNumber(lo)} to ${fmtQtyNumber(hi)}`;
-    return { name: t.name, text: `${t.name}: about ${fmtQtyNumber(Math.round(avg * 10) / 10)}${u} a day${range}, ${days}.`, short: `${t.name}: about ${fmtQtyNumber(Math.round(avg * 10) / 10)}${u} a day${range}` };
+    /* v363: "about 2,083 steps" not "2083.3 steps a day" (a tracked number is an answer a day already); whole numbers past 100 */
+    const shown = fmtQtyNumber(Math.abs(avg) >= 100 ? Math.round(avg) : Math.round(avg * 10) / 10);
+    return { name: t.name, text: `${t.name}: about ${shown}${u} on average${range}, ${days}.`, short: `${t.name}: about ${shown}${u}${range}` };
   });
 }
 function wbText(v) {
