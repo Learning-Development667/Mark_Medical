@@ -14,7 +14,7 @@
      "caption": "On Today, tap Vitals. The other tiles log pain, a drink, food, a note, sleep, bowels, a symptom or your mood the same way.",
      "tap": {
       "x": 0.187,
-      "y": 0.279
+      "y": 0.278
      }
     },
     {
@@ -50,7 +50,7 @@
      "caption": "Twice a day, a morning check-in and an evening one. Tap the row when it says Due now.",
      "tap": {
       "x": 0.5,
-      "y": 0.321
+      "y": 0.323
      }
     },
     {
@@ -65,16 +65,16 @@
      "file": "checkin-3.webp",
      "caption": "Rested, and whether the night was broken: if it was, what broke it and roughly for how long. It goes on the Sleep chart and the reports.",
      "tap": {
-      "x": 0.675,
-      "y": 0.945
+      "x": 0.676,
+      "y": 0.943
      }
     },
     {
      "file": "checkin-4.webp",
      "caption": "A written answer has Tap to speak under it: tap, say it, tap again to stop. To see what was heard before it is saved, switch that on in Settings. Skip is always there.",
      "tap": {
-      "x": 0.675,
-      "y": 0.426
+      "x": 0.676,
+      "y": 0.427
      }
     },
     {
@@ -89,7 +89,7 @@
      "file": "checkin-6.webp",
      "caption": "The review: every answer, tap one to change it, then Save.",
      "tap": {
-      "x": 0.5,
+      "x": 0.536,
       "y": 0.868
      }
     },
@@ -113,7 +113,7 @@
      "file": "meds-1.webp",
      "caption": "The Meds tab lists today's medicines, each with how many doses are done. Tap Log now when one is taken.",
      "tap": {
-      "x": 0.772,
+      "x": 0.766,
       "y": 0.406
      }
     },
@@ -141,8 +141,8 @@
      "file": "meds-5.webp",
      "caption": "Add a medicine sits at the top. Under it, every medicine on the list, with what it is for and Edit. A finished course keeps its history under Medicine history.",
      "tap": {
-      "x": 0.163,
-      "y": 0.972
+      "x": 0.164,
+      "y": 0.971
      }
     },
     {
@@ -197,16 +197,16 @@
      "file": "question-4.webp",
      "caption": "Every question still waiting, from any date. Mark one as answered once the team has dealt with it, or add another at the foot.",
      "tap": {
-      "x": 0.275,
-      "y": 0.944
+      "x": 0.285,
+      "y": 0.943
      }
     },
     {
      "file": "question-5.webp",
      "caption": "Every open question heads Notes for the team, with room under it for the answer in clinic. Record or write the answer, then mark it answered.",
      "tap": {
-      "x": 0.406,
-      "y": 0.738
+      "x": 0.409,
+      "y": 0.74
      }
     }
    ]
@@ -219,10 +219,10 @@
    "steps": [
     {
      "file": "treatment-1.webp",
-     "caption": "The Treatment tab: the next session at the top, then the calendar. Sessions carry a letter, C for chemo, and turn gold once ticked done.",
+     "caption": "The Treatment tab opens on the calendar, with the Sessions card under it. Sessions carry a letter, C for chemo, and turn gold once ticked done.",
      "tap": {
       "x": 0.246,
-      "y": 0.516
+      "y": 0.272
      }
     },
     {
@@ -230,7 +230,7 @@
      "caption": "Add sessions puts a whole run in at once: the first date, how many and how often. A session that moves is moved from its own day.",
      "tap": {
       "x": 0.5,
-      "y": 0.265
+      "y": 0.838
      }
     },
     {
@@ -238,20 +238,16 @@
      "caption": "Tap a day after a session to see how it went: the side effects rated in that day's check-ins, your own words, and anything logged.",
      "tap": {
       "x": 0.5,
-      "y": 0.58
+      "y": 0.579
      }
     },
     {
      "file": "treatment-4.webp",
      "caption": "On the three days after a session, the morning and evening check-ins ask about side effects: none, mild, moderate or severe for each.",
      "tap": {
-      "x": 0.536,
+      "x": 0.5,
       "y": 0.515
      }
-    },
-    {
-     "file": "treatment-5.webp",
-     "caption": "How treatment goes: energy, sickness, appetite, pain, mood or sleep by day after each session, so the shape of a cycle shows after a few."
     }
    ]
   },
@@ -282,7 +278,7 @@
      "caption": "Finish when it is done. Close it instead and Today says it is not finished yet, with everything kept.",
      "tap": {
       "x": 0.5,
-      "y": 0.483
+      "y": 0.484
      }
     },
     {
@@ -307,22 +303,30 @@
    "steps": [
     {
      "file": "reports-1.webp",
-     "caption": "The Reports tab: Notes for the team first, then the Food diary, Mood and wellbeing, Pain and pain relief, Documents, and the charts of every reading.",
+     "caption": "The Reports tab: Notes for the team first, then Pain, the Food diary, Mood and wellbeing, Documents and Results. Trends, at the top, switches to your readings.",
      "tap": {
-      "x": 0.5,
-      "y": 0.213
+      "x": 0.724,
+      "y": 0.102
      }
     },
     {
      "file": "reports-2.webp",
-     "caption": "Choose the period, then Send to the team, Preview or Save as PDF. The summary and the notes are below.",
+     "caption": "Trends: the latest of each reading, then a chart of each over 1 week, 2 weeks or 30 days. Each chart can show as a table too.",
      "tap": {
-      "x": 0.5,
-      "y": 0.285
+      "x": 0.276,
+      "y": 0.102
      }
     },
     {
      "file": "reports-3.webp",
+     "caption": "Choose the period, then Send to the team, Preview or Save as PDF. The summary and the notes are below.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.286
+     }
+    },
+    {
+     "file": "reports-4.webp",
      "caption": "Pick who it goes to. Contacts with an email address come from Who to contact on More.",
      "tap": {
       "x": 0.5,
@@ -330,11 +334,11 @@
      }
     },
     {
-     "file": "reports-4.webp",
+     "file": "reports-5.webp",
      "caption": "The subject and message are written for you and can be changed. The report is attached as a PDF, and a copy goes to your own inbox."
     },
     {
-     "file": "reports-5.webp",
+     "file": "reports-6.webp",
      "caption": "Preview shows the pages exactly as they print. Pinch, double tap, or use plus and minus to zoom in on the report alone. Print and Save as PDF are above.",
      "tap": {
       "x": 0.425,
@@ -353,8 +357,8 @@
      "file": "morereports-1.webp",
      "caption": "Beside Notes for the team: Pain and pain relief for the pain team, the Food diary for the dietitian, Mood and wellbeing for a therapist or GP.",
      "tap": {
-      "x": 0.265,
-      "y": 0.357
+      "x": 0.5,
+      "y": 0.387
      }
     },
     {
@@ -362,7 +366,7 @@
      "caption": "Pain and pain relief: two weeks to start, the check-in scores, the worst each day, key points from what you wrote, every dose of pain relief and when the top-ups were taken. Send, Preview and Save as PDF, as on every report.",
      "tap": {
       "x": 0.5,
-      "y": 0.285
+      "y": 0.286
      }
     },
     {
@@ -370,7 +374,7 @@
      "caption": "The Food diary: what was eaten and drunk each day, with the questions for the dietitian, on two pages.",
      "tap": {
       "x": 0.5,
-      "y": 0.285
+      "y": 0.286
      }
     },
     {
@@ -378,7 +382,7 @@
      "caption": "Mood and wellbeing: the best and hardest days, how often you felt low, sleep and pain behind it, and the weeks, with a carer's view in its own area.",
      "tap": {
       "x": 0.5,
-      "y": 0.285
+      "y": 0.286
      }
     }
    ]
@@ -417,8 +421,8 @@
      "file": "ibd-5.webp",
      "caption": "The morning check-in asks whether you are fasting today, and which kind. One tap; it goes on the Food diary and the reports.",
      "tap": {
-      "x": 0.675,
-      "y": 0.944
+      "x": 0.676,
+      "y": 0.943
      }
     },
     {
@@ -426,7 +430,7 @@
      "caption": "The Treatment tab: your flare plan, flare days shaded on the calendar, injections or infusions with the next one due, and any steroid course.",
      "tap": {
       "x": 0.5,
-      "y": 0.267
+      "y": 0.269
      }
     },
     {
@@ -438,7 +442,7 @@
      "caption": "The Crohn's and colitis report: bowels against your usual, blood, urgency, flares, treatment and results, with your questions for the gastro team.",
      "tap": {
       "x": 0.5,
-      "y": 0.285
+      "y": 0.286
      }
     }
    ]
@@ -447,14 +451,14 @@
    "key": "contacts",
    "title": "Who to contact, and the set-up",
    "sub": "The ward, the nurse, the GP: one tap to call or email, and where the reports go.",
-   "intro": "More holds the Set-up, this Guide, letters and paperwork, saved meals, Settings and Who to contact.",
+   "intro": "More holds Who to contact first, then Help and what's new, and Settings.",
    "steps": [
     {
      "file": "contacts-1.webp",
-     "caption": "More: the Set-up, the Guide, letters and paperwork, saved meals, Settings, and Who to contact. Tap Add a new contact.",
+     "caption": "More: Who to contact first, then Help and what's new, and Settings. Tap Add contact.",
      "tap": {
       "x": 0.264,
-      "y": 0.435
+      "y": 0.193
      }
     },
     {
@@ -462,20 +466,28 @@
      "caption": "A name, and a phone number or an email address, or both. Save.",
      "tap": {
       "x": 0.5,
-      "y": 0.194
+      "y": 0.195
      }
     },
     {
      "file": "contacts-3.webp",
-     "caption": "Call and Email are one tap. Any contact with an email address can be sent a report from the Reports tab.",
+     "caption": "Call and Email are one tap. To change a contact, tap Edit contacts: a Save button appears under the one you change.",
      "tap": {
       "x": 0.5,
-      "y": 0.324
+      "y": 0.729
      }
     },
     {
      "file": "contacts-4.webp",
-     "caption": "The Set-up: what Daybook is for, your name on the reports, a contact, the Home Screen and Tap to speak. Run it again any time, from here or from Settings."
+     "caption": "Settings opens with the Set-up, Saved meals and every choice about the app.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.217
+     }
+    },
+    {
+     "file": "contacts-5.webp",
+     "caption": "The Set-up: what Daybook is for, your name on the reports, a contact, the Home Screen and Tap to speak. Run it again any time from Settings."
     }
    ]
   },
@@ -490,7 +502,7 @@
      "caption": "A carer's Today has two more rows: their mood this morning and this evening, as you see it, at the patient's own times.",
      "tap": {
       "x": 0.5,
-      "y": 0.506
+      "y": 0.509
      }
     },
     {
@@ -522,15 +534,15 @@
      "caption": "A day starts on Today. The morning check-in is due: a minute, one question a screen.",
      "tap": {
       "x": 0.5,
-      "y": 0.321
+      "y": 0.323
      }
     },
     {
      "file": "story-2.webp",
      "caption": "How you slept, anything new overnight, pain and mood. Slide to the score, or Tap to speak for the words.",
      "tap": {
-      "x": 0.675,
-      "y": 0.945
+      "x": 0.676,
+      "y": 0.943
      }
     },
     {
@@ -546,7 +558,7 @@
      "caption": "The Mood tile logs how you feel right now, between the check-ins. Doses are logged on the Meds tab.",
      "tap": {
       "x": 0.5,
-      "y": 0.968
+      "y": 0.967
      }
     },
     {
@@ -570,7 +582,7 @@
      "caption": "Before the appointment, open Reports. Everything since the last one is already there.",
      "tap": {
       "x": 0.5,
-      "y": 0.213
+      "y": 0.254
      }
     },
     {
@@ -578,7 +590,7 @@
      "caption": "Notes for the team: the questions, what changed, the charts and the week's notes, on two pages. Preview shows them as they print.",
      "tap": {
       "x": 0.264,
-      "y": 0.363
+      "y": 0.365
      }
     },
     {
@@ -590,7 +602,7 @@
      "caption": "Send to the team emails the PDF to the nurse, the dietitian or the oncologist, with a copy to you. One tap, and it is done.",
      "tap": {
       "x": 0.5,
-      "y": 0.964
+      "y": 0.965
      }
     }
    ]

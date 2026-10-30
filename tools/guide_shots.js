@@ -155,7 +155,7 @@ const QUALITY = 0.8;
     return { d1: Number(d1.slice(8)) };
   });
   await tab('chemo');
-  await shot('The Treatment tab: the next session at the top, then the calendar. Sessions carry a letter, C for chemo, and turn gold once ticked done.', '#cal-grid .cal-cell.is-chemo');
+  await shot('The Treatment tab opens on the calendar, with the Sessions card under it. Sessions carry a letter, C for chemo, and turn gold once ticked done.', '#cal-grid .cal-cell.is-chemo');
   await shot('Add sessions puts a whole run in at once: the first date, how many and how often. A session that moves is moved from its own day.', '#chemo-add-run');
   await page.evaluate((n) => { const c = [...document.querySelectorAll('#cal-grid .cal-cell:not(.is-empty)')].find((x) => x.querySelector('.cal-num') && x.querySelector('.cal-num').textContent === String(n)); c.click(); }, fx.d1);
   await page.waitForSelector('#sheet:not([hidden])'); await settle(700);
@@ -167,11 +167,6 @@ const QUALITY = 0.8;
   await shot('On the three days after a session, the morning and evening check-ins ask about side effects: none, mild, moderate or severe for each.', '#sheet-body .fx-row');
   await closeSheet();
   await page.evaluate(() => { try { Object.keys(localStorage).filter((k) => k.startsWith('daybook.checkin.')).forEach((k) => localStorage.removeItem(k)); } catch (e) {} const p = window.daybookPreview.state.profile; if (p) p.checkinDrafts = {}; });
-  await tab('chemo');
-  /* the page clock is fixed for the pictures, so Chart.js's draw-in never moves on: move the clock a few seconds so the lines finish */
-  for (let i = 1; i <= 3; i++) { await page.clock.setFixedTime(new Date(Date.parse(CLOCK) + i * 4000)); await settle(250); }
-  await page.evaluate(() => { const hd = [...document.querySelectorAll('#view-chemo .section-title')].find((x) => /How treatment goes/.test(x.textContent)); if (hd) { hd.scrollIntoView({ block: 'start' }); window.scrollBy(0, -64); } }); await settle(900);
-  await shot('How treatment goes: energy, sickness, appetite, pain, mood or sleep by day after each session, so the shape of a cycle shows after a few.');
 
   /* 5. your week */
   begin('week', 'Your week', 'Five minutes, once a week, over the last days of your week.', 'The weekly check is what the Mood and wellbeing report builds its weeks from.');
@@ -191,7 +186,11 @@ const QUALITY = 0.8;
   /* 6. reports */
   begin('reports', 'Reports, and emailing them', 'Notes for the team, the Food diary, Mood and wellbeing, Pain, and the charts.', 'Each report is a page or two for one person on the team, made from what is already logged.');
   await tab('vitals');
-  await shot('The Reports tab: Notes for the team first, then the Food diary, Mood and wellbeing, Pain and pain relief, Documents, and the charts of every reading.', '#rep-notes');
+  await shot('The Reports tab: Notes for the team first, then Pain, the Food diary, Mood and wellbeing, Documents and Results. Trends, at the top, switches to your readings.', '#reports-show-trends');
+  await page.click('#reports-show-trends'); await settle(900);
+  for (let i = 1; i <= 3; i++) { await page.clock.setFixedTime(new Date(Date.parse(CLOCK) + i * 4000)); await settle(250); }
+  await shot('Trends: the latest of each reading, then a chart of each over 1 week, 2 weeks or 30 days. Each chart can show as a table too.', '#reports-show-reports');
+  await page.click('#reports-show-reports'); await settle(500);
   await page.click('#rep-notes'); await page.waitForSelector('#view-notes:not([hidden])'); await settle(1500);
   await shot('Choose the period, then Send to the team, Preview or Save as PDF. The summary and the notes are below.', '#notes-send');
   await page.click('#notes-send'); await page.waitForSelector('#sheet:not([hidden])'); await settle();
@@ -216,17 +215,19 @@ const QUALITY = 0.8;
   await shot('Mood and wellbeing: the best and hardest days, how often you felt low, sleep and pain behind it, and the weeks, with a carer\'s view in its own area.', '#mood-send');
 
   /* 7. contacts and the set-up */
-  begin('contacts', 'Who to contact, and the set-up', 'The ward, the nurse, the GP: one tap to call or email, and where the reports go.', 'More holds the Set-up, this Guide, letters and paperwork, saved meals, Settings and Who to contact.');
+  begin('contacts', 'Who to contact, and the set-up', 'The ward, the nurse, the GP: one tap to call or email, and where the reports go.', 'More holds Who to contact first, then Help and what\'s new, and Settings.');
   await tab('more');
-  await shot('More: the Set-up, the Guide, letters and paperwork, saved meals, Settings, and Who to contact. Tap Add a new contact.', '#calls-add');
+  await shot('More: Who to contact first, then Help and what\'s new, and Settings. Tap Add contact.', '#calls-add');
   await page.click('#calls-add'); await page.waitForSelector('#sheet:not([hidden])'); await settle();
   const inputs = await page.$$('#sheet .contactrow.is-new input');
   await inputs[0].fill('Sarah'); await inputs[1].fill('Oncology nurse specialist'); await inputs[2].fill('01234 567890'); await inputs[4].fill('sarah@example.nhs.uk');
   await shot('A name, and a phone number or an email address, or both. Save.', '#sheet-body .btn-primary:has-text("Save")');
   await page.click('#sheet-body .btn-primary:has-text("Save")'); await settle(700);
-  await shot('Call and Email are one tap. Any contact with an email address can be sent a report from the Reports tab.', '#more-setup');
+  await shot('Call and Email are one tap. To change a contact, tap Edit contacts: a Save button appears under the one you change.', '#more-settings');
+  await page.click('#more-settings'); await settle(700);
+  await shot('Settings opens with the Set-up, Saved meals and every choice about the app.', '#more-setup');
   await page.click('#more-setup'); await page.waitForSelector('#sheet:not([hidden])'); await settle();
-  await shot('The Set-up: what Daybook is for, your name on the reports, a contact, the Home Screen and Tap to speak. Run it again any time, from here or from Settings.');
+  await shot('The Set-up: what Daybook is for, your name on the reports, a contact, the Home Screen and Tap to speak. Run it again any time from Settings.');
   await closeSheet();
 
   /* 8. a carer's phone */
