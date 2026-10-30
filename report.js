@@ -427,14 +427,15 @@ ${bar}
     ${olderLine}
   </div>
   ${R.fx && R.fxPage1 ? fxHtml(R.fx) : ''}
+  ${R.weeksPage1 && !R.weeksPage3 ? weeksHtml : ''}
   ${R.carer && R.carerPage1 ? carerHtml(R.carer) : ''}
   <div class="foot"><span>${esc(R.foot)}</span>${madeBy(1, total)}</div>
 </section>
 <section class="page" id="page2">
-  <div class="runner"><h2>${R.weeksPage3 ? 'Readings' : 'Readings and weekly notes'}</h2><span>${esc(R.patient)} · ${esc(R.period)}</span></div>
+  <div class="runner"><h2>${R.weeksPage3 || R.weeksPage1 ? 'Readings' : 'Readings and weekly notes'}</h2><span>${esc(R.patient)} · ${esc(R.period)}</span></div>
   <div class="cgrid" data-sec="Charts">${charts}${key}</div>
   ${R.fx && !R.fxTail && !R.fxPage1 ? fxHtml(R.fx) : ''}
-  ${R.weeksPage3 ? '' : weeksHtml}
+  ${R.weeksPage3 || R.weeksPage1 ? '' : weeksHtml}
   ${R.carer && !R.carerTail && !R.carerPage1 ? carerHtml(R.carer) : ''}
   <div class="foot"><span>${esc(R.foot)}</span>${madeBy(2, total)}</div>
 </section>
@@ -506,6 +507,10 @@ export function spillTail(doc, R) {
    to the pages after the second, then page 1 gives up its writing lines and its questions, and last of all the
    latest note, which is then printed in full after them. */
 export function shrink(R, over) {
+  /* the weekly notes tried page 1's spare room (v356) and it could not hold them: they go to the pages after the second */
+  if (R.weeksPage1 && !R.weeksPage3 && over.some((s) => s === 'Week by week' || s === 'Page 1' || s === 'Page 2' || R.weeks.some((w) => w.title === s) || (R.fx && s === R.fx.title))) {
+    R.weeksPage1 = false; R.weeksPage3 = true; R.fxPage1 = R.fxWas; R.tailPages = null; return true;
+  }
   /* the three days after treatment leave page 1 first when it is too full (v345) */
   if (R.fx && R.fxPage1 && over.some((s) => s === R.fx.title || /^Question|^Questions|^No questions|^Page 1|^Medicines|^Steady|^Latest|^Side effects|^Results/.test(s))) {
     R.fxPage1 = false; R.tailPages = null; return true;
@@ -526,7 +531,12 @@ export function shrink(R, over) {
   if (R.fx && !R.fxTail && !R.fxPage1 && !R.fxPage1Tried && p2over) {
     R.fxPage1 = true; R.fxPage1Tried = true; R.tailPages = null; return true;
   }
-  if (!R.weeksPage3 && R.weeks.some((w) => over.includes(w.title) || over.includes('Week by week') || over.includes('Page 2') || (R.fx && over.includes(R.fx.title)))) {
+  /* the weekly notes use page 1's spare room before a third page is added (v356, Mark: a week's report should be two pages when it fits) */
+  if (!R.weeksPage3 && !R.weeksPage1 && !R.weeksPage1Tried && R.weeks.length && R.weeks.some((w) => over.includes(w.title) || over.includes('Week by week') || over.includes('Page 2') || (R.fx && over.includes(R.fx.title)))) {
+    /* the side-effects table goes back under the charts on page 2, where it was first, so the weeks have page 1's room */
+    R.weeksPage1 = true; R.weeksPage1Tried = true; R.fxWas = R.fxPage1; R.fxPage1 = false; R.tailPages = null; return true;
+  }
+  if (!R.weeksPage3 && !R.weeksPage1 && R.weeks.some((w) => over.includes(w.title) || over.includes('Week by week') || over.includes('Page 2') || (R.fx && over.includes(R.fx.title)))) {
     R.weeksPage3 = true; R.tailPages = null; return true;
   }
   /* the side effects after treatment (v289) stay on page 2 under the charts until the weeks have gone; then they move too */

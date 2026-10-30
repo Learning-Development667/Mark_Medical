@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '355';
+const APP_VERSION = '356';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -2762,6 +2762,7 @@ function showTab(name) {
   if (highlight === 'food' || highlight === 'notes' || highlight === 'mood' || highlight === 'pain' || highlight === 'results' || highlight === 'ibd') highlight = state.reportReturn || 'vitals';
   document.querySelectorAll('.tab').forEach((b) => { const on = b.dataset.tab === highlight; b.classList.toggle('is-active', on); if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
   document.querySelectorAll('.view').forEach((v) => { v.hidden = v.dataset.view !== name; });
+  document.body.dataset.accent = highlight; // each screen takes its tab's colour as a quiet accent (v356)
   document.body.dataset.page = name; // the watercolour behind the app is stronger on the hub pages (styles.css, v229)
   setBrand(PAGE_TITLES[name] || '');
   /* every page opens at its top (v287, Mark on his iPhone and Mac: tiles opened the next page part way down). Safari

@@ -114,7 +114,7 @@
      "caption": "The Meds tab lists today's medicines, each with how many doses are done. Tap Log now when one is taken.",
      "tap": {
       "x": 0.766,
-      "y": 0.406
+      "y": 0.417
      }
     },
     {
@@ -206,7 +206,7 @@
      "caption": "Every open question heads Notes for the team, with room under it for the answer in clinic. Record or write the answer, then mark it answered.",
      "tap": {
       "x": 0.409,
-      "y": 0.74
+      "y": 0.751
      }
     }
    ]
@@ -245,7 +245,7 @@
      "file": "treatment-4.webp",
      "caption": "On the three days after a session, the morning and evening check-ins ask about side effects: none, mild, moderate or severe for each.",
      "tap": {
-      "x": 0.5,
+      "x": 0.536,
       "y": 0.515
      }
     }
@@ -430,7 +430,7 @@
      "caption": "The Treatment tab: your flare plan, flare days shaded on the calendar, injections or infusions with the next one due, and any steroid course.",
      "tap": {
       "x": 0.5,
-      "y": 0.269
+      "y": 0.274
      }
     },
     {
@@ -458,7 +458,7 @@
      "caption": "More: Who to contact first, then Help and what's new, and Settings. Tap Add contact.",
      "tap": {
       "x": 0.264,
-      "y": 0.193
+      "y": 0.204
      }
     },
     {
