@@ -2294,3 +2294,14 @@ details.daymeal[open] .daymeal-sum::after { transform: rotate(90deg); }
 }
 @media (prefers-reduced-motion: reduce) { .tab.is-active .tab-icon { transform: none; } }
 @media (forced-colors: active) { .tab.is-active .tab-icon { border-color: Highlight; } }
+
+/* ---------- Reports | Trends, and a tidier More (v351) ---------- */
+.reports-switch { margin-bottom: var(--s-4); }
+.reports-switch .seg { font-size: 18px; }
+/* A report card on its own in a row of two (Pain, when the Crohn's card is hidden) takes the whole row */
+.reports-2 > .report:first-child:has(+ .report[hidden]:last-child) { grid-column: 1 / -1; }
+.more-signed { margin: 0 0 var(--s-2); color: var(--text-secondary); font-size: 15px; }
+.more-signed strong { color: var(--text-primary); font-weight: 600; }
+#view-more > .section-title:first-of-type { margin-top: var(--s-5); }
+.settings-menu { margin-bottom: var(--s-2); }
+@media (max-width: 359px) { .calls-actions .btn { padding-left: var(--s-2); padding-right: var(--s-2); font-size: 17px; white-space: nowrap; } }

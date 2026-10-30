@@ -19,7 +19,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=350">
+  <link rel="stylesheet" href="styles.css?v=351">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -380,8 +380,11 @@
 
       <!-- VITALS -->
       <section id="view-vitals" class="view" data-view="vitals" hidden>
+        <div id="reports-switch" class="segmented reports-switch" role="group" aria-label="Show">
+          <button id="reports-show-reports" class="seg is-active" type="button" aria-pressed="true">Reports</button>
+          <button id="reports-show-trends" class="seg" type="button" aria-pressed="false">Trends</button>
+        </div>
         <div id="trends-reports">
-          <h2 class="section-title">Reports</h2>
           <h3 class="reports-group">For the team</h3>
           <button id="rep-notes" class="report report-feature tint-teal" type="button"><svg class="icon report-icon" aria-hidden="true"><use href="#i-list"/></svg><span class="report-text"><span class="report-name">Notes for the team</span><span class="report-sub">Two pages for your next appointment: preview, print or email</span></span><svg class="icon report-go" aria-hidden="true"><use href="#i-chevron"/></svg></button>
           <div class="reports reports-2">
@@ -399,7 +402,7 @@
             <button id="rep-results" class="report tint-blue" type="button"><svg class="icon report-icon" aria-hidden="true"><use href="#i-lab"/></svg><span class="report-name">Results</span><span class="report-sub">Blood tests and calprotectin, as given</span></button>
           </div>
         </div>
-        <h2 class="section-title">Trends</h2>
+        <div id="trends-body" hidden>
         <p class="hint trends-hint">Your latest readings, then a chart of each.</p>
         <div class="status">
           <div class="tiles tiles-2" id="vitals-latest">
@@ -462,6 +465,7 @@
           <h2 class="section-title">Bowel movements per day</h2>
           <div class="chart-wrap"><canvas id="chart-bowel"></canvas></div>
           <p class="legend-note">Teal is types 1 to 5, warm is loose (type 6 or 7). A day marked "none" shows as empty.</p>
+        </div>
         </div>
       </section>
 
@@ -813,54 +817,26 @@
 
       <!-- MORE -->
       <section id="view-more" class="view" data-view="more" hidden>
-        <div class="card">
-          <p class="muted">Signed in as</p>
-          <p id="more-user" class="big"></p>
+        <p class="more-signed">Signed in as <strong id="more-user"></strong></p>
+        <h2 class="section-title">Who to contact</h2>
+        <div class="btnrow calls-actions">
+          <button id="calls-add" class="btn btn-primary" type="button">Add contact</button>
+          <button id="calls-edit" class="btn btn-secondary" type="button">Edit contacts</button>
         </div>
+        <div id="calls" class="cards"></div>
+        <h2 class="section-title">Help and settings</h2>
         <div class="menu">
-          <button id="more-setup" class="checkin-row menu-row" type="button">
-            <svg class="icon checkin-icon" aria-hidden="true"><use href="#i-check"/></svg>
-            <span class="checkin-main"><span class="checkin-title">Set-up</span><span id="more-setup-sub" class="checkin-sub">What Daybook is for, your name on reports, who to contact, the Home Screen</span></span>
-            <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
-          </button>
           <button id="more-guide" class="checkin-row menu-row" type="button">
             <svg class="icon checkin-icon" aria-hidden="true"><use href="#i-eye"/></svg>
-            <span class="checkin-main"><span class="checkin-title">Guide</span><span class="checkin-sub">How to do each thing, shown on screen step by step</span></span>
-            <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
-          </button>
-          <button id="more-whatsnew" class="checkin-row menu-row" type="button">
-            <svg class="icon checkin-icon" aria-hidden="true"><use href="#i-sun"/></svg>
-            <span class="checkin-main"><span class="checkin-title">What's new</span><span class="checkin-sub">The changes made to Daybook, newest first</span></span>
-            <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
-          </button>
-          <button id="more-docs" class="checkin-row menu-row" type="button">
-            <svg class="icon checkin-icon" aria-hidden="true"><use href="#i-doc"/></svg>
-            <span class="checkin-main"><span class="checkin-title">Letters, results and paperwork</span><span class="checkin-sub">Documents, the treatment plan and the exemption certificate</span></span>
-            <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
-          </button>
-          <button id="more-meals" class="checkin-row menu-row" type="button">
-            <svg class="icon checkin-icon" aria-hidden="true"><use href="#i-food"/></svg>
-            <span class="checkin-main"><span class="checkin-title">Saved meals</span><span class="checkin-sub">The quick buttons offered when logging food</span></span>
+            <span class="checkin-main"><span class="checkin-title">Help and what's new</span><span class="checkin-sub">The Guide, what has changed, and telling Mark what you think</span></span>
             <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
           </button>
           <button id="more-settings" class="checkin-row menu-row" type="button">
             <svg class="icon checkin-icon" aria-hidden="true"><use href="#i-list"/></svg>
-            <span class="checkin-main"><span class="checkin-title">Settings</span><span class="checkin-sub">Food estimates, the app and its version</span></span>
-            <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
-          </button>
-          <button id="more-usage" class="checkin-row menu-row" type="button" hidden>
-            <svg class="icon checkin-icon" aria-hidden="true"><use href="#i-trend"/></svg>
-            <span class="checkin-main"><span class="checkin-title">Usage</span><span class="checkin-sub">How Daybook is being used, in counts. Shown only to the circle that runs Daybook</span></span>
+            <span class="checkin-main"><span class="checkin-title">Settings</span><span class="checkin-sub">Set-up, what Daybook is for, food and saved meals, reminders, your records and the app</span></span>
             <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
           </button>
         </div>
-        <p class="hint">The Food diary and Notes for the team are under Reports.</p>
-        <h2 class="section-title">Who to contact</h2>
-        <div class="btnrow calls-actions">
-          <button id="calls-add" class="btn btn-primary" type="button">Add a new contact</button>
-          <button id="calls-edit" class="btn btn-secondary" type="button">Edit contacts</button>
-        </div>
-        <div id="calls" class="cards"></div>
         <button id="signout" class="btn btn-danger btn-block" type="button">Sign out</button>
       </section>
 
@@ -914,7 +890,23 @@
         <div class="diary-head">
           <button id="settings-back" class="btn btn-link" type="button">&#8249; Back</button>
         </div>
-        <p class="hint settings-setup-hint">Everything the set-up asked for lives here, and can be changed any time. <button id="settings-setup" class="btn-inline" type="button">Run the set-up again</button></p>
+        <div class="menu settings-menu">
+          <button id="more-setup" class="checkin-row menu-row" type="button">
+            <svg class="icon checkin-icon" aria-hidden="true"><use href="#i-check"/></svg>
+            <span class="checkin-main"><span class="checkin-title">Set-up</span><span id="more-setup-sub" class="checkin-sub">What Daybook is for, your name on reports, who to contact, the Home Screen</span></span>
+            <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
+          </button>
+          <button id="more-meals" class="checkin-row menu-row" type="button">
+            <svg class="icon checkin-icon" aria-hidden="true"><use href="#i-food"/></svg>
+            <span class="checkin-main"><span class="checkin-title">Saved meals</span><span class="checkin-sub">The quick buttons offered when logging food</span></span>
+            <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
+          </button>
+          <button id="more-usage" class="checkin-row menu-row" type="button" hidden>
+            <svg class="icon checkin-icon" aria-hidden="true"><use href="#i-trend"/></svg>
+            <span class="checkin-main"><span class="checkin-title">Usage</span><span class="checkin-sub">How Daybook is being used, in counts. Shown only to the circle that runs Daybook</span></span>
+            <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
+          </button>
+        </div>
         <h2 class="section-title">What Daybook is for</h2>
         <div id="settings-packs" class="card settings-group">
           <p class="hint">Tick what applies; more than one is fine. Each brings its own questions and its own limits on the reports. Shared by everyone in the circle.</p>
@@ -1197,6 +1189,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=350"></script>
+  <script type="module" src="scripts.js?v=351"></script>
 </body>
 </html>
