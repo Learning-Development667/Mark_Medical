@@ -1,5 +1,5 @@
 {
- "made": "2026-10-25",
+ "made": "2026-10-30",
  "width": 390,
  "height": 844,
  "topics": [
@@ -30,7 +30,7 @@
      "caption": "37.6 and 97 typed. For a reading taken earlier, change the time or the date, then tap Save.",
      "tap": {
       "x": 0.5,
-      "y": 0.868
+      "y": 0.647
      }
     },
     {
@@ -58,7 +58,7 @@
      "caption": "One question a screen. Slide to the score, then when you went to bed and woke up: Daybook works out the hours. With Apple Health connected, the night fills itself in.",
      "tap": {
       "x": 0.731,
-      "y": 0.628
+      "y": 0.098
      }
     },
     {
@@ -74,7 +74,7 @@
      "caption": "A written answer has Tap to speak under it: tap, say it, tap again to stop. To see what was heard before it is saved, switch that on in Settings. Skip is always there.",
      "tap": {
       "x": 0.675,
-      "y": 0.944
+      "y": 0.426
      }
     },
     {
@@ -82,7 +82,7 @@
      "caption": "Pain right now, from 0 no pain to 10 worst imaginable: as you slide it says mild, moderate or severe. Where it is goes in the box underneath.",
      "tap": {
       "x": 0.5,
-      "y": 0.543
+      "y": 0.453
      }
     },
     {
@@ -182,7 +182,7 @@
      "caption": "Type it, or Tap to speak, and say who it is for: Oncology, Gastro, General, Dietitian, Wellbeing or the Pain team. It goes to the top of that report.",
      "tap": {
       "x": 0.5,
-      "y": 0.868
+      "y": 0.904
      }
     },
     {
@@ -206,7 +206,7 @@
      "caption": "Every open question heads Notes for the team, with room under it for the answer in clinic. Record or write the answer, then mark it answered.",
      "tap": {
       "x": 0.406,
-      "y": 0.435
+      "y": 0.738
      }
     }
    ]
@@ -245,7 +245,7 @@
      "file": "treatment-4.webp",
      "caption": "On the three days after a session, the morning and evening check-ins ask about side effects: none, mild, moderate or severe for each.",
      "tap": {
-      "x": 0.5,
+      "x": 0.536,
       "y": 0.515
      }
     },
@@ -282,7 +282,7 @@
      "caption": "Finish when it is done. Close it instead and Today says it is not finished yet, with everything kept.",
      "tap": {
       "x": 0.5,
-      "y": 0.934
+      "y": 0.483
      }
     },
     {
@@ -462,7 +462,7 @@
      "caption": "A name, and a phone number or an email address, or both. Save.",
      "tap": {
       "x": 0.5,
-      "y": 0.873
+      "y": 0.194
      }
     },
     {
@@ -562,7 +562,7 @@
      "caption": "Say who it is for, and it goes to the top of that team's report.",
      "tap": {
       "x": 0.5,
-      "y": 0.868
+      "y": 0.904
      }
     },
     {
@@ -590,7 +590,7 @@
      "caption": "Send to the team emails the PDF to the nurse, the dietitian or the oncologist, with a copy to you. One tap, and it is done.",
      "tap": {
       "x": 0.5,
-      "y": 0.873
+      "y": 0.964
      }
     }
    ]
