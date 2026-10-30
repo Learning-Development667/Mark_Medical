@@ -1046,7 +1046,7 @@ document.addEventListener('click', (ev) => {
   state.pendingBeta = code;
   /* ?for=cancer or ?for=ibd (v245): what Daybook is for, chosen on the website after the code, so the set-up skips that question */
   const want = String(new URLSearchParams(location.search).get('for') || '').toLowerCase();
-  const BETA_FOR = { cancer: 'cancer treatment', ibd: "Crohn's or colitis" }; // its own list: PACKS is declared further down and this runs on load
+  const BETA_FOR = { cancer: 'cancer treatment', ibd: "Crohn's or colitis", general: 'something else' }; // its own list: PACKS is declared further down and this runs on load
   if (BETA_FOR[want]) state.pendingPacks = { [want]: true };
   const forWords = BETA_FOR[want] ? ', for ' + BETA_FOR[want] + ',' : '';
   history.replaceState(null, '', location.pathname + location.hash);
@@ -2046,7 +2046,7 @@ const HEALTH_SOURCES = [['apple', 'Apple Health (iPhone)'], ['android', 'Health 
 function openSetup(kind, opts = {}) {
   const full = kind !== 'phone';
   const p = state.profile || {};
-  const draft = { packs: opts.packs ? { ...opts.packs } : p.packs && typeof p.packs === 'object' ? { ...p.packs } : {}, ibd: { ...ibdInfo() }, reportName: p.reportName || '', contact: { label: '', role: '', number: '', email: '' }, advice: { label: '', number: '' }, ibdMed: '' };
+  const draft = { packs: opts.packs ? { ...opts.packs } : p.packs && typeof p.packs === 'object' ? { ...p.packs } : {}, ibd: { ...ibdInfo() }, reportName: p.reportName || '', condition: p.condition || '', contact: { label: '', role: '', number: '', email: '' }, advice: { label: '', number: '' }, ibdMed: '' };
   const chipRow = (name, options, current, pick) => h('div', { class: 'presets', role: 'group', 'aria-label': name },
     ...options.map(([v, label]) => h('button', { class: 'preset' + (v === current ? ' is-active' : ''), type: 'button', text: label, 'aria-pressed': v === current ? 'true' : 'false', onclick: () => pick(v) })));
   const para = (text) => h('p', { class: 'setup-p', text });
@@ -2055,15 +2055,21 @@ function openSetup(kind, opts = {}) {
       body: () => full
         ? [para('A few short steps, about two minutes. Each one can be changed later under More, then Settings.'), para('Daybook keeps the readings, notes and questions from every day in between, and turns them into reports your team can read in a minute.')]
         : [para((patientFullName() ? 'You have joined ' + patientFullName().split(/\s+/)[0] + '\'s care circle.' : 'You have joined the care circle.') + ' Two short steps so it works well on this phone, then you are in.')] },
-    { key: 'packs', only: full && !opts.packs, title: 'What is Daybook for?', hint: 'Tick what applies; more than one is fine. Each brings its own questions and its own limits on the reports. Shared by everyone in the circle.', noSkip: true,
-      body: () => PACKS.map((pk) => h('div', { class: 'pack-row' },
-        h('label', { class: 'check settings-toggle' },
-          h('input', { type: 'checkbox', id: 'setup-pack-' + pk.key, disabled: !!pk.later, checked: Boolean(draft.packs[pk.key]) && !pk.later, onchange: (ev) => { draft.packs[pk.key] = ev.target.checked; } }),
-          h('span', { text: pk.name + (pk.later ? ' (coming later)' : '') })),
-        h('p', { class: 'hint', text: pk.hint }))),
+    { key: 'packs', only: full && (!opts.packs || !!opts.packs.general), title: 'What is Daybook for?', hint: 'Tick what applies; more than one is fine. Each brings its own questions and its own limits on the reports. Shared by everyone in the circle.', noSkip: true,
+      body: () => {
+        const what = h('input', { id: 'setup-condition', type: 'text', class: 'input', maxlength: '60', autocomplete: 'off', placeholder: 'e.g. chronic pain', value: draft.condition || '', oninput: (ev) => { draft.condition = ev.target.value; } });
+        const whatBox = h('div', { class: 'condition-box', hidden: !draft.packs.general }, field('What is it? (optional)', what),
+          h('p', { class: 'hint', text: 'Only used to name your reports. Nothing changes because of what you type.' }));
+        return PACKS.map((pk) => h('div', { class: 'pack-row' },
+          h('label', { class: 'check settings-toggle' },
+            h('input', { type: 'checkbox', id: 'setup-pack-' + pk.key, disabled: !!pk.later, checked: Boolean(draft.packs[pk.key]) && !pk.later, onchange: (ev) => { draft.packs[pk.key] = ev.target.checked; if (pk.key === 'general') whatBox.hidden = !ev.target.checked; } }),
+            h('span', { text: pk.name + (pk.later ? ' (coming later)' : '') })),
+          h('p', { class: 'hint', text: pk.hint }),
+          pk.key === 'general' ? whatBox : null));
+      },
       save: async () => {
         if (!PACKS.some((pk) => !pk.later && draft.packs[pk.key])) { missing($('sheet-body').querySelector('input[type=checkbox]')?.closest('.check, label') || null, 'Tick at least one. It can be changed later in Settings.'); return false; }
-        return saveProfilePatch({ packs: PACKS.reduce((o, pk) => ({ ...o, [pk.key]: Boolean(draft.packs[pk.key]) && !pk.later }), {}) });
+        return saveProfilePatch({ packs: PACKS.reduce((o, pk) => ({ ...o, [pk.key]: Boolean(draft.packs[pk.key]) && !pk.later }), {}), condition: draft.packs.general ? String(draft.condition || '').trim().slice(0, 60) : '' });
       } },
     { key: 'ibd', only: full, when: () => Boolean(draft.packs.ibd), title: "Crohn's or colitis", hint: 'What the reports compare each day with, the way IBD teams do. Skip anything you are not sure of.',
       body: () => {
@@ -2946,8 +2952,14 @@ function detailedNutritionOn() { return Boolean(state.profile && state.profile.d
    of it out of the app and the website (20 October 2026): not until the research is done. */
 const PACKS = [
   { key: 'cancer', name: 'Cancer treatment', hint: 'Chemotherapy, radiotherapy or immunotherapy: the treatment calendar, the chemo alert card wording and the triage limits for bowels on the reports.' },
-  { key: 'ibd', name: "Crohn's or colitis", hint: 'Bowels compared with your own usual number a day, blood, urgency and accidents, a stoma if you have one, and a weekly question about joints, eyes, skin and mouth.' }
+  { key: 'ibd', name: "Crohn's or colitis", hint: 'Bowels compared with your own usual number a day, blood, urgency and accidents, a stoma if you have one, and a weekly question about joints, eyes, skin and mouth.' },
+  /* Something else (v359, Mark: open Daybook to any condition, the reports going to a GP or any team). It adds nothing
+     condition-specific: the everyday tracking and every report, appointments on the calendar, and its own words in
+     profile/main.condition, used only to name the reports. */
+  { key: 'general', name: 'Something else', hint: 'Any other condition, or more than one: chronic pain, migraines, a heart or lung condition, long COVID. Everything everyday is there, and the reports go to your GP or any team.' }
 ];
+/* what the person typed under Something else ("Chronic pain"), or '' */
+function conditionWords() { return packOn('general') && state.profile && state.profile.condition ? String(state.profile.condition).trim().slice(0, 60) : ''; }
 function packs() { const p = state.profile && state.profile.packs; return p && typeof p === 'object' ? p : { cancer: true }; }
 function packOn(k) { return Boolean(packs()[k]); }
 function ibdInfo() { return (state.profile && state.profile.ibd) || {}; }
@@ -4018,7 +4030,7 @@ function causeSelect(current) {
   const sel = h('select', { id: 'side-cause' });
   sel.append(h('option', { value: '', text: 'No, or not sure' }));
   const known = new Set(['']);
-  const kinds = treatmentsFor().filter((t) => t.key !== 'other');
+  const kinds = treatmentsFor().filter((t) => t.cycle !== 'never');
   if (kinds.length) {
     const g = h('optgroup', { label: 'Treatment' });
     kinds.forEach((t) => { g.append(h('option', { value: 'tx:' + t.key, text: t.label })); known.add('tx:' + t.key); });
@@ -5625,6 +5637,7 @@ function renderUsage() {
       h('dt', { text: 'Set-up completed' }), h('dd', { text: t.setup + ' of ' + t.circles }),
       h('dt', { text: 'Set up for cancer treatment' }), h('dd', { text: String(t.packCancer) }),
       h('dt', { text: "Set up for Crohn's or colitis" }), h('dd', { text: String(t.packIbd) }),
+      h('dt', { text: 'Set up for something else' }), h('dd', { text: String(t.packGeneral || 0) }),
       h('dt', { text: 'Feedback sent (all time)' }), h('dd', { text: String(t.feedback) })));
   const codes = Object.entries(t.codes || {}).sort((a, b) => b[1] - a[1]);
   const from = h('div', { class: 'card usage-card' },
@@ -10668,7 +10681,7 @@ function notStarted(m, day) { return !!(m.courseStart && m.courseStart > day); }
 /* v358: any regular medicine, the session day and/or 0 to 7 days after it (treatOnDay, treatAfter; a v317 medicine has
    neither and reads as the session day alone) */
 function onTreatmentDays(m) { return m.kind === 'scheduled' && m.treatmentDays === true; }
-function isTreatmentDay(day) { return !!(state.days[day] && state.days[day].chemo); }
+function isTreatmentDay(day) { return !!(state.days[day] && state.days[day].chemo && state.days[day].treatment !== 'appt'); }
 function treatAfterOf(m) { return Math.max(0, Math.min(7, Number(m.treatAfter) || 0)); }
 function inTreatmentWindow(m, day) {
   if (m.treatOnDay !== false && isTreatmentDay(day)) return true;
@@ -14757,19 +14770,22 @@ function renderChemo() {
    consecutive radiotherapy days counts from its first day; Other (surgery, a scan) never starts one. ---- */
 const TREATMENTS = [
   { key: 'chemo', label: 'Chemo', letter: 'C', cycle: 'each', pack: 'cancer' },
+  /* Something else (v359): an appointment is marked on the calendar and in the reports, but is never a session, never
+     starts a cycle, never brings the side-effects questions and never starts an around-treatment medicine */
+  { key: 'appt', label: 'Appointment', letter: 'A', cycle: 'never', pack: 'general' },
   { key: 'radio', label: 'Radiotherapy', letter: 'R', cycle: 'run', pack: 'cancer' },
   { key: 'immuno', label: 'Immunotherapy', letter: 'I', cycle: 'each', pack: 'cancer' },
   /* Crohn's or colitis (v204): an injection at home every week or two, an infusion at the hospital every few weeks.
      They repeat rather than run in cycles: the tile says when the next one is due, never "cycle 12". */
-  { key: 'inject', label: 'Injection', letter: 'Inj', cycle: 'repeat', pack: 'ibd', home: true, every: 14 },
-  { key: 'infuse', label: 'Infusion', letter: 'Inf', cycle: 'repeat', pack: 'ibd', every: 56 },
+  { key: 'inject', label: 'Injection', letter: 'Inj', cycle: 'repeat', pack: ['ibd', 'general'], home: true, every: 14 },
+  { key: 'infuse', label: 'Infusion', letter: 'Inf', cycle: 'repeat', pack: ['ibd', 'general'], every: 56 },
   { key: 'other', label: 'Other', letter: 'O', cycle: 'never' }
 ];
 function treatmentOf(info) { return TREATMENTS.find((t) => t.key === (info && info.treatment)) || TREATMENTS[0]; }
 /* The kinds the packs that are on offer (Other always), plus any kind already marked on the calendar */
 function treatmentsFor() {
   const used = new Set(Object.keys(state.days || {}).filter((k) => state.days[k] && state.days[k].chemo).map((k) => treatmentOf(state.days[k]).key));
-  return TREATMENTS.filter((t) => !t.pack || packOn(t.pack) || used.has(t.key));
+  return TREATMENTS.filter((t) => !t.pack || (Array.isArray(t.pack) ? t.pack.some(packOn) : packOn(t.pack)) || used.has(t.key));
 }
 const isRepeat = (t) => Boolean(t && t.cycle === 'repeat');
 /* "adalimumab injection", "chemo": what a session is called in a sentence */
@@ -15071,8 +15087,9 @@ function openDaySheet(key) {
   cbChemo.checked = !!info.chemo;
   const cbDone = h('input', { type: 'checkbox' });
   cbDone.checked = !!info.chemoDone;
-  const doneRow = h('label', { class: 'check' }, cbDone, h('span', { text: 'Session done' }));
-  let treatment = treatmentOf(info).key;
+  const plainWords = packOn('general') && !packOn('cancer'); // v359: an appointment or treatment, not a chemo session
+  const doneRow = h('label', { class: 'check' }, cbDone, h('span', { text: plainWords ? 'Done' : 'Session done' }));
+  let treatment = info.chemo ? treatmentOf(info).key : (treatmentsFor()[0] || TREATMENTS[0]).key;
   const typeRow = h('div', { class: 'wiz-day treat-chips', role: 'group', 'aria-label': 'Kind of treatment' });
   /* an injection or infusion names its medicine (v204), offered from the medicines list */
   const nameIn = h('input', { type: 'text', class: 'input', value: info.treatName || '', list: 'treat-names', placeholder: 'e.g. adalimumab, infliximab', autocomplete: 'off' });
@@ -15098,7 +15115,7 @@ function openDaySheet(key) {
   const repeatNow = () => isRepeat(TREATMENTS.find((t) => t.key === treatment));
   const syncDone = () => {
     doneRow.hidden = !cbChemo.checked; typeRow.hidden = !cbChemo.checked; if (!cbChemo.checked) cbDone.checked = false;
-    cycleRow.hidden = !cbChemo.checked || treatment === 'other' || repeatNow();
+    cycleRow.hidden = !cbChemo.checked || TREATMENTS.find((t) => t.key === treatment).cycle === 'never' || repeatNow();
     nameRow.hidden = !cbChemo.checked || !repeatNow();
   };
   cbChemo.addEventListener('change', syncDone);
@@ -15124,7 +15141,7 @@ function openDaySheet(key) {
 
   const body = h('div', null,
     where,
-    h('label', { class: 'check' }, cbChemo, h('span', { text: 'Treatment session this day' })),
+    h('label', { class: 'check' }, cbChemo, h('span', { text: plainWords ? 'Appointment or treatment this day' : 'Treatment session this day' })),
     typeRow,
     nameRow,
     cycleRow,
@@ -15136,7 +15153,7 @@ function openDaySheet(key) {
       const wasDone = !!info.chemoDone;
       const data = { chemo: cbChemo.checked, chemoDone: cbChemo.checked && cbDone.checked, treatment, updatedBy: state.name, updatedAt: serverTimestamp() };
       if (flareRow) data.flare = cbFlare.checked;
-      if (cbChemo.checked && treatment !== 'other' && !repeatNow()) data.cycleStart = cbCycle.checked;
+      if (cbChemo.checked && TREATMENTS.find((t) => t.key === treatment).cycle !== 'never' && !repeatNow()) data.cycleStart = cbCycle.checked;
       if (cbChemo.checked && repeatNow()) { data.cycleStart = true; data.treatName = nameIn.value.trim(); }
       closeSheet();
       const after = () => { if (data.chemoDone && !wasDone) { confetti(); toast('One more session done. Well done.'); if (repeatNow()) logRepeatDose(key, data.treatName); } else toast('Saved'); };
@@ -15217,7 +15234,7 @@ function runDays(first, count, every, atHome) {
   return out;
 }
 function openAddSessions() {
-  const offered = treatmentsFor().filter((t) => t.key !== 'other');
+  const offered = treatmentsFor().filter((t) => t.cycle !== 'never');
   let treatment = offered.some((t) => t.key === latestTreatmentKey()) ? latestTreatmentKey() : (offered[0] || TREATMENTS[0]).key;
   const tOf = () => TREATMENTS.find((t) => t.key === treatment) || TREATMENTS[0];
   let every = treatment === 'radio' ? 'weekday' : tOf().every || 7;
