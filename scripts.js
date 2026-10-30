@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '338';
+const APP_VERSION = '339';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -12570,8 +12570,8 @@ function touchReminderPlan(what) {
   bridgeCall('/plan', { what: what || 'refresh' }).catch((e) => console.warn('plan', e && e.message));
 }
 async function bridgeExplain(payload) {
-  const data = await bridgeCall('/explain', payload, 'Could not reach Daybook Assistant. Try again in a moment, or use Send to my AI app.');
-  if (!data.text) throw new Error('Could not reach Daybook Assistant. Try again in a moment, or use Send to my AI app.');
+  const data = await bridgeCall('/explain', payload, 'Could not reach Daybook Assistant. Try again in a moment.');
+  if (!data.text) throw new Error('Could not reach Daybook Assistant. Try again in a moment.');
   return data;
 }
 /* A button that shows its own progress while the reply comes back (about 20 to 60 seconds) */
@@ -14464,39 +14464,6 @@ function openAnswerSheet(q) {
   openSheet('Answer', body, () => { if (recorder && recorder.state === 'recording') stop(); else stopStream(); });
   refresh();
 }
-
-function promptFor(d) {
-  return `${CLAUDE_INTRO}\n\nDocument: ${d.title} (dated ${fmtDayNum(d.docDate || '')}).\n\n${CLAUDE_FORMAT}`;
-}
-
-$('doc-share').addEventListener('click', async () => {
-  const d = currentDocRecord();
-  if (!d) return;
-  const text = d.kind === 'text' ? promptFor(d) + '\n\n' + (d.text || '') : promptFor(d);
-  const payload = { title: d.title, text };
-  if (d.kind !== 'text' && state.currentDoc.pages.length) {
-    payload.files = state.currentDoc.pages.map((p, i) => new File([b64ToBlob(p.data, 'image/jpeg')], `${slug(d.title)}-page-${i + 1}.jpg`, { type: 'image/jpeg' }));
-    if (!(navigator.canShare && navigator.canShare({ files: payload.files }))) delete payload.files;
-  }
-  if (!navigator.share) {
-    await copyText(text);
-    toast('Sharing is not available here. Prompt copied instead.');
-    return;
-  }
-  try {
-    await navigator.share(payload);
-  } catch (e) {
-    if (e && e.name !== 'AbortError') { await copyText(text); toast('Could not share. Prompt copied instead.'); }
-  }
-});
-
-$('doc-copy').addEventListener('click', async () => {
-  const d = currentDocRecord();
-  if (!d) return;
-  const text = d.kind === 'text' ? promptFor(d) + '\n\n' + (d.text || '') : promptFor(d) + '\n\n(Attach the page photos in your AI app.)';
-  await copyText(text);
-  toast('Copied. Paste it into your AI app.');
-});
 
 async function copyText(text) {
   try { await navigator.clipboard.writeText(text); }
