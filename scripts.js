@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '341';
+const APP_VERSION = '342';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -68,7 +68,8 @@ const IBD_MEDICINES = [
   { id: 'paracetamol', name: 'Paracetamol', dose: '2 tablets (1,000 mg)', how: 'Up to 4 times a day when needed, at least 4 hours apart', purpose: 'Pain', kind: 'prn', minGapHours: 4, maxPerDay: 4, doseForm: 'tablet', doseCount: 2, strength: '500 mg' }
 ];
 
-const NOT_MEDICAL_ADVICE = 'This explanation is for context only. It is not medical advice. Always check changes with the medical team.';
+const NOT_MEDICAL_ADVICE = 'Explanations from Daybook Assistant are written by AI and can be wrong. This is not medical advice: check anything that matters with your medical team.';
+const OLD_NOT_MEDICAL_ADVICE = 'This explanation is for context only. It is not medical advice. Always check changes with the medical team.';
 
 /* Mood scale for the Chemo plan, 1 (rough) to 5 (great). */
 const MOODS = [
@@ -14455,7 +14456,8 @@ async function docPdfBlob(d) {
     }
   };
   if (d.kind === 'text' && (d.text || '').trim()) writeText(d.title || 'Document', d.text);
-  const explanation = ($('doc-explanation').value || d.explanation || '').trim();
+  // The disclaimer prints once, at the foot of the page, in its current words.
+  const explanation = ($('doc-explanation').value || d.explanation || '').split(NOT_MEDICAL_ADVICE).join('').split(OLD_NOT_MEDICAL_ADVICE).join('').trim();
   if (explanation) writeText('Plain English explanation', explanation, NOT_MEDICAL_ADVICE);
   if (first) throw new Error('nothing in this document to save yet');
   return pdf.output('blob');

@@ -19,7 +19,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=341">
+  <link rel="stylesheet" href="styles.css?v=342">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -596,7 +596,7 @@
           <button id="doc-explain" class="btn btn-primary btn-block" type="button" hidden>Explain with Daybook Assistant</button>
           <p class="hint" id="doc-explain-hint"><b>Explain with Daybook Assistant</b> sends the letter to Daybook Assistant (AI from Anthropic, in the US). The explanation is saved with the letter for everyone in your circle. AI can get things wrong: check anything that matters with your team.</p>
           <textarea id="doc-explanation" rows="8" placeholder="Tap Explain with Daybook Assistant, or type your own notes on it"></textarea>
-          <p class="hint">This explanation is for context only. It is not medical advice. Always check changes with the medical team.</p>
+          <p class="hint">Explanations from Daybook Assistant are written by AI and can be wrong. This is not medical advice: check anything that matters with your medical team.</p>
           <button id="doc-save-explanation" class="btn btn-primary btn-block" type="button">Save explanation</button>
           </div>
           <button id="doc-delete" class="btn btn-danger btn-block" type="button">Delete this document</button>
@@ -1067,9 +1067,9 @@
     <nav id="tabs" class="tabs" aria-label="Sections">
       <button class="tab is-active" type="button" data-tab="today"><svg class="icon tab-icon" aria-hidden="true"><use href="#i-sun"/></svg>Today</button>
       <button class="tab" type="button" data-tab="meds"><svg class="icon tab-icon" aria-hidden="true"><use href="#i-pill"/></svg>Meds</button>
-      <button class="tab" type="button" data-tab="vitals"><svg class="icon tab-icon" aria-hidden="true"><use href="#i-list"/></svg>Reports</button>
       <button class="tab" type="button" data-tab="chemo"><svg class="icon tab-icon" aria-hidden="true"><use href="#i-party"/></svg>Treatment</button>
       <button class="tab" type="button" data-tab="exercise"><svg class="icon tab-icon" aria-hidden="true"><use href="#i-walk"/></svg>Exercise</button>
+      <button class="tab" type="button" data-tab="vitals"><svg class="icon tab-icon" aria-hidden="true"><use href="#i-list"/></svg>Reports</button>
       <button class="tab" type="button" data-tab="more"><svg class="icon tab-icon" aria-hidden="true"><use href="#i-more"/></svg>More</button>
       <span id="tab-indicator" class="tab-indicator" aria-hidden="true"></span>
     </nav>
@@ -1219,6 +1219,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=341"></script>
+  <script type="module" src="scripts.js?v=342"></script>
 </body>
 </html>
