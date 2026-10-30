@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '351';
+const APP_VERSION = '352';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -16126,7 +16126,11 @@ function openContactsSheet(addNew) {
       field('Name', label), field('Role (optional)', role), field('Phone', number), field('Extension or option (optional)', ext), field('Email', email));
     /* a Save button on the new block itself (v326, Mark: scrolling to the foot of a long list was annoying, and a new
        contact was easily lost by closing without it); it saves the whole list, like the one at the foot */
-    if (atTop) row.append(h('button', { class: 'btn btn-primary btn-block contact-save', type: 'button', onclick: () => save() }, 'Save contact'));
+    /* v352 (Mark: editing a contact, the Save was still at the foot): a saved contact's block shows the same
+       button as soon as anything in it is changed, so Save sits under the contact being worked on */
+    const rowSave = h('button', { class: 'btn btn-primary btn-block contact-save', type: 'button', onclick: () => save() }, 'Save contact');
+    if (!atTop) { rowSave.hidden = true; row.addEventListener('input', () => { rowSave.hidden = false; }); }
+    row.append(rowSave);
     if (atTop) rows.prepend(row); else rows.append(row);
     number_();
     if (atTop) { if (row.scrollIntoView) row.scrollIntoView({ block: 'start', behavior: 'smooth' }); label.focus(); }
