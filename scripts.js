@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '353';
+const APP_VERSION = '354';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -13525,7 +13525,7 @@ function bandSeries(start, end, top, bottom, colour, label) {
 }
 /* Lines draw in left to right, the area fill following behind them (the Chart.js progressive-line pattern) */
 function drawIn(pointCount) {
-  const total = 900, step = total / Math.max(1, pointCount);
+  const total = CHART_DRAW_MS, step = total / Math.max(1, pointCount);
   const started = (key) => (ctx) => { if (ctx.type !== 'data' || ctx[key]) return 0; ctx[key] = true; return ctx.index * step; };
   return {
     x: { type: 'number', easing: 'linear', duration: step, from: NaN, delay: started('xStarted') },
@@ -13551,10 +13551,38 @@ function barChart(T, labels, data, o) {
   };
 }
 
+/* v354 (Mark: "animated as you scrolled over them, just once, from start to end of week"): each Trends chart is
+   drawn when it first comes into view, its line or bars filling from the first day to the last over about two
+   seconds (CHART_DRAW_MS), once a session; redrawn after that (a new reading, another range) it appears at once.
+   Under reduced motion every chart appears at once. */
+const CHART_DRAW_MS = 2000;
+const chartPlayed = new Set(), chartPending = {};
+let chartWatcher = null;
 function makeChart(key, cfg) {
-  if (state.charts[key]) { state.charts[key].destroy(); }
+  if (state.charts[key]) { state.charts[key].destroy(); delete state.charts[key]; }
   const canvas = $('chart-' + key);
-  state.charts[key] = new window.Chart(canvas.getContext('2d'), cfg);
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (cfg.type === 'bar' && cfg.options && cfg.options.animation !== false && !reduced) {
+    /* bars rise in turn, left to right, over the same two seconds */
+    const n = Math.max(1, ((cfg.data && cfg.data.labels) || []).length);
+    cfg.options.animation = { duration: 450, delay: (c) => (c.type === 'data' && c.mode === 'default' ? c.dataIndex * (CHART_DRAW_MS - 450) / n : 0) };
+  }
+  if (chartPlayed.has(key) || reduced) { if (cfg.options) cfg.options.animation = false; draw(); }
+  else if (!('IntersectionObserver' in window)) { chartPlayed.add(key); draw(); }
+  else {
+    chartPending[key] = cfg;
+    if (!chartWatcher) chartWatcher = new IntersectionObserver((seen) => seen.forEach((en) => {
+      if (!en.isIntersecting) return;
+      const k = en.target.id.replace(/^chart-/, ''), c = chartPending[k];
+      chartWatcher.unobserve(en.target);
+      if (!c) return;
+      delete chartPending[k]; chartPlayed.add(k);
+      if (state.charts[k]) state.charts[k].destroy();
+      state.charts[k] = new window.Chart(en.target.getContext('2d'), c);
+    }), { threshold: 0.35 });
+    chartWatcher.observe(canvas);
+  }
+  function draw() { delete chartPending[key]; state.charts[key] = new window.Chart(canvas.getContext('2d'), cfg); }
   /* The canvas gets a text alternative: the card's own heading and note, plus the range of the
      plotted values, so a screen reader hears what the chart shows rather than "graphic". */
   const card = canvas.closest('.chart-card');
