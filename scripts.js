@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '336';
+const APP_VERSION = '337';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -8377,7 +8377,11 @@ function renderWeeklyNotes(report) {
   const btn = $('notes-weekly');
   btn.hidden = state.readOnly || !explainAvailable() || !report.weeks.length;
   const summarised = report.weeks.some((w) => aiWeek(w));
+  $('notes-weekly-hint').hidden = btn.hidden || summarised;
   $('notes-weekly-undo').hidden = !summarised;
+  $('notes-days-hint').textContent = summarised
+    ? 'Tidied by Daybook Assistant: spelling and dictation put right, similar days joined. Preview and Send to the team use this version.'
+    : 'The most telling notes of each week, in your own words.';
   box.replaceChildren(...report.weeks.slice().reverse().map((w) => {
     const ai = aiWeek(w);
     return h('section', { class: 'diary-day weekblock' },
@@ -8390,7 +8394,7 @@ function renderWeeklyNotes(report) {
               h('div', { class: 'entry-sub' }, h('span', { class: 'note-who', text: n.who }), ' · ' + fmtDayShort(n.day) + ' ' + n.time + (n.context ? ' · ' + n.context : '')),
               h('div', { class: 'entry-title', text: n.text }),
               fixWordsLink(n.src, renderNotesReport))))),
-      ai ? h('p', { class: 'muted weekmore', text: 'Summarised from the notes by Daybook Assistant, an AI helper. It can miss or misread things; every note is in Daybook.' })
+      ai ? h('p', { class: 'muted weekmore', text: 'Tidied from your notes by Daybook Assistant, an AI helper. It can miss or misread things; every note is in Daybook.' })
         : w.more > 0 || notesAllOpen().has(w.from) ? h('button', { class: 'btn btn-link btn-small weekmore', type: 'button', onclick: () => { const o = notesAllOpen(); if (o.has(w.from)) o.delete(w.from); else o.add(w.from); renderWeeklyNotes(report); } },
           notesAllOpen().has(w.from) ? 'Show the most telling notes only' : `Show all ${w.notes.length} notes this week, to check or fix them`) : '');
   }));
@@ -8440,15 +8444,15 @@ $('notes-weekly').addEventListener('click', () => {
   const n = state.notesPdf;
   if (!n) return;
   const { text, weeks } = reportAiText(n);
-  withBusy($('notes-weekly'), 'Summarising, about half a minute', async () => {
+  withBusy($('notes-weekly'), 'Tidying up your notes, about half a minute', async () => {
     try {
       const data = await bridgeExplain({ kind: 'report', text });
       const out = parseReportReply(data.text, n, weeks);
       if (!out) { toast('Could not read the summary. The notes are shown as they are.'); return; }
       state.notesAI = out;
       renderWeeklyNotes(n.report);
-      toast('Summarised. The report, Preview and Send to the team use it.');
-    } catch (e) { toast(e.message || 'Could not summarise the notes'); }
+      toast('Notes tidied. Preview and Send to the team now use the tidied version.');
+    } catch (e) { toast(e.message || 'Could not tidy up the notes'); }
   });
 });
 $('notes-weekly-undo').addEventListener('click', () => { state.notesAI = null; if (state.notesPdf) renderWeeklyNotes(state.notesPdf.report); });
