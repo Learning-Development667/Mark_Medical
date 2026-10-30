@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '339';
+const APP_VERSION = '340';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -68,18 +68,6 @@ const IBD_MEDICINES = [
   { id: 'paracetamol', name: 'Paracetamol', dose: '2 tablets (1,000 mg)', how: 'Up to 4 times a day when needed, at least 4 hours apart', purpose: 'Pain', kind: 'prn', minGapHours: 4, maxPerDay: 4, doseForm: 'tablet', doseCount: 2, strength: '500 mg' }
 ];
 
-const CLAUDE_INTRO = 'Please explain this medical document in plain English for a patient and their family. ' +
-  'Tell us what it says, what it means for day-to-day care, anything we need to act on, and any questions we might want to ask the medical team. ' +
-  'Keep it calm and clear.';
-
-const CLAUDE_FORMAT = 'Reply using exactly this format, so it can be pasted straight back into Daybook:\n\n' +
-  '=== CARE LOG DOCUMENT ===\n' +
-  'Title: <a short title for this document>\n' +
-  'Date: <the date on the document, YYYY-MM-DD>\n' +
-  'Explanation:\n' +
-  '<your explanation, in plain English, as multi-line text>\n' +
-  '=== END ===';
-
 const NOT_MEDICAL_ADVICE = 'This explanation is for context only. It is not medical advice. Always check changes with the medical team.';
 
 /* Mood scale for the Chemo plan, 1 (rough) to 5 (great). */
@@ -111,51 +99,6 @@ function moodMark(level) {
    account that has never edited one (profile/main.programme is missing): the old exerciseGoals
    figures still feed the amounts, and the ids match the old done keys, so nothing ticked is lost. */
 const GOAL_DEFAULTS = { pressups: 20, situps: 20, plankSeconds: 60, squats: 2 };
-
-const CARE_LOG_BLOCK_RE = /===\s*CARE LOG DOCUMENT\s*===\s*\nTitle:\s*(.*)\nDate:\s*(\d{4}-\d{2}-\d{2})\nExplanation:\s*\n([\s\S]*?)\n===\s*END\s*===/g;
-
-function parseCareLogBlocks(text) {
-  const clean = (text || '').replace(/\r\n/g, '\n');
-  const out = [];
-  let m;
-  CARE_LOG_BLOCK_RE.lastIndex = 0;
-  while ((m = CARE_LOG_BLOCK_RE.exec(clean))) {
-    out.push({ title: m[1].trim(), date: m[2].trim(), explanation: m[3].trim() });
-  }
-  return out;
-}
-
-/* Reads the clipboard into an Explanation textarea, smart-filling title and date
-   when the paste contains a === CARE LOG DOCUMENT === block. Falls back to
-   focusing the textarea (for a manual long-press paste) if clipboard access fails. */
-async function pasteSummaryInto({ titleEl, dateEl, explanationEl, onFilled }) {
-  let text;
-  try {
-    text = await navigator.clipboard.readText();
-  } catch (e) {
-    explanationEl.focus();
-    toast('Could not read the clipboard. Long-press the box below and paste.');
-    return;
-  }
-  if (!text || !text.trim()) {
-    explanationEl.focus();
-    toast('Clipboard is empty. Long-press the box below and paste.');
-    return;
-  }
-  const blocks = parseCareLogBlocks(text);
-  if (blocks.length) {
-    const first = blocks[0];
-    if (titleEl && first.title) titleEl.value = first.title;
-    if (dateEl && first.date) dateEl.value = first.date;
-    explanationEl.value = first.explanation;
-    toast(blocks.length > 1 ? 'Only the first letter was used. Add the others one at a time.' : 'Summary filled in');
-  } else {
-    explanationEl.value = text.trim();
-    toast('Pasted into Explanation');
-  }
-  explanationEl.dispatchEvent(new Event('input'));
-  if (onFilled) onFilled();
-}
 
 /* ------------------------------------------------------------------ */
 /* Helpers                                                              */
@@ -13685,8 +13628,7 @@ function openAddDocument(category) {
   const title = h('input', { type: 'text', placeholder: 'e.g. Oncology letter', required: true, value: category === 'exemption' ? 'NHS Medical Exemption Certificate' : '' });
   const date = h('input', { type: 'date', value: todayStr() });
 
-  const explanation = h('textarea', { rows: '8', placeholder: 'Paste the explanation here, or use Paste summary above' });
-  const pasteBtn = h('button', { class: 'btn btn-secondary btn-block', type: 'button' }, 'Paste summary');
+  const explanation = h('textarea', { rows: '8', placeholder: 'Optional. Your own notes on it. Once it is saved, Explain with Daybook Assistant can write a plain English explanation.' });
 
   const save = h('button', { class: 'btn btn-primary btn-block', type: 'button', disabled: true }, 'Save');
   const cancel = h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Cancel');
@@ -13727,7 +13669,6 @@ function openAddDocument(category) {
 
   title.addEventListener('input', updateSaveEnabled);
   explanation.addEventListener('input', updateSaveEnabled);
-  pasteBtn.addEventListener('click', () => pasteSummaryInto({ titleEl: title, dateEl: date, explanationEl: explanation, onFilled: updateSaveEnabled }));
 
   save.addEventListener('click', async () => {
     if (save.disabled) return;
@@ -13755,10 +13696,10 @@ function openAddDocument(category) {
 
   const body = h('div', null,
     fileInput, chooseBtn, fileProgress, thumbs, pageCountLabel,
-    h('p', { class: 'hint', text: 'Photos or a PDF, up to 30 pages. A document can be saved with no pages if it just has a pasted summary.' }),
+    h('p', { class: 'hint', text: 'Photos or a PDF, up to 30 pages. A document can be saved with no pages if it just has notes typed in.' }),
     field('Title', title), field('Date on the document', date),
     h('h3', { class: 'section-title', text: 'Explanation' }),
-    pasteBtn, explanation,
+    explanation,
     h('p', { class: 'hint', text: NOT_MEDICAL_ADVICE }),
     save, saveProgress, cancel
   );
@@ -14476,11 +14417,6 @@ async function copyText(text) {
 }
 
 function slug(s) { return (s || 'document').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'document'; }
-
-$('doc-paste-summary').addEventListener('click', () => {
-  if (!currentDocRecord()) return;
-  pasteSummaryInto({ explanationEl: $('doc-explanation') });
-});
 
 /* Explain in Daybook: the letter (text or page photos) goes to the bridge, the reply lands in
    the explanation box and is saved, so one tap does the whole job; the box stays editable. */
