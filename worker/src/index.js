@@ -518,7 +518,7 @@ async function buildPlanEntry(fs, hid, day) {
   if (medicines.some((m) => f(m.fields, 'treatmentDays') === true && f(m.fields, 'active') !== false)) {
     const days = Array.from({ length: 8 }, (_, k) => shiftDay(day, -k));
     const docs = await Promise.all(days.map((d) => fs.get(hp(hid, 'days/' + d)).catch(() => null)));
-    docs.forEach((doc, k) => { if (doc && doc.fields && f(doc.fields, 'chemo') === true) sessions.add(days[k]); });
+    docs.forEach((doc, k) => { if (doc && doc.fields && f(doc.fields, 'chemo') === true && f(doc.fields, 'treatment') !== 'appt') sessions.add(days[k]); });
   }
   return planEntryFromDocs(subs, profile, medicines, oneOffs, day, sessions);
 }
@@ -1462,7 +1462,7 @@ async function buildUsage(env, opts) {
   const households = (await fs.list('households')).filter((hh) => hh.id !== DEMO_HOUSEHOLD).slice(0, USAGE_MAX_ROWS);
   const feedback = await fs.count('feedback');
   const circles = {};
-  const t = { circles: households.length, new7: 0, new30: 0, active7: 0, logging7: 0, checkins7: 0, checkinSlots: 0, members: 0, phones: 0, aiCircles: 0, aiCalls: 0, sent: 0, setup: 0, feedback, packCancer: 0, packIbd: 0, packMenopause: 0 };
+  const t = { circles: households.length, new7: 0, new30: 0, active7: 0, logging7: 0, checkins7: 0, checkinSlots: 0, members: 0, phones: 0, aiCircles: 0, aiCalls: 0, sent: 0, setup: 0, feedback, packCancer: 0, packIbd: 0, packGeneral: 0, packMenopause: 0 };
   const kinds = Object.fromEntries(AI_KINDS.map((k) => [k, 0]));
   const codes = {};
   for (const hh of households) {
@@ -1479,6 +1479,7 @@ async function buildUsage(env, opts) {
     if (c.setup) t.setup++;
     if (c.packs.includes('cancer')) t.packCancer++;
     if (c.packs.includes('ibd')) t.packIbd++;
+    if (c.packs.includes('general')) t.packGeneral++;
     if (c.packs.includes('menopause')) t.packMenopause++;
     if (c.code) codes[c.code] = (codes[c.code] || 0) + 1;
   }
