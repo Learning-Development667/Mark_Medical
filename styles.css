@@ -482,7 +482,6 @@ textarea { line-height: 1.5; resize: vertical; }
 /* View-only relatives: Meds, Chemo and Trends only, nothing to add, edit or delete */
 .tabs.tabs-3 { grid-template-columns: repeat(3, 1fr); }
 body.is-viewer #trends-reports,
-body.is-viewer #vitals-log,
 body.is-viewer #meds-manage,
 body.is-viewer #meds-hospital-add,
 body.is-viewer .med-actions, body.is-viewer .med-log,
@@ -503,7 +502,6 @@ body.is-readonly #meds-first-add,
 body.is-readonly #meds-hospital-add,
 body.is-readonly .med-actions, body.is-readonly .med-log,
 body.is-readonly #meds-doc-add,
-body.is-readonly #vitals-log,
 body.is-readonly #chemo-doc-add,
 body.is-readonly #chemo-add-run,
 body.is-readonly #ex-steps-edit,
@@ -2254,3 +2252,45 @@ details.daymeal[open] .daymeal-sum::after { transform: rotate(90deg); }
 }
 .checkin-row.is-due .checkin-icon, .checkin-row.is-due .checkin-chev, .checkin-row.is-due .checkin-sub { color: #FFF3D6; }
 @media (forced-colors: active) { .iconbtn[id$="-prev"], .iconbtn[id$="-next"], .checkin-row.is-due { border-color: ButtonText; } }
+
+/* ---------- The tab bar (v350) ----------
+   Mark chose option B: a cream bar with a gold hairline on top, each tab its own colour in a soft
+   disc, the open tab's disc filled with its colour under the gold rim and lifted a little. The
+   labels stay in text colours, so the colour is never the only cue. */
+.tab[data-tab="today"] { --tc: #B07A1E; --tt: #F6E7C8; }
+.tab[data-tab="meds"] { --tc: #18727A; --tt: #D7ECEC; }
+.tab[data-tab="chemo"] { --tc: #C2703D; --tt: #F6E1D2; }
+.tab[data-tab="exercise"] { --tc: #2D7354; --tt: #DCEDE3; }
+.tab[data-tab="vitals"] { --tc: #2F5E8C; --tt: #DCE6F1; }
+.tab[data-tab="more"] { --tc: #5B4A7A; --tt: #E6DFF0; }
+.tabs {
+  background: linear-gradient(180deg, #FFFEFA, #F6F0E2);
+  border-top: 0;
+  box-shadow: 0 -1px 0 rgba(201, 151, 63, 0.55), 0 -8px 24px rgba(120, 90, 40, 0.1);
+}
+.tab-indicator { display: none; }
+.tab { min-height: 76px; color: var(--text-secondary); }
+.tab .tab-icon {
+  color: var(--tc); width: 38px; height: 38px; padding: 8px; box-sizing: border-box;
+  border-radius: 50%; background: var(--tt); border: 2px solid transparent;
+  transition: transform var(--t-base) var(--ease-out), background var(--t-base) ease;
+}
+.tab.is-active { color: var(--text-primary); font-weight: 700; }
+.tab.is-active .tab-icon {
+  color: #fff;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--tc) 85%, white), var(--tc)) padding-box, var(--gold-rim) border-box;
+  box-shadow: 0 4px 10px rgba(120, 90, 40, 0.25);
+  transform: translateY(-2px);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .tab[data-tab="today"] { --tc: #E6B65C; --tt: #3A2F17; }
+  :root:not([data-theme="light"]) .tab[data-tab="meds"] { --tc: #5CC3C9; --tt: #143A40; }
+  :root:not([data-theme="light"]) .tab[data-tab="chemo"] { --tc: #E39A6A; --tt: #3D2618; }
+  :root:not([data-theme="light"]) .tab[data-tab="exercise"] { --tc: #6CC79A; --tt: #16362A; }
+  :root:not([data-theme="light"]) .tab[data-tab="vitals"] { --tc: #7FAEE0; --tt: #18293D; }
+  :root:not([data-theme="light"]) .tab[data-tab="more"] { --tc: #B9A6E0; --tt: #2A2240; }
+  :root:not([data-theme="light"]) .tabs { background: linear-gradient(180deg, #1E3242, #142330); box-shadow: 0 -1px 0 rgba(214, 170, 90, 0.45), 0 -8px 24px rgba(0, 0, 0, 0.35); }
+  :root:not([data-theme="light"]) .tab.is-active .tab-icon { color: #0F1B24; }
+}
+@media (prefers-reduced-motion: reduce) { .tab.is-active .tab-icon { transform: none; } }
+@media (forced-colors: active) { .tab.is-active .tab-icon { border-color: Highlight; } }

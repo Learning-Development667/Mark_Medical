@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '349';
+const APP_VERSION = '350';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -13086,7 +13086,6 @@ function openEditMed(m, prefill) {
 /* Vitals: latest readings and every trend chart                         */
 /* ------------------------------------------------------------------ */
 
-$('vitals-log').addEventListener('click', () => openAdd('vitals'));
 
 document.querySelectorAll('#view-vitals .seg[data-range]').forEach((b) => b.addEventListener('click', () => {
   state.trendRange = parseInt(b.dataset.range, 10);
