@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '345';
+const APP_VERSION = '346';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -9358,10 +9358,15 @@ function outsideText(v) {
    the check-in as sidefx { session "YYYY-MM-DD", treatment, grades { name: 0 to 3 } } (null when skipped), and every one
    above None is also written as a side effect of that session (entries/{day}_{slot}_fx_{n}, type symptom, grade, value
    3, 6 or 9), so it shows on the Treatment tab's card, the timeline, Notes for the team and the reports like any other. */
-const SIDEFX_ITEMS = ['Sickness', 'Tiredness', 'Poor appetite', 'Mouth', 'Diarrhoea', 'Constipation', 'Tingling', 'Taste changes'];
+/* v346, Mark: tingling in fingers beside the general tingling, proprioception in plain words, and bloating */
+const SIDEFX_PROPRIO = 'Unsure where your hands or feet are (proprioception)';
+const SIDEFX_ITEMS = ['Sickness', 'Tiredness', 'Poor appetite', 'Mouth', 'Diarrhoea', 'Constipation', 'Bloating', 'Tingling', 'Tingling in fingers', SIDEFX_PROPRIO, 'Taste changes'];
 /* After an injection or infusion (v204) the usual ones are different: the site or the drip reaction, and the signs of an infection the IBD team asks about */
 const SIDEFX_IBD = ['Injection site reaction', 'Infusion reaction', 'Headache', 'Nausea', 'Tiredness', 'Rash', 'Sore throat or cough', 'Fever or chills', 'Joint pain'];
-const SIDEFX_ALL = [...SIDEFX_ITEMS, ...SIDEFX_IBD.filter((x) => !SIDEFX_ITEMS.includes(x))];
+/* The entries the check-ins write are numbered by place in this list (fxEntryId), so it only ever grows at the end:
+   the v189 eight, then the v204 IBD ones, then v346's three */
+const SIDEFX_V189 = ['Sickness', 'Tiredness', 'Poor appetite', 'Mouth', 'Diarrhoea', 'Constipation', 'Tingling', 'Taste changes'];
+const SIDEFX_ALL = [...SIDEFX_V189, ...SIDEFX_IBD.filter((x) => !SIDEFX_V189.includes(x)), 'Tingling in fingers', SIDEFX_PROPRIO, 'Bloating'];
 function sidefxItems(type) {
   if (!type || !isRepeat(type)) return SIDEFX_ITEMS;
   return SIDEFX_IBD.filter((x) => (type.key === 'inject' ? x !== 'Infusion reaction' : x !== 'Injection site reaction'));
@@ -9790,7 +9795,7 @@ function openCheckin(slot, initialDay) {
           } }, w)));
           return h('div', { class: 'taps-row fx-row' }, h('p', { class: 'taps-label', text: name }), chips);
         });
-        wrap.append(h('p', { class: 'wiz-hint', text: 'Asked on the three days after a session. Tap how bad each one is, or None. Leave a row if you are not sure. Anything else: Log a side effect on the Treatment tab.' }), ...rows);
+        wrap.append(h('p', { class: 'wiz-hint', text: 'Asked on the three days after a session. Tap how bad each one is, or None. Leave a row if you are not sure. Anything else: use the Symptom tile on Today.' }), ...rows);
         getVal = () => {
           const grades = {};
           sidefxItems(fxSes && fxSes.type).forEach((k) => { if (cur[k] != null) grades[k] = cur[k]; });
