@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '340';
+const APP_VERSION = '341';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -14417,6 +14417,55 @@ async function copyText(text) {
 }
 
 function slug(s) { return (s || 'document').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'document'; }
+
+/* Save to my files (v341): one PDF of the letter, its pages (or its text) then the explanation
+   in the box, through the phone's share sheet, a Save dialog or a download (savePdf) */
+async function docPdfBlob(d) {
+  if (state.currentDoc && state.currentDoc.loading) await state.currentDoc.loading;
+  await loadScript(CDN.jspdf);
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({ unit: 'mm', format: 'a4' });
+  const W = 210, H = 297, M = 14;
+  let first = true;
+  const newPage = () => { if (!first) pdf.addPage(); first = false; };
+  (state.currentDoc ? state.currentDoc.pages : []).forEach((p) => {
+    newPage();
+    const pw = p.width || 1000, ph = p.height || 1414;
+    const s = Math.min((W - 2 * M) / pw, (H - 2 * M) / ph);
+    const w = pw * s, hgt = ph * s;
+    pdf.addImage('data:image/jpeg;base64,' + p.data, 'JPEG', (W - w) / 2, (H - hgt) / 2, w, hgt);
+  });
+  const writeText = (heading, text, foot) => {
+    newPage();
+    let y = M + 4;
+    pdf.setFont('helvetica', 'bold'); pdf.setFontSize(15); pdf.setTextColor(23, 38, 58);
+    pdf.splitTextToSize(heading, W - 2 * M).forEach((l) => { pdf.text(l, M, y); y += 7; });
+    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9.5); pdf.setTextColor(75, 91, 107);
+    pdf.text(`${d.title || 'Document'}${d.docDate ? ', ' + fmtDayNum(d.docDate) : ''}`, M, y); y += 9;
+    pdf.setFontSize(11.5); pdf.setTextColor(23, 38, 58);
+    const lines = pdf.splitTextToSize(String(text).replace(/\u2014/g, ','), W - 2 * M);
+    lines.forEach((l) => {
+      if (y > H - M - 12) { pdf.addPage(); y = M + 4; }
+      pdf.text(l, M, y); y += 5.6;
+    });
+    if (foot) {
+      if (y > H - M - 16) { pdf.addPage(); y = M + 4; }
+      y += 4; pdf.setFontSize(9); pdf.setTextColor(75, 91, 107);
+      pdf.splitTextToSize(foot, W - 2 * M).forEach((l) => { pdf.text(l, M, y); y += 4.6; });
+    }
+  };
+  if (d.kind === 'text' && (d.text || '').trim()) writeText(d.title || 'Document', d.text);
+  const explanation = ($('doc-explanation').value || d.explanation || '').trim();
+  if (explanation) writeText('Plain English explanation', explanation, NOT_MEDICAL_ADVICE);
+  if (first) throw new Error('nothing in this document to save yet');
+  return pdf.output('blob');
+}
+$('doc-save-file').addEventListener('click', () => {
+  const d = currentDocRecord();
+  if (!d) return;
+  const name = String(d.title || 'Document').replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim();
+  savePdf(`Daybook ${name}${d.docDate ? ' ' + d.docDate : ''}.pdf`, d.title || 'Document', () => docPdfBlob(d));
+});
 
 /* Explain in Daybook: the letter (text or page photos) goes to the bridge, the reply lands in
    the explanation box and is saved, so one tap does the whole job; the box stays editable. */
