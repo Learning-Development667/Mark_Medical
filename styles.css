@@ -92,14 +92,14 @@
   /* Elevation */
   --elev-sunken: inset 0 2px 6px rgba(var(--shadow-ink), 0.08), inset 0 1px 0 rgba(var(--shadow-ink), 0.04);
   --elev-flat: none;
-  --elev-raised: inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 1px 2px rgba(var(--shadow-ink), 0.07), 0 6px 18px rgba(var(--shadow-ink), 0.07);
-  --elev-raised-pressed: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 1px 3px rgba(var(--shadow-ink), 0.1);
+  --elev-raised: inset 0 0 0 1px rgba(201, 151, 63, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 1px 2px rgba(90, 70, 30, 0.06), 0 8px 20px rgba(120, 90, 40, 0.1);
+  --elev-raised-pressed: inset 0 0 0 1px rgba(201, 151, 63, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 1px 3px rgba(120, 90, 40, 0.12);
   --elev-floating: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 2px 4px rgba(var(--shadow-ink), 0.12), 0 12px 28px rgba(var(--shadow-ink), 0.16);
   --elev-floating-teal: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 2px 4px color-mix(in srgb, var(--teal) 26%, transparent), 0 10px 24px color-mix(in srgb, var(--teal) 30%, transparent);
   --elev-floating-teal-pressed: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 1px 2px color-mix(in srgb, var(--teal) 24%, transparent), 0 4px 10px color-mix(in srgb, var(--teal) 24%, transparent);
   --elev-sheet: 0 -8px 40px rgba(var(--shadow-ink), 0.22), 0 -1px 0 rgba(var(--shadow-ink), 0.05);
   /* Gradients */
-  --grad-raised: linear-gradient(180deg, color-mix(in srgb, var(--surface-raised) 92%, white) 0%, var(--surface-raised) 60%, color-mix(in srgb, var(--surface-raised) 97%, var(--text-primary)) 100%);
+  --grad-raised: linear-gradient(180deg, #FFFEFA 0%, #FBF7EF 100%);
   --grad-teal: linear-gradient(180deg, var(--teal-fill) 0%, var(--teal) 55%, var(--teal-dark) 100%);
   /* Radius */
   --r-sm: 10px;
@@ -216,11 +216,11 @@
     --mood-1: #D98A5A;
     --shadow-ink: 0, 0, 0;
     --elev-sunken: inset 0 2px 8px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(0, 0, 0, 0.2);
-    --elev-raised: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 1px 2px rgba(0, 0, 0, 0.3), 0 6px 18px rgba(0, 0, 0, 0.28);
-    --elev-raised-pressed: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 1px 3px rgba(0, 0, 0, 0.3);
+    --elev-raised: inset 0 0 0 1px rgba(214, 170, 90, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 20px rgba(0, 0, 0, 0.28);
+    --elev-raised-pressed: inset 0 0 0 1px rgba(214, 170, 90, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 1px 3px rgba(0, 0, 0, 0.3);
     --elev-floating: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 2px 4px rgba(0, 0, 0, 0.35), 0 12px 28px rgba(0, 0, 0, 0.4);
     --elev-sheet: 0 -8px 40px rgba(0, 0, 0, 0.5);
-    --grad-raised: linear-gradient(180deg, color-mix(in srgb, var(--surface-raised) 94%, white) 0%, var(--surface-raised) 60%, color-mix(in srgb, var(--surface-raised) 92%, black) 100%);
+    --grad-raised: linear-gradient(180deg, #1E3242 0%, #172633 100%);
   }
 }
 
@@ -2230,3 +2230,27 @@ details.daymeal[open] .daymeal-sum::after { transform: rotate(90deg); }
 .meds-top .btn::before, .scan-btns .scan-btn::before { border-radius: var(--r-md); }
 @media (forced-colors: active) { .btn-primary, .btn-secondary, .btn-outline, .btn-tint, .btn-danger, .speakbtn, .recbtn { border-color: ButtonText; } }
 @media (max-width: 359px) { .med-log { padding: 0 12px; font-size: 17px; } }
+
+/* ---------- Cards to match the buttons (v349) ----------
+   Mark: the gold rim buttons "can't just sit on a plain white background". Every raised card
+   (anything using --grad-raised and --elev-raised: check-in rows, quick-add tiles, timeline rows,
+   medicine cards, report and Settings cards) is warm cream with a gold hairline (an inset shadow
+   in --elev-raised) and a warmer shadow; quieter than the buttons, with no gloss. */
+.feedback-row { background: var(--grad-raised); }
+.status .tile { box-shadow: inset 0 0 0 1px rgba(201, 151, 63, 0.35), 0 4px 12px rgba(120, 90, 40, 0.08); }
+/* The round day arrows are buttons: the gold rim like every other */
+.iconbtn[id$="-prev"], .iconbtn[id$="-next"] {
+  border: 2px solid transparent;
+  background: var(--btn-cream) padding-box, var(--gold-rim) border-box;
+  color: var(--btn-cream-ink);
+  box-shadow: 0 6px 14px rgba(120, 90, 40, 0.16);
+}
+/* The check-in that is due now is Today's main action: teal glass with the gold rim */
+.checkin-row.is-due {
+  border: 2px solid transparent;
+  background: linear-gradient(180deg, #18727A 0%, #0F5257 55%, #0B4247 100%) padding-box, var(--gold-rim) border-box;
+  color: #FFF3D6;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.18), 0 8px 20px var(--gold-glow), 0 2px 4px rgba(10, 30, 35, 0.3);
+}
+.checkin-row.is-due .checkin-icon, .checkin-row.is-due .checkin-chev, .checkin-row.is-due .checkin-sub { color: #FFF3D6; }
+@media (forced-colors: active) { .iconbtn[id$="-prev"], .iconbtn[id$="-next"], .checkin-row.is-due { border-color: ButtonText; } }
