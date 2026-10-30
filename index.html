@@ -19,7 +19,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=336">
+  <link rel="stylesheet" href="styles.css?v=337">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -819,12 +819,13 @@
           <button id="notes-pdf" class="btn btn-tint tint-warm" type="button"><svg class="icon" aria-hidden="true"><use href="#i-download"/></svg>Save as PDF</button>
         </div>
         <button id="notes-explain" class="btn btn-tint tint-blue btn-block" type="button" hidden>Suggest questions to ask</button>
-        <button id="notes-weekly" class="btn btn-tint tint-blue btn-block" type="button" hidden>Summarise with Daybook Assistant</button>
+        <button id="notes-weekly" class="btn btn-tint tint-blue btn-block" type="button" hidden>Tidy up my notes with Daybook Assistant</button>
+        <p id="notes-weekly-hint" class="hint" hidden>Optional. Puts dictation slips and spelling right, joins days that say the same thing and writes a line for each week. Without it, the report uses your own words exactly as written.</p>
         <div class="btnrow">
           <button id="notes-share" class="btn btn-tint tint-blue" type="button">Send to my AI app</button>
           <button id="notes-copy" class="btn btn-tint tint-blue" type="button">Copy for my AI app</button>
         </div>
-        <p class="hint"><b>Suggest questions to ask</b> and <b>Summarise with Daybook Assistant</b> send your notes to Daybook Assistant (AI from Anthropic, in the US); the two <b>my AI app</b> buttons send them to your own AI app. Leave out anything you would not want sent.</p>
+        <p class="hint"><b>Suggest questions to ask</b> and <b>Tidy up my notes</b> send your notes to Daybook Assistant (AI from Anthropic, in the US); the two <b>my AI app</b> buttons send them to your own AI app. Leave out anything you would not want sent.</p>
         <h3 class="section-title">Questions for the team</h3>
         <button id="notes-record" class="recbtn recbtn-appt" type="button"><svg class="icon" aria-hidden="true"><use href="#i-mic"/></svg><span>Record the appointment</span></button>
         <p id="notes-record-hint" class="hint">One recording for the whole appointment. Tap a question as they start answering it, so each answer is easy to find later.</p>
@@ -834,8 +835,8 @@
         <p class="hint">Simple checks on the readings by the app, worst first. Not medical advice. Anything that worries you, call the team.</p>
         <div id="notes-flags" class="flags"></div>
         <h3 class="section-title">Notes</h3>
-        <p class="hint">The most telling notes of each week.</p>
-        <button id="notes-weekly-undo" class="btn btn-link btn-small" type="button" hidden>Show the notes instead</button>
+        <p id="notes-days-hint" class="hint">The most telling notes of each week, in your own words.</p>
+        <button id="notes-weekly-undo" class="btn btn-link btn-small" type="button" hidden>Use my own words instead</button>
         <div id="notes-days"></div>
         <p id="notes-empty" class="empty" data-art="note" hidden>No notes, moods or readings in this period yet.</p>
       </section>
@@ -1121,7 +1122,7 @@
     <ul>
       <li><b>Send to the team and Send by email, only when you tap Send.</b> The report PDF, your message and the contact's address go through Daybook's bridge to Resend, the email service that sends it, from reporting@mymedicaldaybook.co.uk in your name. Your own sign-in email address is the reply address and gets a copy, so the clinic's reply comes straight to you, never to Mark 1 Apps Ltd. Resend keeps the email in its sending records for a limited time under its own terms; the bridge keeps only a daily count, and your circle keeps a note of what was sent to whom and when, which you can delete. Where Daybook cannot send (the demo, or before it is switched on) the email goes through your own Mail app instead and nothing passes through the bridge.</li>
       <li><b>Scan a barcode, or search packaged foods, only when you do it.</b> The camera looks for a barcode on your phone and no picture is kept or sent. Only the barcode number, or the food words you typed in the search box, go through Daybook's bridge to Open Food Facts, a free and open food database, to ask what the product is; nothing about you goes with them. If the product is found, its name and label figures are saved in your circle's My foods, so they can be used again. The camera is used only while the scanner is open.</li>
-      <li><b>Daybook Assistant, only when you tap.</b> Daybook Assistant is Daybook's name for its AI helper, which is Claude, an AI model made by Anthropic, a US company. Seven features send something through Daybook's bridge to Anthropic for it: <b>Explain with Daybook Assistant</b> (a letter's text or page photos), <b>Suggest questions to ask</b> and <b>Summarise with Daybook Assistant</b> (the Notes for the team text), <b>Write the brief with Daybook Assistant</b> on two reports (the scores and notes behind the Mood and wellbeing report; the scores, words and doses behind the Pain and pain relief report), <b>Read it from a photo</b> (a photo of a medicine) and <b>Add from a photo or PDF of the plan</b> (an exercise or physio plan). So that information goes to the United States. Anthropic does not use what is sent through its API to train its models and handles it under its own terms. The bridge keeps nothing of what was sent or returned, only a count of words used, for the cost. An explanation of a letter is saved with the letter, and you can change or delete it; the other replies are shown for you to check, and only what you then save is kept. There is a daily limit per circle.</li>
+      <li><b>Daybook Assistant, only when you tap.</b> Daybook Assistant is Daybook's name for its AI helper, which is Claude, an AI model made by Anthropic, a US company. Seven features send something through Daybook's bridge to Anthropic for it: <b>Explain with Daybook Assistant</b> (a letter's text or page photos), <b>Suggest questions to ask</b> and <b>Tidy up my notes with Daybook Assistant</b> (the Notes for the team text), <b>Write the brief with Daybook Assistant</b> on two reports (the scores and notes behind the Mood and wellbeing report; the scores, words and doses behind the Pain and pain relief report), <b>Read it from a photo</b> (a photo of a medicine) and <b>Add from a photo or PDF of the plan</b> (an exercise or physio plan). So that information goes to the United States. Anthropic does not use what is sent through its API to train its models and handles it under its own terms. The bridge keeps nothing of what was sent or returned, only a count of words used, for the cost. An explanation of a letter is saved with the letter, and you can change or delete it; the other replies are shown for you to check, and only what you then save is kept. There is a daily limit per circle.</li>
       <li><b>Your own AI app.</b> "Send to my AI app" and "Copy for my AI app" put the text on your phone's share sheet or clipboard. Where it goes from there is between you and the app you choose.</li>
       <li><b>Save as PDF, Print, Share and Copy</b> make a copy for you to give to the clinic or someone else. Once it has left the app, it is in your hands.</li>
       <li><b>Tap to speak</b> uses your phone's own speech recognition (Apple's on an iPhone, Google's in Chrome). Depending on the phone, the audio may be processed on the phone or on that company's servers under their terms. Daybook receives only the words.</li>
@@ -1227,6 +1228,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=336"></script>
+  <script type="module" src="scripts.js?v=337"></script>
 </body>
 </html>
