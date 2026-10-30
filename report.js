@@ -142,6 +142,7 @@ h2.sec small{font-family:Inter,sans-serif;font-weight:400;font-size:7.6pt;color:
 .fxt tr:first-child th span{display:block;text-transform:none;letter-spacing:0;font-weight:400;color:var(--slate)}
 .fxt th[scope=row]{font-weight:600;width:28%}
 .fxt td.none{color:var(--slate)}
+.fxt td.score{font-variant-numeric:tabular-nums}
 .fxt td.na{color:var(--slate);font-style:italic}
 .fxt td.mild{background:#FBF3DC}
 .fxt td.mod{background:#F6DFA8;font-weight:600}
@@ -231,9 +232,9 @@ function tileHtml(t) {
   return `<div class="tile ${esc(t.tone || '')}" data-k="${esc(t.k)}"><div class="k">${esc(t.k)}</div><div class="v">${esc(t.v)}${t.unit ? `<em>${esc(t.unit)}</em>` : ''}</div><div class="n">${esc(t.note)}</div></div>`;
 }
 
-/* A question card: who it is for as a small label (v133; a number until then), the question, who asked it and when, then ruled lines to write the reply */
+/* A question card: who it is for as a small label (v133; a number until then), the question, who asked it and when; no writing lines since v345 (Mark: the team reads it on screen) */
 function questionHtml(q, extra) {
-  return `<article class="q${extra ? ' extra' : ''}" data-sec="${extra ? 'Other points' : 'Question ' + esc(q.i)}"><header>${extra ? '<div class="no">+</div>' : ''}<div>${q.team ? `<div class="team">${esc(q.team)}</div>` : ''}<h3>${esc(q.text)}</h3><div class="by">${esc(q.by)}</div></div></header><div class="lines" style="min-height:${(q.lines || 1) * 4.6 + 2.4}mm">${lines(40)}</div></article>`;
+  return `<article class="q${extra ? ' extra' : ''}" data-sec="${extra ? 'Other points' : 'Question ' + esc(q.i)}"><header>${extra ? '<div class="no">+</div>' : ''}<div>${q.team ? `<div class="team">${esc(q.team)}</div>` : ''}<h3>${esc(q.text)}</h3><div class="by">${esc(q.by)}</div></div></header>${extra ? `<div class="lines" style="min-height:${(q.lines || 1) * 4.6 + 2.4}mm">${lines(40)}</div>` : ''}</article>`;
 }
 
 /* One day of the weeks (v332): what the app logged, then what was written, as two separate lines, so a reading
@@ -277,14 +278,16 @@ function fxHtml(F, o = {}) {
   const from = o.from || 0, to = o.to == null ? F.days.length : o.to;
   const shown = F.days.slice(from, to);
   const last = to >= F.days.length;
-  const tone = (g) => (g === 3 ? 'sev' : g === 2 ? 'mod' : g === 1 ? 'mild' : g === -1 ? 'na' : g === -2 ? 'blank' : 'none');
+  const tone = (g) => (g === 3 ? 'sev' : g === 2 ? 'mod' : g === 1 ? 'mild' : g === -1 ? 'na' : g === -2 ? 'blank' : g === -3 ? 'score' : 'none');
   const tables = shown.map((d) => {
     const T = d.table || { cols: [], rows: [], also: [] };
-    const head = `<tr><th scope="col">Side effect</th>${T.cols.map((c) => `<th scope="col">${esc(c.head)}<span>${esc(c.sub)}</span></th>`).join('')}</tr>`;
+    const head = `<tr><th scope="col">${T.anyAnswered ? 'Side effect' : ''}</th>${T.cols.map((c) => `<th scope="col">${esc(c.head)}<span>${esc(c.sub)}</span></th>`).join('')}</tr>`;
     const row = (r) => `<tr><th scope="row">${esc(r.name)}</th>${r.cells.map((c) => `<td class="${tone(c.g)}">${esc(c.word)}</td>`).join('')}</tr>`;
     const none = !T.rows.length && T.anyAnswered ? `<tr><th scope="row">None of these</th>${T.cols.map((c) => `<td class="${c.answered ? 'none' : 'na'}">${c.answered ? 'None' : 'Not answered'}</td>`).join('')}</tr>` : '';
     const also = T.also.length ? `<tr class="sub"><th colspan="${T.cols.length + 1}">Also logged on the Symptom tile those days, score out of 10</th></tr>${T.also.map(row).join('')}` : '';
-    return `<div class="fxsess"><div class="fxs-h"><b>${esc(d.when)}</b>${d.moods ? `<span>${esc(d.moods)}</span>` : ''}</div><table class="fxt">${head}${T.rows.map(row).join('')}${none}${also}</table></div>`;
+    const scores = (T.scores || []).length ? `<tr class="sub"><th colspan="${T.cols.length + 1}">Check-in scores, out of 10</th></tr>${T.scores.map(row).join('')}` : '';
+    const fxRows = T.anyAnswered ? T.rows.map(row).join('') + none : '';
+    return `<div class="fxsess"><div class="fxs-h"><b>${esc(d.when)}</b>${d.moods ? `<span>${esc(d.moods)}</span>` : ''}</div><table class="fxt">${head}${fxRows}${scores}${also}</table></div>`;
   }).join('');
   return `<div class="week fxbox wide${o.nat ? ' nat' : ''}" data-sec="${esc(F.title)}"${o.ti == null ? '' : ` data-ti="${o.ti}"`}><div class="wh"><h3>${esc(F.title)}${from ? ' <small>(continued)</small>' : ''}</h3><span>${esc(F.range)}</span></div>${tables}${F.note && last ? `<p class="ai">${esc(F.note)}</p>` : ''}</div>`;
 }
@@ -310,7 +313,7 @@ function tailPageHtml(R, items, p, total) {
   let body = '', qs = [], seenQ = false, seenW = false;
   const flushQ = () => {
     if (!qs.length) return;
-    body += `${seenQ ? '' : '<h2 class="sec tailh" style="margin-bottom:2.4mm">More questions for the team <small>Space is left under each one to write the reply.</small></h2>'}<div class="qwrap nat" data-sec="More questions"><div class="qgrid nat">${qs.join('')}</div></div>`;
+    body += `${seenQ ? '' : '<h2 class="sec tailh" style="margin-bottom:2.4mm">More questions for the team</h2>'}<div class="qwrap nat" data-sec="More questions"><div class="qgrid nat">${qs.join('')}</div></div>`;
     seenQ = true; qs = [];
   };
   items.forEach((it, ti) => {
@@ -341,7 +344,7 @@ function tailPageHtml(R, items, p, total) {
   const kinds = new Set(items.map((i) => i.k));
   const hasQ = kinds.has('q') || kinds.has('l'), hasW = kinds.has('w'), hasC = kinds.has('c');
   let base = hasQ && hasW ? 'More questions, and the weekly notes' : hasQ ? 'More questions for the team' : hasW ? (p > 0 ? 'Weekly notes, continued' : 'Weekly notes') : '';
-  if (kinds.has('f')) base = base ? 'Side effects after treatment, and ' + base.charAt(0).toLowerCase() + base.slice(1) : 'Side effects after treatment';
+  if (kinds.has('f')) base = base ? 'The three days after treatment, and ' + base.charAt(0).toLowerCase() + base.slice(1) : 'The three days after treatment';
   const title = hasC ? (base ? base + ", and the carer's view" : "The carer's view") : base;
   return `<section class="page tail" id="page${3 + p}">
   <div class="runner"><h2>${title}</h2><span>${esc(R.patient)} · ${esc(R.period)}</span></div>
@@ -416,20 +419,21 @@ ${bar}
     <div class="tiles">${R.tiles.map(tileHtml).join('')}</div>
   </div>
   <div class="strip${strip.length === 1 ? ' one' : ''}">${strip.join('')}</div>
-  <div class="qwrap${R.questions.length ? '' : ' nat'}" data-sec="Questions">
-    <h2 class="sec" style="margin-bottom:2.4mm">Questions for the team <small>Space is left under each one to write the reply.</small></h2>
-    ${noneLine}<div class="qgrid">${qs.join('')}</div>
+  <div class="qwrap nat" data-sec="Questions">
+    <h2 class="sec" style="margin-bottom:2.4mm">Questions for the team</h2>
+    ${noneLine}<div class="qgrid nat">${qs.join('')}</div>
     ${extraN ? `<p class="more">${esc(extraN === 1 ? 'One more question' : extraN + ' more questions')} on page 3.</p>` : ''}
     ${R.latestMoved ? '<p class="more">The latest note is in full on page 3.</p>' : ''}
     ${olderLine}
   </div>
+  ${R.fx && R.fxPage1 ? fxHtml(R.fx) : ''}
   ${R.carer && R.carerPage1 ? carerHtml(R.carer) : ''}
   <div class="foot"><span>${esc(R.foot)}</span>${madeBy(1, total)}</div>
 </section>
 <section class="page" id="page2">
   <div class="runner"><h2>${R.weeksPage3 ? 'Readings' : 'Readings and weekly notes'}</h2><span>${esc(R.patient)} · ${esc(R.period)}</span></div>
   <div class="cgrid" data-sec="Charts">${charts}${key}</div>
-  ${R.fx && !R.fxTail ? fxHtml(R.fx) : ''}
+  ${R.fx && !R.fxTail && !R.fxPage1 ? fxHtml(R.fx) : ''}
   ${R.weeksPage3 ? '' : weeksHtml}
   ${R.carer && !R.carerTail && !R.carerPage1 ? carerHtml(R.carer) : ''}
   <div class="foot"><span>${esc(R.foot)}</span>${madeBy(2, total)}</div>
@@ -502,6 +506,10 @@ export function spillTail(doc, R) {
    to the pages after the second, then page 1 gives up its writing lines and its questions, and last of all the
    latest note, which is then printed in full after them. */
 export function shrink(R, over) {
+  /* the three days after treatment leave page 1 first when it is too full (v345) */
+  if (R.fx && R.fxPage1 && over.some((s) => s === R.fx.title || /^Question|^Questions|^No questions|^Page 1|^Medicines|^Steady|^Latest|^Side effects|^Results/.test(s))) {
+    R.fxPage1 = false; R.tailPages = null; return true;
+  }
   /* The carer's area (v237) gives way first, and uses the space there is (v275, Mark: "always create an efficient
      report using space to its best"): if page 2 is full it tries page 1, under the questions, where a short list of
      questions leaves room; only when page 1 cannot hold it either does it move whole to the pages after the second.
@@ -511,6 +519,12 @@ export function shrink(R, over) {
   }
   if (R.carer && R.carerPage1 && over.some((s) => s === R.carer.title || /^Question|^Questions|^No questions|^Page 1|^Medicines|^Steady|^Latest|^Side effects|^Results/.test(s))) {
     R.carerPage1 = false; R.carerTail = true; R.tailPages = null; return true;
+  }
+  /* The three days after treatment (v345) use page 1's spare room before the weeks give up page 2, as the carer's area
+     does; back to page 2 if page 1 cannot hold them */
+  const p2over = over.some((s) => s === 'Week by week' || s === 'Page 2' || R.weeks.some((w) => w.title === s) || (R.fx && s === R.fx.title));
+  if (R.fx && !R.fxTail && !R.fxPage1 && !R.fxPage1Tried && p2over) {
+    R.fxPage1 = true; R.fxPage1Tried = true; R.tailPages = null; return true;
   }
   if (!R.weeksPage3 && R.weeks.some((w) => over.includes(w.title) || over.includes('Week by week') || over.includes('Page 2') || (R.fx && over.includes(R.fx.title)))) {
     R.weeksPage3 = true; R.tailPages = null; return true;
