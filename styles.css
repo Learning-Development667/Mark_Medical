@@ -1538,11 +1538,11 @@ body.is-readonly .workout .btn { display: none; }
 /* Colour-coded actions and report cards (v118): one tint per kind of action, the same on every
    report screen, so nothing that can be tapped is plain grey. Every pair is 4.5:1 or better:
    teal 6.0, green 5.3, warm 5.0, plum 8.7, blue 7.6 in light; 6.0, 6.4, 6.7, 9.4, 8.3 in dark. */
-.tint-teal { background: var(--teal-light); color: var(--teal); }
-.tint-green { background: var(--success-light); color: var(--success); }
-.tint-warm { background: var(--warm-light); color: var(--warm-dark); }
-.tint-plum { background: var(--tag-spine); color: var(--tag-spine-ink); }
-.tint-blue { background: var(--tag-arms); color: var(--tag-arms-ink); }
+.tint-teal { --fill: var(--teal-light); background: var(--teal-light); color: var(--teal); }
+.tint-green { --fill: var(--success-light); background: var(--success-light); color: var(--success); }
+.tint-warm { --fill: var(--warm-light); background: var(--warm-light); color: var(--warm-dark); }
+.tint-plum { --fill: var(--tag-spine); background: var(--tag-spine); color: var(--tag-spine-ink); }
+.tint-blue { --fill: var(--tag-arms); background: var(--tag-arms); color: var(--tag-arms-ink); }
 .btn-tint { border-color: transparent; font-weight: 600; box-shadow: var(--elev-raised); }
 .btn-tint:active { box-shadow: var(--elev-raised-pressed); transform: translateY(1px); }
 .btn .icon { width: 22px; height: 22px; flex: none; }
@@ -2160,3 +2160,73 @@ details.daymeal[open] .daymeal-sum::after { transform: rotate(90deg); }
 /* v332: the words written on the best day, on their own line under the scores */
 #mood-tiles .tile-quote { display: block; margin-top: var(--s-2); font-size: 15px; color: var(--text-primary); white-space: normal; }
 #mood-tiles .tile-quote b { display: block; font-size: 12px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 2px; }
+
+/* ---------- Gold rim buttons (v348) ----------
+   Mark chose the gold rim from the mock-up (30 October 2026): every button is a pill with a
+   slight champagne-gold rim, a soft gloss across its top and a little depth under it. The main
+   action is deep teal glass with its label in Fraunces; the others keep their own fill (cream,
+   or the report tints) under the same rim. The rim is the border, drawn as a gradient on the
+   border box, so a red border (Remove, Delete) still shows red. */
+:root {
+  --gold-rim: linear-gradient(160deg, #FBE7B5, #C9973F 45%, #F4D791 70%, #9C6A22);
+  --gold-glow: rgba(201, 151, 63, 0.26);
+  --gloss: linear-gradient(rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0));
+  --btn-cream: linear-gradient(180deg, #FFFDF7, #F3ECDD);
+  --btn-cream-ink: #0F5257;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --gloss: linear-gradient(rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0)); --btn-cream: linear-gradient(180deg, #22394A, #172633); --btn-cream-ink: #F3D9A0; }
+}
+:root[data-theme="dark"] { --gloss: linear-gradient(rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0)); --btn-cream: linear-gradient(180deg, #22394A, #172633); --btn-cream-ink: #F3D9A0; }
+
+.btn-primary, .btn-secondary, .btn-outline, .btn-tint, .btn-danger, .speakbtn, .recbtn {
+  position: relative;
+  isolation: isolate;
+  border-radius: 999px;
+  border: 2px solid transparent;
+}
+.btn-primary::before, .btn-secondary::before, .btn-outline::before, .btn-tint::before, .btn-danger::before, .speakbtn::before, .recbtn::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  left: 7%; right: 7%; top: 2px;
+  height: 40%;
+  border-radius: 999px 999px 40% 40%;
+  background: var(--gloss);
+  pointer-events: none;
+}
+.btn-primary {
+  color: #FFF3D6;
+  font-family: var(--font-head);
+  font-size: 19px;
+  letter-spacing: 0.01em;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.4);
+  background: linear-gradient(180deg, #18727A 0%, #0F5257 55%, #0B4247 100%) padding-box, var(--gold-rim) border-box;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.18), 0 8px 20px var(--gold-glow), 0 2px 4px rgba(10, 30, 35, 0.3);
+}
+.btn-primary::before { background: linear-gradient(rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.02)); }
+.btn-primary:active { box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.18), 0 3px 8px var(--gold-glow); }
+.btn-secondary, .btn-outline, .med-actions .btn-secondary, .btnrow .btn-secondary {
+  color: var(--btn-cream-ink);
+  font-weight: 700;
+  background: var(--btn-cream) padding-box, var(--gold-rim) border-box;
+  border-color: transparent;
+  box-shadow: 0 6px 14px rgba(120, 90, 40, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+.btn-secondary:active, .btn-outline:active, .med-actions .btn-secondary:active, .btnrow .btn-secondary:active { box-shadow: 0 2px 6px rgba(120, 90, 40, 0.16); }
+.btn-tint {
+  background: linear-gradient(rgba(255, 255, 255, 0.12), rgba(0, 0, 0, 0.05)) padding-box, linear-gradient(var(--fill), var(--fill)) padding-box, var(--gold-rim) border-box;
+  border-color: transparent;
+  font-weight: 700;
+  box-shadow: 0 6px 14px rgba(40, 30, 60, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+.btn-danger { background: var(--btn-cream); }
+.med-actions .btn-secondary.med-remove { border-color: var(--danger); background: var(--btn-cream); }
+.speakbtn { background: linear-gradient(var(--teal-light), var(--teal-light)) padding-box, var(--gold-rim) border-box; border-color: transparent; box-shadow: 0 6px 14px rgba(20, 60, 70, 0.14); }
+.speakbtn.is-listening, .speakbtn[aria-pressed="true"] { background: linear-gradient(var(--warm-light), var(--warm-light)) padding-box, var(--gold-rim) border-box; }
+.recbtn { background: linear-gradient(var(--warm-light), var(--warm-light)) padding-box, var(--gold-rim) border-box; border-color: transparent; box-shadow: 0 6px 14px rgba(120, 70, 40, 0.16); }
+/* Tiles with the icon over the words keep rounded corners rather than a pill */
+.meds-top .btn, .scan-btns .scan-btn { border-radius: var(--r-lg); }
+.meds-top .btn::before, .scan-btns .scan-btn::before { border-radius: var(--r-md); }
+@media (forced-colors: active) { .btn-primary, .btn-secondary, .btn-outline, .btn-tint, .btn-danger, .speakbtn, .recbtn { border-color: ButtonText; } }
+@media (max-width: 359px) { .med-log { padding: 0 12px; font-size: 17px; } }
