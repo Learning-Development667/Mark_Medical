@@ -78,9 +78,9 @@
   --tag-stand: #FBEBD9; --tag-stand-ink: #7A4210;
   --warn-bg: #FBE9EA; --warn-ink: #7A1C21; --warn-border: #A4262C;
   /* Colour: sleep-stage ramp for the Trends sleep chart, one hue (deepest to lightest) */
-  --sleep-deep: #373B8A;
-  --sleep-core: #4348A7;
-  --sleep-rem: #585CBC;
+  --sleep-deep: #2E3A87;
+  --sleep-core: #2B8A94;
+  --sleep-rem: #A97CC4;
   /* Colour: mood scale for the chemo calendar, teal (good) through neutral to warm (rough) */
   --mood-5: #18727A;
   --mood-4: #4F9AA0;
@@ -206,9 +206,9 @@
     --tag-spine: #3A2444; --tag-spine-ink: #E5CDEF;
     --tag-stand: #4A2E12; --tag-stand-ink: #F6D4AE;
     --warn-bg: #3D1F21; --warn-ink: #F5C6C9; --warn-border: #E27B80;
-    --sleep-deep: #BFC0E9;
-    --sleep-core: #9D9FDD;
-    --sleep-rem: #7B7ED1;
+    --sleep-deep: #8E9BEA;
+    --sleep-core: #5CC3C9;
+    --sleep-rem: #D3A6E6;
     --mood-5: #5CC3C9;
     --mood-4: #6FA9B8;
     --mood-3: #7E8E94;
