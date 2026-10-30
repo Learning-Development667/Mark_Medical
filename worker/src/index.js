@@ -491,8 +491,20 @@ function payloadFor(sub, payload, privateBody) { return privateBody && isPrivate
    POST /plan { what: 'oneoff' } (after "Remind me in 15 minutes"). The log is written only when something
    was sent. A phone on an older app still works: its changes are picked up at the daily rebuild. */
 const PLAN_PATH = 'bridge/reminderPlan';
-function planEntryFromDocs(subs, profile, medicines, oneOffs, day) {
-  const active = medicines.filter((m) => f(m.fields, 'active') !== false && f(m.fields, 'kind') !== 'prn' && f(m.fields, 'hospital') !== true && (!f(m.fields, 'courseEnd') || f(m.fields, 'courseEnd') >= day) && !(f(m.fields, 'courseStart') && f(m.fields, 'courseStart') > day));
+/* a day N days before or after a "YYYY-MM-DD" day, by the calendar */
+function shiftDay(day, n) { const d = new Date(day + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
+/* Around treatment days (v358): a medicine with treatmentDays follows the Treatment calendar, the session day (unless
+   treatOnDay is false) and treatAfter days after it. sessions is the set of session days from day - 7 to day. */
+function inTreatWindow(fields, day, sessions) {
+  if (f(fields, 'treatmentDays') !== true) return true;
+  if (f(fields, 'treatOnDay') !== false && sessions.has(day)) return true;
+  const after = Math.max(0, Math.min(7, Number(f(fields, 'treatAfter')) || 0));
+  for (let k = 1; k <= after; k++) if (sessions.has(shiftDay(day, -k))) return true;
+  return false;
+}
+function planEntryFromDocs(subs, profile, medicines, oneOffs, day, sessions) {
+  sessions = sessions || new Set();
+  const active = medicines.filter((m) => f(m.fields, 'active') !== false && f(m.fields, 'kind') !== 'prn' && f(m.fields, 'hospital') !== true && (!f(m.fields, 'courseEnd') || f(m.fields, 'courseEnd') >= day) && !(f(m.fields, 'courseStart') && f(m.fields, 'courseStart') > day) && inTreatWindow(m.fields, day, sessions));
   const times = [];
   active.forEach((m) => (f(m.fields, 'times') || []).map(toMinutes).filter((t) => t != null).forEach((t) => times.push({ medId: m.id, t, name: f(m.fields, 'name') || 'Medicine', dose: f(m.fields, 'dose') || '' })));
   return { phones: subs.length, nudge: !!(profile && f(profile.fields, 'stretchNudge') === true), oneOff: oneOffs.some((r) => f(r.fields, 'sent') !== true), times };
@@ -501,7 +513,14 @@ async function buildPlanEntry(fs, hid, day) {
   const subs = await fs.list(hp(hid, 'pushSubs'));
   if (!subs.length) return null;
   const [profile, medicines, oneOffs] = await Promise.all([fs.get(hp(hid, 'profile/main')), fs.list(hp(hid, 'medicines')), fs.list(hp(hid, 'reminders'))]);
-  return planEntryFromDocs(subs, profile, medicines, oneOffs, day);
+  /* only a household with a medicine around treatment days reads the calendar: the day and the seven before it */
+  const sessions = new Set();
+  if (medicines.some((m) => f(m.fields, 'treatmentDays') === true && f(m.fields, 'active') !== false)) {
+    const days = Array.from({ length: 8 }, (_, k) => shiftDay(day, -k));
+    const docs = await Promise.all(days.map((d) => fs.get(hp(hid, 'days/' + d)).catch(() => null)));
+    docs.forEach((doc, k) => { if (doc && doc.fields && f(doc.fields, 'chemo') === true) sessions.add(days[k]); });
+  }
+  return planEntryFromDocs(subs, profile, medicines, oneOffs, day, sessions);
 }
 const planEntryFields = (e) => ({ mapValue: { fields: {
   phones: { integerValue: String(e.phones) }, nudge: { booleanValue: !!e.nudge }, oneOff: { booleanValue: !!e.oneOff },
