@@ -844,7 +844,7 @@ input[type="range"].slider.is-pain::-moz-range-track { background: linear-gradie
 /* The compact Meds card (v215): the name, a word for what it is for, one status line and Log now; the rest on a tap */
 .med-top { display: flex; align-items: center; gap: 10px; }
 .med-toggle { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 8px; background: none; border: 0; padding: 0; min-height: 48px; text-align: left; font: inherit; color: inherit; cursor: pointer; }
-.med-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; overflow-wrap: anywhere; }
+.med-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; overflow-wrap: break-word; }
 .med-tag { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--teal); }
 .med-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 16px; color: var(--text-secondary); }
 .med-line .pill { font-size: 13px; min-height: 24px; padding: 0 9px; }
@@ -2227,7 +2227,7 @@ details.daymeal[open] .daymeal-sum::after { transform: rotate(90deg); }
 .meds-top .btn, .scan-btns .scan-btn { border-radius: var(--r-lg); }
 .meds-top .btn::before, .scan-btns .scan-btn::before { border-radius: var(--r-md); }
 @media (forced-colors: active) { .btn-primary, .btn-secondary, .btn-outline, .btn-tint, .btn-danger, .speakbtn, .recbtn { border-color: ButtonText; } }
-@media (max-width: 359px) { .med-log { padding: 0 12px; font-size: 17px; } }
+@media (max-width: 359px) { .med-log { padding: 0 8px; font-size: 16px; } .med-top { gap: 6px; } .med-toggle { gap: 4px; } .med-chev { width: 18px; height: 18px; } .card.med:not(.is-upcoming) .med-name { font-size: 17px; } }
 
 /* ---------- Cards to match the buttons (v349) ----------
    Mark: the gold rim buttons "can't just sit on a plain white background". Every raised card
