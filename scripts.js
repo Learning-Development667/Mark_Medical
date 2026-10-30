@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '354';
+const APP_VERSION = '355';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -5835,6 +5835,21 @@ async function savePdf(filename, title, makeBlob) {
 
 
 /* Every entry from a day onwards; null if the read failed */
+/* The latest weight before a day (v355), for the Trends weight chart. One query of the weights, kept for five
+   minutes, so moving between ranges does not ask again. */
+let weightCache = null, weightCacheAt = 0;
+async function lastWeightBefore(day) {
+  let list;
+  if (state.demo) list = (state.recentEntries || []).filter((e) => e.type === 'weight');
+  else {
+    if (!weightCache || Date.now() - weightCacheAt > 300000) {
+      try { const snap = await getDocs(query(hcol('entries'), where('type', '==', 'weight'))); weightCache = snap.docs.map((d) => ({ id: d.id, ...d.data() })); weightCacheAt = Date.now(); }
+      catch (e) { console.error(e); return null; }
+    }
+    list = weightCache;
+  }
+  return list.filter((e) => e.day < day && Number(e.value) > 0).sort((a, b) => entryDate(a) - entryDate(b)).pop() || null;
+}
 async function loadEntriesFrom(from) {
   if (state.demo) return state.recentEntries.filter((e) => e.day >= from);
   try {
@@ -13366,16 +13381,25 @@ async function renderVitals() {
 
   /* Weight */
   const weights = entries.filter((e) => e.type === 'weight');
+  /* v355 (Mark: "it should still come in from the last known weight"): the last weight before the range,
+     drawn at its left edge as a hollow point, so the line comes in from it even in a week with few or none */
+  const before = await lastWeightBefore(from);
   const wUnit = weightPref(); // stones and pounds are plotted in pounds, labelled as stones and pounds
   /* v353: on the same time axis as the other charts, so the whole week, fortnight or month shows (Mark: "only
      showing a day"; until now the axis was just the days that had a weight) */
-  const wPoints = weights.map((e) => ({ x: entryDate(e).getTime(), y: wUnit === 'kg' ? Number(e.value) : Number(e.value) / KG_PER_LB }));
+  const wOf = (e) => (wUnit === 'kg' ? Number(e.value) : Number(e.value) / KG_PER_LB);
+  const wPoints = weights.map((e) => ({ x: entryDate(e).getTime(), y: wOf(e) }));
+  if (before) wPoints.unshift({ x: start, y: wOf(before), carried: before.day });
   const wTick = (v) => (wUnit === 'kg' ? v + ' kg' : Math.floor(Math.round(v) / 14) + ' st ' + (Math.round(v) % 14));
   makeChart('weight', {
     type: 'line',
-    data: { datasets: [lineSeries(T, T.teal, wPoints, { label: 'Weight' })] },
+    data: { datasets: [lineSeries(T, T.teal, wPoints, { label: 'Weight',
+      pointBackgroundColor: (c) => (c.raw && c.raw.carried ? T.surface : c.dataIndex === wPoints.length - 1 ? T.teal : hexAlpha(T.teal, 0.7)),
+      pointBorderColor: (c) => (c.raw && c.raw.carried ? T.teal : c.dataIndex === wPoints.length - 1 ? T.surface : 'transparent'),
+      pointRadius: (c) => (c.raw && c.raw.carried ? 4.5 : c.dataIndex === wPoints.length - 1 ? 5 : 2.5) })] },
     options: lineOptions(Object.assign(yAxisBase(T), { grace: '15%', ticks: Object.assign(yAxisBase(T).ticks, { precision: 1, callback: wTick }) }), {
-      title: pointTitle, label: (i) => (wUnit === 'kg' ? fmtKg(i.raw.y) : fmtStLb(Number(i.raw.y) * KG_PER_LB) + ' (' + fmtKg(Number(i.raw.y) * KG_PER_LB) + ')')
+      title: (items) => (items.length && items[0].raw.carried ? 'Last weight before this period, ' + parseDay(items[0].raw.carried).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : pointTitle(items)),
+      label: (i) => (wUnit === 'kg' ? fmtKg(i.raw.y) : fmtStLb(Number(i.raw.y) * KG_PER_LB) + ' (' + fmtKg(Number(i.raw.y) * KG_PER_LB) + ')')
     }, false, wPoints.length)
   });
 
