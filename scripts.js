@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '348';
+const APP_VERSION = '349';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -8433,7 +8433,7 @@ async function openReportViewer(kind, printNow) {
   const html = K.html(res.R);
   const nPages = res.doc ? res.doc.querySelectorAll('.page').length : 2;
   const pagesWord = nPages === 1 ? 'one A4 page' : nPages === 2 ? 'two A4 pages' : nPages + ' A4 pages';
-  const frame = h('iframe', { class: 'viewer-frame', title: name + ', ' + pagesWord, sandbox: 'allow-same-origin allow-modals' }); // no scripts can run in a report (v329)
+  const frame = h('iframe', { class: 'viewer-frame', title: name + ', ' + pagesWord }); // v349: no sandbox. Safari ran none of the zoom's touch and gesture listeners inside a sandboxed frame, so pinch stopped working in v329; a srcdoc frame still takes the app's Content Security Policy, so no script in a report can run (h/t50)
   const print = h('button', { class: 'btn btn-tint tint-green', type: 'button', id: 'viewer-print' }, icon('print'), 'Print');
   const save = h('button', { class: 'btn btn-tint tint-warm', type: 'button', id: 'viewer-save' }, icon('download'), 'Save as PDF');
   const doPrint = () => {
