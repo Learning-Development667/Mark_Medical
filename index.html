@@ -19,7 +19,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=359">
+  <link rel="stylesheet" href="styles.css?v=360">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -912,6 +912,17 @@
             <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
           </button>
         </div>
+        <h2 class="section-title">Your Today screen</h2>
+        <div id="settings-tiles" class="card settings-group">
+          <p class="hint">Tick the tiles you use. The rest are hidden from Today, on this phone only. Anything already logged stays on the timeline and the reports.</p>
+          <div id="settings-tiles-list" class="tile-ticks"></div>
+        </div>
+        <h2 class="section-title">Things I track</h2>
+        <div id="settings-tracks" class="card settings-group">
+          <p class="hint">Your own things, such as caffeine, screen time or a day at work. Asked in the evening check-in and shown on Notes for the team. Shared by everyone in the circle.</p>
+          <div id="settings-tracks-list"></div>
+          <button id="settings-track-add" class="btn btn-primary btn-block" type="button">Add something to track</button>
+        </div>
         <h2 class="section-title">What Daybook is for</h2>
         <div id="settings-packs" class="card settings-group">
           <p class="hint">Tick what applies; more than one is fine. Each brings its own questions and its own limits on the reports. Shared by everyone in the circle.</p>
@@ -1194,6 +1205,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=359"></script>
+  <script type="module" src="scripts.js?v=360"></script>
 </body>
 </html>
