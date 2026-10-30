@@ -2330,3 +2330,26 @@ details.daymeal[open] .daymeal-sum::after { transform: rotate(90deg); }
 .reports-switch .seg::before { content: ""; position: absolute; z-index: -1; left: 7%; right: 7%; top: 2px; height: 40%; border-radius: 999px 999px 40% 40%; background: var(--gloss); pointer-events: none; }
 .reports-switch .seg.is-active::before { background: linear-gradient(rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.02)); }
 @media (forced-colors: active) { .reports-switch .seg { border-color: ButtonText; } .reports-switch .seg.is-active { border-color: Highlight; } }
+
+/* ---------- Each screen in its tab's colour (v356) ----------
+   Mark approved the mock-up: the page name in the top bar, a line under the top bar and a short bar above each
+   section heading take the colour of the tab the screen belongs to (body[data-accent], set in showTab()). Cards and
+   buttons are unchanged. The text colours are the darker inks, each 4.5:1 or better on the top bar. */
+body[data-accent="today"] { --acc: #B07A1E; --acc-ink: #85590F; }
+body[data-accent="meds"] { --acc: #18727A; --acc-ink: #18727A; }
+body[data-accent="chemo"] { --acc: #C2703D; --acc-ink: #9C4F22; }
+body[data-accent="exercise"] { --acc: #2D7354; --acc-ink: #2D7354; }
+body[data-accent="vitals"] { --acc: #2F5E8C; --acc-ink: #2F5E8C; }
+body[data-accent="more"] { --acc: #5B4A7A; --acc-ink: #5B4A7A; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) body[data-accent="today"] { --acc: #E6B65C; --acc-ink: #E6B65C; }
+  :root:not([data-theme="light"]) body[data-accent="meds"] { --acc: #5CC3C9; --acc-ink: #5CC3C9; }
+  :root:not([data-theme="light"]) body[data-accent="chemo"] { --acc: #E39A6A; --acc-ink: #E39A6A; }
+  :root:not([data-theme="light"]) body[data-accent="exercise"] { --acc: #6CC79A; --acc-ink: #6CC79A; }
+  :root:not([data-theme="light"]) body[data-accent="vitals"] { --acc: #7FAEE0; --acc-ink: #7FAEE0; }
+  :root:not([data-theme="light"]) body[data-accent="more"] { --acc: #B9A6E0; --acc-ink: #B9A6E0; }
+}
+body[data-accent] .topbar { box-shadow: inset 0 -3px 0 var(--acc); }
+body[data-accent] .brand-page { color: var(--acc-ink); }
+body[data-accent] .view .section-title::before { content: ""; display: block; width: 28px; height: 3px; border-radius: 2px; background: var(--acc); margin-bottom: 6px; }
+@media (forced-colors: active) { body[data-accent] .topbar { box-shadow: none; } body[data-accent] .view .section-title::before { display: none; } }
