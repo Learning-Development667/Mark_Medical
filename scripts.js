@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '364';
+const APP_VERSION = '365';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -13504,18 +13504,21 @@ function wireChartViews() {
   for (const key of CHART_TABLE_KEYS) {
     const canvas = $('chart-' + key);
     const card = canvas && canvas.closest('.chart-card');
-    if (!card) continue;
-    const title = card.querySelector('.section-title');
-    const head = h('div', { class: 'chart-head' });
-    title.replaceWith(head);
-    head.appendChild(title);
-    const toggle = h('div', { class: 'viewtoggle', role: 'group', 'aria-label': title.textContent.trim() + ', show as' },
-      h('button', { class: 'vt', type: 'button', dataset: { view: 'chart' }, text: 'Chart', onclick: () => setChartView(key, 'chart') }),
-      h('button', { class: 'vt', type: 'button', dataset: { view: 'table' }, text: 'Table', onclick: () => setChartView(key, 'table') }));
-    head.appendChild(toggle);
-    card.querySelector('.chart-wrap').insertAdjacentElement('afterend', h('div', { class: 'chart-table', id: 'table-' + key, hidden: true }));
-    setChartView(key, tableViews().has(key) ? 'table' : 'chart', true);
+    if (card) wireChartCard(card, key);
   }
+}
+/* one card's Chart | Table head and its empty table box (the fixed cards at load, the v365 own cards each draw) */
+function wireChartCard(card, key) {
+  const title = card.querySelector('.section-title');
+  const head = h('div', { class: 'chart-head' });
+  title.replaceWith(head);
+  head.appendChild(title);
+  const toggle = h('div', { class: 'viewtoggle', role: 'group', 'aria-label': title.textContent.trim() + ', show as' },
+    h('button', { class: 'vt', type: 'button', dataset: { view: 'chart' }, text: 'Chart', onclick: () => setChartView(key, 'chart') }),
+    h('button', { class: 'vt', type: 'button', dataset: { view: 'table' }, text: 'Table', onclick: () => setChartView(key, 'table') }));
+  head.appendChild(toggle);
+  card.querySelector('.chart-wrap').insertAdjacentElement('afterend', h('div', { class: 'chart-table', id: 'table-' + key, hidden: true }));
+  setChartView(key, tableViews().has(key) ? 'table' : 'chart', true);
 }
 function setChartView(key, view, quiet) {
   const card = $('chart-' + key).closest('.chart-card');
@@ -13543,6 +13546,117 @@ function tableLevel(key, e) {
   if (key === 'bowel' && bowelRules() === 'ibd') { const g = bloodGradeOf(e); return g >= 2 || e.black ? 'red' : g || e.accident || Number(e.urgency) === 2 || e.night || e.output === 'watery' ? 'amber' : ''; }
   if (key === 'bowel') return e.blood || e.black || (isLoose(e) && e.night) ? 'red' : isLoose(e) ? 'amber' : '';
   return '';
+}
+/* ---- Things I track and symptoms on Trends (v365, the reviewers' charts, Mark: "Do your recommendations"). One card per
+   tracked thing answered in the period (a number as bars with the average and the most, a score as a line on 0 to 10 with
+   the average and the highest, no level judged, a yes or no as one square a day: green yes, grey no, ? not answered) and
+   one card per symptom name logged in the period (the day's highest score as bars, the amber 4 to 6 and red 7 to 10 bands
+   behind them, days logged and the highest), each with the Chart | Table switch, shown only once something is logged, drawn
+   as they come into view like every other chart. Notes for the team is unchanged and nothing new is stored. ---- */
+function ownKeyOf(prefix, text) { return prefix + String(text).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40); }
+function buildOwnCards(entries, from) {
+  const box = $('charts-own');
+  if (!box) return [];
+  /* let go of the cards drawn last time (a chart still waiting to come into view included) */
+  box.querySelectorAll('canvas').forEach((c) => { const k = c.id.replace(/^chart-/, ''); if (state.charts[k]) { state.charts[k].destroy(); delete state.charts[k]; } delete chartPending[k]; if (chartWatcher) chartWatcher.unobserve(c); });
+  box.replaceChildren();
+  const days = [];
+  for (let i = 0; i < state.trendRange; i++) days.push(addDays(from, i));
+  const inRange = entries.filter((e) => e.day >= from);
+  const cards = [];
+  /* the tracked things: one evening answer a day */
+  const byId = {};
+  inRange.filter((e) => isPatientCheckin(e) && e.slot === 'evening' && e.own).forEach((e) => {
+    Object.entries(e.own).forEach(([id, a]) => { if (!a || a.v == null) return; (byId[id] = byId[id] || { id, name: a.name, kind: a.kind, unit: a.unit, rows: [] }).rows.push({ e, day: e.day, v: a.v }); });
+  });
+  const order = ownTracks().map((t) => t.id);
+  Object.values(byId).sort((a, b) => (order.indexOf(a.id) + 1 || 99) - (order.indexOf(b.id) + 1 || 99)).forEach((t) => {
+    const key = ownKeyOf('own-', t.id);
+    const perDay = days.map((d) => { const r = t.rows.find((x) => x.day === d); return r ? r.v : null; });
+    const sub = t.kind === 'yesno' ? 'Yes or no, each evening' : t.kind === 'score' ? 'A score, 0 to 10, each evening' : 'Each evening' + (t.unit ? ', in ' + t.unit : '');
+    cards.push({ key, kind: t.kind, name: t.name, unit: t.unit, sub, perDay, rows: t.rows, cell: (r) => [ownValText({ kind: t.kind, unit: t.unit, v: r.v }), h('small', { text: 'Evening check-in' })] });
+  });
+  /* the symptoms, by name as logged: the Symptom tile and the check-ins' side effects alike */
+  const byName = {};
+  inRange.filter((e) => e.type === 'symptom' && e.value != null && e.what).forEach((e) => {
+    const name = String(e.what).trim(), k = name.toLowerCase();
+    (byName[k] = byName[k] || { name, rows: [] }).rows.push({ e, day: e.day, v: Number(e.value) });
+  });
+  Object.values(byName).sort((a, b) => a.name.localeCompare(b.name)).forEach((t) => {
+    const key = ownKeyOf('sym-', t.name);
+    const perDay = days.map((d) => { const vs = t.rows.filter((x) => x.day === d).map((x) => x.v); return vs.length ? Math.max(...vs) : null; });
+    cards.push({ key, kind: 'symptom', name: t.name, sub: "0 to 10, the day's highest", perDay, rows: t.rows, level: (r) => (r.v >= 7 ? 'red' : r.v >= 4 ? 'amber' : ''),
+      cell: (r) => { const e = r.e, c = causeOf(e); const from = e.fromCheckin && e.grade != null ? FX_WORDS[e.grade] + ', ' + slotWord(e.fromCheckin).toLowerCase() + ' check-in' : c ? 'Side effect of ' + c.name : 'Symptom tile'; return [r.v + '/10', h('small', { text: [from, e.note].filter(Boolean).join(' \u00b7 ') })]; } });
+  });
+  const dayText = (s) => parseDay(s).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+  const rangeWord = `the last ${state.trendRange} days`;
+  cards.forEach((c, i) => {
+    const answered = c.perDay.filter((v) => v != null);
+    /* the figures under the heading: the mock-up's two or three large numbers */
+    const stats = [];
+    if (c.kind === 'yesno') stats.push([answered.filter(Boolean).length, 'of ' + plural(answered.length, 'day') + ', yes']);
+    else if (c.kind === 'number') {
+      const avg = answered.reduce((a, b) => a + Number(b), 0) / answered.length, hi = Math.max(...answered.map(Number)), top = days[c.perDay.findIndex((v) => Number(v) === hi)];
+      stats.push([fmtQtyNumber(Math.abs(avg) >= 100 ? Math.round(avg) : Math.round(avg * 10) / 10), (c.unit ? c.unit + ' ' : '') + 'a day on average'], [fmtQtyNumber(hi), 'most, ' + fmtDayShort(top)]);
+    } else {
+      const avg = answered.reduce((a, b) => a + Number(b), 0) / answered.length, hi = Math.max(...answered.map(Number)), top = days[c.perDay.findIndex((v) => Number(v) === hi)];
+      if (c.kind === 'symptom') stats.push([answered.length, plural(answered.length, 'day').replace(/^\d+ /, '') + ' logged'], [hi, 'highest, ' + fmtDayShort(top)]);
+      else stats.push([(Math.round(avg * 10) / 10).toFixed(1), 'average'], [hi, 'highest, ' + fmtDayShort(top)]);
+    }
+    const note = c.kind === 'symptom' ? 'Amber band 4 to 6, red band 7 to 10, the same as the Pain chart.' : c.kind === 'score' ? 'No level is judged: the number is yours.' : c.kind === 'yesno' ? 'Green is yes, grey is no. A grey ? is an evening not answered.' : '';
+    const wrap = c.kind === 'yesno'
+      ? h('div', { class: 'chart-wrap yn-wrap' }, h('div', { class: 'yn', id: 'chart-' + c.key, role: 'img', 'aria-label': `${c.name}: ${answered.filter(Boolean).length} of ${plural(answered.length, 'day')} answered yes, ${rangeWord}.` },
+          ...days.map((d, j) => { const v = c.perDay[j]; return h('div', { class: 'yn-day' + (v == null ? '' : v ? ' is-yes' : ' is-no'), title: dayText(d) }, h('span', { text: v == null ? '?' : v ? 'Yes' : 'No' }), h('small', { text: parseDay(d).toLocaleDateString('en-GB', { weekday: 'short' }).slice(0, 2) })); })))
+      : h('div', { class: 'chart-wrap' }, h('canvas', { id: 'chart-' + c.key }));
+    const card = h('div', { class: 'card chart-card chart-own', dataset: { kind: c.kind } },
+      h('h2', { class: 'section-title' }, c.name, h('small', { class: 'chart-sub', text: c.sub })),
+      h('div', { class: 'chart-stat' }, ...stats.map(([v, l]) => h('div', null, h('span', { class: 'v', text: String(v) }), h('span', { class: 'l', text: l })))),
+      wrap,
+      note ? h('p', { class: 'legend-note', text: note }) : null);
+    if (i === 0) card.appendChild(h('p', { class: 'legend-note chart-own-foot', text: 'Things you track and the symptoms you log, each on its own chart. Notes for the team is unchanged.' }));
+    box.appendChild(card);
+    wireChartCard(card, c.key);
+    /* the table: newest first, like every other */
+    const tb = $('table-' + c.key);
+    const rows = c.rows.slice().sort((a, b) => entryDate(b.e) - entryDate(a.e));
+    const tbody = h('tbody');
+    let lastDay = null;
+    for (const r of rows) {
+      const first = r.day !== lastDay; lastDay = r.day;
+      const level = c.level ? c.level(r) : '';
+      const cell = h('td', { class: 'td-val' + (level ? ' lvl-' + level : '') });
+      for (const part of c.cell(r)) { if (part == null) continue; if (typeof part === 'string') cell.appendChild(document.createTextNode(part)); else cell.appendChild(part); }
+      tbody.appendChild(h('tr', null, h('td', { class: 'td-date' + (first ? '' : ' is-repeat'), text: dayText(r.day) }), h('td', { class: 'td-time', text: fmtTime(entryDate(r.e)) }), cell));
+    }
+    tb.appendChild(h('table', null, h('caption', { class: 'sr-only', text: `${c.name}, ${rangeWord}, newest first` }),
+      h('thead', null, h('tr', null, h('th', { scope: 'col', text: 'Date' }), h('th', { scope: 'col', text: 'Time' }), h('th', { scope: 'col', text: c.name }))), tbody));
+  });
+  return cards;
+}
+function drawOwnCharts(cards, o) {
+  const { T, reduced, days, dayLabel, lineOptions, tenScale } = o;
+  for (const c of cards) {
+    if (c.kind === 'yesno' || !$('chart-' + c.key)) continue;
+    if (c.kind === 'number') { makeChart(c.key, barChart(T, days.map(dayLabel), c.perDay.map((v) => (v == null ? null : Number(v))), { unit: (v) => fmtQtyNumber(v) + (c.unit ? ' ' + c.unit : ''), reduced })); continue; }
+    if (c.kind === 'score') {
+      const pts = c.perDay.map((v, i) => (v == null ? null : { x: parseDay(days[i]).getTime() + 12 * 36e5, y: Number(v) })).filter(Boolean);
+      makeChart(c.key, { type: 'line', data: { datasets: [lineSeries(T, T.teal, pts, { label: c.name })] },
+        options: lineOptions(tenScale(), { title: (items) => (items.length ? new Date(items[0].raw.x).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) : ''), label: (i) => i.raw.y + '/10' }, false, pts.length) });
+      continue;
+    }
+    /* a symptom: bars of the day's highest, the pain bands drawn behind them */
+    const cfg = barChart(T, days.map(dayLabel), c.perDay, { unit: (v) => v, tip: (v) => v + '/10', reduced, suggestedMax: 10 });
+    Object.assign(cfg.options.scales.y, { min: 0, max: 10, ticks: Object.assign(cfg.options.scales.y.ticks, { stepSize: 2, maxTicksLimit: 6 }) });
+    cfg.plugins = [{ id: 'painBands', beforeDatasetsDraw(chart) {
+      const { ctx, chartArea: a, scales: { y } } = chart;
+      if (!a) return;
+      ctx.save();
+      ctx.fillStyle = hexAlpha(T.amber, 0.16); ctx.fillRect(a.left, y.getPixelForValue(7), a.right - a.left, y.getPixelForValue(4) - y.getPixelForValue(7));
+      ctx.fillStyle = hexAlpha(T.red, 0.12); ctx.fillRect(a.left, y.getPixelForValue(10), a.right - a.left, y.getPixelForValue(7) - y.getPixelForValue(10));
+      ctx.restore();
+    } }];
+    makeChart(c.key, cfg);
+  }
 }
 function renderChartTables(entries, from) {
   const inRange = entries.filter((e) => e.day >= from);
@@ -13681,6 +13795,7 @@ async function renderVitals() {
   entries.sort((a, b) => entryDate(a) - entryDate(b));
   renderVitalsLatest(entries);
   renderChartTables(entries, from);
+  const own = buildOwnCards(entries, from);
   /* Latest readings and the tables are shown above regardless; only the charts need the library. */
   try {
     await loadScript(CDN.chart);
@@ -13740,6 +13855,9 @@ async function renderVitals() {
       scales: { x: Object.assign(xAxisBase(T), { stacked: true }), y: Object.assign(yAxisBase(T), { stacked: true, beginAtZero: true, suggestedMax: 4, ticks: Object.assign(yAxisBase(T).ticks, { precision: 0 }) }) },
       plugins: { legend: { display: false }, tooltip: Object.assign(tooltipStyle(T), { callbacks: { label: (i) => i.dataset.label + ': ' + i.raw } }) } }
   });
+
+  /* Things I track and symptoms (v365): one card each, after the fixed cards */
+  drawOwnCharts(own, { T, reduced, days, dayLabel, lineOptions, tenScale: () => Object.assign(yAxisBase(T), { min: 0, max: 10, ticks: Object.assign(yAxisBase(T).ticks, { stepSize: 2, maxTicksLimit: 6 }) }) });
 
   /* Weight */
   const weights = entries.filter((e) => e.type === 'weight');
