@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '359';
+const APP_VERSION = '360';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -1957,6 +1957,7 @@ function syncSettings() {
   if (document.activeElement !== rname) rname.value = (state.profile && state.profile.reportName) || '';
   rname.disabled = Boolean(state.readOnly);
   syncWeekSetting();
+  renderTracksCard();
   /* Today's timeline reads the setting when it draws, so redraw it, and any open report */
   renderToday();
   if (!$('view-food').hidden) renderFoodDiary();
@@ -1975,6 +1976,82 @@ async function saveProfilePatch(patch, said) {
   if (state.demo) { state.profile = { ...state.profile, ...patch }; syncSettings(); renderToday(); if (said) toast(said); return true; }
   try { await setDoc(hdoc('profile', 'main'), patch, { merge: true }); if (said) toast(said); return true; }
   catch (e) { console.error(e); toast('Could not save the setting'); return false; }
+}
+/* Your Today screen (v360): the quick-add tiles this phone shows. Kept on the phone (daybook.today.hidden), since a carer
+   and a patient may use different tiles; a hidden tile's entries still show everywhere. */
+const TILES_KEY = 'daybook.today.hidden';
+function hiddenTiles() { try { const v = JSON.parse(localStorage.getItem(TILES_KEY) || '[]'); return new Set(Array.isArray(v) ? v : []); } catch (e) { return new Set(); } }
+function applyTodayTiles() {
+  const off = hiddenTiles();
+  document.querySelectorAll('#view-today .qa[data-add]').forEach((b) => b.classList.toggle('is-off', off.has(b.dataset.add)));
+}
+function renderTilesCard() {
+  const list = $('settings-tiles-list');
+  if (!list) return;
+  const off = hiddenTiles();
+  const tiles = [...document.querySelectorAll('#view-today .qa[data-add]')];
+  list.replaceChildren(...tiles.map((b) => {
+    const key = b.dataset.add, name = b.textContent.trim();
+    const box = h('input', { type: 'checkbox', id: 'tile-' + key, checked: !off.has(key), onchange: (ev) => {
+      const now = hiddenTiles();
+      if (ev.target.checked) now.delete(key); else now.add(key);
+      if (now.size >= tiles.length) { ev.target.checked = true; toast('Keep at least one tile on Today'); return; }
+      try { localStorage.setItem(TILES_KEY, JSON.stringify([...now])); } catch (e) {}
+      applyTodayTiles();
+      toast(name + (ev.target.checked ? ' shown on Today' : ' hidden from Today'));
+    } });
+    return h('label', { class: 'check settings-toggle' }, box, h('span', { text: name }));
+  }));
+}
+/* Things I track (v360): the list in Settings, and a sheet to add, change or remove one */
+function renderTracksCard() {
+  const list = $('settings-tracks-list'), add = $('settings-track-add');
+  if (!list) return;
+  const locked = Boolean(state.readOnly || state.viewer);
+  const tracks = ownTracks();
+  list.replaceChildren(...(tracks.length ? tracks.map((t) => h('div', { class: 'track-row' },
+    h('div', { class: 'track-main' }, h('b', { text: t.name }), h('span', { class: 'hint hint-small', text: trackKindWords(t) })),
+    locked ? null : h('button', { class: 'btn btn-secondary', type: 'button', 'aria-label': 'Edit ' + t.name, onclick: () => openTrackSheet(t) }, 'Edit')))
+    : [h('p', { class: 'hint track-empty', text: 'Nothing yet.' })]));
+  add.hidden = locked || tracks.length >= TRACKS_MAX;
+}
+function openTrackSheet(t) {
+  const isNew = !t;
+  const name = h('input', { class: 'input', type: 'text', maxlength: '40', autocomplete: 'off', placeholder: 'e.g. Caffeine, Screen time, At work today', value: t ? t.name : '' });
+  const kindIn = h('input', { type: 'hidden', value: t ? t.kind : 'yesno' });
+  const kinds = presets(TRACK_KINDS.map(([value, label]) => ({ value, label })), kindIn, kindIn.value);
+  kinds.setAttribute('role', 'group'); kinds.setAttribute('aria-label', 'How is it answered?');
+  const unit = h('input', { class: 'input', type: 'text', maxlength: '20', autocomplete: 'off', placeholder: 'e.g. cups, hours', value: t && t.unit ? t.unit : '' });
+  const unitField = field('Counted in (optional)', unit);
+  const example = h('p', { class: 'hint' });
+  const sync = () => {
+    unitField.hidden = kindIn.value !== 'number';
+    const n = name.value.trim() || 'It';
+    example.textContent = 'Asked in the evening check-in each day, and shown on Notes for the team, for example: "' +
+      (kindIn.value === 'yesno' ? n + ': yes on 4 of 7 days answered."' : kindIn.value === 'score' ? n + ': about 4.3/10, highest 7, 7 days answered."' : n + ': about 2.5' + (unit.value.trim() ? ' ' + unit.value.trim() : '') + ' a day, 7 days answered."');
+  };
+  kinds.addEventListener('click', () => setTimeout(sync, 0));
+  name.addEventListener('input', sync); unit.addEventListener('input', sync);
+  sync();
+  const save = async (next, msg) => { const ok = await saveProfilePatch({ tracks: next }, msg); if (ok !== false) { closeSheet({ force: true }); renderTracksCard(); } };
+  const body = h('div', null,
+    field('What is it called?', name),
+    h('p', { class: 'fieldlabel', text: 'How is it answered?' }), kinds, unitField, example,
+    h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => {
+      const n = name.value.trim();
+      if (!n) { missing(name, 'Give it a name'); return; }
+      const others = ownTracks().filter((x) => !t || x.id !== t.id);
+      if (others.some((x) => x.name.toLowerCase() === n.toLowerCase())) { missing(name, 'You track ' + n + ' already', CHECK); return; }
+      const item = { id: t ? t.id : 't' + Date.now().toString(36), name: n, kind: kindIn.value, unit: kindIn.value === 'number' ? unit.value.trim() : '' };
+      const next = t ? ownTracks().map((x) => (x.id === t.id ? item : x)) : [...ownTracks(), item];
+      save(next, isNew ? n + ' added. It is asked in the evening check-in.' : n + ' saved');
+    } }, 'Save'),
+    isNew ? null : h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: async () => {
+      closeSheet({ force: true });
+      if (await confirmSheet('Stop tracking ' + t.name + '?', 'It will not be asked any more. What was already answered stays on the check-ins and the reports.', 'Stop tracking it', true)) save(ownTracks().filter((x) => x.id !== t.id), 'Stopped tracking ' + t.name);
+    } }, 'Stop tracking this'),
+    h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => closeSheet({ force: true }) }, 'Cancel'));
+  openSheet(isNew ? 'Add something to track' : 'Change ' + t.name, body);
 }
 function renderPacksCard() {
   const list = $('settings-packs-list'), ibdBox = $('settings-ibd');
@@ -2986,6 +3063,7 @@ function ensureFoodIndexForToday() {
 
 function renderToday() {
   ensureFoodIndexForToday();
+  applyTodayTiles();
   renderFeedbackRow();
   renderWhatsNew();
   renderTiles();
@@ -5499,7 +5577,8 @@ function deleteMeal(id) {
 }
 
 $('more-meals').addEventListener('click', openManageMeals);
-$('more-settings').addEventListener('click', () => { showTab('settings'); syncWeekSetting(); });
+$('more-settings').addEventListener('click', () => { showTab('settings'); syncWeekSetting(); renderTilesCard(); renderTracksCard(); });
+if ($('settings-track-add')) $('settings-track-add').addEventListener('click', () => openTrackSheet(null));
 $('settings-back').addEventListener('click', () => showTab('more'));
 
 /* ---------- The Guide (v167) ----------
@@ -8008,7 +8087,7 @@ function buildTwoPage(n) {
     title: 'Notes for the team',
     subtitle: `A patient summary for the nursing and medical team.${conditionWords() ? ' ' + conditionWords().replace(/^./, (c) => c.toUpperCase()).replace(/\.?$/, '.') : ''} ${word} to ${t.getDate()} ${MON_LONG[t.getMonth()]} ${t.getFullYear()}.`,
     patient, period, prepared: rDay(today) + ' ' + parseDay(today).getFullYear(),
-    latest, tiles, meds, hospital, steady, sideFx: twoPageSideFx(entries, new Set(fxLog ? fxLog.used : [])), results: twoPageResults(entries),
+    latest, tiles, meds, hospital, steady, sideFx: twoPageSideFx(entries, new Set(fxLog ? fxLog.used : [])), results: twoPageResults(entries), own: (() => { const t = ownTally(entries, from, to); return t.length ? t.map((x) => x.short).join('. ') + '.' : null; })(),
     questions: qs, more: 0, older: report.older.length, olderFrom: rDay(from), extraQ: [], weeksPage3: false, lines: 3,
     charts, days: labels, weeks, carer: carerWeekLog(entries, from, to), carerTail: false, carerPage1: false,
     fx: fxLog, fxTail: false,
@@ -8872,6 +8951,8 @@ function summaryRows(entries, from, to) {
         'Symptoms: ' + items.filter((i) => i.worst >= 4).map((i) => `${i.what.toLowerCase()}${i.days > 1 ? ' on ' + plural(i.days, 'day') + ',' : ''} up to ${i.worst}/10`).join('; '));
     } else fine.push(`symptoms (${plural(symptoms.length, 'reading')}, none above ${worst.worst}/10)`);
   }
+  /* Things I track (v360): one teal line each, facts only */
+  ownTally(entries, from, to).forEach((t) => push('teal', 'Things tracked', t.text, null, t.short));
   /* Side effects (v173): every symptom with a cause, mild ones too, since a team wants to know what a treatment
      or medicine is doing even when it is below the flagging line; a Context line, not a warning */
   const sideFx = symptoms.filter((e) => causeOf(e));
@@ -9318,6 +9399,8 @@ const CHECKIN_QUESTIONS = {
     { key: 'sidefx', kind: 'sidefx', q: 'Any side effects since treatment?' },
     { key: 'settled', kind: 'text', q: 'Anything that has settled since yesterday?', ph: 'e.g. the sickness has eased' },
     /* Wellbeing (v156): three taps that take ten seconds, the data on a bad night; then the mood score; then the words, optional */
+    /* Things I track (v360): only when the circle has added something */
+    { key: 'own', kind: 'own', q: 'Your own things today', when: () => ownTracks().length > 0 },
     { key: 'wb', kind: 'taps', q: 'Over today, how much did you...', hint: 'Three taps, ten seconds. The words are optional, two screens on.' },
     { key: 'mood', kind: 'slider', q: 'How is your mood?', low: '1 rough', high: '10 great', legacyNote: 'moodNote' },
     { key: 'journal', kind: 'text', q: 'How was today, really?', ph: 'e.g. rough morning with the pain, but the afternoon in the garden pulled me round', hint: 'Whatever comes to mind: what happened, how it felt, what you did about it. Said out loud is fine. Skip is fine too; the three taps are enough.' },
@@ -9393,6 +9476,45 @@ function fastTally(mornings) {
   const asked = mornings.filter((e) => fastKind(e.fast) != null), fasting = asked.filter((e) => isFasting(e.fast));
   const by = new Map(); fasting.forEach((e) => { const w = fastWords(e.fast); by.set(w, (by.get(w) || 0) + 1); });
   return { asked: asked.length, n: fasting.length, days: fasting.map((e) => e.day).sort(), text: [...by].sort((a, b) => b[1] - a[1]).map(([w, n]) => w + ' on ' + plural(n, 'day')).join(', ') };
+}
+/* Things I track (v360, Mark: a generic add-on rather than new conditions). The circle's own list, profile/main.tracks
+   [{ id, name, kind 'yesno'|'number'|'score', unit }], asked in one evening check-in step and saved on the check-in as
+   own { [id]: { name, kind, unit, v } }, so an answer still reads right after the thing is renamed or removed. Facts only:
+   never linked to anything else. */
+const TRACK_KINDS = [['yesno', 'Yes or no'], ['number', 'A number'], ['score', 'A score, 0 to 10']];
+const TRACKS_MAX = 8;
+function ownTracks() { const t = state.profile && state.profile.tracks; return Array.isArray(t) ? t.filter((x) => x && x.id && x.name) : []; }
+function trackKindWords(t) { const k = TRACK_KINDS.find(([v]) => v === t.kind); return (k ? k[1] : 'Yes or no') + (t.kind === 'number' && t.unit ? ', in ' + t.unit : ''); }
+function ownValText(a) {
+  if (!a || a.v == null) return null;
+  if (a.kind === 'yesno') return a.v ? 'yes' : 'no';
+  if (a.kind === 'score') return a.v + '/10';
+  return fmtQtyNumber(Number(a.v)) + (a.unit ? ' ' + a.unit : '');
+}
+function ownText(v) {
+  if (!v || typeof v !== 'object') return 'Skipped';
+  const bits = Object.values(v).filter((a) => a && a.v != null).map((a) => a.name + ': ' + ownValText(a));
+  return bits.length ? bits.join(' \u00b7 ') : 'Skipped';
+}
+/* each tracked thing over a period, from the patient's evening check-ins: one plain line each, never judged */
+function ownTally(entries, from, to) {
+  const byId = {};
+  entries.filter((e) => isPatientCheckin(e) && e.slot === 'evening' && e.own && (!from || e.day >= from) && (!to || e.day <= to)).forEach((e) => {
+    Object.entries(e.own).forEach(([id, a]) => { if (!a || a.v == null) return; (byId[id] = byId[id] || { name: a.name, kind: a.kind, unit: a.unit, list: [] }).list.push({ day: e.day, v: a.v }); });
+  });
+  const order = ownTracks().map((t) => t.id);
+  return Object.entries(byId).sort(([a], [b]) => (order.indexOf(a) + 1 || 99) - (order.indexOf(b) + 1 || 99)).map(([, t]) => {
+    const n = t.list.length, days = plural(n, 'day') + ' answered';
+    if (t.kind === 'yesno') { const y = t.list.filter((x) => x.v).length; return { name: t.name, text: `${t.name}: yes on ${y} of ${days}.`, short: `${t.name}: yes on ${y} of ${plural(n, 'day')}` }; }
+    const nums = t.list.map((x) => Number(x.v)), avg = nums.reduce((a, b) => a + b, 0) / n, lo = Math.min(...nums), hi = Math.max(...nums);
+    if (t.kind === 'score') {
+      const top = t.list.find((x) => Number(x.v) === hi);
+      return { name: t.name, text: `${t.name}: about ${avg.toFixed(1)}/10, highest ${hi} on ${fmtDayShort(top.day)}, ${days}.`, short: `${t.name}: about ${avg.toFixed(1)}/10, highest ${hi}` };
+    }
+    const u = t.unit ? ' ' + t.unit : '';
+    const range = lo === hi ? '' : `, from ${fmtQtyNumber(lo)} to ${fmtQtyNumber(hi)}`;
+    return { name: t.name, text: `${t.name}: about ${fmtQtyNumber(Math.round(avg * 10) / 10)}${u} a day${range}, ${days}.`, short: `${t.name}: about ${fmtQtyNumber(Math.round(avg * 10) / 10)}${u} a day${range}` };
+  });
 }
 function wbText(v) {
   if (!v || typeof v !== 'object') return 'Skipped';
@@ -9497,6 +9619,7 @@ async function syncFxEntries(slot, day, v, at, addedBy) {
   await batch.commit();
 }
 const CHECKIN_LABELS = {
+  own: 'Your own things',
   sidefx: 'Side effects since treatment',
   sleep: 'Sleep', sleepHours: 'Hours slept', pain: 'Pain now', mood: 'Mood', symptoms: 'New or worse symptoms',
   lookingForward: 'Looking forward to', worstPain: 'Worst pain', sickness: 'Sickness', appetite: 'Appetite',
@@ -9572,11 +9695,12 @@ function checkinOpenSet() { if (!state.openCheckins) state.openCheckins = new Se
 function checkinCard(c, inEntry) {
   const open = checkinOpenSet().has(c.id);
   const bodyId = 'cc-' + String(c.id).replace(/[^\w-]/g, '') + (inEntry ? '-t' : '-s');
-  const rows = (CHECKIN_QUESTIONS[c.slot] || []).filter((q) => (q.kind !== 'ticks' && q.kind !== 'sidefx' && !q.pack) || c[q.key] !== undefined).filter((q) => (q.key === 'wb' || q.key === 'journal') ? c[q.key] !== undefined : true).map((q) => {
+  const rows = (CHECKIN_QUESTIONS[c.slot] || []).filter((q) => (q.kind !== 'ticks' && q.kind !== 'sidefx' && !q.pack) || c[q.key] !== undefined).filter((q) => (q.key === 'wb' || q.key === 'journal' || q.key === 'own') ? c[q.key] !== undefined : true).map((q) => {
     const v = c[q.key];
     let node;
     if (q.kind === 'ticks') node = h('dd', { class: 'cc-v' + (v == null ? ' is-empty' : ''), text: v == null ? 'Skipped' : outsideText(v) });
     else if (q.kind === 'taps') node = h('dd', { class: 'cc-v' + (v == null ? ' is-empty' : ''), text: wbText(v) });
+    else if (q.kind === 'own') node = h('dd', { class: 'cc-v' + (v == null ? ' is-empty' : ''), text: ownText(v) });
     else if (q.kind === 'sidefx') node = h('dd', { class: 'cc-v' + (v == null ? ' is-empty' : ''), text: fxText(v) });
     else if (q.kind === 'scale') node = h('dd', { class: 'cc-v' + (v == null ? ' is-empty' : ''), text: scaleText(q, v) });
     else if (q.kind === 'fast') node = h('dd', { class: 'cc-v' + (fastKind(v) == null ? ' is-empty' : ''), text: fastText(v) });
@@ -9797,6 +9921,7 @@ function openCheckin(slot, initialDay) {
     qs.forEach((q) => { answers[q.key] = existing && existing[q.key] !== undefined ? existing[q.key] : (q.kind === 'text' ? '' : null); });
     if (answers.outside != null) answers.outside = [...answers.outside];
     if (answers.wb != null) answers.wb = { ...answers.wb };
+    if (answers.own != null) answers.own = JSON.parse(JSON.stringify(answers.own));
     if (answers.sidefx != null) answers.sidefx = { ...answers.sidefx, grades: { ...(answers.sidefx.grades || {}) } };
     answers.sleepHours = existing && existing.sleepHours != null ? existing.sleepHours : null;
     /* a new morning check-in takes the hours from the night's sleep entry (Apple Health or typed), to the nearest half hour, still changeable (v146) */
@@ -9907,6 +10032,32 @@ function openCheckin(slot, initialDay) {
           sidefxItems(fxSes && fxSes.type).forEach((k) => { if (cur[k] != null) grades[k] = cur[k]; });
           return Object.keys(grades).length && fxSes ? { session: fxSes.day, treatment: fxSes.type.key, grades } : null;
         };
+      } else if (q.kind === 'own') {
+        /* Things I track (v360): every one on one screen, each skippable */
+        const cur = {};
+        Object.entries(answers.own || {}).forEach(([id, a]) => { if (a && a.v != null) cur[id] = a.v; });
+        const chipRow = (label, opts, id) => {
+          const chips = h('div', { class: 'chips taps-chips' + (opts.length > 4 ? ' own-score' : ''), role: 'group', 'aria-label': label });
+          const draw = () => [...chips.children].forEach((b, j) => { const on = cur[id] === opts[j][0]; b.classList.toggle('is-active', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+          opts.forEach(([v, w]) => chips.append(h('button', { class: 'preset', type: 'button', onclick: () => { cur[id] = cur[id] === v ? null : v; draw(); } }, w)));
+          draw();
+          return chips;
+        };
+        const rows = ownTracks().map((t) => {
+          if (t.kind === 'number') {
+            const box = h('input', { class: 'input own-num', type: 'text', inputmode: 'decimal', autocomplete: 'off', 'aria-label': t.name + (t.unit ? ', in ' + t.unit : ''), value: cur[t.id] != null ? fmtQtyNumber(Number(cur[t.id])) : '', placeholder: 'Skip' });
+            box.addEventListener('input', () => { const n = parseFloat(String(box.value).replace(',', '.')); cur[t.id] = box.value.trim() === '' || isNaN(n) ? null : n; });
+            return h('div', { class: 'taps-row' }, h('p', { class: 'taps-label', text: t.name }), h('div', { class: 'own-numrow' }, box, t.unit ? h('span', { class: 'unit', text: t.unit }) : null));
+          }
+          if (t.kind === 'score') return h('div', { class: 'taps-row' }, h('p', { class: 'taps-label', text: t.name + ', 0 to 10' }), chipRow(t.name, Array.from({ length: 11 }, (_, i) => [i, String(i)]), t.id));
+          return h('div', { class: 'taps-row' }, h('p', { class: 'taps-label', text: t.name + '?' }), chipRow(t.name, [[true, 'Yes'], [false, 'No']], t.id));
+        });
+        wrap.append(h('p', { class: 'wiz-hint', text: 'The things you chose to track. Skip any you like; tap an answer again to clear it.' }), ...rows);
+        getVal = () => {
+          const out = {};
+          ownTracks().forEach((t) => { if (cur[t.id] != null) out[t.id] = { name: t.name, kind: t.kind, unit: t.unit || '', v: cur[t.id] }; });
+          return Object.keys(out).length ? out : null;
+        };
       } else if (q.kind === 'taps') {
         /* three wellbeing rows, four answers each (v156): the data on a night with no words */
         const cur = { ...(answers[q.key] || {}) };
@@ -10000,13 +10151,13 @@ function openCheckin(slot, initialDay) {
       qs.forEach((q, i) => {
         const v = answers[q.key];
         let skipped = q.kind === 'text' ? !v : v == null;
-        let shown = skipped ? 'Skipped' : (q.kind === 'ticks' ? outsideText(v) : q.kind === 'taps' ? wbText(v) : q.kind === 'scale' ? scaleText(q, v) : q.kind === 'fast' ? fastText(v) : q.kind === 'sidefx' ? fxText(v) : q.kind === 'text' ? v : String(v) + (q.nrs ? ' · ' + painBandWord(v, nrsNoun(q)) : '') + (q.kind === 'sleep' && answers.sleepHours != null ? ' · ' + answers.sleepHours + ' h' : ''));
+        let shown = skipped ? 'Skipped' : (q.kind === 'ticks' ? outsideText(v) : q.kind === 'taps' ? wbText(v) : q.kind === 'own' ? ownText(v) : q.kind === 'scale' ? scaleText(q, v) : q.kind === 'fast' ? fastText(v) : q.kind === 'sidefx' ? fxText(v) : q.kind === 'text' ? v : String(v) + (q.nrs ? ' · ' + painBandWord(v, nrsNoun(q)) : '') + (q.kind === 'sleep' && answers.sleepHours != null ? ' · ' + answers.sleepHours + ' h' : ''));
         const words = q.note && answers[q.note] ? h('span', { class: 'vnote', text: answers[q.note] }) : null;
         const nightLine = q.kind === 'sleep' && nightSummary(answers.night) ? h('span', { class: 'vnote', text: nightSummary(answers.night) }) : null;
         if (nightLine && skipped) { skipped = false; shown = ''; }
         list.append(h('li', null, h('button', { type: 'button', onclick: () => { dir = -1; step = i; fromReview = true; render(); } },
           h('span', { class: 'k', text: CHECKIN_LABELS[q.key] }),
-          h('span', { class: 'v' + (skipped ? ' is-skipped' : (q.kind === 'text' || q.kind === 'ticks' || q.kind === 'taps' || q.kind === 'scale' || q.kind === 'fast' || q.kind === 'sidefx' ? '' : ' is-num')) }, shown, nightLine, words))));
+          h('span', { class: 'v' + (skipped ? ' is-skipped' : (q.kind === 'text' || q.kind === 'ticks' || q.kind === 'taps' || q.kind === 'own' || q.kind === 'scale' || q.kind === 'fast' || q.kind === 'sidefx' ? '' : ' is-num')) }, shown, nightLine, words))));
       });
       wrap.append(list);
       if (slot === 'morning' && !state.readOnly) wrap.append(h('p', { class: 'wiz-signpost', text: 'Gentle exercises and stretches are on the Exercise tab, for when you are up and ready. Optional.' }));

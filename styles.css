@@ -2357,3 +2357,15 @@ body[data-accent] .view .section-title::before { content: ""; display: block; wi
 /* The book icon above the name on the loading page (v358, Mark chose option A) */
 .opener-icon { display: block; width: clamp(64px, 24vw, 96px); height: auto; aspect-ratio: 1; margin: 0 auto 18px; border-radius: 23%; box-shadow: 0 6px 18px rgba(23, 38, 58, 0.22), 0 0 0 1px rgba(255, 255, 255, 0.6); }
 @media (max-height: 640px) { .opener-top { margin-top: 3vh; } .opener-icon { width: 60px; margin-bottom: 12px; } }
+
+/* Your Today screen and Things I track (v360) */
+#view-today .qa.is-off { display: none; }
+.tile-ticks { display: grid; grid-template-columns: 1fr 1fr; gap: 0 var(--s-3); margin-top: var(--s-2); }
+.track-row { display: flex; justify-content: space-between; align-items: center; gap: var(--s-3); padding: var(--s-3) 0; border-bottom: 1px solid var(--border-subtle); }
+.track-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
+.track-main .hint { margin: 0; }
+#settings-tracks .btn-block { margin-top: var(--s-3); }
+.own-numrow { display: flex; align-items: center; gap: var(--s-2); }
+.own-numrow .own-num { width: 120px; }
+.chips.own-score { display: grid; grid-template-columns: repeat(6, 1fr); gap: var(--s-2); }
+.chips.own-score .preset { min-width: 0; padding-left: 0; padding-right: 0; }
