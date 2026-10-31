@@ -1,0 +1,27 @@
+# The .com redirect: mymedicaldaybook.com and www send everyone to mymedicaldaybook.co.uk (tools/com_redirect.mjs).
+# Uses the CLOUDFLARE_COM_TOKEN secret, limited to the .com zone and never printed. THIS REPOSITORY IS PUBLIC.
+name: The .com redirect
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "check (look only), apply (add what is missing), test (ask the .com addresses)"
+        required: true
+        type: choice
+        default: check
+        options: [check, apply, test]
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: ${{ inputs.action }}
+        env:
+          ACTION: ${{ inputs.action }}
+          CLOUDFLARE_COM_TOKEN: ${{ secrets.CLOUDFLARE_COM_TOKEN }}
+        run: node tools/com_redirect.mjs
