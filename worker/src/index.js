@@ -504,7 +504,9 @@ function inTreatWindow(fields, day, sessions) {
 }
 function planEntryFromDocs(subs, profile, medicines, oneOffs, day, sessions) {
   sessions = sessions || new Set();
-  const active = medicines.filter((m) => f(m.fields, 'active') !== false && f(m.fields, 'kind') !== 'prn' && f(m.fields, 'hospital') !== true && (!f(m.fields, 'courseEnd') || f(m.fields, 'courseEnd') >= day) && !(f(m.fields, 'courseStart') && f(m.fields, 'courseStart') > day) && inTreatWindow(m.fields, day, sessions));
+  /* a medicine that follows the Treatment calendar has no course dates of its own (v367): the calendar decides */
+  const courseOk = (fl) => f(fl, 'treatmentDays') === true || ((!f(fl, 'courseEnd') || f(fl, 'courseEnd') >= day) && !(f(fl, 'courseStart') && f(fl, 'courseStart') > day));
+  const active = medicines.filter((m) => f(m.fields, 'active') !== false && f(m.fields, 'kind') !== 'prn' && f(m.fields, 'hospital') !== true && courseOk(m.fields) && inTreatWindow(m.fields, day, sessions));
   const times = [];
   active.forEach((m) => (f(m.fields, 'times') || []).map(toMinutes).filter((t) => t != null).forEach((t) => times.push({ medId: m.id, t, name: f(m.fields, 'name') || 'Medicine', dose: f(m.fields, 'dose') || '' })));
   return { phones: subs.length, nudge: !!(profile && f(profile.fields, 'stretchNudge') === true), oneOff: oneOffs.some((r) => f(r.fields, 'sent') !== true), times };
