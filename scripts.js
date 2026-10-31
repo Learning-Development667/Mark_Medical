@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '368';
+const APP_VERSION = '369';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -1956,6 +1956,7 @@ function syncSettings() {
   const rname = $('settings-report-name');
   if (document.activeElement !== rname) rname.value = (state.profile && state.profile.reportName) || '';
   rname.disabled = Boolean(state.readOnly);
+  const mw = $('settings-mood-words'); mw.checked = moodWordsToTeam(); mw.disabled = Boolean(state.readOnly);
   syncWeekSetting();
   renderTracksCard();
   /* Today's timeline reads the setting when it draws, so redraw it, and any open report */
@@ -2636,6 +2637,8 @@ async function setWeekEnd(n) {
 $('settings-week-end').addEventListener('change', (ev) => setWeekEnd(parseInt(ev.target.value, 10)));
 $('settings-week-treatment').addEventListener('click', () => { const tw = treatmentWeekday(); if (tw != null) setWeekEnd(tw); });
 $('settings-speakcheck').addEventListener('change', (ev) => { setSpeakCheck(ev.target.checked); toast(ev.target.checked ? 'Daybook will show what it heard before saving' : 'Words from Tap to speak go in as heard'); });
+$('settings-mood-words').addEventListener('change', (ev) => saveProfilePatch({ moodWordsToTeam: ev.target.checked },
+  ev.target.checked ? 'Your mood words will go on Notes for the team' : 'Notes for the team will show your mood on a chart only'));
 $('settings-report-name').addEventListener('change', async (ev) => {
   const reportName = ev.target.value.trim().slice(0, 60) || null;
   if (state.demo) { state.profile = { ...state.profile, reportName }; toast(reportName ? 'Name on the report saved' : 'Name on the report cleared'); return; }
@@ -8157,7 +8160,7 @@ function fitKey(kind) {
   if (kind === 'pain') return [state.painPdf, state.painAI, p.reportName, state.patientName, state.days, state.medicines];
   if (kind === 'ibd') return [state.ibdPdf, p.reportName, state.patientName, state.days, state.medicines, p.ibd, p.flarePlan, p.calls];
   return kind === 'food' ? [state.foodPdf, p.reportName, state.patientName, p.proteinTarget, p.detailedNutrition, state.nutrition]
-    : [state.notesPdf, state.notesAI, p.reportName, state.patientName, p.proteinTarget];
+    : [state.notesPdf, state.notesAI, p.reportName, state.patientName, p.proteinTarget, p.moodWordsToTeam];
 }
 function memoFit(kind, run) {
   const key = fitKey(kind), m = fitMemo[kind];
@@ -9212,6 +9215,9 @@ function dayMacros(foods) {
 /* Only the check-in answers a clinician would want; wellbeing answers stay in the app */
 const REPORT_CHECKIN_KEYS = [['symptoms', 'New or worse symptoms'], ['settled', 'Settled since yesterday']];
 const REPORT_CARER_KEYS = [['noticed', 'What the carer noticed']];
+/* v369 (Mark): what someone writes about their mood stays off the team's reports unless Settings says to include it;
+   the team gets the average mood on its chart. The Mood and wellbeing report (for a therapist) is unchanged. */
+function moodWordsToTeam() { return Boolean(state.profile && state.profile.moodWordsToTeam === true); }
 
 /* Questions for the team: entries of type "question", open ones from any date
    (an unanswered question from before the range still needs asking) */
@@ -9269,7 +9275,8 @@ function buildNotesReport(entries, questionsAll, from, to, rangeLabel) {
   const days = [];
   for (let day = from; day <= to; day = addDays(day, 1)) {
     const list = (byDay[day] || []).slice().sort((a, b) => entryDate(a) - entryDate(b));
-    const notes = list.filter((e) => e.type === 'note' || (e.note && ['temp', 'weight', 'vitals', 'med', 'pain', 'mood', 'bowel', 'symptom'].includes(e.type)))
+    const moodWords = moodWordsToTeam();
+    const notes = list.filter((e) => e.type === 'note' || (e.note && ['temp', 'weight', 'vitals', 'med', 'pain', 'bowel', 'symptom'].concat(moodWords ? ['mood'] : []).includes(e.type)))
       .map((e) => ({ time: fmtTime(entryDate(e)), who: e.addedBy || 'unknown', text: e.note, context: e.type === 'note' ? '' : noteContext(e), src: { id: e.id, field: 'note', words: e.note, label: e.type === 'note' ? 'Note' : 'Note ' + (/^with /.test(noteContext(e)) ? '' : 'with ') + noteContext(e), day: e.day, time: fmtTime(entryDate(e)), who: e.addedBy } }));
     list.filter((e) => e.type === 'checkin' && !isWeekSlot(e.slot) && !isCarerDaySlot(e.slot)).forEach((e) => {
       const keys = e.slot === 'carer' ? REPORT_CARER_KEYS : REPORT_CHECKIN_KEYS;
@@ -9277,7 +9284,7 @@ function buildNotesReport(entries, questionsAll, from, to, rangeLabel) {
         if (e[k]) notes.push({ time: fmtTime(entryDate(e)), who: e.addedBy || 'unknown', text: label + ': ' + e[k], context: e.slot === 'carer' ? "carer's view" : e.slot + ' check-in', src: { id: e.id, field: k, words: e[k], label: checkinTitle(e.slot, e) + ': ' + label, day: e.day, time: fmtTime(entryDate(e)), who: e.addedBy, uid: e.uid, checkin: true } });
       });
       /* the words under a pain slider (v128): "Pain 8/10: lower back, worse when I stand" */
-      (CHECKIN_QUESTIONS[e.slot] || []).filter((q) => q.note && e[q.note]).forEach((q) => {
+      (CHECKIN_QUESTIONS[e.slot] || []).filter((q) => q.note && e[q.note] && (moodWords || q.key !== 'mood')).forEach((q) => {
         notes.push({ time: fmtTime(entryDate(e)), who: e.addedBy || 'unknown', text: CHECKIN_LABELS[q.key] + (e[q.key] != null ? ' ' + e[q.key] + '/10' : '') + ': ' + e[q.note], context: e.slot + ' check-in', src: { id: e.id, field: q.note, words: e[q.note], label: checkinTitle(e.slot, e) + ': words under ' + CHECKIN_LABELS[q.key].toLowerCase(), day: e.day, time: fmtTime(entryDate(e)), who: e.addedBy, uid: e.uid, checkin: true } });
       });
     });
