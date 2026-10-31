@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '367';
+const APP_VERSION = '368';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -10946,7 +10946,7 @@ function notStarted(m, day) { return !!(m.courseStart && m.courseStart > day); }
    On treatment days with the next date. Nothing is copied: change the calendar and the Meds tab follows. */
 /* v358: any regular medicine, the session day and/or 0 to 7 days after it (treatOnDay, treatAfter; a v317 medicine has
    neither and reads as the session day alone) */
-function onTreatmentDays(m) { return m.kind === 'scheduled' && m.treatmentDays === true; }
+function onTreatmentDays(m) { return m.kind !== 'prn' && m.treatmentDays === true; }
 /* v367 (Mark: Gemcitabine showed as a finished course, though it starts again with the next cycle): a medicine that
    follows the Treatment calendar has no course of its own; the calendar decides when it is due. Any course dates saved on
    one are ignored (left in the database, dropped from what the app reads), and Edit medicine no longer offers them. */
@@ -13330,7 +13330,15 @@ function openEditMed(m, prefill) {
       : 'Taken ' + (on ? 'on the session day' : '') + (on && n ? ' and ' : '') + (n ? 'for the ' + (n === 1 ? 'day' : n + ' days') + ' after it' : '') + '. If a session moves on the calendar, this moves with it.';
   };
   /* the course dates, hidden for a medicine that follows the Treatment calendar (v367) */
-  const courseBits = h('div', null, h('div', { class: 'field-row' }, field('Course starts', courseStart), field('Course ends', courseEnd)),
+  /* v368 (Mark: "I can't delete the course dates"): an iPhone date box has no way to empty it once a date is in, so
+     Clear the dates empties both; Save then stores none */
+  const clearDates = h('button', { class: 'btn btn-secondary btn-block course-clear', type: 'button', text: 'Clear the course dates' });
+  const syncClear = () => { clearDates.hidden = !courseStart.value && !courseEnd.value; };
+  clearDates.addEventListener('click', () => { courseStart.value = ''; courseEnd.value = ''; syncClear(); toast('Course dates cleared. Save to keep the change.'); courseStart.focus(); });
+  courseStart.addEventListener('input', syncClear); courseEnd.addEventListener('input', syncClear);
+  courseStart.addEventListener('change', syncClear); courseEnd.addEventListener('change', syncClear);
+  syncClear();
+  const courseBits = h('div', null, h('div', { class: 'field-row' }, field('Course starts', courseStart), field('Course ends', courseEnd)), clearDates,
     h('p', { class: 'hint', text: 'Both dates are optional. A course starting later is listed under Starting soon on the Meds tab, and is not counted or reminded about until its first day.' }));
   const courseNote = h('p', { class: 'hint', text: 'No course dates: it follows the Treatment calendar, so it is due whenever a session is marked there and never shows as finished.' });
   const treatMore = h('div', { class: 'med-treat-more' },
