@@ -25,7 +25,7 @@ async function test() {
     for (const scheme of ['https', 'http']) {
       const url = `${scheme}://${host}/beta.html?x=1`;
       try {
-        const res = await fetch(url, { redirect: 'manual' });
+        const res = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(15000) });
         console.log(`${url} -> ${res.status} ${res.headers.get('location') || ''}`);
       } catch (e) { console.log(`${url} -> no answer yet (${e.cause?.code || e.message})`); }
     }
