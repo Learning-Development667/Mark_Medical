@@ -895,6 +895,7 @@ async function handleBetaInfo(request, url, env) {
    naming nothing from the feedback itself. FEEDBACK_A_DAY per household keeps a stuck finger from filling the free tier. */
 const FEEDBACK_A_DAY = 40;
 const FEEDBACK_IMAGE_CHARS = 900000;
+const FEEDBACK_LIST_MAX = 200;
 async function handleFeedback(request, env) {
   const a = await whoIs(request, env); if (a.error) return a.error;
   if (a.demo) return json({ error: 'demo', message: 'Feedback is not taken from the demo. Email support@mymedicaldaybook.co.uk instead.' }, 403);
@@ -1502,6 +1503,31 @@ async function handleUsage(request, env) {
   const body = (await readJson(request)) || {};
   if (body.what === 'check') return json({ operator: true });
   if (body.what === 'rebuild') return json({ operator: true, usage: await buildUsage(env) });
+  /* The feedback itself (v370, Mark: "how am I going to know what improvements to make"): the operator alone, newest first,
+     the words whole, the circle as its Usage code; a picture is fetched one at a time on a tap, never in the list */
+  if (body.what === 'feedback') {
+    const rows = await fs.run('feedback', { orderBy: [{ field: { fieldPath: 'at' }, direction: 'DESCENDING' }], limit: FEEDBACK_LIST_MAX });
+    const total = await fs.count('feedback');
+    const items = [];
+    for (const r of rows) {
+      const F = r.fields;
+      let answers = null;
+      try { answers = f(F, 'answers') ? JSON.parse(f(F, 'answers')) : null; } catch (e) { answers = null; }
+      const hid = f(F, 'household') || '';
+      items.push({ id: r.id, at: f(F, 'at'), kind: f(F, 'kind') || 'note', name: f(F, 'name') || '', role: f(F, 'role') || '', text: f(F, 'text') || '', answers,
+        screen: f(F, 'screen') || '', version: f(F, 'version') || '', device: f(F, 'device') || '', image: !!F.image, own: hid === opHid,
+        circle: hid ? (await sha256Hex(hid + ':' + (env.BRIDGE_KEY || ''))).slice(0, 8) : '' });
+    }
+    return json({ operator: true, feedback: items, total });
+  }
+  if (body.what === 'feedback-image') {
+    const id = String(body.id || '');
+    if (!/^[A-Za-z0-9_-]{1,40}$/.test(id)) return json({ error: 'bad-request', message: 'That feedback could not be found.' }, 400);
+    const doc = await fs.get('feedback/' + id);
+    const image = doc && doc.fields ? f(doc.fields, 'image') : null;
+    if (!image) return json({ error: 'not-found', message: 'That feedback has no picture.' }, 404);
+    return json({ operator: true, image });
+  }
   return json({ operator: true, usage: readUsageDoc(await fs.get(USAGE_PATH)) });
 }
 

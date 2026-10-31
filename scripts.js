@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '369';
+const APP_VERSION = '370';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -5703,8 +5703,83 @@ function openUsage() {
   showTab('usage');
   const body = $('usage-body');
   body.replaceChildren(h('p', { class: 'hint', text: 'Fetching the counts' }));
+  loadUsageFeedback();
   bridgeCall('/usage', { what: 'read' }).then((d) => { usageData = d.usage; renderUsage(); })
     .catch((e) => body.replaceChildren(h('p', { class: 'hint', text: e.message })));
+}
+/* The feedback itself on Usage (v370, Mark: "how am I going to know what improvements to make"). The bridge reads it for the
+   operator alone; newest first, the words whole, the first-day answers under their questions, a picture on a tap. "New" is
+   anything sent since this phone last opened the list (localStorage, a time only). */
+const FB_SEEN_KEY = 'daybook.usage.feedbackSeen';
+let usageFeedback = null;
+function loadUsageFeedback() {
+  const box = $('usage-feedback');
+  box.replaceChildren(h('p', { class: 'hint', text: 'Fetching the feedback' }));
+  bridgeCall('/usage', { what: 'feedback' }).then((d) => {
+    let seen = '';
+    try { seen = localStorage.getItem(FB_SEEN_KEY) || ''; } catch (e) { /* no storage: everything reads as new */ }
+    usageFeedback = { items: d.feedback || [], total: d.total || 0, seen };
+    renderUsageFeedback();
+    const newest = (d.feedback || [])[0];
+    if (newest && newest.at) { try { localStorage.setItem(FB_SEEN_KEY, newest.at); } catch (e) { /* no storage */ } }
+  }).catch((e) => box.replaceChildren(h('p', { class: 'hint', text: e.message || 'Could not fetch the feedback.' })));
+}
+function deviceWord(ua) {
+  ua = String(ua || '');
+  if (/iPad/.test(ua)) return 'iPad';
+  if (/iPhone/.test(ua)) return 'iPhone';
+  if (/Android/.test(ua)) return 'Android';
+  if (/Macintosh/.test(ua)) return 'Mac';
+  if (/Windows/.test(ua)) return 'Windows';
+  return ua ? 'Other' : '';
+}
+const FB_ROLE_WORDS = { family: 'family', readonly: 'read only', viewer: 'medicines and treatment only' };
+function feedbackItem(it, isNew) {
+  const at = it.at ? new Date(it.at) : null;
+  const when = at ? at.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) + ', ' + at.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '';
+  const survey = it.kind === 'survey';
+  const who = [it.name || 'Someone', FB_ROLE_WORDS[it.role] || it.role, it.own ? 'your own circle' : (it.circle ? 'circle ' + it.circle : '')].filter(Boolean).join(', ');
+  const parts = [h('div', { class: 'fbitem-head' },
+    h('span', { class: 'pill ' + (survey ? 'pill-teal' : 'pill-amber'), text: survey ? 'First-day questions' : 'Note' }),
+    isNew ? h('span', { class: 'pill pill-green', text: 'New' }) : null,
+    h('span', { class: 'fbitem-when', text: when })),
+    h('p', { class: 'fbitem-who', text: who })];
+  if (it.text) parts.push(h('p', { class: 'fbitem-text', text: it.text }));
+  if (it.answers && typeof it.answers === 'object') {
+    const qs = FIRST_DAY_QUESTIONS.filter((q) => it.answers[q.key] != null);
+    if (qs.length) parts.push(h('dl', { class: 'fbitem-answers' }, ...qs.flatMap((q) => {
+      const v = it.answers[q.key];
+      return [h('dt', { text: q.q }), h('dd', { text: Array.isArray(v) ? v.join(', ') : String(v) })];
+    })));
+  }
+  if (it.image) {
+    const pic = h('div', { class: 'fbitem-pic' });
+    const btn = h('button', { class: 'btn btn-secondary btn-small', type: 'button', onclick: (ev) => withBusy(ev.currentTarget, 'Fetching the picture', async () => {
+      try {
+        const d = await bridgeCall('/usage', { what: 'feedback-image', id: it.id });
+        pic.replaceChildren(h('img', { src: 'data:image/jpeg;base64,' + d.image, alt: 'Picture sent with this feedback' }));
+        btn.remove();
+      } catch (e) { toast(e.message || 'Could not fetch the picture.'); }
+    }) }, 'Show the picture');
+    parts.push(pic, btn);
+  }
+  const meta = [it.screen ? 'On ' + it.screen : '', it.version ? 'version ' + it.version : '', deviceWord(it.device)].filter(Boolean).join(' · ');
+  if (meta) parts.push(h('p', { class: 'muted fbitem-meta', text: meta }));
+  return h('article', { class: 'fbitem' + (isNew ? ' is-new' : '') }, ...parts);
+}
+function renderUsageFeedback() {
+  const box = $('usage-feedback');
+  const d = usageFeedback;
+  if (!d) return;
+  const isNew = (it) => !d.seen || (it.at && it.at > d.seen);
+  const fresh = d.items.filter(isNew).length;
+  box.replaceChildren(h('div', { class: 'card usage-card' },
+    h('h3', { class: 'card-title', text: 'Feedback' }),
+    h('p', { class: 'hint', text: d.items.length
+      ? plural(d.total, 'piece') + ' of feedback in all' + (fresh ? ', ' + fresh + ' new since you last looked' : '') + '. Newest first. Only you can see this.'
+      : 'Nothing sent yet. What people send through Provide feedback shows here, newest first. Only you can see it.' }),
+    ...d.items.map((it) => feedbackItem(it, isNew(it))),
+    d.total > d.items.length ? h('p', { class: 'muted', text: 'The newest ' + d.items.length + ' are shown.' }) : null));
 }
 function usageTile(label, value, sub, tone) {
   return h('div', { class: 'tile' + (tone ? ' ' + tone : '') }, h('span', { class: 'tile-label', text: label }), h('span', { class: 'tile-value', text: String(value) }), h('span', { class: 'tile-sub', text: sub }));

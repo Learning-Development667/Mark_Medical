@@ -2386,3 +2386,18 @@ body[data-accent] .view .section-title::before { content: ""; display: block; wi
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .yn-day.is-yes { background: var(--success-fill); color: var(--bg); } }
 .yn-day.is-no { background: var(--border-subtle); color: var(--text-primary); box-shadow: none; }
 .chart-own-foot { margin-top: var(--s-2); }
+
+/* The feedback list on Usage (v370) */
+#usage-feedback .usage-card { margin-top: 0; }
+.fbitem { border-top: 1px solid var(--border-subtle); padding: var(--s-4) 0; }
+.fbitem:first-of-type { border-top: 0; }
+.fbitem-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
+.fbitem-when { color: var(--text-secondary); font-size: 15px; }
+.fbitem-who { margin: var(--s-2) 0 0; font-weight: 600; overflow-wrap: anywhere; }
+.fbitem-text { margin: var(--s-2) 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.fbitem-answers { margin: var(--s-2) 0 0; }
+.fbitem-answers dt { color: var(--text-secondary); font-size: 15px; margin-top: var(--s-2); }
+.fbitem-answers dd { margin: 2px 0 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.fbitem-pic img { display: block; max-width: 100%; border-radius: var(--r-sm); margin-top: var(--s-2); }
+.fbitem .btn-small { margin-top: var(--s-2); min-height: 44px; }
+.fbitem-meta { margin: var(--s-2) 0 0; font-size: 15px; overflow-wrap: anywhere; }
