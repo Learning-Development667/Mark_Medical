@@ -1,5 +1,5 @@
 {
- "made": "2026-10-30",
+ "made": "2026-10-31",
  "width": 390,
  "height": 844,
  "topics": [
@@ -87,6 +87,14 @@
     },
     {
      "file": "checkin-6.webp",
+     "caption": "Mood last, with what is behind it and anything you are looking forward to today, both on the one screen.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.405
+     }
+    },
+    {
+     "file": "checkin-7.webp",
      "caption": "The review: every answer, tap one to change it, then Save.",
      "tap": {
       "x": 0.5,
@@ -94,7 +102,7 @@
      }
     },
     {
-     "file": "checkin-7.webp",
+     "file": "checkin-8.webp",
      "caption": "Done. The check-in is a card on Today: tap it to open it, and Edit to change an answer later.",
      "tap": {
       "x": 0.5,

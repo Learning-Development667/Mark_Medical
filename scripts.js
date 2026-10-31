@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '365';
+const APP_VERSION = '366';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -9424,10 +9424,11 @@ const CHECKIN_QUESTIONS = {
     /* only on the three days after a treatment session (v189): how bad each usual side effect is */
     { key: 'sidefx', kind: 'sidefx', q: 'Any side effects since treatment?' },
     { key: 'pain', kind: 'pain', nrs: true, q: 'Pain right now', low: '0 no pain', high: '10 worst imaginable', note: 'painNote' },
-    { key: 'mood', kind: 'slider', q: 'How is your mood?', low: '1 rough', high: '10 great', note: 'moodNote', noteQ: 'What is behind it? Optional.', notePh: 'e.g. a good night, a visitor coming, worried about tomorrow' },
+    { key: 'mood', kind: 'slider', q: 'How is your mood?', low: '1 rough', high: '10 great', note: 'moodNote', noteQ: 'What is behind it? Optional.', notePh: 'e.g. a good night, feeling flat, worried about tomorrow',
+      /* v366 (Mark): the day ahead asked on the same screen, so the two boxes are seen together and not answered twice */
+      note2: 'lookingForward', note2Q: 'Are you looking forward to anything today? Optional.', note2Ph: 'e.g. a walk in the garden, a visitor' },
     /* with Crohn's or colitis (v258): fasting today and which kind, one tap; asked about the day ahead, before what it holds */
-    { key: 'fast', kind: 'fast', pack: 'ibd', q: 'Fasting today?' },
-    { key: 'lookingForward', kind: 'text', q: 'What are you looking forward to today?', ph: 'e.g. a walk in the garden, a visitor' }
+    { key: 'fast', kind: 'fast', pack: 'ibd', q: 'Fasting today?' }
   ],
   evening: [
     /* the body first, then the words, then mood as the last score beside one good thing (v147, as the morning in v146) */
@@ -9602,7 +9603,7 @@ function nrsNoun(q) { return q && q.nrs === 'sickness' ? 'sickness' : q && q.nrs
    painNote / worstPainNote, shown after the score everywhere it shows, and in Notes for the team as a note. */
 const CHECKIN_NOTE_Q = 'Where is it, or anything else? Optional.';
 const CHECKIN_NOTE_PH = 'e.g. lower back, worse when I stand';
-function checkinNoteKeys(slot) { return (CHECKIN_QUESTIONS[slot] || []).filter((q) => q.note).map((q) => q.note); }
+function checkinNoteKeys(slot) { return (CHECKIN_QUESTIONS[slot] || []).flatMap((q) => [q.note, q.note2]).filter(Boolean); }
 /* Outside the gut (v145): joints, eyes, skin, mouth and, for Crohn's, around the bottom. Stored on the evening
    check-in as outside: [keys] ([] for none of these, null when skipped); asked when none was answered in the six days before. */
 const OUTSIDE_GUT = [
@@ -9778,10 +9779,12 @@ function checkinCard(c, inEntry) {
     else {
       const empty = v == null;
       const words = (q.note && c[q.note]) || (q.legacyNote && c[q.legacyNote]) || '';
+      const words2 = q.note2 && c[q.note2] ? CHECKIN_LABELS[q.note2] + ': ' + c[q.note2] : '';
       const nightLine = q.kind === 'sleep' ? nightSummary(c.night) : '';
       node = h('dd', { class: 'cc-v' + (empty && !nightLine ? ' is-empty' : ' is-num') }, empty ? (nightLine ? '' : 'Skipped') : v + '/10' + (q.nrs ? ' \u00b7 ' + painBandWord(v, nrsNoun(q)) : '') + (q.kind === 'sleep' && c.sleepHours != null ? ' \u00b7 ' + c.sleepHours + ' h' : ''),
         nightLine ? h('span', { class: 'vnote', text: nightLine }) : null,
-        words ? h('span', { class: 'vnote', text: words }) : null);
+        words ? h('span', { class: 'vnote', text: words }) : null,
+        words2 ? h('span', { class: 'vnote', text: words2 }) : null);
     }
     return h('div', { class: 'cc-row' }, h('dt', { class: 'cc-k', text: CHECKIN_LABELS[q.key] || q.key }), node);
   });
@@ -10181,7 +10184,7 @@ function openCheckin(slot, initialDay) {
       } else {
         const sl = sliderBlock(q, answers[q.key]);
         wrap.append(...sl.nodes);
-        let night = null, noteBox = null;
+        let night = null, noteBox = null, noteBox2 = null;
         if (q.kind === 'sleep') {
           night = nightBlock(answers.night, { tracker: isTrackerNight(nightEntry) ? nightEntry : null, ibd: packOn('ibd') });
           wrap.append(night.el);
@@ -10192,6 +10195,11 @@ function openCheckin(slot, initialDay) {
           noteBox.value = answers[q.note] || '';
           wrap.append(h('div', { class: 'wiz-note' }, h('p', { class: 'wiz-hint', text: q.noteQ || CHECKIN_NOTE_Q }), noteBox, speakButton(noteBox) || ''));
         }
+        if (q.note2) {
+          noteBox2 = h('textarea', { rows: '2', placeholder: q.note2Ph || '', 'aria-label': q.note2Q });
+          noteBox2.value = answers[q.note2] || '';
+          wrap.append(h('div', { class: 'wiz-note' }, h('p', { class: 'wiz-hint', text: q.note2Q }), noteBox2, speakButton(noteBox2) || ''));
+        }
         getVal = () => {
           if (night) {
             answers.night = night.value();
@@ -10201,6 +10209,7 @@ function openCheckin(slot, initialDay) {
             if (packOn('ibd') && answers.night && (answers.night.toilet != null || answers.night.broken === 'no')) answers.nightToilet = answers.night.broken === 'no' ? 0 : Number(answers.night.toilet);
           }
           if (noteBox) answers[q.note] = noteBox.value.trim();
+          if (noteBox2) answers[q.note2] = noteBox2.value.trim();
           return sl.value();
         };
       }
@@ -10223,11 +10232,12 @@ function openCheckin(slot, initialDay) {
         let skipped = q.kind === 'text' ? !v : v == null;
         let shown = skipped ? 'Skipped' : (q.kind === 'ticks' ? outsideText(v) : q.kind === 'taps' ? wbText(v) : q.kind === 'own' ? ownText(v) : q.kind === 'scale' ? scaleText(q, v) : q.kind === 'fast' ? fastText(v) : q.kind === 'sidefx' ? fxText(v) : q.kind === 'text' ? v : String(v) + (q.nrs ? ' · ' + painBandWord(v, nrsNoun(q)) : '') + (q.kind === 'sleep' && answers.sleepHours != null ? ' · ' + answers.sleepHours + ' h' : ''));
         const words = q.note && answers[q.note] ? h('span', { class: 'vnote', text: answers[q.note] }) : null;
+        const words2 = q.note2 && answers[q.note2] ? h('span', { class: 'vnote', text: CHECKIN_LABELS[q.note2] + ': ' + answers[q.note2] }) : null;
         const nightLine = q.kind === 'sleep' && nightSummary(answers.night) ? h('span', { class: 'vnote', text: nightSummary(answers.night) }) : null;
         if (nightLine && skipped) { skipped = false; shown = ''; }
         list.append(h('li', null, h('button', { type: 'button', onclick: () => { dir = -1; step = i; fromReview = true; render(); } },
           h('span', { class: 'k', text: CHECKIN_LABELS[q.key] }),
-          h('span', { class: 'v' + (skipped ? ' is-skipped' : (q.kind === 'text' || q.kind === 'ticks' || q.kind === 'taps' || q.kind === 'own' || q.kind === 'scale' || q.kind === 'fast' || q.kind === 'sidefx' ? '' : ' is-num')) }, shown, nightLine, words))));
+          h('span', { class: 'v' + (skipped ? ' is-skipped' : (q.kind === 'text' || q.kind === 'ticks' || q.kind === 'taps' || q.kind === 'own' || q.kind === 'scale' || q.kind === 'fast' || q.kind === 'sidefx' ? '' : ' is-num')) }, shown, nightLine, words, words2))));
       });
       wrap.append(list);
       if (slot === 'morning' && !state.readOnly) wrap.append(h('p', { class: 'wiz-signpost', text: 'Gentle exercises and stretches are on the Exercise tab, for when you are up and ready. Optional.' }));
