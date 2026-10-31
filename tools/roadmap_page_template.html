@@ -1,80 +1,143 @@
-<meta name="claude:viewport-fit-sides" content="cover">
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Daybook Roadmap</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Inter:wght@400;500;600&display=swap">
 <style>
-/* Layout: one calm column. Where things stand first, then each stage as rows that are done, in progress or waiting. Daybook's own palette and faces (the report look). */
+/* One calm column in Daybook's own look: counts first, the next steps, then each group of actions as cards,
+   each with a Copy for Claude button that puts a ready prompt on the clipboard to paste into the chat. */
 :root {
-  --bg: #F6F4EF; --card: #FFFFFF; --sunken: #E8EDF0; --ink: #17263A; --muted: #56667A; --line: #D5DEE5;
-  --teal: #18727A; --teal-fill: #1E7F86; --teal-light: #DDEEEF; --done: #2D7354; --done-fill: #3F8F6B; --done-light: #E1F1E9;
-  --warm: #A8582A;
+  --bg: #F6F4EF; --card: #FFFFFF; --sunken: #EEF3F6; --ink: #17263A; --muted: #56667A; --line: #D5DEE5;
+  --teal: #18727A; --teal-fill: #1E7F86; --teal-light: #DDEEEF; --on-teal: #FFFFFF;
+  --done: #2D7354; --done-light: #E1F1E9;
+  --warm: #A8582A; --warm-light: #F7E6DA; --plum: #6E4A78; --plum-light: #EFE6F2; --amber: #8A5E10; --amber-light: #F8EDD5;
   --display: Fraunces, Georgia, "Times New Roman", serif;
   --body: Inter, "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --bg: #0F1B24; --card: #172633; --sunken: #12202B; --ink: #E6EEF2; --muted: #9FB0BF; --line: #2C3E4D;
-  --teal: #5CC3C9; --teal-fill: #5CC3C9; --teal-light: #123A3F; --done: #7BC8A0; --done-fill: #3F8F6B; --done-light: #14301F; --warm: #E49A66; color-scheme: dark; } }
+  --teal: #5CC3C9; --teal-fill: #5CC3C9; --teal-light: #123A3F; --on-teal: #0F1B24;
+  --done: #7BC8A0; --done-light: #14301F;
+  --warm: #E49A66; --warm-light: #3A2416; --plum: #D3A6E6; --plum-light: #2E2236; --amber: #E8B860; --amber-light: #33280F; color-scheme: dark; } }
 :root[data-theme="dark"] {
   --bg: #0F1B24; --card: #172633; --sunken: #12202B; --ink: #E6EEF2; --muted: #9FB0BF; --line: #2C3E4D;
-  --teal: #5CC3C9; --teal-fill: #5CC3C9; --teal-light: #123A3F; --done: #7BC8A0; --done-fill: #3F8F6B; --done-light: #14301F; --warm: #E49A66; color-scheme: dark; }
-body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 17px; line-height: 1.5; }
-.wrap { max-width: 680px; margin: 0 auto; padding-block: 28px 56px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 24px; }
+  --teal: #5CC3C9; --teal-fill: #5CC3C9; --teal-light: #123A3F; --on-teal: #0F1B24;
+  --done: #7BC8A0; --done-light: #14301F;
+  --warm: #E49A66; --warm-light: #3A2416; --plum: #D3A6E6; --plum-light: #2E2236; --amber: #E8B860; --amber-light: #33280F; color-scheme: dark; }
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 17px; line-height: 1.5; }
+.wrap { max-width: 720px; margin: 0 auto; padding-block: 28px 64px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 28px; }
 header h1 { font-family: var(--display); font-weight: 600; font-size: clamp(32px, 7vw, 42px); letter-spacing: -0.01em; line-height: 1.05; margin: 0; text-wrap: balance; }
 header p { margin: 8px 0 0; color: var(--muted); }
 .stamp { font-size: 13px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--teal); margin-bottom: 8px; font-variant-numeric: tabular-nums; }
-.overall { background: var(--card); border: 1px solid var(--line); border-top: 4px solid var(--teal-fill); border-radius: 12px; padding: 18px 20px; display: grid; gap: 10px; }
-.overall .big { font-family: var(--display); font-weight: 600; font-size: 34px; line-height: 1.1; }
-.overall .big span { color: var(--muted); font-family: var(--body); font-weight: 400; font-size: 17px; display: block; margin-top: 2px; }
-.overall p { margin: 0; color: var(--muted); font-size: 15px; }
-.bar { height: 10px; border-radius: 99px; background: var(--sunken); overflow: hidden; }
-.bar i { display: block; height: 100%; border-radius: 99px; background: var(--done-fill); }
-.next { display: grid; gap: 4px; padding-top: 4px; font-size: 16px; }
-.next b { font-size: 13px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--teal); }
-section { display: grid; gap: 8px; }
-.stage-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
-h2 { font-family: var(--display); font-weight: 600; font-size: 22px; letter-spacing: -0.01em; margin: 0; }
-.count { font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; }
-ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
-li { display: flex; gap: 12px; align-items: flex-start; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; min-width: 0; }
-li .box { flex: none; width: 24px; height: 24px; border-radius: 7px; border: 2px solid var(--line); display: grid; place-items: center; margin-top: 1px; }
-li.done { background: var(--done-light); border-color: transparent; }
-li.done .box { background: var(--done-fill); border-color: var(--done-fill); }
-li.done .box svg { stroke: #FFFFFF; }
-li.done .t { color: var(--muted); }
-li.now { border-color: var(--teal); box-shadow: inset 0 0 0 1px var(--teal); }
-li.now .box { border-color: var(--teal); }
-li .t { min-width: 0; overflow-wrap: anywhere; }
-li .t small { display: block; color: var(--muted); font-size: 15px; line-height: 1.45; margin-top: 2px; }
-.who { font-size: 12px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--teal); background: var(--teal-light); border-radius: 6px; padding: 2px 6px; margin-left: 4px; white-space: nowrap; }
-.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-.sub { margin: -2px 0 2px; color: var(--muted); font-size: 15px; }
-.key { display: flex; gap: 8px 18px; flex-wrap: wrap; font-size: 14px; color: var(--muted); }
-.key span { display: inline-flex; align-items: center; gap: 8px; }
-.key i { width: 16px; height: 16px; border-radius: 5px; border: 2px solid var(--line); display: inline-block; }
-.key .k-now { border-color: var(--teal); }
-.key .k-done { background: var(--done-fill); border-color: var(--done-fill); }
+.overall { background: var(--card); border: 1px solid var(--line); border-top: 4px solid var(--teal-fill); border-radius: 12px; padding: 18px 20px; display: grid; gap: 14px; }
+.big { font-family: var(--display); font-weight: 600; font-size: 34px; line-height: 1.1; }
+.big span { color: var(--muted); font-family: var(--body); font-weight: 400; font-size: 17px; display: block; margin-top: 2px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { display: inline-flex; gap: 6px; align-items: center; min-height: 40px; padding: 6px 12px; border-radius: 99px; background: var(--sunken); color: var(--ink); text-decoration: none; font-size: 15px; }
+.chip b { font-variant-numeric: tabular-nums; color: var(--teal); }
+.chip:hover { background: var(--teal-light); }
+.next b.lab, .how b { font-size: 13px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--teal); }
+.next ul { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 6px; }
+.next a { color: var(--ink); font-weight: 500; }
+.how { margin: 0; color: var(--muted); font-size: 15px; }
+.group { display: grid; gap: 10px; scroll-margin-top: 16px; }
+.g-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+h2 { font-family: var(--display); font-weight: 600; font-size: 24px; letter-spacing: -0.01em; margin: 0; }
+.count { font-size: 15px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.sub { margin: -4px 0 2px; color: var(--muted); font-size: 15px; }
+.acts { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.act { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; display: grid; gap: 8px; min-width: 0; scroll-margin-top: 16px; }
+.act.s-next { border-color: var(--teal); box-shadow: inset 0 0 0 1px var(--teal); }
+.act.s-later { background: var(--sunken); }
+.act-head { display: flex; gap: 12px; align-items: flex-start; }
+.num { flex: none; width: 32px; height: 32px; border-radius: 99px; background: var(--teal-light); color: var(--teal); display: grid; place-items: center; font-weight: 600; font-size: 15px; font-variant-numeric: tabular-nums; }
+.act-title { min-width: 0; display: grid; gap: 4px; }
+h3 { margin: 3px 0 0; font-size: 18px; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.who, .state { font-size: 12px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; border-radius: 6px; padding: 2px 7px; white-space: nowrap; }
+.w-claude { color: var(--teal); background: var(--teal-light); }
+.w-mark, .w-both { color: var(--warm); background: var(--warm-light); }
+.w-decide { color: var(--plum); background: var(--plum-light); }
+.w-test { color: var(--done); background: var(--done-light); }
+.state { color: var(--muted); background: var(--sunken); }
+.state.s-next { color: var(--on-teal); background: var(--teal-fill); }
+.state.s-now { color: var(--amber); background: var(--amber-light); }
+.note { margin: 0; color: var(--muted); font-size: 15px; line-height: 1.5; overflow-wrap: anywhere; }
+.act-foot { display: grid; gap: 8px; }
+.copy { justify-self: start; min-height: 44px; padding: 0 18px; border-radius: 99px; border: 0; background: var(--teal-fill); color: var(--on-teal); font: 600 16px var(--body); cursor: pointer; }
+.copy:hover { filter: brightness(1.08); }
+.copy.is-done { background: var(--done-light); color: var(--done); }
+.copy:focus-visible, summary:focus-visible, .chip:focus-visible, a:focus-visible { outline: 3px solid var(--teal); outline-offset: 2px; }
+details summary { cursor: pointer; color: var(--teal); font-size: 15px; font-weight: 500; min-height: 32px; display: flex; align-items: center; }
+.prompt { margin: 6px 0 0; padding: 12px; border-radius: 8px; background: var(--sunken); font-size: 15px; line-height: 1.5; user-select: all; -webkit-user-select: all; overflow-wrap: anywhere; }
+.plain { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.plain li { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; font-size: 15px; color: var(--muted); }
+.plain li b { color: var(--ink); }
+.plain.done li { background: var(--done-light); border-color: transparent; color: var(--ink); }
+.plain.done small { color: var(--muted); white-space: nowrap; }
+.donebox > summary { list-style: none; display: flex; justify-content: space-between; align-items: baseline; gap: 12px; color: var(--ink); margin-bottom: 10px; }
+.donebox > summary::-webkit-details-marker { display: none; }
+.donebox > summary h2::after { content: " +"; color: var(--teal); }
+.donebox[open] > summary h2::after { content: " −"; }
 footer { color: var(--muted); font-size: 15px; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 </style>
-
+</head>
+<body>
 <div class="wrap">
   <header>
-    <div class="stamp">Updated 29 October 2026 · Daybook v331</div>
+    <div class="stamp">Updated {{UPDATED}} · Daybook v{{VERSION}}</div>
     <h1>Daybook Action List</h1>
-    <p>What is left to do, in order. Build, then how it looks, then how it feels, then the website, then the stores.</p>
+    <p>Everything left to do, checked against the app as it is now. Copy any step and paste it into our chat to start on it.</p>
   </header>
 
   <div class="overall" aria-label="Where it stands">
-    <div class="big">About 65% <span>of the way to both app stores</span></div>
-    <div class="bar" role="img" aria-label="About 65 percent"><i style="width:65%"></i></div>
-    <p>A best guess. The web app is complete enough for the Beta. What is left is the native iPhone and Android apps, export and delete, the security tightening and the Apple enrolment, which is no longer blocked.</p>
-    <div class="next"><b>Next</b><span>Mark: finish the Apple enrolment (16), switch Firebase to pay-as-you-go (9b), confirm the support@ mailbox, then the Beta messages and first invites (15a). Claude: export and delete (8), then the iPhone app (17).</span></div>
+    <div class="big">{{TOTAL}} actions open <span>The web app is built and in Beta. The big piece left is the iPhone and Android apps, then the stores.</span></div>
+    <nav class="chips" aria-label="Jump to a group">{{SUMMARY}}</nav>
+    <div class="next"><b class="lab">Next</b><ul>{{NEXT}}</ul></div>
+    <p class="how"><b>How to use it</b> Tap Copy for Claude on a step, then paste into the chat. If copying is blocked, open Show the words and copy them by hand.</p>
   </div>
 
-  <div class="key" aria-label="Key"><span><i class="k-done"></i>Done</span><span><i class="k-now"></i>In progress</span><span><i></i>Not started</span></div>
+  {{SECTIONS}}
 
-  {{BUILT}}
-  {{STAGES}}
-
-  <footer>The full detail lives in ROADMAP.md in the Daybook repository. New ideas go into the right stage before they are built.</footer>
+  <footer>The same list, with every prompt, is in ROADMAP.md in the Daybook repository, made from tools/roadmap_page_gen.py.</footer>
 </div>
+<div class="sr" role="status" aria-live="polite" id="live"></div>
+<script>
+(function () {
+  var PROMPTS = {{PROMPTS}};
+  var live = document.getElementById('live');
+  document.addEventListener('click', function (ev) {
+    var btn = ev.target.closest && ev.target.closest('button.copy');
+    if (!btn) return;
+    var n = btn.getAttribute('data-n'), text = PROMPTS[n];
+    var done = function () {
+      btn.textContent = 'Copied. Paste it into the chat';
+      btn.classList.add('is-done');
+      live.textContent = 'Action ' + n + ' copied';
+      setTimeout(function () { btn.textContent = 'Copy for Claude'; btn.classList.remove('is-done'); }, 3000);
+    };
+    var fallback = function () {
+      var d = btn.parentNode.querySelector('details');
+      if (d) d.open = true;
+      var p = document.getElementById('p' + n);
+      try { var r = document.createRange(); r.selectNodeContents(p); var s = window.getSelection(); s.removeAllRanges(); s.addRange(r); } catch (e) {}
+      btn.textContent = 'Copying is blocked here: the words are selected below';
+      live.textContent = 'Copying is blocked. The words are shown and selected.';
+    };
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, fallback);
+      else fallback();
+    } catch (e) { fallback(); }
+  });
+})();
+</script>
+</body>
+</html>
