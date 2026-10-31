@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '370';
+const APP_VERSION = '371';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -66,6 +66,15 @@ const IBD_MEDICINES = [
   { id: 'adcal', name: 'Adcal-D3', dose: '1 tablet', how: 'Twice a day, with the steroid course', purpose: 'Bones, while on steroids', kind: 'scheduled', perDay: 2, doseForm: 'tablet', doseCount: 1 },
   { id: 'loperamide', name: 'Loperamide', dose: '1 capsule (2 mg)', how: 'When needed, at most 8 a day, not when there is blood', purpose: 'Diarrhoea', kind: 'prn', maxPerDay: 8, doseForm: 'capsule', doseCount: 1, strength: '2 mg' },
   { id: 'paracetamol', name: 'Paracetamol', dose: '2 tablets (1,000 mg)', how: 'Up to 4 times a day when needed, at least 4 hours apart', purpose: 'Pain', kind: 'prn', minGapHours: 4, maxPerDay: 4, doseForm: 'tablet', doseCount: 2, strength: '500 mg' }
+];
+
+/* The chronic pain preview's medicines (v371): a made-up person under the GP and a pain clinic, Something else alone. */
+const GENERAL_MEDICINES = [
+  { id: 'naproxen', name: 'Naproxen', dose: '1 tablet (500 mg)', how: 'Twice a day with food', purpose: 'Back pain', kind: 'scheduled', perDay: 2, doseForm: 'tablet', doseCount: 1, strength: '500 mg', takenAt: ['08:00', '18:00'] },
+  { id: 'omeprazole', name: 'Omeprazole', dose: '1 capsule (20 mg)', how: 'Once a day, before breakfast', purpose: 'Stomach protection', kind: 'scheduled', perDay: 1, doseForm: 'capsule', doseCount: 1, strength: '20 mg', takenAt: ['07:30'] },
+  { id: 'amitriptyline', name: 'Amitriptyline', dose: '1 tablet (10 mg)', how: 'At night, two hours before bed', purpose: 'Nerve pain and sleep', kind: 'scheduled', perDay: 1, doseForm: 'tablet', doseCount: 1, strength: '10 mg', takenAt: ['20:00'] },
+  { id: 'cocodamol', name: 'Co-codamol 30/500', dose: '2 tablets', how: 'When needed, at least 4 hours apart, at most 8 tablets a day', purpose: 'Pain', kind: 'prn', minGapHours: 4, maxPerDay: 4, doseForm: 'tablet', doseCount: 2, strength: '30/500' },
+  { id: 'sumatriptan', name: 'Sumatriptan', dose: '1 tablet (50 mg)', how: 'At the start of a migraine, a second after 2 hours if it comes back', purpose: 'Migraine', kind: 'prn', minGapHours: 2, maxPerDay: 2, doseForm: 'tablet', doseCount: 1, strength: '50 mg' }
 ];
 
 const NOT_MEDICAL_ADVICE = 'Explanations from Daybook Assistant are written by AI and can be wrong. This is not medical advice: check anything that matters with your medical team.';
@@ -1231,7 +1240,7 @@ function enterPreview(pack) {
   $('more-user').textContent = 'Guest (preview, nothing saved)';
   $('guest-pill').hidden = false;
   $('guest-pill').textContent = 'Leave demo';
-  $('guest-pill').setAttribute('aria-label', pack === 'ibd' ? "Leave demo, the Crohn's or colitis preview" : 'Leave demo, the cancer treatment preview');
+  $('guest-pill').setAttribute('aria-label', pack === 'ibd' ? "Leave demo, the Crohn's or colitis preview" : pack === 'general' ? 'Leave demo, the chronic pain preview' : 'Leave demo, the cancer treatment preview');
   $('user-chip').hidden = true; // the pill is the way out; the Guest chip beside it only used up the room
   startDemoData(pack);
   syncReminders();
@@ -1245,7 +1254,7 @@ document.querySelectorAll('[data-preview]').forEach((b) => b.addEventListener('c
   if (!want) return;
   u.searchParams.delete('preview');
   history.replaceState(null, '', u.pathname + (u.searchParams.toString() ? '?' + u.searchParams : '') + u.hash);
-  if (want === 'ibd' || want === 'cancer') state.previewLink = want;
+  if (want === 'ibd' || want === 'cancer' || want === 'general' || want === 'pain') state.previewLink = want === 'pain' ? 'general' : want;
 })();
 /* Demo (v226, Mark: "when we click demo we can choose either a cancer demo or a Crohn's demo"): one button on the sign-in
    screen opens the choice (the two in-memory previews, nothing saved). The shared live demo, where the Daybook Assistant works,
@@ -1839,12 +1848,132 @@ function buildIbdFixture() {
   return { entries, documents, days, exercise, profile, meals };
 }
 
+/* The chronic pain preview (v371, Mark: a third demo for Something else): Robin, chronic lower back pain with sciatica down
+   the left leg and a migraine now and then, and Kim, their partner. Four weeks: a bad patch from day -12 to -8 after a long
+   drive, a pain clinic appointment on day -9, physio in between, settling again. Everything is made up. */
+function buildGeneralFixture() {
+  const day = (offset) => addDays(todayStr(), offset);
+  const at = (offset, hhmm) => { const [hh, mm] = hhmm.split(':').map(Number); const d = parseDay(day(offset)); d.setHours(hh, mm, 0, 0); return d; };
+  const e = (offset, hhmm, who, fields) => ({ id: fakeId('entry'), day: day(offset), at: demoTs(at(offset, hhmm)), addedBy: who, createdAt: demoTs(at(offset, hhmm)), note: '', ...fields });
+  const ci = (offset, slot, fields) => {
+    const when = at(offset, slot === 'morning' ? '08:20' : slot === 'week' ? '18:00' : slot === 'weekcarer' ? '18:30' : '21:15');
+    return { id: day(offset) + '_' + slot, type: 'checkin', slot, day: day(offset), at: demoTs(when), addedBy: 'Robin', createdAt: demoTs(when), updatedAt: demoTs(when), ...fields };
+  };
+  const entries = [];
+  /* the day's pain, worst first in the bad patch; mornings stiffer than evenings */
+  const pm = [4, 4, 3, 4, 5, 4, 4, 3, 4, 4, 5, 4, 4, 4, 5, 6, 7, 8, 7, 7, 6, 5, 5, 4, 4, 3, 4, 3];
+  const pe = [3, 4, 3, 3, 4, 4, 3, 3, 4, 3, 4, 4, 3, 4, 6, 7, 8, 7, 7, 6, 5, 5, 4, 4, 3, 3, 3, 3];
+  const mood = [7, 7, 6, 7, 6, 7, 7, 7, 6, 7, 6, 6, 7, 6, 5, 4, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 7, 7];
+  const steps = [5200, 6100, 4800, 5900, 4300, 6600, 7100, 5400, 6000, 5200, 4100, 5600, 6300, 4400, 2100, 1200, 900, 1500, 1800, 2600, 3200, 3900, 4600, 5100, 5800, 6200, 6400, 2300];
+  const desk = [6, 7, 5, 0, 0, 7, 6, 7, 6, 4, 0, 0, 7, 6, 2, 0, 0, 0, 1, 3, 4, 0, 0, 5, 6, 5, 6, 0];
+  for (let i = 0; i < 28; i++) {
+    const o = i - 27, bad = o >= -12 && o <= -7;
+    entries.push(e(o, '07:30', 'Robin', { type: 'med', medId: 'omeprazole', medName: 'Omeprazole', dose: '1 capsule (20 mg)' }));
+    entries.push(e(o, '08:05', 'Robin', { type: 'med', medId: 'naproxen', medName: 'Naproxen', dose: '1 tablet (500 mg)' }));
+    if (o < 0 || new Date().getHours() >= 18) entries.push(e(o, '18:10', 'Robin', { type: 'med', medId: 'naproxen', medName: 'Naproxen', dose: '1 tablet (500 mg)' }));
+    if (o < 0 || new Date().getHours() >= 20) entries.push(e(o, '20:05', 'Robin', { type: 'med', medId: 'amitriptyline', medName: 'Amitriptyline', dose: '1 tablet (10 mg)' }));
+    if (i % 3 === 0) entries.push(e(o, '07:35', 'Robin', { type: 'weight', value: 86.4 - i * 0.02 }));
+    if (i % 4 === 1) entries.push(e(o, '08:30', i % 8 === 1 ? 'Kim' : 'Robin', { type: 'vitals', heartRate: bad ? 84 : 72, systolic: bad ? 138 : 128, diastolic: bad ? 88 : 80 }));
+    entries.push(e(o, '07:20', 'Robin', { type: 'sleep', value: bad ? 290 + (i % 3) * 25 : 390 + (i % 4) * 15, bedAt: bad ? '23:40' : '23:00', wokeAt: bad ? '06:10' : '07:00', rested: bad ? 'no' : (i % 3 ? 'bit' : 'yes'), broken: bad ? 'lots' : (i % 4 === 0 ? 'some' : 'no'), brokenWhy: bad ? ['pain'] : (i % 4 === 0 ? ['toilet'] : []), awakeFor: bad ? '1to2' : '' }));
+    entries.push(e(o, '10:00', 'Robin', { type: 'drink', value: 300, note: 'Coffee' }));
+    entries.push(e(o, '14:00', 'Robin', { type: 'drink', value: 500, note: 'Water' }));
+    entries.push(e(o, '17:00', i % 3 ? 'Robin' : 'Kim', { type: 'drink', value: 250, note: 'Tea' }));
+    if (o < 0) entries.push(e(o, '20:30', 'Robin', { type: 'drink', value: 300, note: 'Water' }));
+    if (o < -2) {
+      entries.push(e(o, '07:45', 'Robin', { type: 'food', note: ['Porridge', 'Toast', 'Yogurt and granola'][i % 3], detail: i % 3 === 0 ? 'banana' : '', amount: 'All of it' }));
+      entries.push(e(o, '18:45', i % 2 ? 'Kim' : 'Robin', { type: 'food', note: ['Spaghetti bolognese', 'Chicken stir fry', 'Fish pie', 'Vegetable curry', 'Shepherd’s pie'][i % 5], amount: bad ? 'About half' : 'All of it' }));
+    }
+    /* co-codamol: most days of the bad patch, now and then otherwise */
+    if (bad || i % 6 === 2) {
+      entries.push(e(o, '11:30', 'Robin', { type: 'med', medId: 'cocodamol', medName: 'Co-codamol 30/500', dose: '2 tablets', note: bad && i % 2 ? 'Left leg, burning down to the calf' : '' }));
+      if (bad) entries.push(e(o, '17:45', 'Robin', { type: 'med', medId: 'cocodamol', medName: 'Co-codamol 30/500', dose: '2 tablets' }));
+      if (o === -10 || o === -9) entries.push(e(o, '23:15', 'Kim', { type: 'med', medId: 'cocodamol', medName: 'Co-codamol 30/500', dose: '2 tablets', note: 'Could not get comfortable in bed' }));
+    }
+    const relief = bad || i % 6 === 2;
+    entries.push(ci(o, 'morning', { sleep: bad ? 3 : 6 + (i % 2), sleepHours: bad ? 5 : 6.5 + (i % 2) * 0.5, pain: pm[i], painNote: pm[i] >= 6 ? 'Lower back, left side, down the leg to the calf' : (i % 5 === 0 ? 'Stiff low down until I had a shower' : ''), mood: mood[i], symptoms: bad ? 'Pins and needles in the left foot' : '', lookingForward: bad ? '' : ['A walk at lunch', 'Seeing my sister', 'The weekend', 'Swimming'][i % 4], moodNote: mood[i] <= 4 ? 'Fed up of hurting' : '',
+      night: { bedAt: bad ? '23:40' : '23:00', wokeAt: bad ? '06:10' : '07:00', rested: bad ? 'no' : (i % 3 ? 'bit' : 'yes'), broken: bad ? 'lots' : (i % 4 === 0 ? 'some' : 'no'), brokenWhy: bad ? ['pain'] : (i % 4 === 0 ? ['toilet'] : []), awakeFor: bad ? '1to2' : '' } }));
+    if (o < 0) entries.push(ci(o, 'evening', { pain: pe[i], worstPain: Math.min(10, pe[i] + (bad ? 1 : 2)), painStop: bad ? 3 : pe[i] >= 4 ? 1 : 0, reliefHelp: relief ? (bad ? 1 : 2) : null, appetite: bad ? 5 : 7, energy: bad ? 3 : 6, symptoms: '', settled: o === -6 ? 'The leg is easing, no pins and needles today' : '', mood: mood[i], goodThing: ['Kim made soup', 'A walk round the park', 'Finished the jigsaw', 'Call with Mum', 'A hot bath helped', 'Got through work'][i % 6], wb: { low: bad ? 2 : 0, worried: bad ? 2 : 1, enjoyed: bad ? 1 : 2 }, journal: o === -10 ? 'Drove to Leeds and back on Saturday and have paid for it ever since. Could not sit for more than ten minutes at work.' : '',
+      own: { desk: { name: 'Hours at my desk', kind: 'number', unit: 'hours', v: desk[i] }, walked: { name: 'Walked 20 minutes', kind: 'yesno', v: steps[i] >= 4500 }, stiff: { name: 'Stiffness first thing', kind: 'score', v: Math.max(1, pm[i] - 1) } } }));
+  }
+  entries.push(
+    /* pain readings between the check-ins */
+    e(-11, '13:10', 'Robin', { type: 'pain', value: 8, note: 'Bending to the dishwasher. Sharp, then burning down the leg' }),
+    e(-10, '15:30', 'Robin', { type: 'pain', value: 7, note: 'Sitting in the meeting, had to stand at the back' }),
+    e(-8, '12:00', 'Robin', { type: 'pain', value: 6, note: 'Better after the physio exercises' }),
+    e(-3, '16:00', 'Robin', { type: 'pain', value: 4, note: 'Long day at the desk' }),
+    /* symptoms, the person's own words on the Symptom tile */
+    e(-11, '09:00', 'Robin', { type: 'symptom', what: 'Pins and needles in left foot', value: 5, note: 'Worse when sitting' }),
+    e(-9, '20:30', 'Robin', { type: 'symptom', what: 'Pins and needles in left foot', value: 4, note: '' }),
+    e(-20, '14:00', 'Robin', { type: 'symptom', what: 'Migraine', value: 7, note: 'Aura first, zigzags on the left, then the headache' }),
+    e(-20, '14:05', 'Robin', { type: 'med', medId: 'sumatriptan', medName: 'Sumatriptan', dose: '1 tablet (50 mg)', note: 'At the aura' }),
+    e(-4, '10:30', 'Robin', { type: 'symptom', what: 'Migraine', value: 5, note: 'Woke with it, no aura' }),
+    e(-4, '10:40', 'Robin', { type: 'med', medId: 'sumatriptan', medName: 'Sumatriptan', dose: '1 tablet (50 mg)' }),
+    /* food, a few meals */
+    e(-2, '08:00', 'Robin', { type: 'food', note: 'Porridge', detail: 'blueberries', amount: 'All of it' }),
+    e(-2, '13:00', 'Robin', { type: 'food', note: 'Chicken salad sandwich', amount: 'All of it' }),
+    e(-1, '19:00', 'Kim', { type: 'food', note: 'Salmon and new potatoes', amount: 'All of it' }),
+    e(0, '08:00', 'Robin', { type: 'food', note: 'Porridge', detail: 'banana', amount: 'All of it' }),
+    /* notes and questions */
+    e(-9, '17:00', 'Robin', { type: 'note', note: 'Pain clinic today. Dr Example suggested going up on the amitriptyline if sleep stays broken, and a referral back to physio. Talked about a nerve root injection if the leg does not settle in six weeks.' }),
+    e(-7, '21:30', 'Kim', { type: 'note', note: 'Robin is moving better tonight. Managed the stairs without stopping.' }),
+    e(-5, '19:00', 'Robin', { type: 'question', note: 'Is it safe to keep taking naproxen every day for months? Should I have my kidneys checked?', team: 'general', answered: false }),
+    e(-3, '20:00', 'Kim', { type: 'question', note: 'If the leg pain comes back, how soon should we ask about the injection?', team: 'pain', answered: false }),
+    e(-2, '09:30', 'Robin', { type: 'question', note: 'Could I try going up to 20 mg of amitriptyline? I am still waking at four.', team: 'pain', answered: false }),
+    /* weekly checks */
+    ci(-15, 'week', { helped: 'Swimming on Tuesday and Thursday.', hardest: 'Sitting through the long meetings.', sentence: 'A steady week, back niggling.' }),
+    ci(-8, 'week', { helped: 'Kim, the heat pad and the physio exercises.', hardest: 'Not sleeping. Missing two days of work.', sentence: 'The worst week since the spring.' }),
+    ci(-8, 'weekcarer', { addedBy: 'Kim', wkcTired: 3, wkcLow: 2, wkcSymptoms: 3, wkcHelp: 2, helped: 'Getting the pain clinic appointment.', hardest: 'Robin being up half the night.', sentence: 'Hard going, turning by Friday.' })
+  );
+  const documents = [{
+    id: fakeId('doc'), category: 'general', kind: 'text',
+    title: 'Pain clinic letter (example)', docDate: day(-9),
+    text: 'Dear Dr Example,\n\nI saw this patient in the pain clinic today with a three year history of lower back pain, worse over the last fortnight after a long drive, with burning pain and pins and needles down the left leg to the calf (L5 distribution). No red flag features. Neurological examination normal apart from reduced sensation over the left foot.\n\nCurrent medicines: naproxen 500 mg twice daily with omeprazole cover, amitriptyline 10 mg at night, co-codamol 30/500 as needed, sumatriptan for migraine.\n\nPlan: increase amitriptyline to 20 mg at night if sleep remains broken after two weeks. Re-refer to physiotherapy for a graded exercise programme. Please check renal function given long-term naproxen. If the leg pain has not settled in six weeks, we would consider a left L5 nerve root injection. Review in three months.\n\nKind regards,\nDr Example, Consultant in Pain Medicine',
+    explanation: 'This is a sample explanation, showing what a reply might look like.\n\nIn plain English: the clinic thinks the leg pain comes from a nerve in the lower back being irritated (the L5 nerve), and found nothing worrying. The plan is to go up on amitriptyline if sleep is still poor, go back to physio, and have a blood test to check the kidneys because naproxen is being taken every day. An injection around the nerve is an option if the leg has not settled in six weeks.\n\nWorth asking the team: how will we know if the injection is needed?',
+    addedBy: 'Robin', addedAt: demoTs(at(-9, '18:00')), updatedAt: demoTs(at(-9, '18:00'))
+  }];
+  const days = {};
+  const appt = (offset, name, done, extra) => { days[day(offset)] = { chemo: true, treatment: 'appt', treatName: name, chemoDone: done, updatedBy: 'Robin', updatedAt: demoTs(at(Math.min(offset, 0), '09:00')), ...(extra || {}) }; };
+  appt(-23, 'GP review', true);
+  appt(-9, 'Pain clinic', true, { mood: 2, good: 'Felt listened to' });
+  appt(-5, 'Physio', true);
+  appt(2, 'Physio', false);
+  appt(9, 'GP, kidney blood test', false);
+  [[-16, 3, 'Swimming'], [-11, 2, 'Kim made soup'], [-10, 1, 'A hot bath helped'], [-7, 3, 'Managed the stairs'], [-3, 4, 'A walk round the park'], [-1, 4, 'Call with Mum']].forEach(([o, m, g]) => { days[day(o)] = { ...(days[day(o)] || {}), mood: m, good: g }; });
+  const exercise = {};
+  for (let i = 0; i < 28; i++) { const o = i - 27; exercise[day(o)] = { day: day(o), steps: steps[i], done: { walk: steps[i] >= 4500, bridge: i % 2 === 0, knees: i % 2 === 0 }, ...(i % 7 === 2 && steps[i] > 4000 ? { workouts: [{ name: 'Pool Swim', minutes: 30, km: 0.8, start: '18:30' }] } : {}) }; }
+  const profile = {
+    packs: { general: true }, condition: 'Chronic back pain',
+    reportName: 'Robin Example', setupDone: true,
+    tracks: [
+      { id: 'desk', name: 'Hours at my desk', kind: 'number', unit: 'hours' },
+      { id: 'walked', name: 'Walked 20 minutes', kind: 'yesno', unit: '' },
+      { id: 'stiff', name: 'Stiffness first thing', kind: 'score', unit: '' }
+    ],
+    calls: [
+      { label: 'GP surgery (example)', role: 'Dr Example', number: '01234 567900', email: 'gp.reception@example.org' },
+      { label: 'Pain clinic (example)', role: 'Pain nurses', number: '01234 567901', ext: 'option 3', email: 'pain.clinic@example.org' },
+      { label: 'Physio (example)', role: 'Sam, physiotherapist', number: '01234 567902' }
+    ],
+    programme: { items: [
+      { id: 'walk', name: 'Walk', section: 'exercise', kind: 'minutes', amount: 20, match: 'walk', note: 'Flat ground, at your own pace' },
+      { id: 'bridge', name: 'Bridges', section: 'physio', kind: 'sets', amount: 10, sets: 2, note: 'Lying on your back, knees bent, lift your hips' },
+      { id: 'knees', name: 'Knee to chest', section: 'physio', kind: 'seconds', amount: 20, note: 'Each leg, gently' }
+    ] },
+    physio: { from: 'Sam, physiotherapist (example)', given: day(-5), notes: 'Twice a day. Stop if the leg pain goes above 7 out of 10.' }
+  };
+  const meals = [
+    { id: fakeId('meal'), name: 'Porridge', parts: 'blueberries', addedBy: 'Robin' },
+    { id: fakeId('meal'), name: 'Chicken salad sandwich', parts: '', addedBy: 'Robin' }
+  ];
+  return { entries, documents, days, exercise, profile, meals };
+}
+
 function startDemoData(pack) {
   /* a hook for the Playwright harness, preview only: nothing here can reach Firestore */
   window.daybookPreview = { state, addEntry, renderExercise, exerciseLogFor, syncUsageRow, openUsage, logMed, deleteEntry, doseWaterMl, syncMedWater, renderDocsList, renderMeds };
-  state.previewPack = pack === 'ibd' ? 'ibd' : 'cancer';
-  const fixture = state.previewPack === 'ibd' ? buildIbdFixture() : buildDemoFixture();
-  const seed = state.previewPack === 'ibd' ? IBD_MEDICINES : DEMO_MEDICINES;
+  state.previewPack = pack === 'ibd' || pack === 'general' ? pack : 'cancer';
+  const fixture = state.previewPack === 'ibd' ? buildIbdFixture() : state.previewPack === 'general' ? buildGeneralFixture() : buildDemoFixture();
+  const seed = state.previewPack === 'ibd' ? IBD_MEDICINES : state.previewPack === 'general' ? GENERAL_MEDICINES : DEMO_MEDICINES;
   state.medicines = seed.map((m, i) => ({ ...m, active: true, order: i + 1 }));
   if (state.previewPack === 'ibd') {
     /* the steroid course sits around today: started with the flare, four weeks in all */
@@ -1871,7 +2000,7 @@ function startDemoData(pack) {
   renderDocsList();
   renderChemo();
   renderExercise();
-  toast(state.previewPack === 'ibd' ? "Preview: Jo, who has Crohn's, and Alex. Made-up example data, nothing you do here is saved." : 'Preview mode: made-up example data, nothing you do here is saved.');
+  toast(state.previewPack === 'ibd' ? "Preview: Jo, who has Crohn's, and Alex. Made-up example data, nothing you do here is saved." : state.previewPack === 'general' ? 'Preview: Robin, who lives with chronic back pain, and Kim. Made-up example data, nothing you do here is saved.' : 'Preview mode: made-up example data, nothing you do here is saved.');
   setTimeout(() => offerDraft(), 4200); // after the welcome line has had its four seconds
   renderCalls();
   syncSettings();
