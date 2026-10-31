@@ -2135,11 +2135,12 @@ details.daymeal[open] .daymeal-sum::after { transform: rotate(90deg); }
 
 /* Treatment-day medicines waiting for the next session (v317) */
 .treatday-fold { margin-top: var(--s-6); }
-.treatday-fold > summary { display: flex; align-items: center; gap: var(--s-2); min-height: 44px; cursor: pointer; list-style: none; margin: 0; }
-.treatday-fold > summary::-webkit-details-marker { display: none; }
-.treatday-fold > summary::after { content: ''; width: 10px; height: 10px; margin-left: auto; border-right: 2px solid var(--text-secondary); border-bottom: 2px solid var(--text-secondary); transform: rotate(45deg); transition: transform .2s; }
-.treatday-fold[open] > summary::after { transform: rotate(-135deg); }
-.treatday-fold > summary .pill { font-family: var(--font-body); font-size: 14px; }
+/* v367: a plain button, not a details element (Mark's iPhone: tapping the fold did nothing) */
+.treatday-fold > .section-title { margin: 0; }
+.treatday-toggle { display: flex; align-items: center; gap: var(--s-2); width: 100%; min-height: 48px; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+.treatday-toggle::after { content: ''; flex: none; width: 10px; height: 10px; margin-left: auto; margin-right: 6px; border-right: 2px solid var(--text-secondary); border-bottom: 2px solid var(--text-secondary); transform: rotate(45deg); transition: transform .2s; }
+.treatday-toggle[aria-expanded="true"]::after { transform: rotate(-135deg); }
+.treatday-toggle .pill { font-family: var(--font-body); font-size: 14px; }
 .med-line .med-treatpill { margin-right: var(--s-1); }
 .pill-treat { background: var(--warm-light); color: var(--warm-dark); }
 

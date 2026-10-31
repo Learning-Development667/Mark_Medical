@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '366';
+const APP_VERSION = '367';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -1879,7 +1879,7 @@ function startDemoData(pack) {
 
 function watchMedicines() {
   state.unsub.meds = onSnapshot(hcol('medicines'), (snap) => {
-    state.medicines = sortMedicines(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    state.medicines = sortMedicines(tidyCalendarMeds(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
     renderMeds();
     renderTiles();
   }, (e) => console.error(e));
@@ -10947,6 +10947,13 @@ function notStarted(m, day) { return !!(m.courseStart && m.courseStart > day); }
 /* v358: any regular medicine, the session day and/or 0 to 7 days after it (treatOnDay, treatAfter; a v317 medicine has
    neither and reads as the session day alone) */
 function onTreatmentDays(m) { return m.kind === 'scheduled' && m.treatmentDays === true; }
+/* v367 (Mark: Gemcitabine showed as a finished course, though it starts again with the next cycle): a medicine that
+   follows the Treatment calendar has no course of its own; the calendar decides when it is due. Any course dates saved on
+   one are ignored (left in the database, dropped from what the app reads), and Edit medicine no longer offers them. */
+function tidyCalendarMeds(list) {
+  (list || []).forEach((m) => { if (onTreatmentDays(m) && (m.courseEnd || m.courseStart)) { delete m.courseEnd; delete m.courseStart; } });
+  return list;
+}
 function isTreatmentDay(day) { return !!(state.days[day] && state.days[day].chemo && state.days[day].treatment !== 'appt'); }
 function treatAfterOf(m) { return Math.max(0, Math.min(7, Number(m.treatAfter) || 0)); }
 function inTreatmentWindow(m, day) {
@@ -11132,6 +11139,7 @@ function hospitalHidden() { return false; }
 
 function renderMeds() {
   const day = state.selectedDay;
+  tidyCalendarMeds(state.medicines);
   const sched = activeScheduled(day).filter((m) => !hospitalHidden(m));
   const prn = activePrn().filter((m) => !hospitalHidden(m));
   /* No medicines at all yet (a new circle starts empty since v248): one clear way in, not two bare lines */
@@ -12809,6 +12817,12 @@ async function logMedAtTime(m) {
 $('meds-manage').addEventListener('click', openManageMeds);
 $('meds-first-add').addEventListener('click', () => openEditMed(null));
 $('meds-history').addEventListener('click', openMedHistoryList);
+/* Around treatment days opens and closes with a plain button (v367; a details element did nothing on Mark's iPhone) */
+$('meds-treatday-toggle').addEventListener('click', () => {
+  const btn = $('meds-treatday-toggle'), open = btn.getAttribute('aria-expanded') !== 'true';
+  btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  $('meds-treatday-body').hidden = !open;
+});
 $('meds-hospital-add').addEventListener('click', () => openHospitalDose(null));
 
 /* A medicine taken with food: the box in the editor, or, for medicines saved before it existed,
@@ -13315,6 +13329,10 @@ function openEditMed(m, prefill) {
     treatLine.textContent = !on && !n ? 'Choose the session day, some days after it, or both.'
       : 'Taken ' + (on ? 'on the session day' : '') + (on && n ? ' and ' : '') + (n ? 'for the ' + (n === 1 ? 'day' : n + ' days') + ' after it' : '') + '. If a session moves on the calendar, this moves with it.';
   };
+  /* the course dates, hidden for a medicine that follows the Treatment calendar (v367) */
+  const courseBits = h('div', null, h('div', { class: 'field-row' }, field('Course starts', courseStart), field('Course ends', courseEnd)),
+    h('p', { class: 'hint', text: 'Both dates are optional. A course starting later is listed under Starting soon on the Meds tab, and is not counted or reminded about until its first day.' }));
+  const courseNote = h('p', { class: 'hint', text: 'No course dates: it follows the Treatment calendar, so it is due whenever a session is marked there and never shows as finished.' });
   const treatMore = h('div', { class: 'med-treat-more' },
     h('label', { class: 'check' }, treatOn, h('span', { text: 'On the session day itself' })),
     h('p', { class: 'fieldlabel', text: 'And for how many days after?' }), afterChips, treatLine);
@@ -13322,7 +13340,7 @@ function openEditMed(m, prefill) {
     h('label', { class: 'check' }, treatDays, h('span', { text: 'Only around treatment days' })),
     h('p', { class: 'hint', text: 'For chemo given on the day, or something like paracetamol for the three days after. On those days it shows under Scheduled with its times and reminders; the rest of the time it waits, folded away, and is never counted as missed.' }),
     treatMore);
-  const syncTreat = () => { treatMore.hidden = !treatDays.checked; drawTreat(); };
+  const syncTreat = () => { treatMore.hidden = !treatDays.checked; courseBits.hidden = treatDays.checked; courseNote.hidden = !treatDays.checked; drawTreat(); };
   treatDays.addEventListener('change', syncTreat);
   treatOn.addEventListener('change', drawTreat);
   afterChips.addEventListener('click', () => setTimeout(drawTreat, 0));
@@ -13383,8 +13401,7 @@ function openEditMed(m, prefill) {
      offered for regular and when-needed medicines alike, and kept on a when-needed one */
   const mealBits = [h('label', { class: 'check' }, withMeals, h('span', { text: 'Ask after every meal or snack' })),
     h('p', { class: 'hint', text: 'Whenever food is logged, Daybook asks whether this was taken with it. With Ask how many each time ticked, it asks how many; without it, one tap logs the usual dose.' })];
-  const schedFields = h('div', null, h('div', { class: 'field-row' }, field('Course starts', courseStart), field('Course ends', courseEnd)),
-    h('p', { class: 'hint', text: 'Both dates are optional. A course starting later is listed under Starting soon on the Meds tab, and is not counted or reminded about until its first day.' }),
+  const schedFields = h('div', null, courseBits, courseNote,
     ...(packOn('ibd') ? [h('label', { class: 'check' }, steroid, h('span', { text: 'A steroid course (prednisolone, budesonide, dexamethasone)' })),
     h('p', { class: 'hint', text: 'Ticked, the course is shaded on the Treatment calendar and counted there as a course in the last 12 months.' })] : []));
   const prnFields = h('div', null, field('Minimum hours between doses', minGap), field('Maximum doses per day', maxPerDay));
@@ -13436,7 +13453,7 @@ function openEditMed(m, prefill) {
       };
       /* a new dose on a medicine still being taken is noted, so its history says when it changed (v187) */
       const oldDose = (m.dose || '').trim();
-      const stillTaken = active.checked && !(kind.value === 'scheduled' && courseEnd.value && courseEnd.value < todayStr());
+      const stillTaken = active.checked && !(kind.value === 'scheduled' && !treatDays.checked && courseEnd.value && courseEnd.value < todayStr());
       if (!isNew && oldDose && data.dose && data.dose !== oldDose && stillTaken) {
         data.doseChanges = [...(Array.isArray(m.doseChanges) ? m.doseChanges : []), { from: oldDose, to: data.dose, day: todayStr(), by: state.name || '' }];
       }
@@ -13446,8 +13463,8 @@ function openEditMed(m, prefill) {
         times = chosen();
         data.perDay = hospital.checked ? null : (times.length || Math.max(1, parseInt(perDay.value, 10) || 1));
         data.takenAt = hospital.checked ? [] : times.slice();
-        data.courseEnd = courseEnd.value || null;
-        data.courseStart = courseStart.value || null;
+        data.courseEnd = treatDays.checked ? null : courseEnd.value || null;
+        data.courseStart = treatDays.checked ? null : courseStart.value || null;
         data.steroid = steroid.checked;
         data.minGapHours = null; data.maxPerDay = null;
         data.times = hospital.checked || !remind.checked ? [] : times.slice();
