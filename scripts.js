@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '372';
+const APP_VERSION = '373';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -9832,9 +9832,12 @@ function outsideText(v) {
    the check-in as sidefx { session "YYYY-MM-DD", treatment, grades { name: 0 to 3 } } (null when skipped), and every one
    above None is also written as a side effect of that session (entries/{day}_{slot}_fx_{n}, type symptom, grade, value
    3, 6 or 9), so it shows on the Treatment tab's card, the timeline, Notes for the team and the reports like any other. */
-/* v346, Mark: tingling in fingers beside the general tingling, proprioception in plain words, and bloating */
+/* v346, Mark: tingling in fingers beside the general tingling, proprioception in plain words, and bloating.
+   v373, Mark: Tingling and Tingling in fingers were the same question, so the chemo list asks Tingling only; and Nausea
+   is asked beside Sickness, because feeling sick is not the same as being sick. Both names stay in SIDEFX_ALL, so check-ins
+   that rated Tingling in fingers still read and file as before. */
 const SIDEFX_PROPRIO = 'Unsure where your hands or feet are (proprioception)';
-const SIDEFX_ITEMS = ['Sickness', 'Tiredness', 'Poor appetite', 'Mouth', 'Diarrhoea', 'Constipation', 'Bloating', 'Tingling', 'Tingling in fingers', SIDEFX_PROPRIO, 'Taste changes'];
+const SIDEFX_ITEMS = ['Sickness', 'Nausea', 'Tiredness', 'Poor appetite', 'Mouth', 'Diarrhoea', 'Constipation', 'Bloating', 'Tingling', SIDEFX_PROPRIO, 'Taste changes'];
 /* After an injection or infusion (v204) the usual ones are different: the site or the drip reaction, and the signs of an infection the IBD team asks about */
 const SIDEFX_IBD = ['Injection site reaction', 'Infusion reaction', 'Headache', 'Nausea', 'Tiredness', 'Rash', 'Sore throat or cough', 'Fever or chills', 'Joint pain'];
 /* The entries the check-ins write are numbered by place in this list (fxEntryId), so it only ever grows at the end:
