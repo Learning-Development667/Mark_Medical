@@ -8,7 +8,7 @@ asked for a paste-ready prompt on every step.
 """
 import html, json, re, datetime
 
-VERSION = '371'
+VERSION = '372'
 UPDATED = '1 November 2026'
 REPO = 'learning-development667/mark_medical'
 
@@ -74,12 +74,6 @@ decide = [
  ('A weekly medicine schedule', 'Mark to decide',
   'Medicines taken on some days of the week only (a weekly methotrexate, say), counted only on those days.',
   'A reviewer suggested a weekly schedule for medicines taken on set days (methotrexate once a week, say). Tell me how it would sit in Edit medicine beside When do you take it and Only around treatment days, how it changes the Meds tab, the counts and the reminders, and mock it up.', 'open'),
- ('"Why the data is held" on the privacy page', 'Mark to decide',
-  'a US tester’s feedback: the heading "Why it is held" reads better as "Why the data is held". A one-line change in the app’s privacy page and the website’s copy.',
-  'a US tester suggested the privacy heading "Why it is held" should read "Why the data is held". Show me the heading in place, and on my yes change it in the app (tpl-privacy in index.html, the date updated) and copy the privacy page to the website again.', 'next'),
- ('A Meet the team page', 'Mark to decide',
-  'Mark’s idea after a US tester’s feedback: a separate page, linked from the footer, with Mark and Shelley’s professional write-ups and headshots, and a clinical adviser once one agrees. Waiting on your LinkedIn profiles (Save to PDF) and photos.',
-  'Build the website’s Meet the team page (team.html, linked from the footer): Mark and Shelley as directors of Mark 1 Apps Ltd, each with a headshot and a short professional write-up taken from the LinkedIn PDFs I send, and room for a clinical adviser once one agrees. If we add anything personal, ask us a few interview questions first. Show me a mock-up and wait for my yes.', 'next'),
  ('Food apps like MyNetDiary, named on the website', 'Mark to decide',
   'a US tester’s feedback: he uses MyNetDiary. Daybook already takes food totals from any app that writes to Apple Health; one line on the website and in Support could say so.',
   'a US tester uses MyNetDiary for food. Daybook already takes the day’s food totals from Apple Health (MyNetDiary, MyFitnessPal and Nutracheck all write to it). Draft one line for the website and the Support page saying so, and check it is true as the app stands.', 'open'),
@@ -166,6 +160,7 @@ GROUPS = [
 ]
 
 DONE_RECENT = [
+ ('Meet the team page with About us and photos; "Why the data is held" on the privacy page', 'v372, 1 Nov'),
  ('The ICO number and support email in the website’s footer', '1 Nov'),
  ('A third demo, Robin with chronic pain; the .com addresses forward to the .co.uk', 'v371, 1 Nov'),
  ('a US tester’s feedback: Shelley named on the website, a line to the app, privacy and terms copied fresh', '31 Oct'),
