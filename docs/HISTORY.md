@@ -6,6 +6,9 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v375 (1 November 2026): Nausea on the Symptom tile, and What's new
+Mark: Nausea is on the Symptom tile's list (`SYMPTOMS`) as well as the chemo side effects (v373). What's new batch 2026-11-01, words approved by Mark, for the cancer pack: "The side-effects questions after treatment now ask about nausea separately from sickness, and tingling is asked once."
+
 ### v374 (1 November 2026): one Tingling on the Symptom tile too
 Mark: the same duplicate as v373, on the Symptom tile's list (`SYMPTOMS`). Tingling in fingers is taken off; Tingling stays. An older symptom saved as Tingling in fingers opens with the name in the "Or type your own" box, so nothing is lost.
 

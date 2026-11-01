@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '374';
+const APP_VERSION = '375';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -3461,6 +3461,9 @@ $('feedback-row').addEventListener('click', () => openFeedbackSheet());
    localStorage: when it first saw this (batches before that day are never shown as new), which batches
    it has seen, and the Beta welcome. Nothing is stored in the circle. */
 const WHATS_NEW = [
+  { id: '2026-11-01', items: [
+    { text: 'The side-effects questions after treatment now ask about nausea separately from sickness, and tingling is asked once.', packs: ['cancer'] }
+  ] },
   { id: '2026-10-25', items: [
     { text: 'A Mood tile on Today, in place of the Medicine button, lets you log how you feel at any time of day, not just at the check-ins. These moods count in your Mood report and in Notes for the team, with an average mood on both.' },
     { text: 'Any medicine can now ask "Did you take it with this?" after every meal and snack, including a When needed one like Creon. Tick Ask after every meal or snack in that medicine\'s settings. If the amount changes each time, it asks how many.' },
@@ -4238,7 +4241,7 @@ function bristolArt(t) {
 
 /* Symptom (since v92): a between-times symptom with a 1 to 10 score, the way the Pain tile works, for
    the things the evening check-in only asks about once a day. Stored { type "symptom", what, value, note }. */
-const SYMPTOMS = ['Sickness', 'Mouth', 'Skin', 'Breathing', 'Dizziness', 'Tingling', 'Tiredness', 'Taste changes', 'Poor appetite', 'Constipation', 'Aches and pains', 'Headache', 'Hair loss', 'Sore hands or feet', 'Bloating', 'Unsure where your hands or feet are (proprioception)'];
+const SYMPTOMS = ['Sickness', 'Mouth', 'Skin', 'Breathing', 'Dizziness', 'Tingling', 'Tiredness', 'Taste changes', 'Poor appetite', 'Constipation', 'Aches and pains', 'Headache', 'Hair loss', 'Sore hands or feet', 'Bloating', 'Nausea', 'Unsure where your hands or feet are (proprioception)'];
 /* Side effects (v173): a symptom can say what caused it, a medicine on the list or a kind of treatment.
    Stored beside the symptom as causeKind ('med' or 'treatment'), causeId (the medicine's id or the treatment's key)
    and causeName (as it was called then), so it reads the same on the timeline, in Notes for the team and under
