@@ -8,8 +8,8 @@ asked for a paste-ready prompt on every step.
 """
 import html, json, re, datetime
 
-VERSION = '365'
-UPDATED = '31 October 2026'
+VERSION = '371'
+UPDATED = '1 November 2026'
 REPO = 'learning-development667/mark_medical'
 
 # Each action: (id, title, who, note, prompt, state). who: 'Claude', 'Mark', 'Mark to decide', 'Testers', 'Both'.
@@ -74,6 +74,15 @@ decide = [
  ('A weekly medicine schedule', 'Mark to decide',
   'Medicines taken on some days of the week only (a weekly methotrexate, say), counted only on those days.',
   'A reviewer suggested a weekly schedule for medicines taken on set days (methotrexate once a week, say). Tell me how it would sit in Edit medicine beside When do you take it and Only around treatment days, how it changes the Meds tab, the counts and the reminders, and mock it up.', 'open'),
+ ('"Why the data is held" on the privacy page', 'Mark to decide',
+  'a US tester’s feedback: the heading "Why it is held" reads better as "Why the data is held". A one-line change in the app’s privacy page and the website’s copy.',
+  'a US tester suggested the privacy heading "Why it is held" should read "Why the data is held". Show me the heading in place, and on my yes change it in the app (tpl-privacy in index.html, the date updated) and copy the privacy page to the website again.', 'next'),
+ ('About Mark on the website', 'Mark to decide',
+  'a US tester’s feedback: say more about who made Daybook. A short About Mark section with a photo, in Mark’s own words.',
+  'a US tester said the website should say more about me. Draft a short About Mark section for the website (who I am, why I built Daybook, Mark 1 Apps Ltd only in the footer as now) in my own voice from what the site already says, show it to me as a mock-up, and wait for my words and a photo before it goes live.', 'open'),
+ ('Food apps like MyNetDiary, named on the website', 'Mark to decide',
+  'a US tester’s feedback: he uses MyNetDiary. Daybook already takes food totals from any app that writes to Apple Health; one line on the website and in Support could say so.',
+  'a US tester uses MyNetDiary for food. Daybook already takes the day’s food totals from Apple Health (MyNetDiary, MyFitnessPal and Nutracheck all write to it). Draft one line for the website and the Support page saying so, and check it is true as the app stands.', 'open'),
  ('Which report next', 'Mark to decide',
   'Ideas: Treatment cycles (side effects by day after treatment), Readings for the GP, Activity and physio, a sleep report, a year in review.',
   'Help me choose the next report. For each idea (Treatment cycles, Readings for the GP, Activity and physio, a sleep report, a year in review) tell me who reads it, what is already logged for it, and how much work it is, then recommend one.', 'open'),
@@ -92,8 +101,20 @@ mark = [
   'Three things built but never confirmed: a morning weigh-in arriving from Apple Health by itself; Scan a barcode on a few real UK products; a real physio plan through Add from a photo or PDF.',
   'Help me do three quick checks on my phone and tell you what I see: a weigh-in arriving from Apple Health, Scan a barcode on three real products, and a real physio plan through Add from a photo or PDF of the plan. Fix anything that misbehaves.', 'open'),
  ('The website, section by section', 'Mark',
-  'Live at mymedicaldaybook.co.uk. Left: your sign-off of each section, Charlene’s and Shelley’s words, mymedicaldaybook.com forwarding there.',
-  'Take me through the website (mymedicaldaybook-site) one section at a time so I can sign each off or ask for changes. Then help me add Charlene’s and Shelley’s words when I have them, and set mymedicaldaybook.com to forward to the .co.uk.', 'open'),
+  'Live at mymedicaldaybook.co.uk (the .com forwards there since 31 October). Left: your sign-off of each section, Charlene’s and Shelley’s words.',
+  'Take me through the website (mymedicaldaybook-site) one section at a time so I can sign each off or ask for changes. Then help me add Charlene’s and Shelley’s words when I have them.', 'open'),
+ ('Real photographs for the website', 'Mark',
+  'a US tester’s feedback: the pictures have an AI look. Real photographs for the seven steps of the story and the stills, chosen by you.',
+  'a US tester said the website’s pictures look AI-made. Help me plan real photographs for the seven steps of the story and the other stills: a shot list in plain words, what to take on my phone, and how to send them to you; then put them on the website in place of the Firefly ones.', 'open'),
+ ('A clinical adviser', 'Mark',
+  'a US tester’s feedback: a doctor or nurse from a teaching hospital as an adviser, named on the website once they agree. a US tester offered to help find one.',
+  'a US tester suggested a clinical adviser (a doctor or nurse, ideally from a teaching hospital) named on the website. Help me write a short, plain approach to send them: what Daybook is, that it is a journal and report tool and not a medical device, what I would ask of them (a review of the wording and the reports, a few hours a year), and what they get in return.', 'open'),
+ ('Charity partners', 'Mark',
+  'a US tester’s feedback: partner with a charity. Pancreatic Cancer UK and Crohn’s & Colitis UK match the story best; Macmillan and Cancer Research UK are bigger and slower.',
+  'a US tester suggested partnering with a charity. Help me approach Pancreatic Cancer UK and Crohn’s & Colitis UK first: who to write to, what to ask for (a look at the app, a mention to nurses, a trial), and a short email in my own voice.', 'open'),
+ ('A second person in the business', 'Mark',
+  'a US tester’s feedback: bring in a second person, beside Shelley, to help run Mark 1 Apps. Your call on whether and who.',
+  'a US tester suggested a second person to help run Mark 1 Apps Ltd. Help me think it through: what I would need from them (development, clinical, business), how it could be set up (adviser, employee, shareholder) and what to watch for, with no decision made for me.', 'open'),
  ('The wider Beta', 'Mark',
   'The Crohn’s friends are on it. Next: the email to nurses and the message to Sarah Cannon Research, from the Daybook Beta messages doc, and a Beta code for each route in.',
   'Help me send the next Beta invitations: check the Daybook Beta messages doc is still right for the app as it is now, make a Beta code for each route in (Household admin, beta-code), and tell me exactly what to send to whom.', 'open'),
@@ -127,6 +148,9 @@ paper = [
  ('Tax, bank and yearly filings', 'Mark',
   'Corporation Tax registration with HMRC within three months of starting to trade, a business bank account, the yearly confirmation statement and accounts.',
   'Explain in plain words what Mark 1 Apps Ltd must do with HMRC and Companies House and when (Corporation Tax registration, the confirmation statement, the accounts), and what I need for a business bank account. Make me a dated checklist.', 'open'),
+ ('A solicitor’s hour on the privacy page and terms', 'Mark',
+  'a US tester’s feedback, and long on the list: a solicitor reads the privacy page and the terms before the app stores, a fixed-fee hour.',
+  'Help me get the privacy page and terms checked by a solicitor before the app stores: what to ask for (a fixed-fee review of a health app’s privacy notice and terms under UK GDPR), what to send them, and the questions worth asking (a carer setting up a circle, the AI processor in the US, children).', 'next'),
  ('Your will for the shares', 'Mark',
   'What happens to your 26 shares. A solicitor, or the free will services through Macmillan and Marie Curie.',
   'Explain the options for a will covering my shares in Mark 1 Apps Ltd, including the free will services through Macmillan and Marie Curie, and what to ask a solicitor.', 'open'),
@@ -142,6 +166,9 @@ GROUPS = [
 ]
 
 DONE_RECENT = [
+ ('A third demo, Robin with chronic pain; the .com addresses forward to the .co.uk', 'v371, 1 Nov'),
+ ('a US tester’s feedback: Shelley named on the website, a line to the app, privacy and terms copied fresh', '31 Oct'),
+ ('Feedback on the Usage page; mood words off Notes for the team unless chosen; course dates cleared', 'v368 to v370'),
  ('Things I track and symptoms as charts on Trends', 'v365'),
  ('Something else: the reviewers’ fixes (blood pressure sittings, weight rises, triptans as pain relief)', 'v363, v364'),
  ('Something else for any condition; Things I track; your own Today tiles; pain and daily life', 'v359 to v361'),
@@ -165,6 +192,7 @@ PARKED = [
  ('Share label figures with Open Food Facts', 'Opt-in, after the App Store, agreed with Open Food Facts first.'),
  ('IBD-Control and the IBD Fatigue scale', 'Need written permission (Professor Bodger; King’s College London). Claude drafts the letters when asked.'),
  ('An "AI used this month" line in Settings', 'From the bridge’s own tally. If wanted.'),
+ ('The Oxford comma (a US tester)', 'Not taken: Daybook follows UK style, so no comma before the last "and".'),
  ('Mark 1 Apps website and storefront', 'A page of the apps Mark has built. Not started.'),
 ]
 
