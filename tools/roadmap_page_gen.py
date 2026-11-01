@@ -77,9 +77,9 @@ decide = [
  ('"Why the data is held" on the privacy page', 'Mark to decide',
   'a US tester’s feedback: the heading "Why it is held" reads better as "Why the data is held". A one-line change in the app’s privacy page and the website’s copy.',
   'a US tester suggested the privacy heading "Why it is held" should read "Why the data is held". Show me the heading in place, and on my yes change it in the app (tpl-privacy in index.html, the date updated) and copy the privacy page to the website again.', 'next'),
- ('About Mark on the website', 'Mark to decide',
-  'a US tester’s feedback: say more about who made Daybook. A short About Mark section with a photo, in Mark’s own words.',
-  'a US tester said the website should say more about me. Draft a short About Mark section for the website (who I am, why I built Daybook, Mark 1 Apps Ltd only in the footer as now) in my own voice from what the site already says, show it to me as a mock-up, and wait for my words and a photo before it goes live.', 'open'),
+ ('A Meet the team page', 'Mark to decide',
+  'Mark’s idea after a US tester’s feedback: a separate page, linked from the footer, with Mark and Shelley’s professional write-ups and headshots, and a clinical adviser once one agrees. Waiting on your LinkedIn profiles (Save to PDF) and photos.',
+  'Build the website’s Meet the team page (team.html, linked from the footer): Mark and Shelley as directors of Mark 1 Apps Ltd, each with a headshot and a short professional write-up taken from the LinkedIn PDFs I send, and room for a clinical adviser once one agrees. If we add anything personal, ask us a few interview questions first. Show me a mock-up and wait for my yes.', 'next'),
  ('Food apps like MyNetDiary, named on the website', 'Mark to decide',
   'a US tester’s feedback: he uses MyNetDiary. Daybook already takes food totals from any app that writes to Apple Health; one line on the website and in Support could say so.',
   'a US tester uses MyNetDiary for food. Daybook already takes the day’s food totals from Apple Health (MyNetDiary, MyFitnessPal and Nutracheck all write to it). Draft one line for the website and the Support page saying so, and check it is true as the app stands.', 'open'),
@@ -166,6 +166,7 @@ GROUPS = [
 ]
 
 DONE_RECENT = [
+ ('The ICO number and support email in the website’s footer', '1 Nov'),
  ('A third demo, Robin with chronic pain; the .com addresses forward to the .co.uk', 'v371, 1 Nov'),
  ('a US tester’s feedback: Shelley named on the website, a line to the app, privacy and terms copied fresh', '31 Oct'),
  ('Feedback on the Usage page; mood words off Notes for the team unless chosen; course dates cleared', 'v368 to v370'),
@@ -193,6 +194,7 @@ PARKED = [
  ('IBD-Control and the IBD Fatigue scale', 'Need written permission (Professor Bodger; King’s College London). Claude drafts the letters when asked.'),
  ('An "AI used this month" line in Settings', 'From the bridge’s own tally. If wanted.'),
  ('The Oxford comma (a US tester)', 'Not taken: Daybook follows UK style, so no comma before the last "and".'),
+ ('A US version', 'If Daybook goes to America: food from USDA FoodData Central (free, public domain, with branded barcodes) beside Open Food Facts; US units and spelling; US scales and wording in place of the NHS ones; the FTC health breach rule and state health-data laws; US-style reports.'),
  ('Mark 1 Apps website and storefront', 'A page of the apps Mark has built. Not started.'),
 ]
 
