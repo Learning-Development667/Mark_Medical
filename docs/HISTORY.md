@@ -6,6 +6,9 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v374 (1 November 2026): one Tingling on the Symptom tile too
+Mark: the same duplicate as v373, on the Symptom tile's list (`SYMPTOMS`). Tingling in fingers is taken off; Tingling stays. An older symptom saved as Tingling in fingers opens with the name in the "Or type your own" box, so nothing is lost.
+
 ### v373 (1 November 2026): the chemo side-effects list
 Mark: Tingling and Tingling in fingers asked the same thing, and nausea is not the same as sickness. `SIDEFX_ITEMS` (the three days after a chemo or other non-repeat session) now asks Sickness, Nausea, Tiredness, Poor appetite, Mouth, Diarrhoea, Constipation, Bloating, Tingling, the proprioception row and Taste changes. Tingling in fingers is no longer asked; `SIDEFX_ALL` is unchanged (Nausea was already in it from the IBD list), so entry ids keep their places and older check-ins that rated Tingling in fingers still show and file as before. The IBD injection and infusion list is unchanged.
 
