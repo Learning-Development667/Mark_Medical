@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '383';
+const APP_VERSION = '384';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -6135,7 +6135,7 @@ $('food-print').addEventListener('click', () => openReportViewer('food', true));
    range is kept in state for the session only, never written to Firestore.
    Both reports (Food diary, Notes for the team) share this wiring; `kind`
    is 'food' or 'notes' and matches the element ids and state keys. */
-const CUSTOM_RANGE_MAX_DAYS = 180;
+const CUSTOM_RANGE_MAX_DAYS = 200; // v384: six months between clinics is often 26 weeks and a few days (was 180)
 
 function reportRange(kind) {
   const to = todayStr();
@@ -8090,6 +8090,17 @@ function twoPageSideFx(entries, shown) {
 
 /* The weeks: blocks of seven days counted back from the last day of the period, so the period's
    last day ends a week (Tuesday to Monday in the design, where the period began on a Tuesday) */
+/* v384 (review item 24): a run of weeks with nothing logged is one row, "Nothing logged", not a row of Nones each */
+function foldEmptyWeeks(weeks, blank) {
+  const out = [];
+  weeks.forEach((w) => {
+    const prev = out[out.length - 1];
+    if (!w._none) { out.push(w); return; }
+    if (prev && prev._none) { prev.to = w.to; prev.label = rDay(prev.from) + ' to ' + rDay(w.to); return; }
+    out.push({ ...w, ...blank, _none: true });
+  });
+  return out;
+}
 function reportWeeks(from, to) {
   const out = [];
   for (let end = to; end >= from; end = addDays(end, -7)) {
@@ -11839,7 +11850,7 @@ async function renderMoodReport() {
       ...d.texts.map((t) => h('p', { class: 'wk-sentence', text: t })))));
   }
   /* the weeks */
-  $('mood-weeks').replaceChildren(...W.weeks.map((w) => h('div', { class: 'card wkcard' },
+  $('mood-weeks').replaceChildren(...W.weeks.map((w) => w._none ? h('div', { class: 'card wkcard' }, h('div', { class: 'wk-head' }, h('span', { text: w.label }), h('span', { class: 'muted', text: 'Nothing logged' }))) : h('div', { class: 'card wkcard' },
     h('div', { class: 'wk-head' }, h('span', { text: w.label }), h('span', { class: 'muted', text: 'Sleep ' + w.sleep })),
     W.cols.taps
       ? h('div', { class: 'wk-dots' }, ...[['Felt low', w.low], ['Worried or on edge', w.worried], ['Enjoyed something', w.enjoyed]].map(([label, d]) =>
@@ -12028,7 +12039,7 @@ function buildMoodReport(n) {
   /* the weeks: seven-day blocks counted back from the last day, as the other reports */
   const wkChecks = entries.filter((e) => e.type === 'checkin' && e.slot === 'week');
   const carerChecks = entries.filter((e) => e.type === 'checkin' && e.slot === 'weekcarer');
-  const weeks = reportWeeks(from, to).map((w) => {
+  const weeks = foldEmptyWeeks(reportWeeks(from, to).map((w) => {
     const inW = daysFull.filter((d) => d.day >= w.from && d.day <= w.to);
     const t = inW.filter((d) => d.wb);
     const dots = (k, warmAt) => {
@@ -12045,11 +12056,11 @@ function buildMoodReport(n) {
     /* the carer's own check on the week (v166), one line after the patient's: "As Shelley saw it: ..." */
     const cchk = carerChecks.find((e) => e.day >= w.from && e.day <= w.to) || null;
     const carer = cchk && (text(cchk.sentence) || text(cchk.hardest) || text(cchk.helped)) ? 'As ' + (cchk.addedBy || 'the carer') + ' saw it: ' + (text(cchk.sentence) || text(cchk.hardest) || text(cchk.helped)) : '';
-    return { key: w.key, from: w.from, to: w.to, label: rDay(w.from) + ' to ' + rDay(w.to), low: dots('low', true), worried: dots('worried', true), enjoyed: dots('enjoyed', false),
+    return { _none: !t.length && !ns.length && !ms.length && !wScores.length && !chk && !cchk, key: w.key, from: w.from, to: w.to, label: rDay(w.from) + ' to ' + rDay(w.to), low: dots('low', true), worried: dots('worried', true), enjoyed: dots('enjoyed', false),
       mood: wScores.length ? String(avg(wScores)) : 'None', moodSub: ms.length ? 'lowest ' + Math.min(...ms.map((d) => d.moodLow)) : 'no scores',
       lowDays: ms.length ? String(lows.length) : 'None', lowSub: ms.length ? 'of ' + plural(ms.length, 'day') : '',
       sleep: ns.length ? avg(ns) + ' h' : 'None', sleepSub: ns.length ? (sh ? plural(sh, 'short night') : 'no short nights') : 'no sleep logged', sentence: chk ? text(chk.sentence) : '', sub: extra, carer, check: chk || null };
-  });
+  }), { mood: 'Nothing logged', moodSub: '', lowDays: '', lowSub: '', sleep: '', sleepSub: '', low: { n: 0, sub: '', warm: false }, worried: { n: 0, sub: '', warm: false }, enjoyed: { n: 0, sub: '', warm: false }, sentence: '', sub: '', carer: '', check: null });
   /* the brief, the quotes and the two lists: Daybook Assistant's, or the app's plain version */
   const ai = state.moodAI && state.moodAI.range === from + '|' + to ? state.moodAI : null;
   const patient = (state.profile && state.profile.reportName) || state.patientName || state.name || 'The patient';
@@ -12153,7 +12164,7 @@ async function renderPainReport() {
     h('p', { class: 'wk-sub', text: P.nightLine })));
   $('pain-words-sum').textContent = P.words.length ? `Every note under a pain score (${P.words.length}), to read or fix` : 'Nothing written under the pain scores in this period';
   $('pain-words').replaceChildren(...(P.words.length ? P.words.map((w) => h('div', { class: 'card wordcard' }, h('span', { class: 'word-when', text: w.when + (w.score != null ? ' · ' + w.score + '/10' : '') }), h('p', { text: w.text }), fixWordsLink(w.src, renderPainReport))) : [h('p', { class: 'hint', text: 'The box under each pain score ("Where is it, or anything else?") goes here.' })]));
-  $('pain-weeks').replaceChildren(...P.weeks.map((w) => h('div', { class: 'card wkcard' },
+  $('pain-weeks').replaceChildren(...P.weeks.map((w) => w._none ? h('div', { class: 'card wkcard' }, h('div', { class: 'wk-head' }, h('span', { text: w.label }), h('span', { class: 'muted', text: 'Nothing logged' }))) : h('div', { class: 'card wkcard' },
     h('div', { class: 'wk-head' }, h('span', { text: w.label }), h('span', { class: 'muted', text: 'Pain ' + w.pain })),
     h('p', { class: 'wk-sub', text: `${w.painSub}. Days at 7 or more: ${w.bad}. Worst pain: ${w.worst}. Relief: ${w.relief}. ${w.nights}.` }))));
   $('pain-send').hidden = state.readOnly || state.viewer;
@@ -12380,15 +12391,15 @@ function buildPainReport(n) {
   const allNotes = daysFull.flatMap((d) => d.notes);
   const words = allNotes.filter((w) => !isRoutineNote({ text: w.text })).map((w) => ({ ...w, text: String(w.text == null ? '' : w.text).replace(/\s+/g, ' ').trim() }));
   const wordsTotal = allNotes.length;
-  const weeks = reportWeeks(from, to).map((w) => {
+  const weeks = foldEmptyWeeks(reportWeeks(from, to).map((w) => {
     const inW = daysFull.filter((d) => d.day >= w.from && d.day <= w.to);
     const nw = inW.flatMap((d) => d.now), sc = inW.filter((d) => d.max != null), b = sc.filter((d) => d.max >= 7), ws = inW.map((d) => d.worst).filter((v) => v != null);
     const dn = inW.reduce((t, d) => t + d.dosesN, 0), dd = inW.filter((d) => d.dosesN).length, ns = inW.filter((d) => d.sleep != null), sh = ns.filter((d) => d.sleep < 5).length;
-    return { key: w.key, from: w.from, to: w.to, label: rDay(w.from) + ' to ' + rDay(w.to),
+    return { _none: !nw.length && !sc.length && !ws.length && !dn && !ns.length, key: w.key, from: w.from, to: w.to, label: rDay(w.from) + ' to ' + rDay(w.to),
       pain: nw.length ? String(avg(nw)) : 'None', painSub: nw.length ? (Math.min(...nw) === Math.max(...nw) ? 'all ' + nw[0] : Math.min(...nw) + ' to ' + Math.max(...nw)) : 'no scores',
       bad: sc.length ? b.length + ' of ' + sc.length : 'None', worst: ws.length ? String(avg(ws)) : 'None', worstSub: ws.length ? 'highest ' + Math.max(...ws) : '',
       relief: dn ? plural(dn, 'dose') + ' on ' + plural(dd, 'day') : 'None', nights: ns.length ? (sh ? plural(sh, 'short night') : 'No short nights') : 'No sleep logged' };
-  });
+  }), { pain: 'Nothing logged', painSub: '', bad: '', worst: '', worstSub: '', relief: '', nights: '' });
   const patient = (state.profile && state.profile.reportName) || state.patientName || state.name || 'The patient';
   /* Key points (v263): a few short lines from the figures, and a few from the words. Daybook Assistant's for this range
      when written, else the app's own. */
@@ -12479,7 +12490,7 @@ async function renderIbdReport() {
     h('span', { class: 'tile-label', text: t.k }), h('span', { class: 'tile-value' }, t.v, t.unit ? h('small', { text: t.unit }) : null), h('span', { class: 'tile-sub', text: t.n }))));
   $('ibd-brief').replaceChildren(...I.brief.map((b) => h('p', null, b.head ? h('b', { text: b.head + '. ' }) : null, b.text)));
   $('ibd-strip').replaceChildren(...I.strip.map((s) => h('div', { class: 'card stripcard' }, h('h3', { class: 'card-title', text: s.head }), h('p', { text: s.text }))));
-  $('ibd-weeks').replaceChildren(...I.weeks.map((w) => h('div', { class: 'card wkcard' },
+  $('ibd-weeks').replaceChildren(...I.weeks.map((w) => w._none ? h('div', { class: 'card wkcard' }, h('div', { class: 'wk-head' }, h('span', { text: w.label }), h('span', { class: 'muted', text: 'Nothing logged' }))) : h('div', { class: 'card wkcard' },
     h('div', { class: 'wk-head' }, h('span', { text: w.label }), h('span', { class: 'muted', text: w.aDay + ' a day' })),
     h('p', { class: 'wk-sub', text: [w.aDaySub, 'Blood: ' + w.blood, 'Urgency: ' + w.urgency, 'Weight: ' + w.weight, w.other].filter(Boolean).join('. ') + '.' }))));
   $('ibd-flare').replaceChildren(...(I.flareLog.length ? I.flareLog.map((f) => h('div', { class: 'card wordcard' }, h('span', { class: 'word-when', text: f.when }), h('p', { text: f.text }))) : [h('p', { class: 'hint', text: 'No flare days marked and no calls logged in this period. Both come from I think I\'m flaring on Today.' })]));
@@ -12555,7 +12566,8 @@ function buildIbdReport(n) {
   const tone = twDays.length || blackDays.length || worstBlood >= 3 ? 'red' : above || bloodDays.length || rush || accidents || nightN || wateryDays.length >= 2 ? 'amber' : logged.length ? 'green' : '';
   /* Bowels a day is an average coloured by the average (v275); blood, urgency and flare days are counts and stay counts (v276, Mark) */
   const tiles = [
-    logged.length ? { k: what + ' a day', v: one(mean), unit: usual ? 'average, usual ' + usual : 'average', tone: usual && mean >= usual + 3 ? 'amber' : 'green', n: `Average of the ${plural(logged.length, 'day')} logged.` }
+    /* v384 (review): logged on under half the days, the average says so and is not coloured green */
+    logged.length ? { k: what + ' a day', v: one(mean), unit: usual ? 'average, usual ' + usual : 'average', tone: usual && mean >= usual + 3 ? 'amber' : logged.length * 2 < days.length ? '' : 'green', n: logged.length * 2 < days.length ? `Logged on ${logged.length} of ${days.length} days; the average is of those.` : `Average of the ${plural(logged.length, 'day')} logged.` }
       : { k: what + ' a day', v: 'None', unit: '', tone: '', n: 'No bowel movements logged in this period.' },
     logged.length ? { k: 'Blood', v: String(bloodDays.length), unit: 'of ' + plural(logged.length, 'day'), tone: worstBlood >= 3 || blackDays.length ? 'red' : bloodDays.length ? 'amber' : 'green',
       n: bloodDays.length ? `Worst ${bloodWord(worstBlood)}, on ${bloodDays.slice(0, 3).map(rDay).join(', ')}${bloodDays.length > 3 ? ' and ' + (bloodDays.length - 3) + ' more' : ''}.${blackDays.length ? ' Black or tarry on ' + plural(blackDays.length, 'day') + '.' : ''}` : 'No blood logged.' + (twDays.length ? '' : '') }
@@ -12604,7 +12616,7 @@ function buildIbdReport(n) {
   brief.push({ head: 'Body', text: [ws.length ? `Weight ${fmtKg(wLast.value)} on ${rDay(wLast.day)}` + (wChange != null && Math.abs(wChange) >= 0.1 ? `, ${wChange < 0 ? 'down' : 'up'} ${Math.abs(wChange)} kg since ${rDay(wFirst.day)}` : '') : 'No weight logged', temps.length ? `temperature highest ${Number(tempHi.value).toFixed(1)} °C on ${rDay(tempHi.day)}` : '', gutPains.length ? `tummy pain or cramps averaged ${avg(gutPains)}/10, up to ${Math.max(...gutPains)}` : '', pains.length ? `pain up to ${Math.max(...pains)}/10` : '', gutStops.length ? `the gut stopped ${patient.split(/\s+/)[0]} doing something quite a bit or a lot on ${gutStopBad.length} of ${plural(gutStops.length, 'evening')}` : '', nightAsked.length ? `up in the night for the toilet on ${nightUp.length} of ${plural(nightAsked.length, 'morning')}${nightTwice.length ? ', twice or more on ' + nightTwice.length : ''}` : '', energy.length ? `energy averaged ${avg(energy)}/10 in the evening check-ins` : '', outside.length ? `outside the gut: ${outside.map((e) => (e.outside.length ? outsideText(e.outside).toLowerCase() : 'none of the usual') + ' (week to ' + rDay(e.day) + ')').join('; ')}` : ''].filter(Boolean).join('; ') + '.' });
   if (fasts.n) brief.push({ head: 'Fasting', text: `Fasting on ${fasts.n} of the ${plural(fasts.asked, 'morning')} asked: ${fasts.text}. The days are marked under the first chart.` });
   /* week by week */
-  const weeks = reportWeeks(from, to).map((w) => {
+  const weeks = foldEmptyWeeks(reportWeeks(from, to).map((w) => {
     const wd = days.filter((d) => d >= w.from && d <= w.to);
     const lg = wd.filter((d) => byDay[d]);
     const cs = lg.map((d) => byDay[d].length);
@@ -12617,10 +12629,10 @@ function buildIbdReport(n) {
     const injDay = inRangeSessions.find((d) => d >= w.from && d <= w.to), injWord = injDay ? treatmentOf(state.days[injDay]).label.toLowerCase() : 'injection or infusion'; // v380: the session's own word
     const fd = fasts.days.filter((d) => d >= w.from && d <= w.to).length;
     const other = [fl ? plural(fl, 'flare day') : '', cl ? plural(cl, 'call') : '', ste ? 'on steroids' : '', inj ? plural(inj, injWord) : '', fd ? 'fasting ' + plural(fd, 'day') : ''].filter(Boolean).join(', ');
-    return { label: rDay(w.from) + ' to ' + rDay(w.to), aDay: cs.length ? one(avg(cs)) : 'None', aDaySub: cs.length ? `most ${Math.max(...cs)}, ${plural(lg.length, 'day')} logged` : 'nothing logged',
+    return { _none: !lg.length && !wws.length && !other, from: w.from, to: w.to, label: rDay(w.from) + ' to ' + rDay(w.to), aDay: cs.length ? one(avg(cs)) : 'None', aDaySub: cs.length ? `most ${Math.max(...cs)}, ${plural(lg.length, 'day')} logged` : 'nothing logged',
       blood: bl.length ? `${plural(bl.length, 'day')}, ${bloodWord(wb)}` : 'none', urgency: [ru ? ru + ' straight away' : '', ac ? plural(ac, 'accident') : '', ni ? ni + ' at night' : ''].filter(Boolean).join(', ') || 'none',
       weight: wws.length ? fmtKg(wws[wws.length - 1].value) : 'none', other: other || '' };
-  });
+  }), { aDay: 'Nothing logged', aDaySub: '', blood: '', urgency: '', weight: '', other: '' });
   /* the flare log: flare days and calls, in time order */
   const flareLog = [];
   runs.forEach((r) => flareLog.push({ day: r.from, when: r.from === r.to ? rDay(r.from) : rDay(r.from) + ' to ' + rDay(r.to), text: `Marked as flaring${r.from === r.to ? '' : ', ' + (dayGap(r.from, r.to) + 1) + ' days'}.` }));

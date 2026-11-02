@@ -6,6 +6,12 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v384 (2 November 2026): long reports over sparse months (review item 24)
+- **Empty weeks fold into one row:** on the Crohn's and colitis, Pain and Mood reports (screen and print), a run of weeks with nothing logged is one row, "10 Apr to 18 Sep, Nothing logged" (`foldEmptyWeeks()`, each week's `_none`), instead of a row of Nones a week. Notes for the team already left empty weeks out.
+- **Custom ranges up to 200 days** (`CUSTOM_RANGE_MAX_DAYS`, was 180): six months between clinics is often 26 weeks and a few days.
+- **Light loggers:** the Crohn's report's Bowels a day tile is not coloured green when logged on under half the days, and says "Logged on 3 of 180 days; the average is of those." (Drinks in v382.)
+Tested on the three previews with a 190-day custom range: one folded row each, the range accepted, no page errors.
+
 ### v383 (2 November 2026): bowels in a flare, quicker (review item 23)
 - **Same as last time** at the top of the Bowels sheet (`.bowel-same`, not when editing): one tap logs a movement like the last one (its types or stoma output, blood grade, how long you could wait and the ticks other than At night), at the time in the box, At night when that is 23:00 to 05:59, a "none" for the day removed, with Undo. The button says what it will log ("Same as last time: type 6, mushy, blood streaks"). The full sheet is below it as before.
 - **The day's count on the Bowels tile** (`.qa-count`, a teal number; the tile reads "Bowels, 3 times today" to a screen reader).
