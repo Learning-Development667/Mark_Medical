@@ -685,7 +685,7 @@ body.is-readonly #calls-edit, body.is-readonly .calls-actions { display: none; }
 .wiz-buttons .btn { margin-top: 0; }
 .wiz-buttons .btn-back { flex: 0 0 auto; padding: var(--s-3) var(--s-4); }
 .wiz-buttons .btn-next { flex: 1; }
-.wiz-skip { flex: 0 0 auto; }
+.wiz-skip { flex: 0 0 auto; min-width: 48px; padding-inline: 8px; }
 .wiz-summary { list-style: none; margin: 0 0 6px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .wiz-summary button { display: flex; justify-content: space-between; align-items: center; gap: var(--s-3); width: 100%; text-align: left; border: 0; border-radius: var(--r-sm); background: var(--surface-sunken); box-shadow: var(--elev-sunken); padding: var(--s-3) 14px; min-height: var(--tap); cursor: pointer; color: var(--text-primary); transition: background var(--t-base) ease; }
 .wiz-summary .k { color: var(--text-secondary); }

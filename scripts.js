@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '379';
+const APP_VERSION = '380';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -2275,6 +2275,7 @@ function sameCallAt(calls, c, advice = false) {
     || (low(c.email) && low(x.email) === low(c.email))
     || (low(c.label) && low(x.label) === low(c.label)));
 }
+function contactRolePh() { return packOn('cancer') ? 'e.g. Oncology nurse specialist' : packOn('ibd') ? 'e.g. IBD nurse specialist' : 'e.g. specialist nurse'; }
 function filledOnly(o) { return Object.fromEntries(Object.entries(o).filter(([, v]) => v != null && v !== '')); }
 function openSetup(kind, opts = {}) {
   const full = kind !== 'phone';
@@ -2363,7 +2364,7 @@ function openSetup(kind, opts = {}) {
     { key: 'contact', only: full, title: 'Who to contact', hint: 'The nurse, the ward or the team you ring first. Reports can be emailed to them from Daybook. More can be added later under More.',
       body: () => [
         field('Name', h('input', { id: 'setup-c-name', type: 'text', placeholder: 'e.g. Sarah, or the ward', autocomplete: 'off', value: draft.contact.label })),
-        field('Role (optional)', h('input', { id: 'setup-c-role', type: 'text', placeholder: 'e.g. Oncology nurse specialist', autocomplete: 'off', value: draft.contact.role })),
+        field('Role (optional)', h('input', { id: 'setup-c-role', type: 'text', placeholder: contactRolePh(), autocomplete: 'off', value: draft.contact.role })),
         field('Phone', h('input', { id: 'setup-c-number', type: 'tel', placeholder: '01234 567890', autocomplete: 'off', value: draft.contact.number })),
         field('Email', h('input', { id: 'setup-c-email', type: 'email', placeholder: 'name@nhs.net', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false', value: draft.contact.email }))],
       save: async () => {
@@ -2502,6 +2503,7 @@ async function syncHouseholdCard() {
     $('settings-invite').hidden = !canRun;
     $('settings-invite-hint').textContent = canRun
       ? 'An invite is a link that works once and expires in a week. Family can add and change everything; read only sees everything and changes nothing; medicines and treatment only sees just that. Only the patient, and whoever set the circle up, can invite or remove people.'
+      : patient && patient.uid === owner ? 'Only ' + (patientName || 'the patient') + ' can invite or remove people now.' // v380: after a hand-over
       : 'Only ' + (patientName || 'the patient') + ', and whoever set the circle up, can invite or remove people.';
     const hand = $('settings-handover');
     hand.replaceChildren();
@@ -4273,6 +4275,14 @@ function bristolArt(t) {
 
 /* Symptom (since v92): a between-times symptom with a 1 to 10 score, the way the Pain tile works, for
    the things the evening check-in only asks about once a day. Stored { type "symptom", what, value, note }. */
+/* v380: chemo's starting list only with the cancer pack; Crohn's or colitis adds its own; everyone gets the everyday ones */
+const SYMPTOMS_EVERYDAY = ['Nausea', 'Sickness', 'Tiredness', 'Headache', 'Dizziness', 'Aches and pains', 'Joint pain', 'Skin', 'Breathing', 'Poor appetite', 'Constipation', 'Bloating'];
+function symptomList() {
+  const l = [...SYMPTOMS_EVERYDAY];
+  if (packOn('cancer')) l.push(...SYMPTOMS);
+  if (packOn('ibd')) l.push('Tummy pain or cramps', 'Diarrhoea', 'Mouth', 'Rash', 'Fever or chills');
+  return [...new Set(l)];
+}
 const SYMPTOMS = ['Sickness', 'Mouth', 'Skin', 'Breathing', 'Dizziness', 'Tingling', 'Tiredness', 'Taste changes', 'Poor appetite', 'Constipation', 'Aches and pains', 'Headache', 'Hair loss', 'Sore hands or feet', 'Bloating', 'Nausea', 'Unsure where your hands or feet are (proprioception)'];
 /* Side effects (v173): a symptom can say what caused it, a medicine on the list or a kind of treatment.
    Stored beside the symptom as causeKind ('med' or 'treatment'), causeId (the medicine's id or the treatment's key)
@@ -4919,7 +4929,7 @@ function openAdd(type, editEntry, preset) {
     const listSel = h('select', { class: 'input', id: 'symptom-pick' });
     const fillList = () => {
       const keep = listSel.value;
-      offer = [...new Set([...SYMPTOMS, ...saved].filter((w) => w && w !== 'Other'))].sort((a, b) => a.localeCompare(b));
+      offer = [...new Set([...symptomList(), ...saved].filter((w) => w && w !== 'Other'))].sort((a, b) => a.localeCompare(b));
       listSel.replaceChildren(h('option', { value: '', text: 'Choose from the list' }), ...offer.map((w) => h('option', { value: w, text: w })));
       listSel.value = offer.includes(keep) ? keep : '';
     };
@@ -5076,6 +5086,7 @@ function openAdd(type, editEntry, preset) {
       const m = parseInt(mins.value, 10);
       if (!mins.value.trim()) return missing(mins, 'How long was the nap?');
       if (isNaN(m) || m < 5 || m > 360) return missing(mins, 'A nap between 5 minutes and 6 hours, please', CHECK);
+      { const st = atFromInputs(day, time.value); if (st && st.getTime() + m * 60000 > Date.now() + 60000) return missing(time, 'That nap would still be going on. Check when it started and how long it was', CHECK); }
       return { type: 'nap', value: m, note: note.value.trim() };
     };
   }
@@ -5100,8 +5111,11 @@ function openAdd(type, editEntry, preset) {
     const teamRow = h('div', { class: 'chips', role: 'group', 'aria-label': 'Who is it for' });
     const teamHint = h('p', { class: 'hint' });
     const drawTeams = () => {
-      teamRow.replaceChildren(...QUESTION_TEAMS.map(([k, label]) => h('button', { class: 'preset' + (team === k ? ' is-active' : ''), type: 'button', 'aria-pressed': team === k ? 'true' : 'false', onclick: () => { team = k; drawTeams(); } }, label)));
-      teamHint.textContent = team === 'dietitian' ? 'Goes on the Food diary screen and report, for the dietitian, and stays there until it is marked as answered.' : team === 'wellbeing' ? 'Goes on the Mood and wellbeing screen and report, for a therapist, counsellor or GP, and stays there until it is marked as answered.' : team === 'pain' ? 'Goes on the Pain screen and report, for the pain nurse or team, and stays there until it is marked as answered.' : 'Goes to the top of Notes for the team, and stays there until it is marked as answered.';
+      /* v380 (review item 27): the teams that fit the circle's packs (Oncology with cancer, Gastro with cancer or Crohn's),
+         and whichever this question already has */
+      const fits = ([k]) => k === team || (k === 'oncology' ? packOn('cancer') : k === 'gastro' ? packOn('cancer') || packOn('ibd') : true);
+      teamRow.replaceChildren(...QUESTION_TEAMS.filter(fits).map(([k, label]) => h('button', { class: 'preset' + (team === k ? ' is-active' : ''), type: 'button', 'aria-pressed': team === k ? 'true' : 'false', onclick: () => { team = k; drawTeams(); } }, label)));
+      teamHint.textContent = team === 'dietitian' ? 'Goes on the Food diary screen and report, for the dietitian, and stays there until it is marked as answered.' : team === 'wellbeing' ? 'Goes on the Mood and wellbeing screen and report, for a therapist, counsellor or GP, and stays there until it is marked as answered.' : team === 'pain' ? 'Goes on the Pain screen and report, for the pain nurse or team, and stays there until it is marked as answered.' : team === 'gastro' && packOn('ibd') ? "Goes on the Crohn's and colitis report, for the IBD team, and stays there until it is marked as answered." : 'Goes to the top of Notes for the team, and stays there until it is marked as answered.';
     };
     drawTeams();
     body.append(
@@ -7288,7 +7302,7 @@ async function renderFoodDiary() {
       const drinks = list.filter((e) => e.type === 'drink');
       const ml = drinks.reduce((s, e) => s + (Number(e.value) || 0), 0);
       const sum = [
-        foods.length === 0 ? 'Nothing eaten logged' : foods.length === 1 ? '1 food entry' : foods.length + ' food entries',
+        foods.length === 0 ? 'No food logged' : foods.length === 1 ? '1 food entry' : foods.length + ' food entries',
         drinks.length ? 'drinks ' + fmtMl(ml) : 'no drinks logged'
       ].join(' · ');
       const nutri = foods.map((e) => (index ? entryNutrition(index, e) : null));
@@ -8561,7 +8575,7 @@ function buildFoodReport(n) {
   if (!index || !D.length) tiles.push({ k: 'Fruit and veg, fibre', v: 'None', note: 'No foods matched the food table.', tone: '' });
   else {
     const fv = tagDays('Fruit and veg'), wg = tagDays('Wholegrain'), fb = tagDays('Fibre');
-    tiles.push({ k: 'Fruit and veg, fibre', v: String(fv), unit: 'of ' + plural(D.length, 'day'), note: `${fv === D.length ? 'Eaten every day logged.' : `Fibre on ${fb} days.`} Wholegrain on ${plural(wg, 'day')}.`, tone: fv >= D.length * 0.8 ? 'green' : fv < D.length / 2 ? 'amber' : '' });
+    tiles.push({ k: 'Fruit and veg, fibre', v: String(fv), unit: 'of ' + plural(D.length, 'day'), note: `${fv === D.length ? 'Eaten every day logged.' : `Fibre on ${plural(fb, 'day')}.`} Wholegrain on ${plural(wg, 'day')}.`, tone: fv >= D.length * 0.8 ? 'green' : fv < D.length / 2 ? 'amber' : '' });
   }
 
   /* The protein chart's scale, and a call-out for a day one food carried */
@@ -9230,7 +9244,7 @@ function summaryRows(entries, from, to) {
       underDays = perDay.filter((p) => p.prot < target).length;
       targetText = `; against the ${target} g protein target, ${underDays ? 'under on ' + underDays + ' of ' + plural(targetDays, 'day') : 'met on every one of ' + plural(targetDays, 'day')}`;
     }
-    if (noFood.length) push('amber', 'Eating', `Nothing eaten logged on ${plural(noFood.length, 'day')} of the ${loggedDays.length} logged (${listDays(noFood)})${est ? '; on the other days ' + est : ''}${targetText}.`, noFood.length === 1 && !underDays ? `nothing eaten logged on ${fmtDayShort(noFood[0])}` : null, `Nothing eaten logged on ${plural(noFood.length, 'day')}${underDays ? `; ${protWord.toLowerCase()} under target on ${underDays} of ${targetDays} days` : ''}`);
+    if (noFood.length) push('amber', 'Eating', `No food logged on ${plural(noFood.length, 'day')} of the ${loggedDays.length} logged (${listDays(noFood)})${est ? '; on the other days ' + est : ''}${targetText}.`, noFood.length === 1 && !underDays ? `no food logged on ${fmtDayShort(noFood[0])}` : null, `Nothing eaten logged on ${plural(noFood.length, 'day')}${underDays ? `; ${protWord.toLowerCase()} under target on ${underDays} of ${targetDays} days` : ''}`);
     else if (target && macros) push(underDays > targetDays / 2 ? 'amber' : 'green', 'Eating', `Eating: something every logged day, ${est}${targetText}.`, null, underDays ? `${protWord} under target on ${underDays} of ${targetDays} days` : `Eating every day, ${protWord.toLowerCase()} at the target`);
     else if (anyFood) fine.push(`eating (something every logged day${est ? ', ' + est : ''})`);
   }
@@ -9643,6 +9657,7 @@ async function renderNotesReport() {
   const report = buildNotesReport(entries, questionsAll, from, to, rangeLabel);
   state.notesText = report.text;
   $('notes-explain').hidden = !explainAvailable();
+  { const ah = $('notes-ai-hint'); if (ah) ah.hidden = !explainAvailable() || state.readOnly; } // v380: the hint only where its buttons are
   $('notes-record').hidden = $('notes-record-hint').hidden = state.readOnly || !canRecord();
   renderAppointmentList(from, to);
   state.notesPdf = { filename: 'Daybook notes for the team ' + to + '.pdf', title: 'Notes for the team', subtitle: `${fmtDayNum(from)} to ${fmtDayNum(to)}, printed ${fmtDayNum(today)}`, report, entries, from, to };
@@ -9698,7 +9713,7 @@ const CHECKIN_QUESTIONS = {
   morning: [
     /* the night, then right now, then the day ahead (v146): symptoms overnight sit beside sleep, mood is the last score */
     { key: 'sleep', kind: 'sleep', q: 'How did you sleep?', low: '1 terribly', high: '10 brilliantly', note: 'sleepNote', noteQ: 'Anything else about the night? Optional.', notePh: 'e.g. slept for ages but still not rested, or a bad night but woke with some energy' },
-    { key: 'symptoms', kind: 'text', q: 'Any new or worse symptoms overnight?', ph: 'e.g. more sick than usual, a new ache' },
+    { key: 'symptoms', kind: 'text', q: 'Any new or worse symptoms overnight?', ph: 'e.g. a new ache, worse than usual' },
     /* with Crohn's or colitis (v221): one tap, counted as nights on the report beside the bowel log */
     { key: 'nightToilet', kind: 'scale', pack: 'ibd', q: 'Up in the night for the toilet?', words: ['No', 'Once', 'Twice or more'], hint: (day) => (nightBowelsBefore(day) ? 'Filled in from the bowel movements logged as at night. Change it if that is not right.' : 'One tap. Counts as a night on the Crohn\'s and colitis report.') },
     /* only on the three days after a treatment session (v189): how bad each usual side effect is */
@@ -9727,9 +9742,9 @@ const CHECKIN_QUESTIONS = {
     { key: 'gutStop', kind: 'scale', pack: 'ibd', q: 'Did your gut stop you doing anything today?', hint: 'Going out, eating, work, sleep. One tap.' },
     /* with Crohn's or colitis, once a week (v145): the problems outside the gut that affect up to a third of people */
     { key: 'outside', kind: 'ticks', pack: 'ibd', weekly: true, q: 'Over the last week, have you had any of these?' },
-    { key: 'symptoms', kind: 'text', q: 'Any new or worse symptoms today?', ph: 'e.g. felt sick after lunch, back worse' },
+    { key: 'symptoms', kind: 'text', q: 'Any new or worse symptoms today?', ph: 'e.g. back worse after lunch' },
     { key: 'sidefx', kind: 'sidefx', q: 'Any side effects since treatment?' },
-    { key: 'settled', kind: 'text', q: 'Anything that has settled since yesterday?', ph: 'e.g. the sickness has eased' },
+    { key: 'settled', kind: 'text', q: 'Anything that has settled since yesterday?', ph: 'e.g. the ache has eased' },
     /* Wellbeing (v156): three taps that take ten seconds, the data on a bad night; then the mood score; then the words, optional */
     /* Things I track (v360): only when the circle has added something */
     { key: 'own', kind: 'own', q: 'Your own things today', when: () => ownTracks().length > 0 },
@@ -9743,7 +9758,7 @@ const CHECKIN_QUESTIONS = {
   week: [
     { key: 'wkResults', kind: 'scale', pack: 'cancer', q: 'Worried about results or scans?' },
     { key: 'wkCutOff', kind: 'scale', pack: 'cancer', q: 'Felt cut off from people?' },
-    { key: 'wkTired', kind: 'scale', pack: ['cancer', 'ibd'], q: 'Tiredness got in the way?' },
+    { key: 'wkTired', kind: 'scale', q: 'Tiredness got in the way?' },
     { key: 'wkGutOut', kind: 'scale', pack: 'ibd', q: 'Did your gut stop you going out or doing something?' },
     { key: 'wkToilet', kind: 'scale', pack: 'ibd', q: 'Worried about getting to a toilet?' },
     { key: 'helped', kind: 'text', q: 'What helped this week?', ph: 'e.g. the new pain plan, a walk with a friend' },
@@ -9758,7 +9773,7 @@ const CHECKIN_QUESTIONS = {
     { key: 'wkcSymptoms', kind: 'scale', q: 'Pain or symptoms got in the way of the day?' },
     { key: 'wkcHelp', kind: 'scale', q: 'Needed more help than usual?' },
     { key: 'helped', kind: 'text', q: 'What helped them this week, as you saw it?', ph: 'e.g. the new pain plan, a visit from a friend' },
-    { key: 'hardest', kind: 'text', q: 'What was hardest for them?', ph: 'e.g. the nights, the two days after the session' },
+    { key: 'hardest', kind: 'text', q: 'What was hardest for them?', ph: 'e.g. the nights, a bad day midweek' },
     { key: 'sentence', kind: 'text', q: 'Their week in a sentence', ph: 'e.g. quieter than usual, but eating again by Sunday' }
   ],
   /* The carer's view: the same scores from the outside, once a day, on the Chemo tab. Kept out of
@@ -9987,7 +10002,7 @@ const CHECKIN_LABELS = {
   sleep: 'Sleep', sleepHours: 'Hours slept', pain: 'Pain now', mood: 'Mood', symptoms: 'New or worse symptoms',
   lookingForward: 'Looking forward to', worstPain: 'Worst pain', sickness: 'Sickness', appetite: 'Appetite',
   energy: 'Energy', settled: 'Settled since yesterday', goodThing: 'One good thing', noticed: 'What you noticed', outside: 'Outside the gut, last week',
-  wb: 'How much', journal: 'How was today', gutPain: 'Tummy pain or cramps', gutStop: 'Gut got in the way', painStop: 'Pain got in the way', reliefHelp: 'Pain relief helped', nightToilet: 'Up in the night for the toilet', fast: 'Fasting today', wkResults: 'Worried about results or scans', wkCutOff: 'Felt cut off from people', wkTired: 'Tiredness got in the way',
+  wb: 'Over today', journal: 'How was today', gutPain: 'Tummy pain or cramps', gutStop: 'Gut got in the way', painStop: 'Pain got in the way', reliefHelp: 'Pain relief helped', nightToilet: 'Up in the night for the toilet', fast: 'Fasting today', wkResults: 'Worried about results or scans', wkCutOff: 'Felt cut off from people', wkTired: 'Tiredness got in the way',
   wkGutOut: 'Gut stopped me going out', wkToilet: 'Worried about getting to a toilet', wkSwings: 'Mood swings or irritability', wkAnxious: 'Anxious or panicky',
   wkFog: 'Brain fog or memory', wkSweats: 'Sleep broken by sweats', helped: 'What helped', hardest: 'What was hardest', sentence: 'The week in a sentence',
   wkcTired: 'Tiredness got in the way', wkcLow: 'Seemed low or withdrawn', wkcSymptoms: 'Pain or symptoms got in the way', wkcHelp: 'Needed more help than usual'
@@ -10001,8 +10016,8 @@ const CARER_DAY_SLOTS = ['carermorning', 'carerevening'];
 function isCarerDaySlot(slot) { return slot === 'carermorning' || slot === 'carerevening'; }
 function isPatientCheckin(e) { return e.type === 'checkin' && e.slot !== 'carer' && e.slot !== 'weekcarer' && !isCarerDaySlot(e.slot); }
 function checkinTitle(slot, e) {
-  if (slot === 'weekcarer') return e && e.addedBy ? 'The week as ' + e.addedBy + ' saw it' : 'Your week, as you see it';
-  if (isCarerDaySlot(slot)) { const w = slot === 'carermorning' ? 'Morning' : 'Evening'; return e && e.addedBy ? w + ' as ' + e.addedBy + ' saw it' : w + ', as you see it'; }
+  if (slot === 'weekcarer') return e && e.addedBy ? (e.addedBy === state.name ? 'Your week, as you saw it' : 'The week as ' + e.addedBy + ' saw it') : 'Your week, as you see it';
+  if (isCarerDaySlot(slot)) { const w = slot === 'carermorning' ? 'Morning' : 'Evening'; return e && e.addedBy ? (e.addedBy === state.name ? w + ', as you saw it' : w + ' as ' + e.addedBy + ' saw it') : w + ', as you see it'; }
   return slot === 'carer' ? "Carer's view" : slot === 'week' ? 'Your week' : slotWord(slot) + ' check-in';
 }
 function checkinId(day, slot) { return day + '_' + slot; }
@@ -10137,7 +10152,7 @@ function renderCheckins() {
     }
     const dueHere = isToday && due.slot === slot && due.day === day;
     if (!state.readOnly && readProgress(slot, day)) { if (dueHere) row.classList.add('is-due'); sub.textContent = 'Unfinished, kept as you left it. Tap to carry on'; }
-    else if (dueHere) { row.classList.add('is-due'); sub.textContent = state.readOnly ? 'Due now' : 'Due now, about a minute'; }
+    else if (dueHere) { row.classList.add('is-due'); sub.textContent = state.readOnly ? 'Due now' : 'Due now, a few minutes'; }
     else if (isToday && slot === 'morning' && early) sub.textContent = 'From 06:00';
     else if (isToday && slot === 'evening' && early) sub.textContent = 'From 18:00';
     else if (isToday && slot === 'morning') sub.textContent = state.readOnly ? 'Missed this morning' : 'Missed this morning, tap to fill in';
@@ -10159,7 +10174,7 @@ function carerMoodRow(slot, day, isToday) {
   const cd = checkinDue();
   const due = isToday && cd.slot === (morning ? 'morning' : 'evening') && cd.day === day;
   const sub = !state.readOnly && readProgress(slot, day) ? 'Unfinished, kept as you left it. Tap to carry on'
-    : due ? (state.readOnly ? 'Due now' : 'Due now, about a minute')
+    : due ? (state.readOnly ? 'Due now' : 'Due now, a few minutes')
     : isToday && cd.late ? (morning ? 'From 06:00' : 'From 18:00')
     : isToday && morning ? (state.readOnly ? 'Missed this morning' : 'Missed this morning, tap to fill in')
     : isToday ? 'From 18:00'
@@ -10847,7 +10862,7 @@ function flareSummaryLines(day, results = []) {
   const temps = es.filter((e) => e.type === 'temp' && e.value != null);
   if (temps.length) { const hi = temps.reduce((m, e) => (Number(e.value) > Number(m.value) ? e : m)); lines.push('Temperature highest ' + fmtTemp(hi.value) + ' on ' + fmtDayShort(hi.day) + '.'); }
   const hr = es.filter((e) => e.type === 'vitals' && e.heartRate);
-  if (hr.length) lines.push('Heart rate highest ' + Math.max(...hr.map((e) => Number(e.heartRate))) + ' bpm.');
+  if (hr.length) { const top = hr.reduce((a, b) => (Number(b.heartRate) > Number(a.heartRate) ? b : a)); lines.push('Heart rate highest ' + Number(top.heartRate) + ' bpm on ' + fmtDayShort(top.day) + '.'); }
   const ws = es.filter((e) => e.type === 'weight' && e.value != null).sort((a, b) => a.day.localeCompare(b.day) || entryDate(a) - entryDate(b));
   if (ws.length) { const a = Number(ws[0].value), b = Number(ws[ws.length - 1].value); lines.push('Weight ' + fmtKg(b) + (ws.length > 1 && Math.abs(b - a) >= 0.1 ? ' (' + (b < a ? 'down ' : 'up ') + (Math.round(Math.abs(b - a) * 10) / 10) + ' kg over the week)' : '') + '.'); }
   const pains = [];
@@ -11019,7 +11034,7 @@ const RESULT_TESTS = [
   { key: 'alt', name: 'ALT', unit: 'U/L', match: /\balt\b|alanine/i },
   { key: 'bili', name: 'Bilirubin', unit: 'µmol/L', match: /bilirubin/i },
   { key: 'creat', name: 'Creatinine', unit: 'µmol/L', match: /creatinine/i },
-  { key: 'egfr', name: 'eGFR', unit: 'mL/min', match: /egfr|filtration/i },
+  { key: 'egfr', name: 'eGFR', unit: 'mL/min/1.73m²', match: /egfr|filtration/i },
   { key: 'k', name: 'Potassium', unit: 'mmol/L', match: /potassium|^k\+?$/i },
   { key: 'na', name: 'Sodium', unit: 'mmol/L', match: /sodium|^na\+?$/i },
   { key: 'mg', name: 'Magnesium', unit: 'mmol/L', match: /magnesium/i },
@@ -11172,7 +11187,7 @@ function openResultsSheet(opts = {}) {
   const edit = opts.edit || null, pre = opts.prefill || null;
   const today = todayStr();
   const date = h('input', { type: 'date', value: edit ? edit.day : (pre && pre.day) || (state.selectedDay > today ? today : state.selectedDay), max: today });
-  const source = h('input', { type: 'text', maxlength: '60', placeholder: 'e.g. GP, IBD team, hospital', value: edit ? edit.source || '' : (pre && pre.source) || '' });
+  const source = h('input', { type: 'text', maxlength: '60', placeholder: packOn('ibd') ? 'e.g. GP, IBD team, hospital' : 'e.g. GP, hospital, clinic', value: edit ? edit.source || '' : (pre && pre.source) || '' });
   const srcPresets = presets(['GP', 'Hospital', 'Clinic'], source, source.value);
   const note = h('textarea', { rows: '2', placeholder: 'What the team said about them (optional)', maxlength: '600' });
   if (edit && edit.note) note.value = edit.note;
@@ -11184,8 +11199,8 @@ function openResultsSheet(opts = {}) {
   const addRow = (t, vals) => {
     const id = t.key === 'other' ? 'other-' + (++otherSeq) : t.key;
     if (rows.has(id)) { rows.get(id).value.focus(); return; }
-    const value = h('input', { type: 'text', inputmode: 'decimal', class: 'input res-value', placeholder: 'e.g. 48', 'aria-label': (t.name || 'Result') + ' value', value: vals && vals.value != null ? String(vals.value) : '' });
-    const range = h('input', { type: 'text', class: 'input', placeholder: 'e.g. 0 to 50, or under 50', maxlength: '40', 'aria-label': (t.name || 'Result') + ', the range as given', value: (vals && vals.range) || '' });
+    const value = h('input', { type: 'text', inputmode: 'decimal', class: 'input res-value', placeholder: '', 'aria-label': (t.name || 'Result') + ' value', value: vals && vals.value != null ? String(vals.value) : '' });
+    const range = h('input', { type: 'text', class: 'input', placeholder: 'As printed on the result', maxlength: '40', 'aria-label': (t.name || 'Result') + ', the range as given', value: (vals && vals.range) || '' });
     const nameIn = t.key === 'other' ? h('input', { type: 'text', class: 'input', placeholder: 'e.g. Zinc', maxlength: '40', 'aria-label': 'Name of the test', value: (vals && vals.name) || '' }) : null;
     const unitIn = t.key === 'other' ? h('input', { type: 'text', class: 'input', placeholder: 'e.g. µmol/L', maxlength: '16', 'aria-label': 'Unit', value: (vals && vals.unit) || '' }) : null;
     const el = h('div', { class: 'resrow', 'data-row': id },
@@ -11887,7 +11902,7 @@ function buildMoodReport(n) {
     readings.forEach((r) => momentOf(r.v, r.at, r.note, 'Mood tile'));
     momentOf(moodE, ev ? fmtTime(entryDate(ev)) : '', ev && (text(ev.moodNote) || text(ev.journal)), 'evening check-in');
     return { day: d, moments, dow: DOW[parseDay(d).getDay()], moodM, moodE, readings, mood: moods.length ? avg(moods) : null, moodLow: moods.length ? Math.min(...moods) : null, pain: pains.length ? Math.max(...pains) : null,
-      sleep: sleeps.length ? Math.round(Math.max(...sleeps) / 60 * 10) / 10 : null, temp: temps.length ? Math.max(...temps) : null, wb, session: !!(state.days[d] && state.days[d].chemo),
+      sleep: sleeps.length ? Math.round(Math.max(...sleeps) / 60 * 10) / 10 : null, temp: temps.length ? Math.max(...temps) : null, wb, session: isTreatmentDay(d),
       hospital: hospitalDays.has(d), notes, any: moods.length || pains.length || sleeps.length || wb || notes.length };
   });
   const scored = daysFull.filter((d) => d.mood != null);
@@ -11951,7 +11966,7 @@ function buildMoodReport(n) {
   const chart = { mood: daysFull.map((d) => d.mood), pain: daysFull.map((d) => d.pain), sleep: daysFull.map((d) => d.sleep), sessions: daysFull.map((d, i) => (d.session ? i : -1)).filter((i) => i >= 0),
     hospital: daysFull.map((d, i) => (d.hospital ? i : -1)).filter((i) => i >= 0), low: daysFull.map((d, i) => (lowDays.includes(d) ? i : -1)).filter((i) => i >= 0),
     stat: !scored.length ? 'No scores' : lowDays.length ? 'Low on ' + plural(lowDays.length, 'day') : 'Steady', tone: !scored.length ? '' : lowDays.length ? 'amber' : 'green' };
-  const dayLabels = days.map((d, i) => (i === 0 || i === days.length - 1 || parseDay(d).getDate() === 1 ? rDay(d) : String(parseDay(d).getDate())));
+  const dayLabels = days.map((d, i) => (days.length > 31 || i === 0 || i === days.length - 1 || parseDay(d).getDate() === 1 ? rDay(d) : String(parseDay(d).getDate())));
   /* the weeks: seven-day blocks counted back from the last day, as the other reports */
   const wkChecks = entries.filter((e) => e.type === 'checkin' && e.slot === 'week');
   const carerChecks = entries.filter((e) => e.type === 'checkin' && e.slot === 'weekcarer');
@@ -12216,7 +12231,7 @@ function buildPainReport(n) {
     dDoses.forEach((e) => { if (text(e.note)) notes.push({ day: d, when: dayWord(d) + ', ' + fmtTime(entryDate(e)) + ' with ' + (e.medName || 'pain relief'), text: text(e.note), score: null, src: { id: e.id, field: 'note', words: e.note, label: 'Note with ' + (e.medName || 'pain relief'), day: d, time: fmtTime(entryDate(e)), who: e.addedBy } }); });
     return { day: d, dow: DOW[parseDay(d).getDay()], pm, pe, worst, readings, lo: now.length ? Math.min(...now) : null, hi: now.length ? Math.max(...now) : null, max: all.length ? Math.max(...all) : null, now,
       prn: dDoses.filter((e) => prnIds.has(e.medId)).length, dosesN: dDoses.length, doseList: dDoses.map((e) => (e.medName || 'pain relief') + (prnIds.has(e.medId) ? '' : ' (regular)') + ' ' + fmtTime(entryDate(e))), sleep: sleeps.length ? Math.round(Math.max(...sleeps) / 60 * 10) / 10 : null,
-      session: !!(state.days[d] && state.days[d].chemo), hospital: hospitalDays.has(d), notes };
+      session: isTreatmentDay(d), hospital: hospitalDays.has(d), notes };
   });
   const scored = daysFull.filter((d) => d.max != null);
   const nowAll = daysFull.flatMap((d) => d.now);
@@ -12243,7 +12258,7 @@ function buildPainReport(n) {
   }).filter((r) => r.n || r.active).sort((a, b) => (a.kind === b.kind ? b.n - a.n : a.kind === 'When needed' ? -1 : 1));
   const prnDoses = doses.filter((e) => prnIds.has(e.medId));
   const prnDays = new Set(prnDoses.map((e) => e.day)).size;
-  const reliefNote = relief.filter((r) => r.n).map((r) => `${r.name.split(/\s+/)[0]} on ${plural(r.days, 'day')}`).slice(0, 3).join(', ');
+  const reliefNote = relief.filter((r) => r.n && r.kind === 'When needed').map((r) => `${r.name.split(/\s+/)[0]} on ${plural(r.days, 'day')}`).slice(0, 3).join(', ');
   /* "Pain right now" is the check-in's question, not something anyone enters as such (Mark, 22 October 2026): the tile is the average of every score.
      Readings that go up and down are averages coloured by the average (v275); counts stay counts (v276, Mark). */
   const sleepAvg = nights.length ? avg(nights.map((d) => d.sleep)) : null;
@@ -12302,7 +12317,7 @@ function buildPainReport(n) {
     { legend: [{ c: warm, t: 'When-needed pain relief doses each day' }], title: 'When-needed pain relief (doses a day)', stat: prnDoses.length ? plural(prnDoses.length, 'dose') + ' on ' + plural(prnDays, 'day') : 'None logged', tone: relief.some((r) => r.hitMax) ? 'amber' : '', type: 'bars', min: 0, max: prnMax, ticks: prnMax > 6 ? [0, Math.round(prnMax / 2), prnMax] : [0, 2, 4].filter((t) => t <= prnMax), series: [{ d: prnCounts, c: warm }] },
     { title: 'Hours asleep', stat: nights.length ? `Average ${avg(nights.map((d) => d.sleep))} h` + (shortN.length ? `, ${plural(shortN.length, 'short night')}` : '') : 'No sleep logged', tone: nights.length ? (shortN.length ? 'amber' : 'green') : '', type: 'bars', flagBelow: 5, min: 0, max: Math.max(10, ...nights.map((d) => Math.ceil(d.sleep))), ticks: [0, 5, 10], series: [{ d: daysFull.map((d) => d.sleep), c: teal }], legend: [{ c: teal, t: 'Hours asleep' }, { c: '#E0A030', t: 'Under 5 hours' }] }
   ];
-  const dayLabels = days.map((d, i) => (i === 0 || i === days.length - 1 || parseDay(d).getDate() === 1 ? rDay(d) : String(parseDay(d).getDate())));
+  const dayLabels = days.map((d, i) => (days.length > 31 || i === 0 || i === days.length - 1 || parseDay(d).getDate() === 1 ? rDay(d) : String(parseDay(d).getDate())));
   /* every note written under a pain score, for the screen (each can be fixed there); the report carries key points only (v263, Mark: "way too long") */
   const allNotes = daysFull.flatMap((d) => d.notes);
   const words = allNotes.filter((w) => !isRoutineNote({ text: w.text })).map((w) => ({ ...w, text: String(w.text == null ? '' : w.text).replace(/\s+/g, ' ').trim() }));
@@ -12475,7 +12490,7 @@ function buildIbdReport(n) {
   const yearAgo = addDays(to, -365);
   const steroids12 = steroidCourses().filter((m) => m.courseStart <= to && m.courseStart >= yearAgo);
   const meds = (state.medicines || []).filter((m) => m.active !== false && !(m.courseEnd && m.courseEnd < from));
-  const ibdMeds = meds.filter((m) => /crohn|colitis|ibd|steroid|biologic|anti-tnf|infliximab|adalimumab|vedolizumab|ustekinumab|azathioprine|mercaptopurine|methotrexate|mesalazine|budesonide|prednisolone|tofacitinib|upadacitinib|risankizumab|mirikizumab|filgotinib|golimumab/i.test((m.name || '') + ' ' + (m.purpose || '')) || medClass(m) === "Crohn's or colitis" || medClass(m) === 'Steroid');
+  const ibdMeds = meds.filter((m) => /crohn|colitis|\bibd\b|\bsteroid\b(?! course)|biologic|anti-tnf|infliximab|adalimumab|vedolizumab|ustekinumab|azathioprine|mercaptopurine|methotrexate|mesalazine|budesonide|prednisolone|tofacitinib|upadacitinib|risankizumab|mirikizumab|filgotinib|golimumab/i.test((m.name || '') + ' ' + (m.purpose || '')) || medClass(m) === "Crohn's or colitis" || medClass(m) === 'Steroid');
   const results = sortResults((n.results || []).filter((e) => e.day >= from && e.day <= to));
   const patient = (state.profile && state.profile.reportName) || state.patientName || state.name || 'The patient';
   /* tiles */
@@ -12495,7 +12510,7 @@ function buildIbdReport(n) {
   ];
   /* charts, drawn by report.js renderChart() */
   const teal = REPORT_TEAL, red = REPORT_RED, ink = REPORT_INK, warm = '#C2703D';
-  const dayLabels = days.map((d, i) => (i === 0 || i === days.length - 1 || parseDay(d).getDate() === 1 ? rDay(d) : String(parseDay(d).getDate())));
+  const dayLabels = days.map((d, i) => (days.length > 31 || i === 0 || i === days.length - 1 || parseDay(d).getDate() === 1 ? rDay(d) : String(parseDay(d).getDate())));
   const countSeries = days.map(countOf);
   const cMax = Math.max(usual ? usual + 2 : 4, 4, ...countSeries.map((v) => v || 0));
   const bloodSeries = days.map((d) => (byDay[d] ? bloodOf(d) : null));
@@ -12517,7 +12532,7 @@ function buildIbdReport(n) {
   const medLine = ibdMeds.map((m) => m.name + (m.dose ? ' ' + m.dose : '') + (m.kind === 'prn' ? ' (when needed)' : '')).join('; ');
   const lastSession = inRangeSessions.length ? inRangeSessions[inRangeSessions.length - 1] : sessions.filter((d) => d <= to).pop();
   const sessLine = sessions.length ? `${inRangeSessions.length ? plural(inRangeSessions.length, sessionLabel(state.days[inRangeSessions[0]]).replace(/^.* /, '')) + ' in this period' + (inRangeSessions.length <= 4 ? ' (' + inRangeSessions.map(rDay).join(', ') + ')' : '') : 'None in this period'}${lastSession ? ', last ' + sessionLabel(state.days[lastSession]) + ' ' + rDay(lastSession) + (state.days[lastSession].chemoDone ? ', done' : ', not ticked done') : ''}${nextSession ? ', next ' + rDay(nextSession) : ''}.` : '';
-  const sterLine = steroids12.length ? `Steroid courses in the last 12 months: ${steroids12.length} (${steroids12.map((m) => m.name + ', ' + rDay(m.courseStart) + (m.courseEnd ? ' to ' + rDay(m.courseEnd) : ' onwards')).join('; ')}).` : 'No steroid course recorded in the last 12 months.';
+  const sterLine = steroids12.length ? `Steroid courses in the last 12 months: ${steroids12.length} (${steroids12.map((m) => m.name + ', ' + rDay(m.courseStart) + (m.courseEnd ? ' to ' + rDay(m.courseEnd) + (m.courseEnd > todayStr() ? ' (planned)' : '') : ' onwards')).join('; ')}).` : 'No steroid course recorded in the last 12 months.';
   strip.push({ head: 'Treatment', text: [medLine ? 'Medicines: ' + medLine + '.' : 'No Crohn\'s or colitis medicine on the list.', sessLine, sterLine].filter(Boolean).join(' ') });
   const advice = flareContact();
   strip.push({ head: 'Flare plan', text: plan.steps ? `From ${plan.from || 'the team'}${plan.given ? ', ' + rDay(plan.given) : ''}: ${text(plan.steps)}${plan.when ? ' When to ring: ' + text(plan.when) : ''}${advice ? ' Advice line: ' + advice.label + '.' : ''}` : 'No flare plan written in Daybook.' + (advice ? ' Advice line: ' + advice.label + '.' : '') });
@@ -12541,8 +12556,9 @@ function buildIbdReport(n) {
     const wws = ws.filter((e) => e.day >= w.from && e.day <= w.to);
     const fl = wd.filter(isFlareDay).length, cl = calls.filter((e) => e.day >= w.from && e.day <= w.to).length;
     const ste = wd.some((d) => steroidOn(d).length), inj = inRangeSessions.filter((d) => d >= w.from && d <= w.to).length;
+    const injDay = inRangeSessions.find((d) => d >= w.from && d <= w.to), injWord = injDay ? treatmentOf(state.days[injDay]).label.toLowerCase() : 'injection or infusion'; // v380: the session's own word
     const fd = fasts.days.filter((d) => d >= w.from && d <= w.to).length;
-    const other = [fl ? plural(fl, 'flare day') : '', cl ? plural(cl, 'call') : '', ste ? 'on steroids' : '', inj ? plural(inj, 'injection or infusion') : '', fd ? 'fasting ' + plural(fd, 'day') : ''].filter(Boolean).join(', ');
+    const other = [fl ? plural(fl, 'flare day') : '', cl ? plural(cl, 'call') : '', ste ? 'on steroids' : '', inj ? plural(inj, injWord) : '', fd ? 'fasting ' + plural(fd, 'day') : ''].filter(Boolean).join(', ');
     return { label: rDay(w.from) + ' to ' + rDay(w.to), aDay: cs.length ? one(avg(cs)) : 'None', aDaySub: cs.length ? `most ${Math.max(...cs)}, ${plural(lg.length, 'day')} logged` : 'nothing logged',
       blood: bl.length ? `${plural(bl.length, 'day')}, ${bloodWord(wb)}` : 'none', urgency: [ru ? ru + ' straight away' : '', ac ? plural(ac, 'accident') : '', ni ? ni + ' at night' : ''].filter(Boolean).join(', ') || 'none',
       weight: wws.length ? fmtKg(wws[wws.length - 1].value) : 'none', other: other || '' };
@@ -12670,7 +12686,7 @@ function buildMedsReport(doses, sideFx = []) {
     if (kind === 'stopped') r.tag = { text: 'Stopped', cls: 'slate' };
     if (!st.ds.length) { r.taken = 'No doses logged'; r.doses = 'None'; }
     else {
-      r.taken = kind === 'now' ? 'Since ' + yr(st.first) : (st.first === st.last.day ? yr(st.first) : rPeriod(st.first, st.last.day));
+      r.taken = kind === 'now' ? 'Logged since ' + yr(st.first) : (st.first === st.last.day ? yr(st.first) : rPeriod(st.first, st.last.day));
       r.takenSub = kind === 'done' ? 'Course ended ' + yr(m.courseEnd) : 'Last dose ' + at(st.last);
       r.doses = plural(st.ds.length, 'dose');
       r.dosesSub.push('on ' + plural(st.days.length, 'day'));
@@ -12821,10 +12837,10 @@ function prnStatus(m) {
     const since = hoursAgo(d);
     if (since < m.minGapHours) {
       const next = new Date(d.getTime() + m.minGapHours * 36e5);
-      return { level: 'amber', text: 'Next from ' + fmtTime(next), block: true };
+      return { level: 'amber', text: 'Next from ' + fmtTime(next) + (dayStr(next) === todayStr() ? '' : dayStr(next) === addDays(todayStr(), 1) ? ' tomorrow' : ' on ' + fmtDayShort(dayStr(next))), block: true };
     }
   }
-  return { level: 'green', text: 'Can be given now', block: false };
+  return { level: 'green', text: isCarerUser() ? 'Can be given now' : 'Can be taken now', block: false };
 }
 
 /* The Meds card, compact (v215). Mark: "the meds page is quite busy now and a lot of scrolling... just the name of
@@ -12868,12 +12884,12 @@ function medCard(m, day, section) {
   else if (m.kind === 'scheduled') {
     line.append(h('span', { text: `${Math.min(count, perDay)} of ${perDay}` + (isToday ? ' today' : '') }));
     if (count >= perDay) { card.classList.add('is-complete'); line.append(h('span', { class: 'pill pill-green', text: isToday ? 'Done for today' : 'All doses given' })); }
-    else if (!isToday && !count) line.append(h('span', { class: 'med-muted', text: 'Not given this day' }));
+    else if (!isToday && !count) line.append(h('span', { class: 'med-muted', text: 'Not logged this day' }));
   } else {
     if (isToday) { const st = prnStatus(m); line.append(h('span', { class: 'pill pill-' + st.level, text: st.text })); }
     if (m.maxPerDay) line.append(h('span', { text: `${count} of ${m.maxPerDay}` + (isToday ? ' today' : '') }));
     else if (count) line.append(h('span', { text: `${count} ` + (isToday ? 'today' : 'this day') }));
-    else if (!isToday) line.append(h('span', { class: 'med-muted', text: 'Not given this day' }));
+    else if (!isToday) line.append(h('span', { class: 'med-muted', text: 'Not logged this day' }));
   }
   const cls = medClass(m);
   const toggle = h('button', { class: 'med-toggle', type: 'button', 'aria-expanded': open ? 'true' : 'false', 'aria-label': m.name + (open ? ', hide the details' : ', show the details'), onclick: () => {
@@ -13763,7 +13779,7 @@ function openEditMed(m, prefill) {
     h('p', { class: 'fieldlabel', text: 'And for how many days after?' }), afterChips, treatLine);
   const treatBox = h('div', { class: 'med-treatdays' },
     h('label', { class: 'check' }, treatDays, h('span', { text: 'Only around treatment days' })),
-    h('p', { class: 'hint', text: 'For chemo given on the day, or something like paracetamol for the three days after. On those days it shows under Scheduled with its times and reminders; the rest of the time it waits, folded away, and is never counted as missed.' }),
+    h('p', { class: 'hint', text: (packOn('cancer') ? 'For chemo given on the day, or something like paracetamol for the three days after.' : 'For a medicine given on a treatment day, or something like paracetamol for the days after.') + ' On those days it shows under Scheduled with its times and reminders; the rest of the time it waits, folded away, and is never counted as missed.' }),
     treatMore);
   const syncTreat = () => { treatMore.hidden = !treatDays.checked; courseBits.hidden = treatDays.checked; courseNote.hidden = !treatDays.checked; drawTreat(); };
   treatDays.addEventListener('change', syncTreat);
@@ -15707,6 +15723,8 @@ function treatmentsFor() {
 }
 const isRepeat = (t) => Boolean(t && t.cycle === 'repeat');
 /* "adalimumab injection", "chemo": what a session is called in a sentence */
+/* v380: the example in a session's name box fits the circle's packs */
+function sessionNamePh() { return packOn('ibd') ? 'e.g. adalimumab, infliximab' : packOn('cancer') ? "e.g. the drug's name" : "e.g. physio, or the medicine's name"; }
 function sessionLabel(info) { const t = treatmentOf(info); const n = info && info.treatName ? String(info.treatName).trim() : ''; return (n ? n + ' ' : '') + t.label.toLowerCase(); }
 /* The repeating treatment (an injection or infusion) around today: the last one and the next one */
 function repeatInfo(today = todayStr()) {
@@ -15808,7 +15826,7 @@ function renderSteroidLine() {
   const since = addDays(todayStr(), -365);
   const list = steroidCourses().filter((m) => m.courseStart >= since || (!m.courseEnd || m.courseEnd >= since));
   if (!list.length) { el.hidden = true; return; }
-  const words = list.map((m) => m.name + ', ' + fmtDayShort(m.courseStart) + (m.courseEnd ? ' to ' + fmtDayShort(m.courseEnd) : ' onwards'));
+  const words = list.map((m) => m.name + ', ' + fmtDayShort(m.courseStart) + (m.courseEnd ? ' to ' + fmtDayShort(m.courseEnd) + (m.courseEnd > todayStr() ? ' (planned)' : '') : ' onwards'));
   el.textContent = 'Steroid courses in the last 12 months: ' + list.length + ' (' + words.join('; ') + ').';
   el.hidden = false;
 }
@@ -15822,7 +15840,7 @@ function renderCarerRow() {
   if (c) {
     row.classList.add('is-done');
     sub.replaceChildren(h('span', { class: 'checkin-done' }, icon('check'), 'Done ' + fmtTime(entryDate(c)) + (c.addedBy ? ' by ' + c.addedBy : '')));
-  } else if (new Date().getHours() >= 15) { row.classList.add('is-due'); sub.textContent = state.readOnly ? 'Due this evening' : 'Due this evening, about a minute'; }
+  } else if (new Date().getHours() >= 15) { row.classList.add('is-due'); sub.textContent = state.readOnly ? 'Due this evening' : 'Due this evening, a few minutes'; }
   else sub.textContent = state.readOnly ? 'Not filled in yet' : 'Later today, or tap to fill in yesterday';
 }
 if ($('checkin-carer')) $('checkin-carer').addEventListener('click', () => openCheckin('carer', todayStr()));
@@ -15991,7 +16009,7 @@ function openDaySheet(key) {
 
   if (state.readOnly) {
     const chemoStatus = info.chemo ? treatmentOf(info).label + (info.chemoDone ? ' session, done' : ' session planned') : 'No treatment session this day';
-    const moodInfo = info.mood ? 'Mood that day: ' + MOODS[info.mood - 1].label.toLowerCase() + (info.good ? '. ' + info.good : '') : '';
+    const moodInfo = info.mood ? 'Mood that day: ' + MOODS[info.mood - 1].label.toLowerCase() + (info.good ? '. ' + info.good + (/[.!?]$/.test(info.good.trim()) ? '' : '.') : '.') : '';
     openSheet(fmtDayLong(key), h('div', null,
       h('p', { text: chemoStatus }),
       moodInfo ? h('p', { class: 'hint', text: moodInfo }) : null,
@@ -16005,12 +16023,13 @@ function openDaySheet(key) {
   cbChemo.checked = !!info.chemo;
   const cbDone = h('input', { type: 'checkbox' });
   cbDone.checked = !!info.chemoDone;
+  if (key > todayStr() && !cbDone.checked) cbDone.disabled = true; // v380: ticked done on the day, not before
   const plainWords = packOn('general') && !packOn('cancer'); // v359: an appointment or treatment, not a chemo session
   const doneRow = h('label', { class: 'check' }, cbDone, h('span', { text: plainWords ? 'Done' : 'Session done' }));
   let treatment = info.chemo ? treatmentOf(info).key : (treatmentsFor()[0] || TREATMENTS[0]).key;
   const typeRow = h('div', { class: 'wiz-day treat-chips', role: 'group', 'aria-label': 'Kind of treatment' });
   /* an injection or infusion names its medicine (v204), offered from the medicines list */
-  const nameIn = h('input', { type: 'text', class: 'input', value: info.treatName || '', list: 'treat-names', placeholder: 'e.g. adalimumab, infliximab', autocomplete: 'off' });
+  const nameIn = h('input', { type: 'text', class: 'input', value: info.treatName || '', list: 'treat-names', placeholder: sessionNamePh(), autocomplete: 'off' });
   const nameList = h('datalist', { id: 'treat-names' }, ...(state.medicines || []).filter((m) => m.active !== false).map((m) => h('option', { value: m.name })));
   const nameRow = h('div', null, field('Which medicine?', nameIn), nameList);
   const drawTypes = () => typeRow.replaceChildren(...treatmentsFor().map((t) => h('button', { class: 'preset' + (t.key === treatment ? ' is-active' : ''), type: 'button', 'aria-pressed': t.key === treatment ? 'true' : 'false', onclick: () => { treatment = t.key; drawTypes(); } }, t.label)));
@@ -16053,7 +16072,7 @@ function openDaySheet(key) {
     h('button', { class: 'btn btn-secondary', type: 'button', onclick: () => { moveBox.hidden = true; moveBtn.hidden = false; } }, 'Cancel')));
   const moveBtn = h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => { moveBtn.hidden = true; moveBox.hidden = false; moveDate.focus(); } }, 'Move to another day');
 
-  const moodInfo = info.mood ? 'Mood that day: ' + MOODS[info.mood - 1].label.toLowerCase() + (info.good ? '. ' + info.good : '') : '';
+  const moodInfo = info.mood ? 'Mood that day: ' + MOODS[info.mood - 1].label.toLowerCase() + (info.good ? '. ' + info.good + (/[.!?]$/.test(info.good.trim()) ? '' : '.') : '.') : '';
   const cbFlare = h('input', { type: 'checkbox', checked: !!info.flare });
   const flareRow = packOn('ibd') || info.flare ? h('label', { class: 'check' }, cbFlare, h('span', { text: 'A flare day' })) : null;
 
@@ -16074,7 +16093,7 @@ function openDaySheet(key) {
       if (cbChemo.checked && TREATMENTS.find((t) => t.key === treatment).cycle !== 'never' && !repeatNow()) data.cycleStart = cbCycle.checked;
       if (cbChemo.checked && repeatNow()) { data.cycleStart = true; data.treatName = nameIn.value.trim(); }
       closeSheet();
-      const after = () => { if (data.chemoDone && !wasDone) { confetti(); toast('One more session done. Well done.'); if (repeatNow()) logRepeatDose(key, data.treatName); } else toast('Saved'); };
+      const after = () => { if (data.chemoDone && !wasDone) { if (repeatNow() || treatment === 'appt') toast('Saved. Ticked done.'); else { confetti(); toast('One more session done. Well done.'); } if (repeatNow()) logRepeatDose(key, data.treatName); } else toast('Saved'); };
       if (state.demo) {
         state.days[key] = { ...state.days[key], ...data };
         renderChemo();
@@ -16173,7 +16192,7 @@ function openAddSessions() {
   let treatment = offered.some((t) => t.key === latestTreatmentKey()) ? latestTreatmentKey() : (offered[0] || TREATMENTS[0]).key;
   const tOf = () => TREATMENTS.find((t) => t.key === treatment) || TREATMENTS[0];
   let every = treatment === 'radio' ? 'weekday' : tOf().every || 7;
-  const nameIn = h('input', { type: 'text', class: 'input', list: 'run-names', placeholder: 'e.g. adalimumab, infliximab', autocomplete: 'off' });
+  const nameIn = h('input', { type: 'text', class: 'input', list: 'run-names', placeholder: sessionNamePh(), autocomplete: 'off' });
   const nameRow = h('div', null, field('Which medicine?', nameIn), h('datalist', { id: 'run-names' }, ...(state.medicines || []).filter((m) => m.active !== false).map((m) => h('option', { value: m.name }))));
   const cycleLabel = h('label', { class: 'check' });
   const typeRow = h('div', { class: 'wiz-day treat-chips', role: 'group', 'aria-label': 'Kind of treatment' });
@@ -17192,7 +17211,7 @@ function renderCalls() {
       c.number ? h('a', { class: 'btn btn-primary', href: telHref(c.number), 'aria-label': 'Call ' + c.label + (c.ext ? ', ' + extWords(c.ext).toLowerCase() : '') }, 'Call') : '',
       c.email ? h('a', { class: 'btn btn-secondary', href: 'mailto:' + encodeURIComponent(c.email), 'aria-label': 'Email ' + c.label }, 'Email') : '')
   )));
-  if (!calls.length) wrap.append(h('p', { class: 'empty', 'data-art': 'call', text: 'No contacts saved yet. Add the ward, your nurse, the hospice or GP so they are one tap away.' }));
+  if (!calls.length) wrap.append(h('p', { class: 'empty', 'data-art': 'call', text: packOn('cancer') ? 'No contacts saved yet. Add the ward, your nurse, the hospice or GP so they are one tap away.' : "No contacts saved yet. Add your nurse, your team's advice line or your GP so they are one tap away." }));
   $('calls-edit').hidden = !calls.length; // nothing to edit yet: Add a new contact is the one button
 }
 
@@ -17208,7 +17227,7 @@ function openContactsSheet(addNew) {
      because the empty block appeared out of sight at the bottom (Mark, 12 October 2026). */
   const addRow = (c, atTop) => {
     const label = h('input', { type: 'text', value: (c && c.label) || '', placeholder: 'e.g. Sarah, or the ward', autocomplete: 'off' });
-    const role = h('input', { type: 'text', value: (c && c.role) || '', placeholder: 'e.g. Oncology nurse specialist', autocomplete: 'off' });
+    const role = h('input', { type: 'text', value: (c && c.role) || '', placeholder: contactRolePh(), autocomplete: 'off' });
     const number = h('input', { type: 'tel', value: (c && c.number) || '', placeholder: '01234 567890', autocomplete: 'off' });
     const ext = h('input', { type: 'text', value: (c && c.ext) || '', placeholder: 'e.g. option 2, or ext 4521', autocomplete: 'off' });
     const email = h('input', { type: 'email', value: (c && c.email) || '', placeholder: 'name@nhs.net', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false' });

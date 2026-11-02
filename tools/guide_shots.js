@@ -73,7 +73,7 @@ const QUALITY = 0.8;
   await shot('Saved. It is on the timeline for the day, coloured if it is raised, and the Reports charts have it too. The three dots on an entry edit or delete it.');
 
   /* 2. the check-ins */
-  begin('checkin', 'The morning and evening check-ins', 'A minute each: sleep, symptoms, pain and mood, one question a screen.', 'The check-ins are what the reports are built from. A minute each, twice a day.');
+  begin('checkin', 'The morning and evening check-ins', 'A few minutes each: sleep, symptoms, pain and mood, one question a screen.', 'The check-ins are what the reports are built from. A few minutes each, twice a day.');
   /* the simple night (v260): no tracker night this morning, so the step asks for the times */
   await page.evaluate((today) => { const st = window.daybookPreview.state; st.recentEntries = st.recentEntries.filter((e) => !(e.day === today && ((e.type === 'checkin' && (e.slot === 'morning' || e.slot === 'evening')) || e.type === 'sleep'))); st.dayEntries = st.recentEntries.filter((e) => e.day === st.selectedDay); }, today);
   await refresh();
@@ -110,7 +110,7 @@ const QUALITY = 0.8;
   await shot('The Meds tab lists today\'s medicines, each with how many doses are done. Tap Log now when one is taken.', '#meds-scheduled .med-log');
   await page.click('#meds-scheduled .med-log'); await settle(700);
   await page.click('#meds-scheduled .med-toggle'); await settle(500);
-  await shot('Logged: the line counts it, and the name opens the card with the time of each dose, Other time, Remove and Log a side effect. A when-needed medicine says when the next dose can be given.');
+  await shot('Logged: the line counts it, and the name opens the card with the time of each dose, Other time and Log a side effect. A when-needed medicine says when the next dose can be given.');
   await shot('The arrows at the foot of an open card, or holding the name for a second and sliding it, put the list in your own order.', '#meds-scheduled .med-order');
   await shot('Manage medicines adds one, changes a dose or the times it is taken. Reminders arrive as notifications once they are switched on under Settings.', '#meds-manage');
   await page.click('#meds-manage'); await page.waitForSelector('#sheet:not([hidden])');
@@ -129,7 +129,7 @@ const QUALITY = 0.8;
   await shot('Something to ask at the next appointment? Tap Question for the team on Today.', '#question-now');
   await page.click('#question-now'); await page.waitForSelector('#sheet:not([hidden])'); await settle();
   await page.fill('#sheet-body textarea', 'Is the tiredness expected at this point, or worth a blood test?');
-  await shot('Type it, or Tap to speak, and say who it is for: Oncology, Gastro, General, Dietitian, Wellbeing or the Pain team. It goes to the top of that report.', '#sheet-body .btn-primary');
+  await shot('Type it, or Tap to speak, and say which team it is for. It goes to the top of that team\'s report.', '#sheet-body .btn-primary');
   await page.click('#sheet-body .btn-primary'); await settle(700);
   if (await page.$('#sheet:not([hidden])')) await closeSheet();
   await shot('Saved. The row now says how many are waiting; tap it to see them all.', '#question-now');
@@ -137,7 +137,7 @@ const QUALITY = 0.8;
   await shot('Every question still waiting, from any date. Mark one as answered once the team has dealt with it, or add another at the foot.', '#sheet-body .qlist > .btn-primary');
   await closeSheet();
   await tab('vitals'); await page.click('#rep-notes'); await page.waitForSelector('#view-notes:not([hidden])'); await settle(1500);
-  await shot('Every open question heads Notes for the team, with room under it for the answer in clinic. Record or write the answer, then mark it answered.', '#notes-questions .btn-secondary');
+  await shot('Every open question heads Notes for the team, Record or write the answer, then mark it answered.', '#notes-questions .btn-secondary');
 
   /* 4a. treatment days and side effects (v189, v240) */
   begin('treatment', 'Treatment days and side effects', 'The calendar, where you are in the cycle, and how the days after a session went.', 'The Treatment tab holds the sessions, the days after them, and how each cycle tends to go.');
@@ -274,7 +274,7 @@ const QUALITY = 0.8;
   await shot('Notes for the team: the questions, what changed, the charts and the week\'s notes, on two pages. Preview shows them as they print.', '#notes-preview');
   await page.click('#notes-preview');
   await page.waitForFunction(() => { const f = document.querySelector('#sheet .viewer-frame'); return f && f.srcdoc; }, null, { timeout: 60000 }); await settle(1800);
-  await shot('Two A4 pages the team can read in a minute, with room to write. Print them, or send them from the app.');
+  await shot('Two A4 pages the team can read in a minute. Print them, or send them from the app. Print them, or send them from the app.');
   await closeSheet();
   await page.click('#notes-send'); await page.waitForSelector('#sheet:not([hidden])'); await settle();
   await page.click('#sheet-body .pickrow'); await settle(900);
