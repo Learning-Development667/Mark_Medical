@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '388';
+const APP_VERSION = '389';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -4421,7 +4421,7 @@ function openAdd(type, editEntry, preset) {
       what.dispatchEvent(new Event('input')); ml.dispatchEvent(new Event('input'));
       syncNutri(); syncLabel();
       if (r.fresh) toast(r.name + (ml0 ? ', ' + ml0 + ' ml' : '') + ': figures kept. Tap Save at the bottom to log the drink.');
-      else toast('Found ' + r.name + (ml0 ? ', ' + ml0 + ' ml' : '') + (r.hasFigures ? '. Its nutrition counts in the food totals too.' : '. No nutrition figures for it yet: take a photo of the label to add them.'));
+      else toast('Found ' + r.name + (r.source === 'USDA FoodData Central' ? ' (US food database)' : '') + (ml0 ? ', ' + ml0 + ' ml' : '') + (r.hasFigures ? '. Its nutrition counts in the food totals too.' : '. No nutrition figures for it yet: take a photo of the label to add them.'));
     }, { drink: true }) : null;
     body.append(
       field('Drink', what), ...(drinkScan ? [drinkScan] : []), whatPresets, nutriLine, labelBox,
@@ -4755,7 +4755,7 @@ function openAdd(type, editEntry, preset) {
       if (!r.mine) saveCustomFood(r.name, r.hasFigures ? r.per100 : {}, { barcode: r.code, source: r.source, drink: r.drink, ml: packMl(r.quantity) || packMl(r.serving), ...labelSize(r), noFigures: !r.hasFigures });
       drinkHint = r.drink ? { ml: packMl(r.quantity) || packMl(r.serving) || (DRINK_ML.find(([re]) => re.test(r.name)) || [0, 250])[1] } : null;
       choose(r.name, null);
-      toast(r.hasFigures ? 'Found ' + label + (r.mine ? ' (My foods)' : ' (Open Food Facts)') : 'Found ' + r.name + ', but the database has no nutrition figures for it. Enter them from the packet to count it.');
+      toast(r.hasFigures ? 'Found ' + label + (r.mine ? ' (My foods)' : r.source === 'USDA FoodData Central' ? ' (US food database)' : ' (Open Food Facts)') : 'Found ' + r.name + ', but the database has no nutrition figures for it. Enter them from the packet to count it.');
     }) : null;
     pick.append(field('Food', what), ...(scanControl ? [scanControl] : []), list); // no camera: nothing between (v201; `null` drew the word)
 
