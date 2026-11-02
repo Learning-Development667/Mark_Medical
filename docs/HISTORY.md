@@ -6,6 +6,9 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v392 (2 November 2026): the medicines list keeps every medicine, not only those with a VTM
+The first real build (32,935 names) missed Creon, senna and macrogol, whose generic entries have no VTM. `tools/build_dmd.mjs` now leaves out devices by the branded product's licensing authority (`LIC_AUTHCD` 0002, device) and keeps a generic product with a VTM or with at least one branded product that is not a device. Tested on a stand-in release (Creon and pancreatin kept, a device gauze left out); the list is rebuilt by the workflow.
+
 ### v391 (2 November 2026): medicine names from the NHS list (dm+d)
 Mark registered on NHS Digital's TRUD (Mark 1 Apps Ltd), subscribed to "NHSBSA dm+d" (accepted at once; Open Government Licence) and saved the API key as the `TRUD_API_KEY` repository secret.
 - **The list:** `tools/build_dmd.mjs`, run by `.github/workflows/build-dmd.yml` (monthly, the first Monday, and by hand), fetches the latest release through the TRUD API (item 24), unzips it (and a zip inside it), keeps the generic products with a medicine behind them (VMPs with a VTM, not withdrawn, so dressings and appliances are left out) and the branded products of those (AMPs), names only, de-duplicated, A to Z, and commits `data/dmd.json` (with the source and release) when it changes. The log prints the release name and counts only.

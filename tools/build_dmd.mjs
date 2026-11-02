@@ -1,8 +1,7 @@
 /* Builds data/dmd.json, the NHS Dictionary of Medicines and Devices (dm+d) trimmed to medicine names, for the
    suggestions in Add medicine (v391). Run by .github/workflows/build-dmd.yml with the TRUD_API_KEY secret (a free NHS
-   TRUD account subscribed to "NHSBSA dm+d"; Open Government Licence). Keeps the generic products that have a medicine
-   behind them (VMPs with a VTM, so dressings and appliances are left out) and the branded ones (AMPs) of those, names
-   only, de-duplicated, A to Z. Prints counts and the release name only. Node 20, no packages; unzip from the runner. */
+   TRUD account subscribed to "NHSBSA dm+d"; Open Government Licence). Keeps medicines, not devices (see below), generic
+   and branded names only, de-duplicated, A to Z. Prints counts and the release name only. Node 20, no packages; unzip from the runner. */
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -39,23 +38,28 @@ const unxml = (s) => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quo
 const tag = (block, t) => { const m = block.match(new RegExp('<' + t + '>([^<]*)</' + t + '>')); return m ? unxml(m[1]).trim() : ''; };
 const blocks = (text, t) => text.split('<' + t + '>').slice(1).map((b) => b.split('</' + t + '>')[0]);
 
+/* Medicines, not devices: a product licensed as a device (LIC_AUTHCD 0002) is left out. A generic product (VMP) is kept
+   when it has a medicine behind it (a VTM) or at least one branded product (AMP) that is not a device; v391's first
+   build kept only VMPs with a VTM and so missed Creon, senna and macrogol. */
 const vmpText = fs.readFileSync(vmpFile, 'utf8');
-const kept = new Set();
-const names = new Set();
+const vmps = new Map();
 for (const b of blocks(vmpText, 'VMP')) {
-  if (tag(b, 'INVALID') === '1' || !tag(b, 'VTMID')) continue;
+  if (tag(b, 'INVALID') === '1') continue;
   const nm = tag(b, 'NM');
-  if (!nm) continue;
-  kept.add(tag(b, 'VPID'));
-  names.add(nm);
+  if (nm) vmps.set(tag(b, 'VPID'), { nm, vtm: Boolean(tag(b, 'VTMID')) });
 }
-const generic = names.size;
 const ampText = fs.readFileSync(ampFile, 'utf8');
+const names = new Set(), medVmp = new Set();
 for (const b of blocks(ampText, 'AMP')) {
-  if (tag(b, 'INVALID') === '1' || !kept.has(tag(b, 'VPID'))) continue;
+  if (tag(b, 'INVALID') === '1' || tag(b, 'LIC_AUTHCD') === '0002') continue;
+  const vp = tag(b, 'VPID');
+  if (!vmps.has(vp)) continue;
+  medVmp.add(vp);
   const nm = tag(b, 'NM');
   if (nm) names.add(nm);
 }
+let generic = 0;
+for (const [vp, v] of vmps) if (v.vtm || medVmp.has(vp)) { names.add(v.nm); generic++; }
 const list = [...names].sort((a, b) => a.localeCompare(b, 'en-GB'));
 const out = { source: 'NHS Dictionary of Medicines and Devices (dm+d), NHS Business Services Authority, Open Government Licence v3.0', release: String(rel.name || ''), releaseDate: String(rel.releaseDate || ''), names: list };
 fs.mkdirSync('data', { recursive: true });
