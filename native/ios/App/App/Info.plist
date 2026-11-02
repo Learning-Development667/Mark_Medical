@@ -30,6 +30,8 @@
 	<string>Daybook opens Photos when you choose a picture of a letter, a label or a medicine to add.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Daybook turns what you say into words in the box when you tap Tap to speak.</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>

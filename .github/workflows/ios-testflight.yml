@@ -1,0 +1,60 @@
+# Builds the iPhone app (native/, Capacitor) with the web app inside it and sends it to TestFlight (v395).
+# Run by hand from the Actions tab for now. Needs the APP_STORE_CONNECT_API_KEY (the .p8 text),
+# APP_STORE_CONNECT_KEY_ID, APP_STORE_CONNECT_ISSUER_ID and APPLE_TEAM_ID secrets. Signing is automatic:
+# Xcode creates the distribution certificate and profile through the API key. The log never shows the key.
+name: iPhone app to TestFlight
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Choose Xcode
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)" && xcodebuild -version
+      - name: Copy the web app into the iPhone project
+        working-directory: native
+        run: npm ci && node scripts/copy-web.mjs && npx cap sync ios
+      - name: Write the API key
+        env:
+          P8: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/keys"
+          printf '%s\n' "$P8" > "$RUNNER_TEMP/keys/AuthKey.p8"
+      - name: Build and archive
+        working-directory: native/ios/App
+        env:
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ISSUER: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          TEAM: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -o pipefail
+          xcodebuild -project App.xcodeproj -scheme App -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/Daybook.xcarchive" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/keys/AuthKey.p8" -authenticationKeyID "$KEY_ID" -authenticationKeyIssuerID "$ISSUER" \
+            DEVELOPMENT_TEAM="$TEAM" CODE_SIGN_STYLE=Automatic \
+            CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
+            archive | tail -40
+          test -d "$RUNNER_TEMP/Daybook.xcarchive"
+      - name: Send to TestFlight
+        working-directory: native/ios/App
+        env:
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ISSUER: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          TEAM: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -o pipefail
+          /usr/libexec/PlistBuddy -c "Add :teamID string $TEAM" ExportOptions.plist
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/Daybook.xcarchive" -exportOptionsPlist ExportOptions.plist \
+            -exportPath "$RUNNER_TEMP/export" -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/keys/AuthKey.p8" -authenticationKeyID "$KEY_ID" -authenticationKeyIssuerID "$ISSUER" | tail -40
+      - name: Remove the key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/keys"

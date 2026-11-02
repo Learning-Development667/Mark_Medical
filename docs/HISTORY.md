@@ -6,6 +6,13 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v395 (2 November 2026): the iPhone app's first build to TestFlight
+Mark set up Apple: the App Store Connect API key (Admin, "Daybook Github"; secrets `APP_STORE_CONNECT_API_KEY`, `APP_STORE_CONNECT_KEY_ID`, `APP_STORE_CONNECT_ISSUER_ID`, and `APPLE_TEAM_ID`), the App ID `uk.co.mark1apps.daybook` (HealthKit and Push Notifications ticked), and the app record in App Store Connect (My Medical Daybook, English (U.K.), SKU daybook-001, seller Mark 1 Apps Ltd); the updated licence accepted.
+- The Capacitor shell from v342 (`native/`) kept as it was, with: Daybook's own icon in place of Capacitor's sample, splash screens in the page colour with the icon, iPhone only (`TARGETED_DEVICE_FAMILY = 1`, so no iPad screenshots or iPad review), `ITSAppUsesNonExemptEncryption` false (HTTPS only).
+- `.github/workflows/ios-testflight.yml` (by hand for now): on a macOS runner, copies the web app in (`native/scripts/copy-web.mjs`, `cap sync ios`), archives with automatic signing through the API key (`-allowProvisioningUpdates`, the build number from the run number) and exports straight to App Store Connect (`native/ios/App/ExportOptions.plist`, destination upload). The key file is written to the runner's temp folder and removed at the end.
+- The bridge accepts the apps' own origins (`capacitor://localhost` for iPhone, `https://localhost` for Android).
+Not tried yet: a build itself (the first run of the workflow), and sign-in from inside the app (Firebase's API key may be limited to the website's address).
+
 ### v394 (2 November 2026): Google Play beside the App Store on the action list
 Mark: Google Play is as important as the App Store. The first group is now **To the App Store and Google Play**: a new step, Google Play: the developer account (Mark, next; Mark 1 Apps Ltd as an organisation, $25, the D-U-N-S number), the Android app planned beside the iPhone app, and Testing, then both stores (TestFlight and Google Play testing, then both stores together).
 
