@@ -6,6 +6,9 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v390 (2 November 2026): supermarket fruit and the scanner
+Mark: the food scanner struggles with fruit from the supermarket. A label printed in the shop (loose fruit and veg, deli or bakery weighed there) carries a shop's own number, often with the price in it, which no database can know (GS1 keeps EAN-13 and UPC-A starting 2, and EAN-8 starting 0 or 2, for use inside a shop; `shopLabel()` beside `barcodeValid()`). Such a scan is no longer looked up: the scanner stops and says "That is a label printed by the shop (fruit, veg or anything weighed there), so no food database has it. Type what it is in the box above instead...", with focus in the food's name box, where fruit comes from the UK food table with its sizes. A real barcode not found (a shop's own bagged fruit) now also says "Fruit or veg with no nutrition label? Type what it is in the box above instead." The scanner needs a sign-in (it is not in the preview), so `shopLabel()` was tested on its own (shop EAN-13, UPC-A and EAN-8 true; UK, US and padded US product codes false); the message on a phone is to be seen.
+
 ### v389 (2 November 2026): a scan found in the US database says so
 The FDC_API_KEY secret was saved and the bridge redeployed (the "Set the US food key" step ran). The scan's toast says "Found ... (US food database)" when FoodData Central answered, and "(Open Food Facts)" as before otherwise, so a test shows which one found the product. To test: pick a branded US food on fdc.nal.usda.gov's Food Search, take its GTIN/UPC, check world.openfoodfacts.org/product/{number} does not have it, then type the number under Scan a barcode ("Or type the number under the barcode").
 

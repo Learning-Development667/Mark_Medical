@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '389';
+const APP_VERSION = '390';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -3731,6 +3731,12 @@ const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition || 
    the check digit is verified before a number is trusted, and the bridge asks Open Food Facts what it is.
    A scanned product is saved into My foods (name, label figures per 100 g, the barcode) so it is matched whole
    next time and earns tags from its own label. Nothing is sent but the number; no picture leaves the phone. */
+/* Barcodes kept for use inside a shop (GS1, v390): EAN-13 and UPC-A starting 2 (weighed and priced at the counter), and
+   EAN-8 starting 0 or 2. Never in a public database. */
+function shopLabel(code) {
+  const c = String(code || '');
+  return (c.length === 13 && c[0] === '2') || (c.length === 12 && c[0] === '2') || (c.length === 8 && (c[0] === '0' || c[0] === '2'));
+}
 function barcodeValid(code) {
   const d = String(code || '').replace(/\D/g, '');
   if (![8, 12, 13, 14].includes(d.length)) return false;
@@ -3843,6 +3849,18 @@ function foodScanControl(onFood, opts = {}) {
     unknown.hidden = true; unknown.replaceChildren();
     const mine = customFoodByBarcode(code);
     if (mine && !mine.noFigures) { close(); onFood(foundFromCustom(mine, code)); return; }
+    /* v390 (Mark: the scanner struggles with supermarket fruit): a label printed in the shop (loose fruit, veg, deli and
+       bakery weighed there) carries a shop's own number, often with the price in it, so no database can know it. Said
+       plainly, and the typing box is ready, where "apples" or "grapes" come from the UK food table with their sizes. */
+    if (shopLabel(code)) {
+      if (stop) { stop(); stop = null; }
+      clearTimeout(againTimer);
+      say('That is a label printed by the shop (fruit, veg or anything weighed there), so no food database has it. Type what it is in the box above instead: "apples" or "grapes" have their sizes and figures.');
+      const sheetBody = box.closest('#sheet-body');
+      const nameBox = sheetBody && [...sheetBody.querySelectorAll('input[type="text"]')].find((el) => !box.contains(el));
+      if (nameBox) { nameBox.focus(); nameBox.scrollIntoView({ block: 'center' }); }
+      return;
+    }
     busy = true; say('Found ' + code + '. Looking it up…');
     try {
       const r = await lookupBarcode(code);
@@ -3850,7 +3868,7 @@ function foodScanControl(onFood, opts = {}) {
       if (!box.isConnected) return;
       if (r.found) { close(); onFood(r); return; }
       if (explainAvailable()) { offerLabel(barcodeKey(code)); return; }
-      say('That barcode is not in the food database yet. Type its name in the box above, then "Enter from the packet" to add the label figures.');
+      say('That barcode is not in the food database yet. Type its name in the box above, then "Enter from the packet" to add the label figures. Fruit or veg: just type what it is.');
       if (!stop) startAgainSoon();
     } catch (e) { busy = false; say(e.message || 'Could not look that up just now.'); }
   };
@@ -3859,7 +3877,7 @@ function foodScanControl(onFood, opts = {}) {
   const offerLabel = (code) => {
     if (stop) { stop(); stop = null; }
     clearTimeout(againTimer);
-    say('That barcode is not in the food database yet. Add it from a photo of its nutrition label: it is saved with this barcode, so the next scan finds it.');
+    say('That barcode is not in the food database yet. Add it from a photo of its nutrition label: it is saved with this barcode, so the next scan finds it. Fruit or veg with no nutrition label? Type what it is in the box above instead.');
     const nameIn = h('input', { type: 'text', class: 'input', id: 'scan-new-name', autocomplete: 'off', maxlength: '80', placeholder: '' });
     const again = h('button', { class: 'btn btn-plain btn-block', type: 'button', text: 'Scan a different barcode' });
     const photo = labelPhotoControl({
