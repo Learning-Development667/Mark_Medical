@@ -1009,12 +1009,45 @@ async function handleFood(request, env) {
   try {
     res = await fetch('https://world.openfoodfacts.org/api/v2/product/' + code + '.json?fields=' + OFF_FIELDS, { headers: OFF_HEADERS, cf: { cacheTtl: 86400, cacheEverything: true } });
   } catch (e) { console.error('open food facts', e && e.message); return json({ error: 'lookup-failed', message: 'Could not reach the food database just now. Try again, or type the food in.' }, 502); }
-  if (res.status === 404) return json({ found: false, code });
-  if (!res.ok) { console.error('open food facts status', res.status); return json({ error: 'lookup-failed', message: 'The food database is busy just now. Try again in a moment, or type the food in.' }, 502); }
+  if (res.status === 404) return json(await usdaBarcode(code, env) || { found: false, code });
+  if (!res.ok) { console.error('open food facts status', res.status); const us = await usdaBarcode(code, env); if (us) return json(us); return json({ error: 'lookup-failed', message: 'The food database is busy just now. Try again in a moment, or type the food in.' }, 502); }
   let data = null;
   try { data = await res.json(); } catch (e) { data = null; }
-  if (!data || data.status === 0 || !data.product) return json({ found: false, code });
-  return json(mapOffProduct(code, data.product));
+  if (!data || data.status === 0 || !data.product) return json(await usdaBarcode(code, env) || { found: false, code });
+  const hit = mapOffProduct(code, data.product);
+  return json(hit.found ? hit : (await usdaBarcode(code, env) || hit));
+}
+/* US products (v388): when Open Food Facts does not know a barcode, the US Department of Agriculture's FoodData Central
+   (free, public domain, Branded Foods) is asked, with the FDC_API_KEY secret (a free api.data.gov key; without it this
+   does nothing). Its branded figures are per 100 g or ml, so they come back in the same shape. Only the barcode is sent. */
+const USDA_N = { 208: 'kcal', 203: 'prot', 205: 'carb', 204: 'fat', 606: 'sat', 269: 'sugar', 291: 'fibre' };
+async function usdaBarcode(code, env) {
+  if (!env || !env.FDC_API_KEY) return null;
+  try {
+    const url = 'https://api.nal.usda.gov/fdc/v1/foods/search?dataType=Branded&pageSize=5&query=' + encodeURIComponent(code) + '&api_key=' + encodeURIComponent(env.FDC_API_KEY);
+    const res = await fetch(url, { headers: { Accept: 'application/json' }, cf: { cacheTtl: 86400, cacheEverything: true } });
+    if (!res.ok) { console.error('usda status', res.status); return null; }
+    const data = await res.json().catch(() => null);
+    const bare = (v) => String(v || '').replace(/\D/g, '').replace(/^0+/, '');
+    const food = ((data && data.foods) || []).find((x) => bare(x.gtinUpc) === bare(code));
+    if (!food) return null;
+    const per100 = { kcal: null, prot: null, carb: null, fat: null, sat: null, sugar: null, fibre: null, salt: null };
+    (food.foodNutrients || []).forEach((n) => {
+      const k = USDA_N[Number(n.nutrientNumber)];
+      if (k && per100[k] == null) per100[k] = r1(num(n.value));
+      if (Number(n.nutrientNumber) === 307 && num(n.value) != null) per100.salt = r1(num(n.value) * 2.5 / 1000); // sodium mg to salt g
+    });
+    const title = (t) => String(t || '').toLowerCase().replace(/\b([a-z])/g, (m) => m.toUpperCase()); // USDA names are in capitals
+    const name = clean(title(food.description), 90);
+    const brand = clean(title(food.brandName || food.brandOwner || ''), 40);
+    if (!name && !brand) return null;
+    const full = brand && !name.toLowerCase().includes(brand.toLowerCase()) ? (brand + ' ' + name).trim() : (name || brand);
+    const hasFigures = per100.kcal != null || per100.prot != null || per100.carb != null || per100.fat != null;
+    const unit = String(food.servingSizeUnit || '').toLowerCase();
+    const serving = food.servingSize ? clean(r1(num(food.servingSize)) + ' ' + (unit === 'mlt' ? 'ml' : unit === 'grm' ? 'g' : unit), 40) : '';
+    const drink = /beverage|drink|juice|soda|water|milk|coffee|tea|smoothie|shake/i.test(String(food.brandedFoodCategory || '')) || unit === 'mlt' || unit === 'ml';
+    return { found: true, code, name: full, brand, quantity: clean(food.packageWeight, 40), serving, per100, hasFigures, drink, source: 'USDA FoodData Central' };
+  } catch (e) { console.error('usda', e && e.message); return null; }
 }
 
 /* Send to the team, sent by Daybook (v159). POST /send-report { kind, to, toName, subject, text, filename, pdf (base64),

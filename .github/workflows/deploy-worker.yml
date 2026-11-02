@@ -72,6 +72,23 @@ jobs:
           secrets: |
             VAPID_PRIVATE_KEY
 
+      # US barcodes (v388): FoodData Central is asked when Open Food Facts does not know a product,
+      # once this free api.data.gov key exists; until then the bridge skips it.
+      - name: Set the US food key
+        if: steps.check.outputs.ready == 'true' && env.FDC != ''
+        uses: cloudflare/wrangler-action@v3
+        env:
+          FDC: ${{ secrets.FDC_API_KEY }}
+          FDC_API_KEY: ${{ secrets.FDC_API_KEY }}
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: worker
+          wranglerVersion: '4'
+          command: deploy
+          secrets: |
+            FDC_API_KEY
+
       # The Beta feedback sheet shows Mark's phone number when this optional secret exists (v153).
       - name: Set the Beta phone number
         if: steps.check.outputs.ready == 'true' && env.PHONE != ''
