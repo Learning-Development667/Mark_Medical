@@ -1,5 +1,5 @@
 {
- "made": "2026-10-31",
+ "made": "2026-11-02",
  "width": 390,
  "height": 844,
  "topics": [
@@ -14,7 +14,7 @@
      "caption": "On Today, tap Vitals. The other tiles log pain, a drink, food, a note, sleep, bowels, a symptom or your mood the same way.",
      "tap": {
       "x": 0.187,
-      "y": 0.278
+      "y": 0.184
      }
     },
     {
@@ -42,8 +42,8 @@
   {
    "key": "checkin",
    "title": "The morning and evening check-ins",
-   "sub": "A minute each: sleep, symptoms, pain and mood, one question a screen.",
-   "intro": "The check-ins are what the reports are built from. A minute each, twice a day.",
+   "sub": "A few minutes each: sleep, symptoms, pain and mood, one question a screen.",
+   "intro": "The check-ins are what the reports are built from. A few minutes each, twice a day.",
    "steps": [
     {
      "file": "checkin-1.webp",
@@ -65,7 +65,7 @@
      "file": "checkin-3.webp",
      "caption": "Rested, and whether the night was broken: if it was, what broke it and roughly for how long. It goes on the Sleep chart and the reports.",
      "tap": {
-      "x": 0.676,
+      "x": 0.697,
       "y": 0.943
      }
     },
@@ -73,7 +73,7 @@
      "file": "checkin-4.webp",
      "caption": "A written answer has Tap to speak under it: tap, say it, tap again to stop. To see what was heard before it is saved, switch that on in Settings. Skip is always there.",
      "tap": {
-      "x": 0.676,
+      "x": 0.697,
       "y": 0.427
      }
     },
@@ -127,7 +127,7 @@
     },
     {
      "file": "meds-2.webp",
-     "caption": "Logged: the line counts it, and the name opens the card with the time of each dose, Other time, Remove and Log a side effect. A when-needed medicine says when the next dose can be given."
+     "caption": "Logged: the line counts it, and the name opens the card with the time of each dose, Other time and Log a side effect. A when-needed medicine says when the next dose can be given."
     },
     {
      "file": "meds-3.webp",
@@ -187,7 +187,7 @@
     },
     {
      "file": "question-2.webp",
-     "caption": "Type it, or Tap to speak, and say who it is for: Oncology, Gastro, General, Dietitian, Wellbeing or the Pain team. It goes to the top of that report.",
+     "caption": "Type it, or Tap to speak, and say which team it is for. It goes to the top of that team's report.",
      "tap": {
       "x": 0.5,
       "y": 0.904
@@ -211,10 +211,10 @@
     },
     {
      "file": "question-5.webp",
-     "caption": "Every open question heads Notes for the team, with room under it for the answer in clinic. Record or write the answer, then mark it answered.",
+     "caption": "Every open question heads Notes for the team. Record or write the answer, then mark it answered.",
      "tap": {
       "x": 0.409,
-      "y": 0.751
+      "y": 0.807
      }
     }
    ]
@@ -429,7 +429,7 @@
      "file": "ibd-5.webp",
      "caption": "The morning check-in asks whether you are fasting today, and which kind. One tap; it goes on the Food diary and the reports.",
      "tap": {
-      "x": 0.676,
+      "x": 0.697,
       "y": 0.943
      }
     },
@@ -549,7 +549,7 @@
      "file": "story-2.webp",
      "caption": "How you slept, anything new overnight, pain and mood. Slide to the score, or Tap to speak for the words.",
      "tap": {
-      "x": 0.676,
+      "x": 0.697,
       "y": 0.943
      }
     },
@@ -603,7 +603,7 @@
     },
     {
      "file": "story-9.webp",
-     "caption": "Two A4 pages the team can read in a minute, with room to write. Print them, or send them from the app."
+     "caption": "Two A4 pages the team can read in a minute. Print them, or send them from the app."
     },
     {
      "file": "story-10.webp",

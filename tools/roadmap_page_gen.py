@@ -8,8 +8,8 @@ asked for a paste-ready prompt on every step.
 """
 import html, json, re, datetime
 
-VERSION = '372'
-UPDATED = '1 November 2026'
+VERSION = '387'
+UPDATED = '2 November 2026'
 REPO = 'learning-development667/mark_medical'
 
 # Each action: (id, title, who, note, prompt, state). who: 'Claude', 'Mark', 'Mark to decide', 'Testers', 'Both'.
@@ -71,9 +71,6 @@ decide = [
  ('Cancer wording under Something else', 'Mark to decide',
   'A few places still read as cancer-only for a Something else circle. A tidy-up pass to find and fix them.',
   'Go through the app as a Something else circle (no Cancer pack) and list every screen, hint, report line and email that still reads as if it were about cancer or chemo. Give me the list with your proposed wording for each.', 'open'),
- ('A weekly medicine schedule', 'Mark to decide',
-  'Medicines taken on some days of the week only (a weekly methotrexate, say), counted only on those days.',
-  'A reviewer suggested a weekly schedule for medicines taken on set days (methotrexate once a week, say). Tell me how it would sit in Edit medicine beside When do you take it and Only around treatment days, how it changes the Meds tab, the counts and the reminders, and mock it up.', 'open'),
  ('Food apps like MyNetDiary, named on the website', 'Mark to decide',
   'a US tester’s feedback: he uses MyNetDiary. Daybook already takes food totals from any app that writes to Apple Health; one line on the website and in Support could say so.',
   'a US tester uses MyNetDiary for food. Daybook already takes the day’s food totals from Apple Health (MyNetDiary, MyFitnessPal and Nutracheck all write to it). Draft one line for the website and the Support page saying so, and check it is true as the app stands.', 'open'),
@@ -83,8 +80,8 @@ decide = [
 ]
 mark = [
  ('Apple: the API key and Xcode', 'Mark',
-  'Apple accepted the enrolment on 27 October and the £79 is paid. Next: check it is active, make an App Store Connect API key, save it as a repository secret, install Xcode on the MacBook Air.',
-  'Walk me through the next Apple steps: checking the Developer Programme membership for Mark 1 Apps Ltd is active, making an App Store Connect API key and saving it as a GitHub repository secret (never in the chat), and installing Xcode on my MacBook Air.', 'next'),
+  'Apple accepted the enrolment on 27 October and the £79 is paid; Xcode is installed on the MacBook Air (2 November). Next: check the membership is active, make an App Store Connect API key, save it as a repository secret.',
+  'Walk me through the next Apple steps: checking the Developer Programme membership for Mark 1 Apps Ltd is active, and making an App Store Connect API key and saving it as a GitHub repository secret (never in the chat). Xcode is already installed on my MacBook Air.', 'next'),
  ('Both phones on the new address', 'Mark',
   'Mark and Shelley remove the old Daybook icon, add it again from app.mymedicaldaybook.co.uk, sign in and switch reminders on. Also: add the new address to the demo project’s authorised domains in Firebase.',
   'Walk me through moving both phones to app.mymedicaldaybook.co.uk: removing the old icon, adding Daybook to the Home Screen again, signing in, switching reminders on and checking a test notification. Then adding the domain to the demo Firebase project’s authorised domains.', 'next'),
@@ -160,6 +157,7 @@ GROUPS = [
 ]
 
 DONE_RECENT = [
+ ('The Fable review of 1 to 2 November, all 28 items and the wording list: medicines every week or every few weeks, carers, flares for every condition, the repeated questions', 'v376 to v387, 2 Nov'),
  ('Meet the team page with About us and photos; "Why the data is held" on the privacy page', 'v372, 1 Nov'),
  ('The ICO number and support email in the website’s footer', '1 Nov'),
  ('A third demo, Robin with chronic pain; the .com addresses forward to the .co.uk', 'v371, 1 Nov'),

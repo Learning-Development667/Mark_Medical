@@ -6,6 +6,11 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v387 (2 November 2026): What's new for the review batch, the Guide retaken, the roadmap
+- **What's new** batch 2026-11-02 (Mark asked for the whole batch to go ahead without a separate sign-off of the words this time): How often for medicines; Add another time; check-in sliders; after chemo asked once (cancer); Same as last time and the Bowels count, Same as pain right now (Crohn's); injections asked once a day and ticked from Meds (Crohn's); appointments named, flares and steroids for any condition, a fluid limit and protein as a limit (Something else); a hand-corrected weight stays.
+- **The Guide** retaken once at the end of the batch (v379 to v386, CLAUDE.md's tidy-up rule) and copied to the website: Edit medicine with Add another time, the Bowels sheet's Same as last time, a carer's Today, the shorter check-ins, the captions' "A few minutes each", no "room to write", "say which team it is for". Some frames differ only in scroll position from this harness.
+- **Roadmap:** the weekly medicine idea moved to Done; Xcode installed on the MacBook Air (2 November); the review batch in Done.
+
 ### v386 (2 November 2026): carers (review item 28)
 - **A carer's covering email** is about the patient, not written as them (`carerVoice()` on the words and the subject): "Ahead of Sam's next appointment, here are Sam's notes...", "how often Sam takes it", signed "Shelley, for Sam Example" as before.
 - **The Set-up's name step on a carer's phone** asks for the patient's name ("The patient's name on the reports", "Not your own name.", no name autofill); it asked "Your name on the reports" and put the carer's name on every report.

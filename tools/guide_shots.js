@@ -137,7 +137,7 @@ const QUALITY = 0.8;
   await shot('Every question still waiting, from any date. Mark one as answered once the team has dealt with it, or add another at the foot.', '#sheet-body .qlist > .btn-primary');
   await closeSheet();
   await tab('vitals'); await page.click('#rep-notes'); await page.waitForSelector('#view-notes:not([hidden])'); await settle(1500);
-  await shot('Every open question heads Notes for the team, Record or write the answer, then mark it answered.', '#notes-questions .btn-secondary');
+  await shot('Every open question heads Notes for the team. Record or write the answer, then mark it answered.', '#notes-questions .btn-secondary');
 
   /* 4a. treatment days and side effects (v189, v240) */
   begin('treatment', 'Treatment days and side effects', 'The calendar, where you are in the cycle, and how the days after a session went.', 'The Treatment tab holds the sessions, the days after them, and how each cycle tends to go.');
@@ -274,7 +274,7 @@ const QUALITY = 0.8;
   await shot('Notes for the team: the questions, what changed, the charts and the week\'s notes, on two pages. Preview shows them as they print.', '#notes-preview');
   await page.click('#notes-preview');
   await page.waitForFunction(() => { const f = document.querySelector('#sheet .viewer-frame'); return f && f.srcdoc; }, null, { timeout: 60000 }); await settle(1800);
-  await shot('Two A4 pages the team can read in a minute. Print them, or send them from the app. Print them, or send them from the app.');
+  await shot('Two A4 pages the team can read in a minute. Print them, or send them from the app.');
   await closeSheet();
   await page.click('#notes-send'); await page.waitForSelector('#sheet:not([hidden])'); await settle();
   await page.click('#sheet-body .pickrow'); await settle(900);

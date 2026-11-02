@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '386';
+const APP_VERSION = '387';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -3512,6 +3512,16 @@ $('feedback-row').addEventListener('click', () => openFeedbackSheet());
    localStorage: when it first saw this (batches before that day are never shown as new), which batches
    it has seen, and the Beta welcome. Nothing is stored in the circle. */
 const WHATS_NEW = [
+  { id: '2026-11-02', items: [
+    { text: 'A medicine taken once a week, every 2 weeks or every few weeks: open it in Manage medicines and choose How often. On its days it is under Scheduled with its reminders; on the others it waits under Not due today, with the day it is next due.' },
+    { text: 'A medicine taken more than four times a day: Add another time, in Edit medicine.' },
+    { text: 'Check-in sliders: tapping the number now counts, and Next asks for a number (or Skip) instead of leaving it blank.' },
+    { text: 'After chemo, the evening check-in no longer asks about sickness, appetite and tiredness twice.', packs: ['cancer'] },
+    { text: 'Bowels: Same as last time logs one in a single tap, and the Bowels tile shows how many today. The evening check-in has a one-tap Same as pain right now.', packs: ['ibd'] },
+    { text: 'After an injection or infusion, side effects are asked once a day, in the evening, and logging the injection from Meds ticks it done on the calendar.', packs: ['ibd'] },
+    { text: 'Appointments can be named, and flare days and steroid courses can be marked for any condition. Settings has a daily fluid limit, and protein can be a limit to stay under.', packs: ['general'] },
+    { text: 'A weight you corrected by hand now stays, even when Apple Health sends its own again.' }
+  ] },
   { id: '2026-11-01', items: [
     { text: 'The side-effects questions after treatment now ask about nausea separately from sickness, and tingling is asked once.', packs: ['cancer'] }
   ] },
