@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '377';
+const APP_VERSION = '378';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -9251,6 +9251,27 @@ function summaryRows(entries, from, to) {
       return cn + ': ' + Object.keys(w).map((k) => `${k} up to ${Math.max(...w[k])}/10${w[k].length > 1 ? ' on ' + plural(new Set(byCause[cn].filter((e) => String(e.what || 'Symptom').toLowerCase() === k).map((e) => e.day)).size, 'day') : ''}`).join(', ');
     });
     push('teal', 'Side effects', 'Side effects logged: ' + parts.join('; ') + '.', null, 'Side effects logged: ' + parts.join('; '));
+  }
+  /* v378 (Mark): the side effects rated in the check-ins after a session, one line, coloured by the worst grade: red for
+     severe, amber for moderate, teal when only mild. v377 took them out of the Symptoms line to stop them being listed
+     three times, which also lost the red; this puts the colour back once. */
+  const ciFx = entries.filter((e) => e.type === 'symptom' && e.fromCheckin && e.day >= from && e.day <= to && Number(e.grade) > 0);
+  if (ciFx.length) {
+    const byCause = {};
+    ciFx.forEach((e) => { (byCause[e.causeName || 'treatment'] = byCause[e.causeName || 'treatment'] || []).push(e); });
+    let top = 0;
+    const parts = Object.keys(byCause).map((cn) => {
+      const w = {};
+      byCause[cn].forEach((e) => { const k = String(e.what || 'Symptom').toLowerCase(); (w[k] = w[k] || []).push(e); });
+      const items = Object.keys(w).map((k) => { const worst = maxBy(w[k], (e) => Number(e.grade)); const days = new Set(w[k].map((e) => e.day)).size; return { k, g: Number(worst.grade), day: worst.day, days }; }).sort((a, b) => b.g - a.g);
+      items.forEach((i) => { top = Math.max(top, i.g); });
+      const name = TREATMENTS.some((t) => t.label === cn) ? cn.toLowerCase() : cn;
+      return { name, text: items.map((i) => `${i.k} ${FX_WORDS[i.g].toLowerCase()} on ${fmtDayShort(i.day)}${i.days > 1 ? ' (rated on ' + plural(i.days, 'day') + ')' : ''}`).join(', '),
+        short: items.filter((i) => i.g === items[0].g).map((i) => `${i.k} ${FX_WORDS[i.g].toLowerCase()}`).join(', ') };
+    });
+    push(top >= 3 ? 'red' : top === 2 ? 'amber' : 'teal', 'Side effects',
+      parts.map((p) => `Side effects after ${p.name}, from the check-ins: ${p.text}.`).join(' '), null,
+      'Side effects after ' + parts.map((p) => `${p.name}: ${p.short}`).join('; '));
   }
 
   /* Bowels: the UKONS triage lines. Loose means Bristol type 6 or 7. Red at 4 or more loose in a day
