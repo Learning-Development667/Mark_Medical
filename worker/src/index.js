@@ -506,11 +506,19 @@ function inTreatWindow(fields, day, sessions) {
   for (let k = 1; k <= after; k++) if (sessions.has(shiftDay(day, -k))) return true;
   return false;
 }
+/* How often (v379): a medicine taken every N days (everyDays from everyFrom, a day it is due) reminds on its days only;
+   one around treatment days follows the calendar and has no interval */
+function inInterval(fields, day) {
+  const n = Math.round(Number(f(fields, 'everyDays')) || 0), from = f(fields, 'everyFrom');
+  if (n < 2 || f(fields, 'treatmentDays') === true || !/^\d{4}-\d{2}-\d{2}$/.test(from || '')) return true;
+  const gap = Math.round((Date.parse(day + 'T12:00:00Z') - Date.parse(from + 'T12:00:00Z')) / 864e5);
+  return ((gap % n) + n) % n === 0;
+}
 function planEntryFromDocs(subs, profile, medicines, oneOffs, day, sessions) {
   sessions = sessions || new Set();
   /* a medicine that follows the Treatment calendar has no course dates of its own (v367): the calendar decides */
   const courseOk = (fl) => f(fl, 'treatmentDays') === true || ((!f(fl, 'courseEnd') || f(fl, 'courseEnd') >= day) && !(f(fl, 'courseStart') && f(fl, 'courseStart') > day));
-  const active = medicines.filter((m) => f(m.fields, 'active') !== false && f(m.fields, 'kind') !== 'prn' && f(m.fields, 'hospital') !== true && courseOk(m.fields) && inTreatWindow(m.fields, day, sessions));
+  const active = medicines.filter((m) => f(m.fields, 'active') !== false && f(m.fields, 'kind') !== 'prn' && f(m.fields, 'hospital') !== true && courseOk(m.fields) && inTreatWindow(m.fields, day, sessions) && inInterval(m.fields, day));
   const times = [];
   active.forEach((m) => (f(m.fields, 'times') || []).map(toMinutes).filter((t) => t != null).forEach((t) => times.push({ medId: m.id, t, name: f(m.fields, 'name') || 'Medicine', dose: f(m.fields, 'dose') || '' })));
   return { phones: subs.length, nudge: !!(profile && f(profile.fields, 'stretchNudge') === true), oneOff: oneOffs.some((r) => f(r.fields, 'sent') !== true), times };

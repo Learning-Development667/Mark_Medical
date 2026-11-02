@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '378';
+const APP_VERSION = '379';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -59,7 +59,7 @@ const DEMO_MEDICINES = [
 /* The Crohn's preview's medicines (v206): a made-up person on adalimumab, with a steroid course for a flare.
    The course dates are set when the preview starts (`startDemoData('ibd')`), so they always sit around today. */
 const IBD_MEDICINES = [
-  { id: 'adalimumab', name: 'Adalimumab (Humira)', dose: '40 mg', how: 'Injection every 2 weeks, at home', purpose: "Crohn's", kind: 'prn', doseForm: 'none' },
+  { id: 'adalimumab', name: 'Adalimumab (Humira)', dose: '40 mg', how: 'Injection every 2 weeks, at home', purpose: "Crohn's", kind: 'scheduled', perDay: 1, everyDays: 14, everyFrom: '', takenAt: ['09:00'], doseForm: 'none' },
   { id: 'azathioprine', name: 'Azathioprine', dose: '2 tablets (100 mg)', how: 'Once a day, in the morning', purpose: "Crohn's, keeps it settled", kind: 'scheduled', perDay: 1, doseForm: 'tablet', doseCount: 2, strength: '50 mg' },
   { id: 'pentasa', name: 'Mesalazine (Pentasa)', dose: '2 tablets (1 g)', how: 'Twice a day, morning and evening', purpose: "Crohn's", kind: 'scheduled', perDay: 2, doseForm: 'tablet', doseCount: 2, strength: '500 mg' },
   { id: 'prednisolone', name: 'Prednisolone', dose: '8 tablets (40 mg)', how: 'Once a day with breakfast, reducing as the team said', purpose: 'The flare', kind: 'scheduled', perDay: 1, steroid: true, doseForm: 'tablet', doseCount: 8, strength: '5 mg' },
@@ -1981,6 +1981,9 @@ function startDemoData(pack) {
     if (pred) { pred.courseStart = addDays(todayStr(), -6); pred.courseEnd = addDays(todayStr(), 22); }
     const adcal = state.medicines.find((m) => m.id === 'adcal');
     if (adcal) { adcal.courseStart = addDays(todayStr(), -6); adcal.courseEnd = addDays(todayStr(), 22); }
+    /* v379: adalimumab every 2 weeks, next due on the injection day the calendar has in six days (it was When needed) */
+    const ada = state.medicines.find((m) => m.id === 'adalimumab');
+    if (ada) ada.everyFrom = addDays(todayStr(), 6);
   }
   state.recentFrom = addDays(todayStr(), -40);
   state.recentEntries = fixture.entries;
@@ -2255,9 +2258,9 @@ function isStandalone() { return window.matchMedia('(display-mode: standalone)')
 /* The usual Crohn's and colitis medicines, offered by the set-up (v221); any name can be typed */
 const IBD_SETUP_MEDS = ['Adalimumab (Humira)', 'Adalimumab (Amgevita)', 'Adalimumab (Yuflyma)', 'Infliximab (Remicade)', 'Infliximab (Remsima)', 'Vedolizumab (Entyvio)', 'Ustekinumab (Stelara)', 'Risankizumab (Skyrizi)', 'Mirikizumab (Omvoh)', 'Golimumab (Simponi)', 'Upadacitinib (Rinvoq)', 'Tofacitinib (Xeljanz)', 'Filgotinib (Jyseleca)', 'Azathioprine', 'Mercaptopurine', 'Methotrexate', 'Mesalazine (Pentasa)', 'Mesalazine (Octasa)', 'Mesalazine (Asacol)', 'Budesonide', 'Prednisolone'];
 /* A medicine from its name alone (the set-up): the dose, times and how come later from Edit medicine on the Meds tab */
-async function addMedicineByName(name, purpose) {
+async function addMedicineByName(name, purpose, everyDays = 1, everyFrom = null) {
   if ((state.medicines || []).some((m) => m.name.toLowerCase() === name.toLowerCase())) return;
-  const data = { name, dose: '', how: '', purpose: purpose || '', doseForm: 'none', doseCount: null, strength: '', askCount: false, kind: 'scheduled', perDay: 1, active: true, hospital: false, route: null, times: [], withMeals: false, order: Math.max(0, ...(state.medicines || []).map((x) => x.order || 0)) + 1 };
+  const data = { ...(everyDays >= 2 ? { everyDays, everyFrom: everyFrom || todayStr() } : {}), name, dose: '', how: '', purpose: purpose || '', doseForm: 'none', doseCount: null, strength: '', askCount: false, kind: 'scheduled', perDay: 1, active: true, hospital: false, route: null, times: [], withMeals: false, order: Math.max(0, ...(state.medicines || []).map((x) => x.order || 0)) + 1 };
   if (state.demo) { state.medicines.push({ id: fakeId('med'), ...data }); renderMeds(); return; }
   try { await setDoc(doc(hcol('medicines')), data, { merge: true }); touchReminderPlan(); } catch (e) { console.error(e); toast('Could not save the medicine'); }
 }
@@ -2310,12 +2313,22 @@ function openSetup(kind, opts = {}) {
           h('p', { class: 'fieldlabel', text: 'The IBD advice line' }), h('p', { class: 'hint', text: 'The number on your flare plan or clinic letter. It goes under Who to contact and on I think I\'m flaring, so it is one tap away on a bad day. Optional.' }),
           h('div', { class: 'field-row' }, field('Name', adviceName), field('Phone', advicePhone)),
           h('p', { class: 'fieldlabel', text: 'Your regular medicine' }), h('p', { class: 'hint', text: 'The biologic, immunosuppressant or mesalazine you take. It goes on the Meds tab with Edit to add the dose and times. Optional.' }),
-          field('Medicine', medIn), medList);
+          field('Medicine', medIn), medList,
+          /* v379 (review item 20): how often, so a fortnightly biologic is not owed every day */
+          h('p', { class: 'fieldlabel', text: 'How often?' }), setupEveryChips, setupEveryMore);
         const usual = h('input', { id: 'setup-ibd-usual', type: 'text', inputmode: 'numeric', autocomplete: 'off', maxlength: '3', value: draft.ibd.usual ? String(draft.ibd.usual) : '' });
         const adviceName = h('input', { id: 'setup-ibd-advice', type: 'text', placeholder: 'e.g. IBD advice line', autocomplete: 'off', maxlength: '60', value: draft.advice.label });
         const advicePhone = h('input', { id: 'setup-ibd-phone', type: 'tel', placeholder: '01234 567890', autocomplete: 'off', value: draft.advice.number });
         const medIn = h('input', { id: 'setup-ibd-med', type: 'text', list: 'setup-ibd-meds', placeholder: 'e.g. Adalimumab (Humira)', autocomplete: 'off', maxlength: '60', value: draft.ibdMed });
         const medList = h('datalist', { id: 'setup-ibd-meds' }, ...IBD_SETUP_MEDS.map((m) => h('option', { value: m })));
+        const setupEvery = h('input', { type: 'hidden', id: 'setup-ibd-every', value: String(draft.ibdEvery || 1) });
+        const setupEveryChips = presets([['1', 'Every day'], ['7', 'Once a week'], ['14', 'Every 2 weeks'], ['28', 'Every 4 weeks'], ['56', 'Every 8 weeks']].map(([value, label]) => ({ value, label })), setupEvery, setupEvery.value);
+        setupEveryChips.setAttribute('role', 'group'); setupEveryChips.setAttribute('aria-label', 'How often');
+        const setupNext = h('input', { type: 'date', id: 'setup-ibd-next', value: draft.ibdNext || todayStr() });
+        const setupEveryMore = h('div', null, field('Next due', setupNext));
+        const syncSetupEvery = () => { setupEveryMore.hidden = setupEvery.value === '1'; };
+        setupEveryChips.addEventListener('click', () => setTimeout(syncSetupEvery, 0));
+        syncSetupEvery();
         const box = h('div', { class: 'ibd-setup' });
         redraw();
         return [box];
@@ -2340,7 +2353,8 @@ function openSetup(kind, opts = {}) {
           patch.flarePlan = { ...flarePlan(), contact: a.label };
         }
         const medName = ($('setup-ibd-med') || { value: '' }).value.trim();
-        if (medName && medName !== draft.ibdMed) { await addMedicineByName(medName, "Crohn's or colitis"); draft.ibdMed = medName; }
+        const ev = Number(($('setup-ibd-every') || { value: '1' }).value) || 1, nx = ($('setup-ibd-next') || { value: '' }).value || todayStr();
+        if (medName && medName !== draft.ibdMed) { await addMedicineByName(medName, "Crohn's or colitis", ev, nx); draft.ibdMed = medName; draft.ibdEvery = ev; draft.ibdNext = nx; }
         return saveProfilePatch(patch);
       } },
     { key: 'name', only: full, title: 'Your name on the reports', hint: 'Your full name, as the hospital has it. It goes at the top of every report and in the subject of the covering email, so the team can file them against your records.',
@@ -11317,9 +11331,40 @@ function nextTreatmentWindow(m, day) {
   return cands.filter((d) => d > day).sort()[0] || null;
 }
 function nextTreatmentDay(day) { return chemoDays().find((k) => k > day) || null; }
+/* How often (v379, review item 20): a regular medicine can be taken every N days from a day it is due (everyDays,
+   everyFrom): 7 once a week (methotrexate), 14 every 2 weeks (adalimumab), 28, 56 or any number. On its days it is under
+   Scheduled with its times, counted and reminded; on the others it waits under Not due today with the next date and is
+   never counted as missed. A medicine around treatment days follows the calendar instead and has no interval. */
+function everyDaysOf(m) {
+  const n = Math.round(Number(m && m.everyDays) || 0);
+  return m && m.kind === 'scheduled' && !onTreatmentDays(m) && n >= 2 && /^\d{4}-\d{2}-\d{2}$/.test(m.everyFrom || '') ? n : 0;
+}
+function dueByInterval(m, day) { const n = everyDaysOf(m); return !n || (((dayGap(m.everyFrom, day) % n) + n) % n) === 0; }
+/* the first day on or after `day` it is due */
+function nextDueOn(m, day) { const n = everyDaysOf(m); if (!n) return day; const r = ((dayGap(m.everyFrom, day) % n) + n) % n; return r ? addDays(day, n - r) : day; }
+function everyWords(n) { return n === 7 ? 'Once a week' : n % 7 === 0 ? 'Every ' + n / 7 + ' weeks' : 'Every ' + n + ' days'; }
+function dueDaysIn(m, from, to) { let k = 0; for (let d = from; d <= to; d = addDays(d, 1)) if (dueByInterval(m, d) && (!onTreatmentDays(m) || inTreatmentWindow(m, d))) k++; return k; }
 function activeScheduled(day) {
   return state.medicines.filter((m) => m.active !== false && m.kind === 'scheduled' && (!m.courseEnd || m.courseEnd >= day) && !notStarted(m, day)
-    && (!onTreatmentDays(m) || inTreatmentWindow(m, day)));
+    && (!onTreatmentDays(m) || inTreatmentWindow(m, day)) && dueByInterval(m, day));
+}
+function waitingForInterval(day) {
+  return state.medicines.filter((m) => m.active !== false && everyDaysOf(m) && !dueByInterval(m, day) && (!m.courseEnd || m.courseEnd >= day) && !notStarted(m, day));
+}
+/* v379: a medicine waiting for its day (an interval, or around treatment days) can still be logged, for a dose taken a day late */
+function intervalWaitCard(m, day) {
+  const next = nextDueOn(m, day);
+  return h('div', { class: 'card med is-upcoming is-treatday', 'data-med': m.id },
+    h('div', { class: 'med-head' },
+      h('div', null,
+        h('div', { class: 'med-name', text: m.name }),
+        medClass(m) ? h('div', { class: 'med-tag', text: medClass(m) }) : null,
+        h('div', { class: 'med-dose', text: medDoseLabel(m) }),
+        h('div', { class: 'med-how', text: everyWords(everyDaysOf(m)) + (medWhenText(m) ? '. ' + medWhenText(m) : '') }))),
+    h('div', { class: 'med-status' }, h('span', { class: 'pill pill-teal', text: 'Next due ' + fmtDayLong(next) })),
+    state.readOnly || state.viewer ? null : h('div', { class: 'med-actions' },
+      h('button', { class: 'btn btn-secondary', type: 'button', 'aria-label': 'Log a dose of ' + m.name + ' at a time you choose', onclick: () => logMedAtTime(m) }, 'Log a dose'),
+      h('button', { class: 'btn btn-secondary', type: 'button', 'aria-label': 'Edit ' + m.name, onclick: () => openEditMed(m) }, 'Edit')));
 }
 function waitingForTreatment(day) {
   return state.medicines.filter((m) => m.active !== false && onTreatmentDays(m) && !inTreatmentWindow(m, day) && (!m.courseEnd || m.courseEnd >= day) && !notStarted(m, day));
@@ -11345,6 +11390,7 @@ function treatmentWaitCard(m, day) {
         h('div', { class: 'med-how', text: treatWindowWords(m) + (medWhenText(m) ? '. ' + medWhenText(m) : '') }))),
     h('div', { class: 'med-status' }, h('span', { class: 'pill pill-teal', text: next ? 'Next: ' + fmtDayLong(next) : 'No treatment day on the calendar yet' })),
     state.readOnly || state.viewer ? null : h('div', { class: 'med-actions' },
+      h('button', { class: 'btn btn-secondary', type: 'button', 'aria-label': 'Log a dose of ' + m.name + ' at a time you choose', onclick: () => logMedAtTime(m) }, 'Log a dose'),
       h('button', { class: 'btn btn-secondary', type: 'button', 'aria-label': 'Edit ' + m.name, onclick: () => openEditMed(m) }, 'Edit')));
 }
 function upcomingCourses(day) {
@@ -11502,6 +11548,10 @@ function renderMeds() {
   const done = finishedCourses(day).filter((m) => m.courseEnd >= addDays(day, -FINISHED_SHOW_DAYS));
   $('meds-done').replaceChildren(...done.map((m) => finishedCard(m)));
   $('meds-done-section').hidden = !done.length;
+  const iv = waitingForInterval(day);
+  $('meds-interval').replaceChildren(...iv.map((m) => intervalWaitCard(m, day)));
+  $('meds-interval-count').textContent = String(iv.length);
+  $('meds-interval-section').hidden = !iv.length;
   const wait = waitingForTreatment(day);
   $('meds-treatday').replaceChildren(...wait.map((m) => treatmentWaitCard(m, day)));
   $('meds-treatday-count').textContent = String(wait.length);
@@ -11532,6 +11582,10 @@ function medFrequency(m) {
     return 'When needed' + (bits.length ? ', ' + bits.join(', ') : '');
   }
   const n = m.perDay || 1;
+  const ev = everyDaysOf(m);
+  if (ev) return everyWords(ev) + (n > 1 ? ', ' + (n === 2 ? 'twice' : n + ' times') + ' that day' : '');
+  /* v379 (review): around treatment days says so, not "Once a day" */
+  if (onTreatmentDays(m)) return treatWindowWords(m) + (n > 1 ? ', ' + (n === 2 ? 'twice' : n + ' times') + ' a day' : '');
   return n === 1 ? 'Once a day' : n === 2 ? 'Twice a day' : n + ' times a day';
 }
 /* What a medicine is for, in a word or two (v214, Mark: a third column on Manage medicines, "pain relief", "chemo",
@@ -12631,7 +12685,8 @@ function buildMedsReport(doses, sideFx = []) {
         r.last14 = `${span}: ${plural(win.length, 'dose')} on ${plural(wd, 'day')}`;
         r.bar = wd / nDays;
       } else if (nDays > 0) {
-        const due = (m.perDay || 1) * nDays;
+        /* v379: only the days it was due count (an interval, or around treatment days), not every day */
+        const due = Math.max(1, (m.perDay || 1) * (everyDaysOf(m) || onTreatmentDays(m) ? dueDaysIn(m, from, addDays(today, -1)) : nDays));
         r.last14 = `${span}: ${win.length} of ${due} due`;
         r.bar = win.length / due;
       }
@@ -13180,6 +13235,11 @@ $('meds-treatday-toggle').addEventListener('click', () => {
   btn.setAttribute('aria-expanded', open ? 'true' : 'false');
   $('meds-treatday-body').hidden = !open;
 });
+$('meds-interval-toggle').addEventListener('click', () => {
+  const btn = $('meds-interval-toggle'), open = btn.getAttribute('aria-expanded') !== 'true';
+  btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  $('meds-interval-body').hidden = !open;
+});
 $('meds-hospital-add').addEventListener('click', () => openHospitalDose(null));
 
 /* A medicine taken with food: the box in the editor, or, for medicines saved before it existed,
@@ -13724,17 +13784,22 @@ function openEditMed(m, prefill) {
      morning, before 15 midday, before 20 teatime, else night), the earliest when two fall in one. */
   const SLOTS = [['morning', 'Morning', '08:00'], ['midday', 'Midday', '12:00'], ['teatime', 'Teatime', '17:00'], ['night', 'Night', '22:00']];
   const slotOfTime = (t) => { const hr = parseInt(t, 10); return hr >= 4 && hr < 11 ? 'morning' : hr >= 11 && hr < 15 ? 'midday' : hr >= 15 && hr < 20 ? 'teatime' : 'night'; };
-  const saved = {};
+  const saved = {}, extraSaved = [];
   /* Two times in one row's hours (06:00 and 10:00) once lost the second on the next Save (v376): each time goes to its
      own row where it can, otherwise the rows move along so every time keeps a row, still in time order. Rows are only
      labels; each keeps the time it was given. */
   {
     const dayOrder = (t) => (parseInt(t, 10) < 4 ? '1' : '0') + t; // the small hours belong to the night, after 22:00
-    const list = [...new Set(m.takenAt && m.takenAt.length ? m.takenAt : m.times || [])].sort((a, b) => dayOrder(a).localeCompare(dayOrder(b))).slice(0, SLOTS.length);
-    const at = list.map((t) => SLOTS.findIndex(([k]) => k === slotOfTime(t)));
-    for (let i = 1; i < at.length; i++) at[i] = Math.max(at[i], at[i - 1] + 1);
-    for (let i = at.length - 1; i >= 0; i--) at[i] = Math.min(at[i], SLOTS.length - (at.length - i));
-    list.forEach((t, i) => { saved[SLOTS[at[i]][0]] = t; });
+    const all = [...new Set(m.takenAt && m.takenAt.length ? m.takenAt : m.times || [])].sort((a, b) => dayOrder(a).localeCompare(dayOrder(b)));
+    if (all.length <= SLOTS.length) {
+      const at = all.map((t) => SLOTS.findIndex(([k]) => k === slotOfTime(t)));
+      for (let i = 1; i < at.length; i++) at[i] = Math.max(at[i], at[i - 1] + 1);
+      for (let i = at.length - 1; i >= 0; i--) at[i] = Math.min(at[i], SLOTS.length - (at.length - i));
+      all.forEach((t, i) => { saved[SLOTS[at[i]][0]] = t; });
+    } else {
+      /* v379 (review item 25): five or more times a day (Parkinson's): each in its own row where free, the rest as Another time */
+      all.forEach((t) => { const k = slotOfTime(t); if (!saved[k]) saved[k] = t; else extraSaved.push(t); });
+    }
   }
   const remind = h('input', { type: 'checkbox' });
   remind.checked = !(m.takenAt && m.takenAt.length && !(m.times && m.times.length));
@@ -13749,11 +13814,27 @@ function openEditMed(m, prefill) {
     const time = h('input', { type: 'time', value: saved[key] || def, 'aria-label': word + ' time' });
     return { key, word, tick, time, el: h('div', { class: 'when-row', 'data-slot': key }, h('label', { class: 'check when-tick' }, tick, h('span', { text: word })), time) };
   });
-  const chosen = () => slotRows.filter((r) => r.tick.checked && r.time.value).map((r) => r.time.value).sort();
+  /* v379 (review item 25): more than four a day, Add another time gives a row of its own (up to 12 in all) */
+  const extraRows = [];
+  const extraWrap = h('div', { class: 'when-rows when-extra', role: 'group', 'aria-label': 'Other times' });
+  const addTimeBtn = h('button', { class: 'btn btn-secondary btn-small', type: 'button', text: 'Add another time' });
+  const addExtra = (t, focus) => {
+    const tick = h('input', { type: 'checkbox', 'aria-label': 'Another time' });
+    tick.checked = true;
+    const time = h('input', { type: 'time', value: t || '', 'aria-label': 'Another time, the time' });
+    const row = { tick, time, el: h('div', { class: 'when-row is-on' }, h('label', { class: 'check when-tick' }, tick, h('span', { text: 'Another time' })), time) };
+    tick.addEventListener('change', () => drawTimes());
+    time.addEventListener('input', () => { if (time.value) tick.checked = true; drawTimes(); });
+    time.addEventListener('change', () => { if (time.value) tick.checked = true; drawTimes(); });
+    extraRows.push(row); extraWrap.append(row.el);
+    if (focus) time.focus();
+  };
+  const chosen = () => [...slotRows, ...extraRows].filter((r) => r.tick.checked && r.time.value).map((r) => r.time.value).sort();
   let times = chosen();
   const drawTimes = () => {
     times = chosen();
-    slotRows.forEach((r) => r.el.classList.toggle('is-on', r.tick.checked));
+    [...slotRows, ...extraRows].forEach((r) => r.el.classList.toggle('is-on', r.tick.checked));
+    addTimeBtn.hidden = slotRows.length + extraRows.length >= 12;
     whenLine.textContent = times.length ? (times.length === 1 ? 'Once a day, at ' + times[0] + '.' : times.length + ' times a day, at ' + joinAnd(times) + '.') : '';
     perDayField.hidden = perDayHint.hidden = !!times.length;
     remindField.hidden = !times.length;
@@ -13764,11 +13845,32 @@ function openEditMed(m, prefill) {
     r.time.addEventListener('input', () => { if (r.time.value) r.tick.checked = true; drawTimes(); });
     r.time.addEventListener('change', () => { if (r.time.value) r.tick.checked = true; drawTimes(); });
   });
+  extraSaved.forEach((t) => addExtra(t));
+  addTimeBtn.addEventListener('click', () => { addExtra('', true); drawTimes(); });
   drawTimes();
+  /* How often (v379, review item 20): every day, or once a week, every 2 or 4 weeks, or every so many days from the next day it is due */
+  const evNow = everyDaysOf(m);
+  const EVERY_CHIPS = [['1', 'Every day'], ['7', 'Once a week'], ['14', 'Every 2 weeks'], ['28', 'Every 4 weeks'], ['other', 'Every few days or weeks']];
+  const everyIn = h('input', { type: 'hidden', value: !evNow ? '1' : ['7', '14', '28'].includes(String(evNow)) ? String(evNow) : 'other' });
+  const everyChips = presets(EVERY_CHIPS.map(([value, label]) => ({ value, label })), everyIn, everyIn.value);
+  everyChips.setAttribute('role', 'group'); everyChips.setAttribute('aria-label', 'How often');
+  const everyN = h('input', { type: 'text', inputmode: 'numeric', autocomplete: 'off', id: 'med-every-n', value: everyIn.value === 'other' ? String(evNow) : '' });
+  const everyNField = field('Every how many days? (56 is every 8 weeks)', everyN);
+  const nextIn = h('input', { type: 'date', id: 'med-every-next', value: evNow ? nextDueOn(m, todayStr()) : todayStr() });
+  const everyMore = h('div', null, everyNField, field('Next due', nextIn),
+    h('p', { class: 'hint', text: 'On the other days it waits under Not due today, is never counted as missed, and sends no reminder.' }));
+  const syncEvery = () => { everyMore.hidden = everyIn.value === '1'; everyNField.hidden = everyIn.value !== 'other'; };
+  everyChips.addEventListener('click', () => setTimeout(syncEvery, 0));
+  syncEvery();
+  const everyBlock = h('div', { class: 'med-every' }, h('p', { class: 'fieldlabel', text: 'How often?' }), everyChips, everyMore);
+  everyBlock.hidden = treatDays.checked; // around treatment days follows the calendar instead
+  treatDays.addEventListener('change', () => { everyBlock.hidden = treatDays.checked; });
   const whenBlock = h('div', { class: 'med-when-block' },
+    everyBlock,
     h('p', { class: 'fieldlabel', text: 'When do you take it?' }),
     h('p', { class: 'hint', text: 'Tick each time of day and set the time. For one in the morning and one at night, tick Morning and Night.' }),
     h('div', { class: 'when-rows', role: 'group', 'aria-label': 'When do you take it?' }, ...slotRows.map((r) => r.el)),
+    extraWrap, addTimeBtn,
     whenLine, perDayField, perDayHint, remindField);
   const withMeals = h('input', { type: 'checkbox' });
   withMeals.checked = medWithMeals(m);
@@ -13815,6 +13917,16 @@ function openEditMed(m, prefill) {
     h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
       if (!name.value.trim()) { missing(name, 'Please enter a name'); return; }
       if (kind.value === 'scheduled' && treatDays.checked && !treatOn.checked && !(Number(afterIn.value) > 0)) { missing(afterChips, 'Choose the session day or some days after it'); return; }
+      let everyDays = null;
+      if (kind.value === 'scheduled' && !treatDays.checked && !hospital.checked && everyIn.value !== '1') {
+        if (everyIn.value === 'other') {
+          const r = readNum(everyN);
+          if (r.empty) { missing(everyN, 'Say every how many days'); return; }
+          if (r.value == null || !Number.isInteger(r.value) || r.value < 2 || r.value > 365) { missing(everyN, 'Type a whole number of days, from 2 to 365', CHECK); return; }
+          everyDays = r.value;
+        } else everyDays = Number(everyIn.value);
+        if (!nextIn.value) { missing(nextIn, 'Choose the day it is next due'); return; }
+      }
       const data = {
         name: name.value.trim(), dose: composeDose(count.value(), formIn.value, dose.value), how: how.value.trim(), purpose: purpose.value.trim().replace(/,/g, ' '), alsoFor: allAlso(),
         doseForm: formIn.value || 'none', doseCount: doseFormOf(formIn.value) ? count.value() || 1 : null, strength: dose.value.trim(),
@@ -13844,7 +13956,9 @@ function openEditMed(m, prefill) {
         data.minGapHours = null; data.maxPerDay = null;
         data.times = hospital.checked || !remind.checked ? [] : times.slice();
         data.withMeals = hospital.checked ? false : withMeals.checked;
+        data.everyDays = everyDays; data.everyFrom = everyDays ? nextIn.value : null;
       } else {
+        data.everyDays = null; data.everyFrom = null;
         data.minGapHours = parseFloat(minGap.value) || null;
         data.maxPerDay = parseInt(maxPerDay.value, 10) || null;
         data.perDay = null; data.courseEnd = null; data.courseStart = null; data.steroid = false;
