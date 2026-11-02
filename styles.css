@@ -2401,3 +2401,8 @@ body[data-accent] .view .section-title::before { content: ""; display: block; wi
 .fbitem-pic img { display: block; max-width: 100%; border-radius: var(--r-sm); margin-top: var(--s-2); }
 .fbitem .btn-small { margin-top: var(--s-2); min-height: 44px; }
 .fbitem-meta { margin: var(--s-2) 0 0; font-size: 15px; overflow-wrap: anywhere; }
+
+/* v383: the day's count on the Bowels tile, and the one-tap Same as last time */
+.qa { position: relative; }
+.qa-count { position: absolute; top: 6px; right: 8px; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px; background: var(--teal-fill); color: var(--teal-ink); font: 600 13px/22px Inter, system-ui, sans-serif; font-variant-numeric: tabular-nums; text-align: center; }
+.bowel-same { margin-bottom: 4px; text-align: left; justify-content: flex-start; white-space: normal; }

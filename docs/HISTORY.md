@@ -6,6 +6,12 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v383 (2 November 2026): bowels in a flare, quicker (review item 23)
+- **Same as last time** at the top of the Bowels sheet (`.bowel-same`, not when editing): one tap logs a movement like the last one (its types or stoma output, blood grade, how long you could wait and the ticks other than At night), at the time in the box, At night when that is 23:00 to 05:59, a "none" for the day removed, with Undo. The button says what it will log ("Same as last time: type 6, mushy, blood streaks"). The full sheet is below it as before.
+- **The day's count on the Bowels tile** (`.qa-count`, a teal number; the tile reads "Bowels, 3 times today" to a screen reader).
+- **At night** starts ticked between 23:00 and 05:59 on a new entry, still clearable (it was only ever a tick, so a 02:30 movement was not counted as a night one unless remembered).
+Tested on Jo's preview at 390 light and 320 dark: the button, the log (2 to 3), the tile's count, axe clean, no sideways scroll, no page errors.
+
 ### v382 (2 November 2026): flares and steroid courses for every condition, a fluid limit and a protein limit (review item 22; part of 24)
 - **Steroid course** tick in Edit medicine for every pack (it was Crohn's only); `steroidCourses()` no longer checks the pack, so the calendar shading, the key and the 12-month line work for lupus, RA or MS.
 - **A flare day** on the day sheet for Something else too (`flareRow`). The I think I'm flaring sheet stays Crohn's own. On Notes for the team, without the Crohn's pack, the Summary has teal lines "Marked as a flare day on 2 days (...)" and "Steroid course: Prednisolone from 3 Oct to 30 Oct" (facts only).

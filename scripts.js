@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '382';
+const APP_VERSION = '383';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -3411,6 +3411,8 @@ function readingRows(e) {
 
 function renderTiles() {
   const entries = state.dayEntries;
+  /* v383 (review item 23): how many times today, on the Bowels tile itself */
+  { const qa = document.querySelector('.qa[data-add="bowel"]'); if (qa) { const n = entries.filter((e) => e.type === 'bowel' && !e.none).length; let c = qa.querySelector('.qa-count'); if (!c) { c = h('span', { class: 'qa-count' }); qa.append(c); } c.textContent = n ? String(n) : ''; c.hidden = !n; qa.setAttribute('aria-label', 'Bowels' + (n ? ', ' + plural(n, 'time') + ' ' + (state.selectedDay === todayStr() ? 'today' : 'this day') : '')); } }
   const temps = entries.filter((e) => e.type === 'temp');
   const tileT = $('tile-temp');
   tileT.classList.remove('is-red', 'is-amber', 'is-green');
@@ -4879,6 +4881,8 @@ function openAdd(type, editEntry, preset) {
       ? [['black', 'Black or tarry'], ['mucus', 'Mucus'], ['accident', stoma ? 'Bag leak' : 'Accident or leak'], ['pain', 'Pain or straining'], ['night', 'At night']]
       : BOWEL_FLAGS;
     const flags = new Set(flagList.filter(([k]) => editEntry && editEntry[k]).map(([k]) => k));
+    /* v383 (review): At night ticked to start with between 23:00 and 05:59, still clearable */
+    if (!editEntry && day === todayStr()) { const hr = new Date().getHours(); if (hr >= 23 || hr < 6) flags.add('night'); }
     const flagBtns = flagList.map(([k, label]) => h('button', { class: 'preset' + (flags.has(k) ? ' is-active' : ''), type: 'button', text: label, 'aria-pressed': flags.has(k) ? 'true' : 'false',
       onclick: (ev) => { const b = ev.currentTarget; if (flags.has(k)) flags.delete(k); else flags.add(k); b.classList.toggle('is-active', flags.has(k)); b.setAttribute('aria-pressed', flags.has(k) ? 'true' : 'false'); } }));
     const bowelNote = h('textarea', { rows: '2', placeholder: 'Anything else (optional)' });
@@ -4893,6 +4897,26 @@ function openAdd(type, editEntry, preset) {
       const id = await addEntry({ type: 'bowel', none: true, bristol: null, note: '', ...(stoma ? { stoma: true } : {}), at: atFromInputs(day, time.value) });
       toast(stoma ? 'Recorded: no stoma output' : 'Recorded: no bowel movement', { label: 'Undo', onClick: () => deleteEntry(id) });
     } });
+    /* v383 (review item 23): in a flare the same kind of movement comes again and again, so one tap logs it the same as the last
+       one, at the time in the box (At night when that is 23:00 to 05:59), with Undo; the full sheet is still below */
+    const lastB = editEntry ? null : [...state.recentEntries].filter((e) => e.type === 'bowel' && !e.none && Boolean(e.stoma) === stoma).sort((a, b) => entryDate(b) - entryDate(a))[0];
+    if (lastB) {
+      const what = stoma ? 'output ' + (lastB.output || '') : bowelTypeText(lastB);
+      const bg = bloodGradeOf(lastB);
+      const extra = [bg > 0 ? 'blood ' + ['', 'streaks', 'mixed in', 'mostly blood'][bg] : '', bowelFlagWords({ ...lastB, night: false, blood: false })].filter(Boolean).join(', ');
+      body.append(h('button', { class: 'btn btn-secondary btn-block bowel-same', type: 'button', onclick: async () => {
+        const at = atFromInputs(day, time.value);
+        if (at > new Date(Date.now() + 60000)) { missing(time, 'That time is still to come', CHECK); return; }
+        const hr = at.getHours();
+        const copy = {};
+        ['types', 'bristol', 'stoma', 'output', 'bloodGrade', 'blood', 'urgency', 'urgent', ...flagList.map(([k]) => k).filter((k) => k !== 'night')].forEach((k) => { if (lastB[k] !== undefined) copy[k] = lastB[k]; });
+        closeSheet();
+        const n = hasNone(day); if (n) deleteEntry(n.id);
+        const id = await addEntry({ type: 'bowel', none: false, ...copy, night: hr >= 23 || hr < 6, note: '', at });
+        toast('Logged the same as last time, at ' + fmtTime(at), { label: 'Undo', onClick: () => deleteEntry(id) });
+      } }, 'Same as last time: ' + what + (extra ? ', ' + extra.toLowerCase() : '')),
+      h('p', { class: 'hint hint-small', text: 'Logs it now, at the time below. Or fill in the rest.' }));
+    }
     if (stoma) body.append(
       h('p', { class: 'wiz-q', text: 'What was the output like?' }),
       h('p', { class: 'wiz-hint', text: 'Each time you empty the bag. Tap the nearest.' }),
