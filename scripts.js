@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '375';
+const APP_VERSION = '376';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -734,7 +734,7 @@ function timeInput(defaultDay) {
 function readNum(el) {
   const raw = String(el.value || '').trim();
   if (!raw) return { empty: true, value: null };
-  const cleaned = raw.replace(/\s+/g, '').replace(/(kg|lbs?|st|bpm|%|°[cf]|[cf])$/i, '').replace(',', '.');
+  const cleaned = raw.replace(/\s+/g, '').replace(/(kg|lbs?|st|bpm|ml|%|°[cf]|[cf])$/i, '').replace(',', '.');
   return { empty: false, value: /^\d+(\.\d+)?$/.test(cleaned) ? parseFloat(cleaned) : null };
 }
 
@@ -2014,8 +2014,13 @@ function watchMedicines() {
   }, (e) => console.error(e));
 }
 
+/* The live window: today and the six days before it (v376; until then only yesterday and today, which left
+   the flare sheet's last 7 days, the weekly questions, Your week and a when-needed medicine's last dose
+   blind to anything older than yesterday). Seven days of entries per cold start; the phone's own cache
+   means a listener resumed within half an hour is billed only for what changed. */
+const RECENT_DAYS = 6;
 function watchRecent() {
-  const from = addDays(todayStr(), -1);
+  const from = addDays(todayStr(), -RECENT_DAYS);
   if (state.recentFrom === from) return;
   state.recentFrom = from;
   if (state.unsub.recent) state.unsub.recent();
@@ -2257,6 +2262,17 @@ async function addMedicineByName(name, purpose) {
   try { await setDoc(doc(hcol('medicines')), data, { merge: true }); touchReminderPlan(); } catch (e) { console.error(e); toast('Could not save the medicine'); }
 }
 const HEALTH_SOURCES = [['apple', 'Apple Health (iPhone)'], ['android', 'Health Connect (Android)'], ['none', 'No']];
+/* Set-up run again finds a contact already under Who to contact rather than adding it a second time (v376: two runs
+   left four copies): the same phone number or email, or the same name; the advice line also by its role. -1 when new. */
+function sameCallAt(calls, c, advice = false) {
+  const digits = (v) => String(v || '').replace(/\D/g, '');
+  const low = (v) => String(v || '').trim().toLowerCase();
+  return calls.findIndex((x) => (advice && x.role === 'IBD advice line')
+    || (digits(c.number) && digits(x.number) === digits(c.number))
+    || (low(c.email) && low(x.email) === low(c.email))
+    || (low(c.label) && low(x.label) === low(c.label)));
+}
+function filledOnly(o) { return Object.fromEntries(Object.entries(o).filter(([, v]) => v != null && v !== '')); }
 function openSetup(kind, opts = {}) {
   const full = kind !== 'phone';
   const p = state.profile || {};
@@ -2318,7 +2334,8 @@ function openSetup(kind, opts = {}) {
         if (a.label) {
           const calls = [...((state.profile && state.profile.calls) || [])];
           const c = { label: a.label, role: 'IBD advice line', number: a.number, ext: '', email: '' };
-          if (draft.adviceAt != null && calls[draft.adviceAt]) calls[draft.adviceAt] = c; else { draft.adviceAt = calls.length; calls.push(c); }
+          if (draft.adviceAt == null) draft.adviceAt = sameCallAt(calls, c, true);
+          if (draft.adviceAt >= 0 && calls[draft.adviceAt]) calls[draft.adviceAt] = { ...calls[draft.adviceAt], ...filledOnly(c) }; else { draft.adviceAt = calls.length; calls.push(c); }
           patch.calls = calls;
           patch.flarePlan = { ...flarePlan(), contact: a.label };
         }
@@ -2343,7 +2360,8 @@ function openSetup(kind, opts = {}) {
         if (!c.number && !c.email) { missing($('setup-c-number'), 'Add a phone number or an email for ' + c.label); return false; }
         if (c.email && !EMAIL_RE.test(c.email)) { missing($('setup-c-email'), 'Check the email address for ' + c.label, CHECK); return false; }
         const calls = [...((state.profile && state.profile.calls) || [])];
-        if (draft.contactAt != null && calls[draft.contactAt]) calls[draft.contactAt] = c; else { draft.contactAt = calls.length; calls.push(c); }
+        if (draft.contactAt == null) draft.contactAt = sameCallAt(calls, c);
+        if (draft.contactAt >= 0 && calls[draft.contactAt]) calls[draft.contactAt] = { ...calls[draft.contactAt], ...filledOnly(c) }; else { draft.contactAt = calls.length; calls.push(c); }
         return saveProfilePatch({ calls });
       } },
     /* v260: which health app, if any. The starting point only: Daybook switches to a night's own figures by itself
@@ -3074,7 +3092,7 @@ $('meds-day-label').addEventListener('click', () => openDayPicker(state.selected
 const loggedMonths = {};
 async function loggedDaysIn(month) {
   const set = new Set(state.recentEntries.filter((e) => e.day && e.day.startsWith(month)).map((e) => e.day));
-  if (state.demo || month >= (state.recentFrom || '').slice(0, 7)) return set;
+  if (state.demo || (state.recentFrom && month + '-01' >= state.recentFrom)) return set;
   if (!loggedMonths[month]) {
     try {
       const snap = await getDocs(query(hcol('entries'), where('day', '>=', month + '-01'), where('day', '<=', month + '-31')));
@@ -4290,9 +4308,10 @@ function openAdd(type, editEntry, preset) {
 
   if (type === 'drink') {
     const whatDefault = (editEntry && editEntry.note) || 'Water';
-    const mlDefault = editEntry ? String(editEntry.value || 0) : '200';
+    const mlDefault = editEntry ? (Number(editEntry.value) > 0 ? String(editEntry.value) : '') : '200';
     const what = h('input', { type: 'text', placeholder: 'What was it?', value: whatDefault });
-    const ml = h('input', { type: 'number', inputmode: 'numeric', min: '0', step: '10', value: mlDefault });
+    /* a text box with a number keypad read by readNum() (v376): as type=number, "250ml" or an empty box saved 0 ml */
+    const ml = h('input', { type: 'text', inputmode: 'numeric', autocomplete: 'off', value: mlDefault });
     const whatPresets = presets(['Water', 'Tea', 'Coffee', 'Squash', 'Juice', 'Milk', 'Supplement drink'], what, whatDefault);
     const mlPresets = presets(['50', '100', '150', '200', '250', { value: '300', label: '300 cup' }, { value: '568', label: '568 pint' }, { value: '900', label: '900 bottle' }], ml, mlDefault);
     const howMany = stepper(1, 1, 1, 'How many');
@@ -4360,9 +4379,11 @@ function openAdd(type, editEntry, preset) {
       field('Time', time)
     );
     getData = () => {
-      const v = parseInt(ml.value, 10);
+      const read = readNum(ml);
+      if (read.empty) return missing(ml, 'Say how much, in ml');
+      if (read.value == null || !(read.value > 0)) return missing(ml, 'Type the amount as a number of ml, like 250', CHECK);
       const n = howMany.value();
-      const total = isNaN(v) ? 0 : Math.round(v * n);
+      const total = Math.round(read.value * n);
       const name = what.value.trim() || 'Drink';
       const info = !editEntry && drinkInfo(name);
       if (info && info.nutri && total > 0) {
@@ -4947,7 +4968,8 @@ function openAdd(type, editEntry, preset) {
     getData = () => {
       const w = wIn.read();
       if (w.empty || w.kg == null || w.kg < 20 || w.kg > 300) return w.empty ? missing(w.el || wIn.first, 'Type the weight') : missing(w.el || wIn.first, 'Could not read the weight. Type just the number.', CHECK);
-      return { type: 'weight', value: Math.round(w.kg * 10) / 10, note: note.value.trim() };
+      /* byHand (v376): a weight changed here is the person's, so an Apple Health re-send leaves it alone */
+      return { type: 'weight', value: Math.round(w.kg * 10) / 10, note: note.value.trim(), ...(editEntry ? { byHand: true } : {}) };
     };
   }
 
@@ -5254,9 +5276,10 @@ function openAdd(type, editEntry, preset) {
       if (d._replace) {
         /* the day's weight changed in place (v127), with Undo putting the old one back */
         const old = d._replace; delete d._replace;
-        const was = { value: old.value, at: entryDate(old) || at, addedBy: old.addedBy || state.name }; // copied first: the update changes the entry itself
+        const was = { value: old.value, at: entryDate(old) || at, addedBy: old.addedBy || state.name, byHand: Boolean(old.byHand) }; // copied first: the update changes the entry itself
         try {
-          await updateEntry(old.id, { value: d.value, at, addedBy: state.name, ...(d.note ? { note: d.note } : {}) });
+          /* byHand (v376): an Apple Health re-send of the same day no longer puts its own figure back over this one */
+          await updateEntry(old.id, { value: d.value, at, addedBy: state.name, byHand: true, ...(d.note ? { note: d.note } : {}) });
           restore.push(() => updateEntry(old.id, was));
         } catch (e) { console.error(e); toast('Could not save the weight'); }
         continue;
@@ -7498,6 +7521,7 @@ function isCarerUser() {
   const rel = (state.account && state.account.relation) || '';
   if (rel === 'patient') return false;
   if (rel === 'carer') return true;
+  if (state.demo) return false; // the preview's visitor is the patient (v376: Jo's and Robin's previews read "Guest" as a carer)
   const who = patientFullName(), me = state.name || '';
   return Boolean(who) && who.split(/\s+/)[0].toLowerCase() !== me.toLowerCase();
 }
@@ -8231,16 +8255,18 @@ function afterTreatmentLog(entries, from, to) {
     if (also.length) lines.push('Also on the Symptom tile: ' + also.map((a) => a.name.toLowerCase()).join(', '));
     /* v345, Mark: how the patient felt on those three days matters to the team as much as the side effects, so the
        check-in scores sit in the same table: the day's worst pain, the evening's energy and appetite, the day's mood */
+    /* v376: the Pain tile counts towards the day's worst pain, and the evening's sickness has its own row */
     const scoreOf = (day, pick) => {
-      const vals = entries.filter((e) => isPatientCheckin(e) && e.day === day && (e.slot === 'morning' || e.slot === 'evening'))
+      const vals = entries.filter((e) => e.day === day && ((isPatientCheckin(e) && (e.slot === 'morning' || e.slot === 'evening')) || e.type === 'pain'))
         .flatMap(pick).map(Number).filter((v) => Number.isFinite(v));
       return vals;
     };
     const SCORE_ROWS = [
-      ['Worst pain', (e) => [e.pain, e.worstPain], (v) => Math.max(...v)],
-      ['Energy', (e) => (e.slot === 'evening' ? [e.energy] : []), (v) => v[0]],
-      ['Appetite', (e) => (e.slot === 'evening' ? [e.appetite] : []), (v) => v[0]],
-      ['Mood', (e) => [e.mood], (v) => Math.round((v.reduce((a, b) => a + b, 0) / v.length) * 10) / 10]
+      ['Worst pain', (e) => (e.type === 'pain' ? [e.value] : [e.pain, e.worstPain]), (v) => Math.max(...v)],
+      ['Sickness', (e) => (e.type === 'checkin' && e.slot === 'evening' ? [e.sickness] : []), (v) => v[0]],
+      ['Energy', (e) => (e.type === 'checkin' && e.slot === 'evening' ? [e.energy] : []), (v) => v[0]],
+      ['Appetite', (e) => (e.type === 'checkin' && e.slot === 'evening' ? [e.appetite] : []), (v) => v[0]],
+      ['Mood', (e) => (e.type === 'checkin' ? [e.mood] : []), (v) => Math.round((v.reduce((a, b) => a + b, 0) / v.length) * 10) / 10]
     ];
     const scores = SCORE_ROWS.map(([name, pick, sum]) => ({ name, cells: perDay.map((p) => {
       const v = scoreOf(p.day, (e) => pick(e).filter((x) => x != null));
@@ -8256,7 +8282,7 @@ function afterTreatmentLog(entries, from, to) {
     title: 'The three days after treatment',
     range: days.length > 1 ? rRange(days[0].day, days[days.length - 1].day) : '',
     summary: '',
-    note: 'From the morning and evening check-ins on the three days after each session: for side effects, the worse of the two answers each day; the scores are the day\'s worst pain, the evening\'s energy and appetite, and the day\'s average mood. Anything logged on the Symptom tile on those days is shown as logged.',
+    note: 'From the morning and evening check-ins on the three days after each session: for side effects, the worse of the two answers each day; the scores are the day\'s worst pain (from the check-ins and the Pain tile), the evening\'s sickness, energy and appetite, and the day\'s average mood. Anything logged on the Symptom tile on those days is shown as logged.',
     days, used: [...used]
   };
 }
@@ -10163,7 +10189,11 @@ function sliderBlock(q, current, onChange) {
     if (b) range.setAttribute('aria-valuetext', range.value + ', ' + painBandWord(range.value, nrsNoun(q)).toLowerCase()); else range.removeAttribute('aria-valuetext');
   };
   showBand();
-  range.addEventListener('input', () => { touched = true; num.textContent = range.value; num.classList.remove('is-unset'); showBand(); if (onChange) onChange(); });
+  const answer = () => { touched = true; num.textContent = range.value; num.classList.remove('is-unset'); showBand(); if (onChange) onChange(); };
+  range.addEventListener('input', answer);
+  /* a tap on the thumb where it already sits (5 on a fresh slider) fires no input, so it never counted (v376) */
+  range.addEventListener('click', () => { if (!touched) answer(); });
+  range.addEventListener('change', () => { if (!touched) answer(); });
   const nodes = [num, band, range, h('div', { class: 'wiz-anchors' }, h('span', { text: q.low }), h('span', { text: q.high })), key].filter(Boolean);
   return { nodes, value: () => (touched ? parseInt(range.value, 10) : null) };
 }
@@ -10429,13 +10459,16 @@ function openCheckin(slot, initialDay) {
           if (noteBox2) answers[q.note2] = noteBox2.value.trim();
           return sl.value();
         };
+        /* Next on a slider nobody touched once saved Skipped without a word (v376): as on the tiles, it now asks
+           for a number; Skip is still there for a question the person does not want to answer */
+        wrap._answer = () => sl.value() != null || (missing(sl.nodes.find((n) => n.type === 'range'), 'Slide to a number, or press Skip'), false);
       }
       capture = () => { answers[q.key] = getVal(); };
       const nightSaysToilet = () => Boolean(answers.night && (answers.night.toilet != null || answers.night.broken === 'no'));
       const go = (n, d) => { while (qs[n] && qs[n].key === 'nightToilet' && nightSaysToilet()) n += d < 0 ? -1 : 1; if (n < 0) n = 0; dir = d; step = n; clearTimeout(keepTimer); keep(); render(); };
       const back = h('button', { class: 'btn btn-secondary btn-back', type: 'button', disabled: step === 0, onclick: () => { answers[q.key] = getVal(); go(step - 1, -1); } }, 'Back');
       const skip = h('button', { class: 'btn-link wiz-skip', type: 'button', onclick: () => { if (q.kind === 'sleep' || q.note) getVal(); answers[q.key] = q.kind === 'text' ? '' : null; const r = fromReview; fromReview = false; go(r ? qs.length : step + 1, r ? -1 : 1); } }, fromReview ? 'Clear this answer' : 'Skip');
-      const next = h('button', { class: 'btn btn-primary btn-next', type: 'button', onclick: () => { if (wrap._guard && !wrap._guard()) { toast('Missing information'); return; } answers[q.key] = getVal(); const r = fromReview; fromReview = false; go(r ? qs.length : step + 1, r ? -1 : 1); } }, fromReview ? 'Done, back to the review' : (step === qs.length - 1 ? 'Review' : 'Next'));
+      const next = h('button', { class: 'btn btn-primary btn-next', type: 'button', onclick: () => { if (wrap._guard && !wrap._guard()) { toast('Missing information'); return; } if (wrap._answer && !wrap._answer()) return; answers[q.key] = getVal(); const r = fromReview; fromReview = false; go(r ? qs.length : step + 1, r ? -1 : 1); } }, fromReview ? 'Done, back to the review' : (step === qs.length - 1 ? 'Review' : 'Next'));
       wrap.append(h('div', { class: 'wiz-buttons' + (fromReview ? ' is-fromreview' : '') }, fromReview ? '' : back, skip, next), cancelLink() || '');
     } else {
       const bar = h('div', { class: 'progress-bar' }, h('div'));
@@ -10578,7 +10611,7 @@ function openWeekCheck(initialDay, slot = weekSlot()) {
   const { from, to } = weekBounds(existing ? existing.day : day);
   const first = patientFullName().split(/\s+/)[0];
   body.append(h('p', { class: 'wiz-hint', text: carer
-    ? `Once a week, about five minutes. ${fmtDayShort(from)} to ${fmtDayShort(to)}. How ${first || 'they'} seemed to you, kept apart from ${first ? first + "'s" : 'their'} own answers. It goes on the Mood and wellbeing report, never on Notes for the team. Saved as you go.`
+    ? `Once a week, about five minutes. ${fmtDayShort(from)} to ${fmtDayShort(to)}. How ${first || 'they'} seemed to you, kept apart from ${first ? first + "'s" : 'their'} own answers. It goes on Notes for the team and the Mood and wellbeing report. Saved as you go.`
     : `Once a week, about five minutes. ${fmtDayShort(from)} to ${fmtDayShort(to)}. These go on the Mood and wellbeing report, never on Notes for the team. Saved as you go.` }));
   const on = carer ? [] : PACKS.filter((pk) => packOn(pk.key) && qs.some((q) => q.pack && (Array.isArray(q.pack) ? q.pack.includes(pk.key) : q.pack === pk.key)));
   if (on.length) body.append(h('div', { class: 'pack-badges' }, ...on.map((pk) => h('span', { class: 'pill q-team', text: pk.name }))));
@@ -10667,8 +10700,22 @@ async function setFlareDay(day, on) {
   try { await setDoc(hdoc('days', day), { ...data, updatedAt: serverTimestamp() }, { merge: true }); return true; }
   catch (e) { console.error(e); toast('Could not save'); return false; }
 }
+/* Results and calls go back further than the live window (v376): the latest of each test ever recorded, and the
+   last ten calls, fetched once for the sheet with one single-field query each and kept a minute. */
+let flareExtra = null;
+async function loadFlareExtra() {
+  if (flareExtra && Date.now() - flareExtra.at < 60000) return flareExtra;
+  const results = await loadResults().catch(() => []);
+  let calls = (state.recentEntries || []).filter((e) => e.type === 'call');
+  if (!state.demo) {
+    try { const snap = await getDocs(query(hcol('entries'), where('type', '==', 'call'))); calls = snap.docs.map((d) => ({ id: d.id, ...d.data() })); }
+    catch (e) { console.error(e); }
+  }
+  flareExtra = { at: Date.now(), results, calls };
+  return flareExtra;
+}
 /* The facts of the seven days ending on `day`, one line each, in words to read out on the phone or send */
-function flareSummaryLines(day) {
+function flareSummaryLines(day, results = []) {
   const from = addDays(day, -6);
   const inRange = (e) => e.day >= from && e.day <= day;
   const es = (state.recentEntries || []).filter(inRange);
@@ -10718,7 +10765,7 @@ function flareSummaryLines(day) {
   const eating = es.filter((e) => e.type === 'food').length;
   lines.push(eating ? eating + (eating === 1 ? ' meal or snack' : ' meals or snacks') + ' logged.' : 'No food logged.');
   const meds = (state.medicines || []).filter((m) => m.active !== false && !(m.courseEnd && m.courseEnd < day) && !notStarted(m, day));
-  const latestRes = latestResultsText((state.recentEntries || []).filter((e) => e.type === 'result'));
+  const latestRes = latestResultsText(results.filter((e) => e.day <= day));
   if (latestRes) lines.push('Latest results, as given: ' + latestRes + '.');
   if (meds.length) lines.push('Medicines: ' + meds.map((m) => m.name + (m.dose ? ' ' + m.dose : '')).join('; ') + '.');
   const ster = steroidOn(day);
@@ -10727,7 +10774,8 @@ function flareSummaryLines(day) {
   if (rep && rep.last) lines.push('Last ' + sessionLabel(rep.lastInfo) + ' ' + fmtDayShort(rep.last) + (rep.next ? ', next ' + fmtDayShort(rep.next) : '') + '.');
   return lines;
 }
-function openFlareSheet(day) {
+async function openFlareSheet(day) {
+  const extra = await loadFlareExtra();
   const today = todayStr();
   const flare = isFlareDay(day);
   const tick = h('input', { type: 'checkbox', checked: flare });
@@ -10747,7 +10795,7 @@ function openFlareSheet(day) {
     contact ? h('div', { class: 'btnrow' },
       contact.number ? h('a', { class: 'btn btn-primary', href: telHref(contact.number), 'aria-label': 'Call ' + contact.label + (contact.ext ? ', ' + extWords(contact.ext).toLowerCase() : '') }, 'Call') : null,
       contact.email ? h('a', { class: 'btn btn-secondary', href: 'mailto:' + encodeURIComponent(contact.email) }, 'Email') : null) : null);
-  const lines = flareSummaryLines(day);
+  const lines = flareSummaryLines(day, extra.results);
   const text = lines.join('\n');
   const sumBox = h('div', { class: 'flare-summary', role: 'region', 'aria-label': 'The last 7 days' },
     h('p', { class: 'fieldlabel', text: 'The last 7 days, to read out or send' }),
@@ -10761,7 +10809,7 @@ function openFlareSheet(day) {
         const to = contact && contact.email ? encodeURIComponent(contact.email) : '';
         window.location.href = 'mailto:' + to + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(text);
       } }, 'Share or send')));
-  const calls = (state.recentEntries || []).filter((e) => e.type === 'call').sort((a, b) => entryDate(b) - entryDate(a)).slice(0, 10);
+  const calls = extra.calls.slice().sort((a, b) => entryDate(b) - entryDate(a)).slice(0, 10);
   const callBox = h('div', { class: 'flare-calls' },
     h('p', { class: 'fieldlabel', text: 'Your calls' }),
     state.readOnly ? null : h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => openCallLogSheet(day, () => openFlareSheet(day)) }, 'Log a call'),
@@ -10847,6 +10895,7 @@ function openCallLogSheet(day, back) {
       const at = parseDay(d); at.setHours(hh || 0, mm || 0, 0, 0);
       if (at > new Date()) { missing(time, 'That time is still to come', CHECK); return; }
       await addEntry({ type: 'call', who: who.value.trim(), note: note.value.trim(), day: d, at });
+      flareExtra = null;
       toast('Call logged');
       if (back) back(); else closeSheet();
     } }, 'Save the call'),
@@ -10906,16 +10955,18 @@ function parseRange(text) {
   if (m) return { low: parseFloat(m[1]), high: null };
   return { low: null, high: null };
 }
-/* A typed result: "48", "0,8", "<5" (the lab's way of saying below what it measures, kept as below) */
+/* A typed result: "48", "0,8", "<5" (the lab's way of saying below what it measures, kept as below), ">1800"
+   (above what it measures, kept as above since v376; until then it saved as a plain 1800) */
 function readResultValue(el) {
   const raw = String(el.value || '').trim();
   if (!raw) return { empty: true };
   const below = /^<\s*=?\s*/.test(raw);
+  const above = /^>\s*=?\s*/.test(raw);
   const n = readNum({ value: raw.replace(/^[<>]\s*=?\s*/, '') });
-  return { empty: false, value: n.value, below };
+  return { empty: false, value: n.value, below, above };
 }
 function fmtResultNum(v) { const n = Number(v); return Number.isFinite(n) ? String(Math.round(n * 100) / 100) : ''; }
-function fmtResultValue(e) { return (e.below ? '<' : '') + fmtResultNum(e.value); }
+function fmtResultValue(e) { return (e.below ? '<' : e.above ? '>' : '') + fmtResultNum(e.value); }
 function fmtResultFull(e) { return fmtResultValue(e) + (e.unit ? ' ' + e.unit : ''); }
 function resDay(day) { const d = parseDay(day); return d.getFullYear() === new Date().getFullYear() ? fmtDayShort(day) : fmtDayShort(day) + ' ' + d.getFullYear(); }
 function sortResults(list) { return list.slice().sort((a, b) => a.day.localeCompare(b.day) || entryDate(a) - entryDate(b)); }
@@ -11070,7 +11121,7 @@ function openResultsSheet(opts = {}) {
       if (!name) { missing(r.nameIn, 'Give the test a name'); return; }
       const range = r.range.value.trim().slice(0, 40);
       const { low, high } = parseRange(range);
-      out.push({ type: 'result', test: r.t.key, name, unit, value: n.value, below: n.below, range, low, high, source: source.value.trim().slice(0, 60), note: note.value.trim() });
+      out.push({ type: 'result', test: r.t.key, name, unit, value: n.value, below: n.below, above: n.above, range, low, high, source: source.value.trim().slice(0, 60), note: note.value.trim() });
     }
     if (!out.length) { const first = [...rows.values()][0]; missing(first ? first.value : date, 'Type at least one result, or leave the others blank'); return; }
     const at = parseDay(d); at.setHours(12, 0, 0, 0);
@@ -11112,7 +11163,7 @@ function readResultsPhoto(onRead, onCancel) {
         const t2 = RESULT_TESTS.find((x) => x.match.test(name));
         const v = readResultValue({ value: str(r.value, 20) });
         if (v.empty || v.value == null) return null;
-        return { key: t2 ? t2.key : 'other', name: t2 ? t2.name : name, unit: t2 ? t2.unit : str(r.unit, 16), value: (v.below ? '<' : '') + fmtResultNum(v.value), range: str(r.range, 40) };
+        return { key: t2 ? t2.key : 'other', name: t2 ? t2.name : name, unit: t2 ? t2.unit : str(r.unit, 16), value: (v.below ? '<' : v.above ? '>' : '') + fmtResultNum(v.value), range: str(r.range, 40) };
       }).filter(Boolean).slice(0, 20);
       if (!rows.length) { toast('Could not read any results in that. Type them in instead.'); onCancel(); return; }
       onRead({ day: /^\d{4}-\d{2}-\d{2}$/.test(str(d.day, 10)) && str(d.day, 10) <= todayStr() ? str(d.day, 10) : '', source: str(d.source, 60), rows });
@@ -12263,6 +12314,9 @@ function buildIbdReport(n) {
   /* flare days and calls */
   const flareDays = days.filter(isFlareDay);
   const runs = []; flareDays.forEach((d) => { const r = runs[runs.length - 1]; if (r && addDays(r.to, 1) === d) r.to = d; else runs.push({ from: d, to: d }); });
+  /* a flare already marked before the period starts on its real first day, said as such (v376: it read as starting on day one) */
+  runs.forEach((r) => { const st = flareStart(r.from); if (st < r.from) r.since = st; });
+  const runText = (r) => (r.since ? rDay(r.since) + ' to ' + rDay(r.to) + ', begun before this period' : r.from === r.to ? rDay(r.from) : rDay(r.from) + ' to ' + rDay(r.to));
   const calls = entries.filter((e) => e.type === 'call').sort((a, b) => entryDate(a) - entryDate(b));
   const plan = flarePlan();
   /* readings */
@@ -12302,7 +12356,7 @@ function buildIbdReport(n) {
       n: [stoma ? '' : (rush ? 'Had to go straight away ' + plural(rush, 'time') : 'Never had to go straight away'), stoma ? '' : accidents ? plural(accidents, 'accident or leak') : 'no accidents', nightN ? plural(nightN, 'time') + ' at night' : 'none at night', wateryDays.length ? 'watery output on ' + plural(wateryDays.length, 'day') : ''].filter(Boolean).join(', ') + '.' }
       : { k: 'Urgency', v: 'None', unit: '', tone: '', n: 'Nothing logged.' },
     { k: 'Flare days', v: flareDays.length ? String(flareDays.length) : 'None', unit: flareDays.length ? 'of ' + days.length : '', tone: flareDays.length ? 'amber' : '',
-      n: flareDays.length ? `Marked as flaring ${runs.map((r) => (r.from === r.to ? rDay(r.from) : rDay(r.from) + ' to ' + rDay(r.to))).join('; ')}.${calls.length ? ' ' + plural(calls.length, 'call') + ' to the advice line.' : ''}` : 'No day marked as a flare day' + (calls.length ? '; ' + plural(calls.length, 'call') + ' to the advice line.' : '.') }
+      n: flareDays.length ? `Marked as flaring ${runs.map(runText).join('; ')}.${calls.length ? ' ' + plural(calls.length, 'call') + ' to the advice line.' : ''}` : 'No day marked as a flare day' + (calls.length ? '; ' + plural(calls.length, 'call') + ' to the advice line.' : '.') }
   ];
   /* charts, drawn by report.js renderChart() */
   const teal = REPORT_TEAL, red = REPORT_RED, ink = REPORT_INK, warm = '#C2703D';
@@ -12338,7 +12392,7 @@ function buildIbdReport(n) {
   const brief = [];
   brief.push({ head: what, text: logged.length ? `About ${one(mean)} a day on the ${plural(logged.length, 'day')} logged${usual ? `, against ${patient}'s usual ${usual}` : ' (no usual number set in Settings)'}; most ${most} on ${rDay(mostDay)}.` + (looseN ? ` Loose (type 6 or 7) ${plural(looseN, 'time')}.` : '') + (noneDays.size ? ` None on ${plural(noneDays.size, 'day')}.` : '') : 'No bowel movements were logged in this period.' });
   brief.push({ head: 'Blood and urgency', text: logged.length ? [bloodDays.length ? `Blood on ${plural(bloodDays.length, 'day')}, ${bloodWord(worstBlood)} at worst` : 'No blood logged', blackDays.length ? `black or tarry on ${plural(blackDays.length, 'day')}` : '', rush ? `had to go straight away ${plural(rush, 'time')} on ${plural(rushDays.length, 'day')}` : 'never had to go straight away', accidents ? plural(accidents, stoma ? 'bag leak' : 'accident or leak') : '', nightN ? `up at night ${plural(nightN, 'time')}` : ''].filter(Boolean).join('; ') + '.' + (twDays.length ? ` Six or more with blood on ${twDays.map(rDay).join(', ')}.` : '') : 'Nothing logged.' });
-  brief.push({ head: 'Flares and treatment', text: (flareDays.length ? `Marked as flaring on ${plural(flareDays.length, 'day')}${runs.length === 1 ? ` (${rDay(runs[0].from)}${runs[0].to !== runs[0].from ? ' to ' + rDay(runs[0].to) : ''})` : ''}.` : 'No flare days marked.') + (calls.length ? ` ${plural(calls.length, 'call')} to the advice line, listed below.` : '') + (steroids.length ? ` On ${steroids.map((m) => m.name).join(' and ')} in this period.` : '') + (sessLine ? ' ' + sessLine.charAt(0).toUpperCase() + sessLine.slice(1) : '') });
+  brief.push({ head: 'Flares and treatment', text: (flareDays.length ? `Marked as flaring on ${plural(flareDays.length, 'day')}${runs.length === 1 ? ` (${runText(runs[0])})` : ''}.` : 'No flare days marked.') + (calls.length ? ` ${plural(calls.length, 'call')} to the advice line, listed below.` : '') + (steroids.length ? ` On ${steroids.map((m) => m.name).join(' and ')} in this period.` : '') + (sessLine ? ' ' + sessLine.charAt(0).toUpperCase() + sessLine.slice(1) : '') });
   brief.push({ head: 'Body', text: [ws.length ? `Weight ${fmtKg(wLast.value)} on ${rDay(wLast.day)}` + (wChange != null && Math.abs(wChange) >= 0.1 ? `, ${wChange < 0 ? 'down' : 'up'} ${Math.abs(wChange)} kg since ${rDay(wFirst.day)}` : '') : 'No weight logged', temps.length ? `temperature highest ${Number(tempHi.value).toFixed(1)} °C on ${rDay(tempHi.day)}` : '', gutPains.length ? `tummy pain or cramps averaged ${avg(gutPains)}/10, up to ${Math.max(...gutPains)}` : '', pains.length ? `pain up to ${Math.max(...pains)}/10` : '', gutStops.length ? `the gut stopped ${patient.split(/\s+/)[0]} doing something quite a bit or a lot on ${gutStopBad.length} of ${plural(gutStops.length, 'evening')}` : '', nightAsked.length ? `up in the night for the toilet on ${nightUp.length} of ${plural(nightAsked.length, 'morning')}${nightTwice.length ? ', twice or more on ' + nightTwice.length : ''}` : '', energy.length ? `energy averaged ${avg(energy)}/10 in the evening check-ins` : '', outside.length ? `outside the gut: ${outside.map((e) => (e.outside.length ? outsideText(e.outside).toLowerCase() : 'none of the usual') + ' (week to ' + rDay(e.day) + ')').join('; ')}` : ''].filter(Boolean).join('; ') + '.' });
   if (fasts.n) brief.push({ head: 'Fasting', text: `Fasting on ${fasts.n} of the ${plural(fasts.asked, 'morning')} asked: ${fasts.text}. The days are marked under the first chart.` });
   /* week by week */
@@ -12935,7 +12989,9 @@ async function logMed(m, at, note, doseText, forUse) {
   const when = at || new Date();
   const id = await addEntry({ type: 'med', medId: m.id, medName: m.name, dose, note: note || '', ...(forUse ? { forUse } : {}), ...hosp, at: when });
   const ml = addMedWater(id, m, dose, when, waterGiven);
-  toast(m.name + (dose ? ', ' + dose + ',' : '') + (forUse ? ' for ' + forUse.toLowerCase() + ',' : '') + (m.hospital ? ' logged as given in hospital' : ' logged') + (ml ? ', the ' + ml + ' ml water counted in drinks' : ''), { label: 'Undo', onClick: () => deleteEntry(id) });
+  const ticked = await tickRepeatSession(m, dayStr(when));
+  toast(m.name + (dose ? ', ' + dose + ',' : '') + (forUse ? ' for ' + forUse.toLowerCase() + ',' : '') + (m.hospital ? ' logged as given in hospital' : ' logged') + (ml ? ', the ' + ml + ' ml water counted in drinks' : '') + (ticked ? ', and the ' + sessionLabel(state.days[ticked]) + ' ticked done on the calendar' : ''),
+    { label: 'Undo', onClick: () => { deleteEntry(id); if (ticked) setSessionDone(ticked, false); } });
 }
 
 /* Change a logged dose's date, time, amount or note (since v137): Mark logged diazepam with the
@@ -13585,7 +13641,17 @@ function openEditMed(m, prefill) {
   const SLOTS = [['morning', 'Morning', '08:00'], ['midday', 'Midday', '12:00'], ['teatime', 'Teatime', '17:00'], ['night', 'Night', '22:00']];
   const slotOfTime = (t) => { const hr = parseInt(t, 10); return hr >= 4 && hr < 11 ? 'morning' : hr >= 11 && hr < 15 ? 'midday' : hr >= 15 && hr < 20 ? 'teatime' : 'night'; };
   const saved = {};
-  (m.takenAt && m.takenAt.length ? m.takenAt : m.times || []).slice().sort().forEach((t) => { const k = slotOfTime(t); if (!saved[k]) saved[k] = t; });
+  /* Two times in one row's hours (06:00 and 10:00) once lost the second on the next Save (v376): each time goes to its
+     own row where it can, otherwise the rows move along so every time keeps a row, still in time order. Rows are only
+     labels; each keeps the time it was given. */
+  {
+    const dayOrder = (t) => (parseInt(t, 10) < 4 ? '1' : '0') + t; // the small hours belong to the night, after 22:00
+    const list = [...new Set(m.takenAt && m.takenAt.length ? m.takenAt : m.times || [])].sort((a, b) => dayOrder(a).localeCompare(dayOrder(b))).slice(0, SLOTS.length);
+    const at = list.map((t) => SLOTS.findIndex(([k]) => k === slotOfTime(t)));
+    for (let i = 1; i < at.length; i++) at[i] = Math.max(at[i], at[i - 1] + 1);
+    for (let i = at.length - 1; i >= 0; i--) at[i] = Math.min(at[i], SLOTS.length - (at.length - i));
+    list.forEach((t, i) => { saved[SLOTS[at[i]][0]] = t; });
+  }
   const remind = h('input', { type: 'checkbox' });
   remind.checked = !(m.takenAt && m.takenAt.length && !(m.times && m.times.length));
   const whenLine = h('p', { class: 'med-dose-preview', role: 'status' });
@@ -15836,11 +15902,28 @@ function openDaySheet(key) {
   openSheet(fmtDayLong(key), body);
 }
 
+/* Whether a medicine is the one an injection or infusion session names: either name holds the other */
+function repeatNameMatches(m, treatName) {
+  const want = String(treatName || '').trim().toLowerCase(), name = String((m && m.name) || '').trim().toLowerCase();
+  return Boolean(want && name) && (name.includes(want) || want.includes(name));
+}
+/* The other way round (v376): a dose of that medicine logged from Meds on a session's day ticks the session done, so the
+   calendar and the report no longer say "not ticked done" for an injection that was logged. Returns the day ticked, or ''. */
+async function tickRepeatSession(m, day) {
+  const info = state.days && state.days[day];
+  if (!info || !info.chemo || info.chemoDone || !isRepeat(treatmentOf(info)) || !repeatNameMatches(m, info.treatName)) return '';
+  return (await setSessionDone(day, true)) ? day : '';
+}
+async function setSessionDone(day, done) {
+  if (state.demo) { state.days[day] = { ...(state.days[day] || {}), chemoDone: done }; renderChemo(); return true; }
+  try { await setDoc(hdoc('days', day), { chemoDone: done, updatedBy: state.name, updatedAt: serverTimestamp() }, { merge: true }); touchTreatPlan(); return true; }
+  catch (e) { console.error(e); return false; }
+}
 /* An injection or infusion ticked done is logged as a dose of the matching medicine on the list, if there is one and none is logged that day (v204) */
 function logRepeatDose(day, treatName) {
   const want = String(treatName || '').trim().toLowerCase();
   if (!want) return;
-  const med = (state.medicines || []).find((m) => m.active !== false && [m.name, want].every(Boolean) && (String(m.name).toLowerCase().includes(want) || want.includes(String(m.name).toLowerCase())));
+  const med = (state.medicines || []).find((m) => m.active !== false && repeatNameMatches(m, want));
   if (!med) return;
   const already = (state.recentEntries || []).some((e) => e.type === 'med' && e.medId === med.id && e.day === day);
   if (already) return;
@@ -17064,9 +17147,9 @@ updateOnline();
 function checkDayRollover() {
   if (!state.user || state.demo) return;
   const today = todayStr();
-  const expectedFrom = addDays(today, -1);
+  const expectedFrom = addDays(today, -RECENT_DAYS);
   if (state.recentFrom && state.recentFrom !== expectedFrom) {
-    const previousToday = addDays(state.recentFrom, 1);
+    const previousToday = addDays(state.recentFrom, RECENT_DAYS);
     if (state.selectedDay === previousToday) state.selectedDay = today;
     if (state.exerciseDay === previousToday) state.exerciseDay = today;
     watchRecent();

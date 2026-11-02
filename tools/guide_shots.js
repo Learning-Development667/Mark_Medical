@@ -55,7 +55,9 @@ const QUALITY = 0.8;
   const refresh = async () => { await page.click('#day-prev'); await page.click('#day-next'); await settle(); };
   /* the side-effects step appears in the three days after a session (v189): Next past it, and any other step without a slider */
   const toRange = async () => { for (let i = 0; i < 3 && !(await page.$('#sheet-body input[type="range"]')); i++) { await page.click('#sheet-body .btn-next'); await settle(300); } };
-  const toReview = async () => { for (let i = 0; i < 10 && !(await page.$('#sheet-body .btn-primary:has-text("Save")')); i++) { await page.click('#sheet-body .btn-next'); await settle(250); } };
+  /* since v376 Next asks for a number on a slider nobody touched, so an untouched slider is passed with Skip (what Next used to save) */
+  const onward = async () => { await page.click((await page.$('#sheet-body .wiz-num.is-unset')) ? '#sheet-body .wiz-skip' : '#sheet-body .btn-next'); };
+  const toReview = async () => { for (let i = 0; i < 16 && !(await page.$('#sheet-body .btn-primary:has-text("Save")')); i++) { await onward(); await settle(250); } };
   const today = await page.evaluate(() => window.daybookPreview.state.selectedDay);
   for (const f of fs.readdirSync(OUT)) if (f.endsWith('.webp')) fs.unlinkSync(path.join(OUT, f));
 
@@ -163,7 +165,7 @@ const QUALITY = 0.8;
   await closeSheet();
   await tab('today'); await refresh();
   await page.click('#checkin-evening'); await page.waitForSelector('#sheet:not([hidden])'); await settle();
-  for (let i = 0; i < 10 && !(await page.$('#sheet-body .fx-row')); i++) { await page.click('#sheet-body .btn-next'); await settle(250); }
+  for (let i = 0; i < 10 && !(await page.$('#sheet-body .fx-row')); i++) { await onward(); await settle(250); }
   await shot('On the three days after a session, the morning and evening check-ins ask about side effects: none, mild, moderate or severe for each.', '#sheet-body .fx-row');
   await closeSheet();
   await page.evaluate(() => { try { Object.keys(localStorage).filter((k) => k.startsWith('daybook.checkin.')).forEach((k) => localStorage.removeItem(k)); } catch (e) {} const p = window.daybookPreview.state.profile; if (p) p.checkinDrafts = {}; });

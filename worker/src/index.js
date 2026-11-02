@@ -273,6 +273,10 @@ async function handleHealth(request, env) {
     const path = hp(hid, 'entries/' + day + '_weight');
     const existing = await fs.get(path);
     if (!b.kg && !existing) { result.skipped.push('bmi ' + day + ' (no weight that day)'); continue; }
+    /* a weight the person changed by hand in Daybook (byHand, or no longer signed Apple Health) stays as they typed it (v376) */
+    const ef = (existing && existing.fields) || {};
+    const byHand = existing && ((ef.byHand && ef.byHand.booleanValue === true) || (ef.addedBy && ef.addedBy.stringValue !== 'Apple Health'));
+    if (byHand) { result.skipped.push('weight ' + day + ' (changed by hand)'); continue; }
     const fields = { day: strVal(day), type: strVal('weight'), addedBy: strVal('Apple Health'), source: strVal('health-auto-export'), updatedAt: nowTs() };
     if (b.kg) { fields.value = doubleVal(Math.round(b.kg.v * 10) / 10); fields.at = tsVal(b.kg.at); }
     if (b.bmi) fields.bmi = doubleVal(Math.round(b.bmi.v * 10) / 10);

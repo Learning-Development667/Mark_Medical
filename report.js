@@ -285,7 +285,7 @@ function fxHtml(F, o = {}) {
     const row = (r) => `<tr><th scope="row">${esc(r.name)}</th>${r.cells.map((c) => `<td class="${tone(c.g)}">${esc(c.word)}</td>`).join('')}</tr>`;
     const none = !T.rows.length && T.anyAnswered ? `<tr><th scope="row">None of these</th>${T.cols.map((c) => `<td class="${c.answered ? 'none' : 'na'}">${c.answered ? 'None' : 'Not answered'}</td>`).join('')}</tr>` : '';
     const also = T.also.length ? `<tr class="sub"><th colspan="${T.cols.length + 1}">Also logged on the Symptom tile those days, score out of 10</th></tr>${T.also.map(row).join('')}` : '';
-    const scores = (T.scores || []).length ? `<tr class="sub"><th colspan="${T.cols.length + 1}">Check-in scores, out of 10</th></tr>${T.scores.map(row).join('')}` : '';
+    const scores = (T.scores || []).length ? `<tr class="sub"><th colspan="${T.cols.length + 1}">Scores, out of 10</th></tr>${T.scores.map(row).join('')}` : '';
     const fxRows = T.anyAnswered ? T.rows.map(row).join('') + none : '';
     return `<div class="fxsess"><div class="fxs-h"><b>${esc(d.when)}</b>${d.moods ? `<span>${esc(d.moods)}</span>` : ''}</div><table class="fxt">${head}${fxRows}${scores}${also}</table></div>`;
   }).join('');
