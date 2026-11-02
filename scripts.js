@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '390';
+const APP_VERSION = '391';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -13831,15 +13831,64 @@ function doseControls(parts, opts = {}) {
   return { formIn, formChips, count, countField, dose, doseField, dosePreview, ivHint, askField, askBox, syncDose, result };
 }
 
+/* The NHS medicines list (v391): data/dmd.json, built monthly by .github/workflows/build-dmd.yml from dm+d (Open
+   Government Licence), names only, loaded the first time Add medicine opens */
+let dmdNames = null, dmdLoading = null;
+function loadDmd() {
+  if (dmdNames) return Promise.resolve(dmdNames);
+  if (!dmdLoading) dmdLoading = fetch('data/dmd.json').then((r) => (r.ok ? r.json() : { names: [] })).then((d) => (dmdNames = Array.isArray(d.names) ? d.names : [])).catch(() => (dmdNames = []));
+  return dmdLoading;
+}
+function dmdMatches(q, n) {
+  const starts = [], words = [];
+  for (const nm of dmdNames || []) {
+    const l = nm.toLowerCase();
+    if (l.startsWith(q)) { starts.push(nm); if (starts.length >= n) break; } else if (words.length < n && l.includes(' ' + q)) words.push(nm);
+  }
+  return [...starts, ...words].slice(0, n);
+}
+/* "Apixaban 5mg tablets" into the name (Apixaban), the strength (5 mg) and how it is taken (tablets) */
+function splitDmd(nm) {
+  const m = String(nm).match(/^(.+?)\s(\d[\d.,]*\s?(?:mg|micrograms?|nanograms?|g|ml|units?|%)(?:\/\d*[\d.,]*\s?(?:mg|micrograms?|g|ml|doses?|units?|actuation))*)(?:\s(.*))?$/i);
+  if (!m) return { name: nm, strength: '', form: '' };
+  const rest = (m[3] || '').toLowerCase();
+  const form = /injection|infusion/.test(rest) ? 'iv' : /tablet/.test(rest) ? 'tablet' : /capsule/.test(rest) ? 'capsule' : /sachet|granules/.test(rest) ? 'sachet'
+    : /oral solution|oral suspension|liquid|syrup|elixir/.test(rest) ? 'ml' : /inhaler|inhalation/.test(rest) ? 'puff' : /drops/.test(rest) ? 'drop' : /\bgel\b/.test(rest) ? 'gel' : '';
+  return { name: m[1], strength: m[2].replace(/^(\d[\d.,]*)(?=[a-z%])/i, '$1 '), form };
+}
 function openEditMed(m, prefill) {
   const isNew = !m;
   const pf = prefill || {};
   m = m || { name: pf.name || '', dose: pf.amount || pf.dose || '', how: pf.how || '', purpose: pf.purpose || '',
     kind: pf.whenNeeded ? 'prn' : 'scheduled', perDay: pf.perDay || 1, maxPerDay: pf.maxPerDay || null, minGapHours: pf.minGapHours || null, active: true,
     hospital: pf.hospital === true || pf.route === 'drip', route: pf.route || null };
-  const name = h('input', { type: 'text', value: m.name, required: true });
+  const name = h('input', { type: 'text', value: m.name, required: true, autocomplete: 'off' });
   /* the dose: how it is taken, how many each time, the strength of one (v191) */
   const { formIn, formChips, count, countField, dose, doseField, dosePreview, ivHint, askField, askBox } = doseControls(splitDose(m), { ask: m.askCount !== false });
+  /* v391: names from the NHS medicines list (dm+d) as you type, three letters on; a tap fills the name, and the strength
+     and how it is taken when those are still empty. Any name can still be typed. */
+  const medSuggest = h('div', { class: 'presets med-suggest', role: 'group', 'aria-label': 'Medicines from the NHS list' });
+  medSuggest.hidden = true;
+  if (isNew) {
+    loadDmd();
+    const draw = async () => {
+      const q = name.value.trim().toLowerCase();
+      if (q.length < 3) { medSuggest.hidden = true; medSuggest.replaceChildren(); return; }
+      await loadDmd();
+      if (name.value.trim().toLowerCase() !== q) return;
+      const hits = dmdMatches(q, 6);
+      medSuggest.replaceChildren(...hits.map((nm) => h('button', { class: 'preset', type: 'button', text: nm, onclick: () => {
+        const sp = splitDmd(nm);
+        name.value = sp.name;
+        if (sp.strength && !dose.value.trim()) { dose.value = sp.strength; dose.dispatchEvent(new Event('input', { bubbles: true })); }
+        if (sp.form && (!formIn.value || formIn.value === 'none')) { const chip = formChips.querySelector(`[data-value="${sp.form}"]`); if (chip) chip.click(); }
+        medSuggest.hidden = true; medSuggest.replaceChildren();
+        name.focus();
+      } })));
+      medSuggest.hidden = !hits.length;
+    };
+    name.addEventListener('input', draw);
+  }
   const how = h('input', { type: 'text', value: m.how || '' });
   /* Uses (v321, Mark: commas were not obvious): What it is for is the main one, Also used for one more, and
      + Add another use a box at a time. Saved as before, the extra uses joined into alsoFor with commas, so
@@ -14050,7 +14099,7 @@ function openEditMed(m, prefill) {
   const body = h('div', null,
     isNew && explainAvailable() ? h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => readMedicinePhoto((data) => openEditMed(null, data), () => openEditMed(null, pf)) }, 'Read it from a photo') : null,
     isNew && explainAvailable() ? h('p', { class: 'hint', text: "A photo of the box or the pharmacy label. Daybook Assistant (AI from Anthropic, in the US) reads it, and the details fill in below. It can misread a label, so check the name and dose before adding." }) : null,
-    field('Name', name),
+    field('Name', name), medSuggest,
     h('p', { class: 'fieldlabel', text: 'Regular or when needed?' }), kindChips,
     h('p', { class: 'hint med-kind-hint', text: 'When needed is for one taken only some days, like a painkiller or a migraine tablet. It is never counted as missed.' }),
     h('p', { class: 'fieldlabel', text: 'How is it taken?' }), formChips,
