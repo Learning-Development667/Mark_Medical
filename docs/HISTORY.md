@@ -6,6 +6,9 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v393 (2 November 2026): the action list pointed at the App Store
+Mark felt lost and under water; the aim is the App Store, with the big ideas after it. `tools/roadmap_page_gen.py` regrouped: **To the App Store** first (the Apple membership and key, the contact email, the iPhone app, quick checks on the phone, accessibility and security before TestFlight, TestFlight then both stores, Android, the trade mark), then **With the testers** (A US tester and his university added), **After the App Store: Claude to build** (US settings in the background added), **After the App Store: ideas** (shown as "Shown to you first": saying yes gets a recommendation and a mock-up, never a change, and each says what it would touch), **Yours, when you have time**, and Paperwork. The cancer wording item went to Done (v380); the US barcodes, dm+d and the fruit labels are in Done; the full US version is parked. Only the store path is marked Next.
+
 ### v392 (2 November 2026): the medicines list keeps every medicine, not only those with a VTM
 The first real build (32,935 names) missed Creon, senna and macrogol, whose generic entries have no VTM. `tools/build_dmd.mjs` now leaves out devices by the branded product's licensing authority (`LIC_AUTHCD` 0002, device) and keeps a generic product with a VTM or with at least one branded product that is not a device. Tested on a stand-in release (Creon and pancreatin kept, a device gauze left out); the list is rebuilt by the workflow.
 
