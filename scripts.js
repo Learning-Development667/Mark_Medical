@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '376';
+const APP_VERSION = '377';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -5242,6 +5242,8 @@ function openAdd(type, editEntry, preset) {
       if (val('peak flow') != null) { data.peakFlow = Math.round(val('peak flow')); has = true; }
       if (has) out.push(data);
       if (val('weight') != null) out.push({ type: 'weight', value: Math.round(val('weight') * 10) / 10, note: noteV, ...(replaceW ? { _replace: replaceW } : {}) });
+      /* v377 (review item 19): the sheet's one note goes on the first reading only, not copied onto each */
+      out.forEach((d, i) => { if (i > 0) d.note = ''; });
       return out.length ? out : missing(tempBlock.hidden ? hr : temp, 'Type at least one reading');
     };
   }
@@ -9220,7 +9222,9 @@ function summaryRows(entries, from, to) {
   }
 
   /* Symptoms logged between check-ins: worst per symptom; 7 or more red, 4 to 6 amber (5 to 6 before v244), like pain */
-  const symptoms = entries.filter((e) => e.type === 'symptom' && e.value != null);
+  /* v377 (review item 13): the side effects a check-in wrote (fromCheckin) are in the three days after treatment table,
+     so they are not counted again as symptoms logged between check-ins, nor in the Side effects line */
+  const symptoms = entries.filter((e) => e.type === 'symptom' && e.value != null && !e.fromCheckin);
   if (symptoms.length) {
     const byWhat = {};
     symptoms.forEach((e) => { const k = String(e.what || 'Symptom'); (byWhat[k] = byWhat[k] || []).push(e); });
@@ -9360,7 +9364,8 @@ function summaryRows(entries, from, to) {
   }
 
   if (once.length === 1) rows.push({ level: 'amber', topic: once[0].topic, text: once[0].text, short: once[0].short });
-  else if (once.length > 1) { const t = 'One-offs worth a mention: ' + once.map((o) => o.brief).join('; ') + '.'; rows.push({ level: 'amber', topic: 'One-offs', text: t, short: 'One-offs: ' + joinAnd(once.map((o) => o.brief.replace(/ \(.*?\)/g, '').replace(/ (on|before) \d+ \w+$/, ''))) }); }
+  /* v377 (review item 13): the same words twice (sickness 6/10 from the evening slider and from the Symptom tile) print once */
+  else if (once.length > 1) { const t = 'One-offs worth a mention: ' + [...new Set(once.map((o) => o.brief))].join('; ') + '.'; rows.push({ level: 'amber', topic: 'One-offs', text: t, short: 'One-offs: ' + joinAnd([...new Set(once.map((o) => o.brief.replace(/ \(.*?\)/g, '').replace(/ (on|before) \d+ \w+$/, '')))]) }); }
 
   if (fine.length) {
     const list = fine.length > 1 ? fine.slice(0, -1).join(', ') + ' and ' + fine[fine.length - 1] : fine[0];
@@ -9660,7 +9665,7 @@ const CHECKIN_QUESTIONS = {
     { key: 'sleep', kind: 'sleep', q: 'How did you sleep?', low: '1 terribly', high: '10 brilliantly', note: 'sleepNote', noteQ: 'Anything else about the night? Optional.', notePh: 'e.g. slept for ages but still not rested, or a bad night but woke with some energy' },
     { key: 'symptoms', kind: 'text', q: 'Any new or worse symptoms overnight?', ph: 'e.g. more sick than usual, a new ache' },
     /* with Crohn's or colitis (v221): one tap, counted as nights on the report beside the bowel log */
-    { key: 'nightToilet', kind: 'scale', pack: 'ibd', q: 'Up in the night for the toilet?', words: ['No', 'Once', 'Twice or more'], hint: 'One tap. Counts as a night on the Crohn\'s and colitis report.' },
+    { key: 'nightToilet', kind: 'scale', pack: 'ibd', q: 'Up in the night for the toilet?', words: ['No', 'Once', 'Twice or more'], hint: (day) => (nightBowelsBefore(day) ? 'Filled in from the bowel movements logged as at night. Change it if that is not right.' : 'One tap. Counts as a night on the Crohn\'s and colitis report.') },
     /* only on the three days after a treatment session (v189): how bad each usual side effect is */
     { key: 'sidefx', kind: 'sidefx', q: 'Any side effects since treatment?' },
     { key: 'pain', kind: 'pain', nrs: true, q: 'Pain right now', low: '0 no pain', high: '10 worst imaginable', note: 'painNote' },
@@ -9673,13 +9678,15 @@ const CHECKIN_QUESTIONS = {
   evening: [
     /* the body first, then the words, then mood as the last score beside one good thing (v147, as the morning in v146) */
     { key: 'pain', kind: 'pain', nrs: true, q: 'Pain right now', low: '0 no pain', high: '10 worst imaginable', note: 'painNote' },
-    { key: 'worstPain', kind: 'pain', nrs: true, q: 'Worst pain today', low: '0 no pain', high: '10 worst imaginable', note: 'worstPainNote' },
-    /* for everyone (v361): what the pain stopped, and whether the when-needed relief helped (asked only on a day one was logged) */
-    { key: 'painStop', kind: 'scale', q: 'Did pain stop you doing anything today?', hint: 'Going out, work, sleep, seeing people. One tap.' },
+    /* sameAs (v377, review item 14): a one-tap "Same as pain right now" for the reader whose answer is the same number */
+    { key: 'worstPain', kind: 'pain', nrs: true, q: 'Worst pain today', low: '0 no pain', high: '10 worst imaginable', note: 'worstPainNote', sameAs: 'pain' },
+    /* for everyone (v361): what the pain stopped, and whether the when-needed relief helped (asked only on a day one was logged).
+       v377 (review item 14): with Crohn's or colitis alone, the gut question below asks this once, so this one is left out */
+    { key: 'painStop', kind: 'scale', q: 'Did pain stop you doing anything today?', hint: 'Going out, work, sleep, seeing people. One tap.', when: () => !(packOn('ibd') && !packOn('cancer') && !packOn('general')) },
     { key: 'reliefHelp', kind: 'scale', q: 'Did your pain relief help today?', words: ['No', 'A bit', 'Yes'], hint: (day) => 'You logged ' + prnPainNames(day) + ' today. One tap.', when: (day) => prnPainDosesOn(day).length > 0 },
     /* sickness belongs to chemo: with Crohn's or colitis alone it gives way to tummy pain (v221); with both packs both are asked */
     { key: 'sickness', kind: 'pain', nrs: 'sickness', q: 'Sickness today', low: '0 no sickness', high: '10 worst imaginable', when: () => packOn('cancer') },
-    { key: 'gutPain', kind: 'pain', nrs: true, pack: 'ibd', q: 'Tummy pain or cramps today', low: '0 no pain', high: '10 worst imaginable' },
+    { key: 'gutPain', kind: 'pain', nrs: true, pack: 'ibd', q: 'Tummy pain or cramps today', low: '0 no pain', high: '10 worst imaginable', sameAs: 'pain' },
     { key: 'appetite', kind: 'slider', q: 'Appetite today', low: '1 nothing', high: '10 normal' },
     { key: 'energy', kind: 'slider', q: 'Energy today', low: '1 wiped out', high: '10 plenty' },
     { key: 'gutStop', kind: 'scale', pack: 'ibd', q: 'Did your gut stop you doing anything today?', hint: 'Going out, eating, work, sleep. One tap.' },
@@ -9876,6 +9883,13 @@ const SIDEFX_ALL = [...SIDEFX_V189, ...SIDEFX_IBD.filter((x) => !SIDEFX_V189.inc
 function sidefxItems(type) {
   if (!type || !isRepeat(type)) return SIDEFX_ITEMS;
   return SIDEFX_IBD.filter((x) => (type.key === 'inject' ? x !== 'Infusion reaction' : x !== 'Injection site reaction'));
+}
+/* v377 (review item 13): the evening check-in already asks sickness, appetite and energy on its own sliders, which the
+   Trends, the cycle chart and the three-days table read, so its side-effects grid leaves those rows out (the morning grid
+   still asks them). A row already graded in a check-in being edited stays, so nothing saved is lost. */
+function sidefxRows(type, slot, graded) {
+  const asked = slot === 'evening' ? ['Tiredness', 'Poor appetite', ...(packOn('cancer') ? ['Sickness'] : [])] : [];
+  return sidefxItems(type).filter((k) => !asked.includes(k) || (graded && graded[k] != null));
 }
 const FX_WORDS = ['None', 'Mild', 'Moderate', 'Severe'];
 const FX_VALUE = [0, 3, 6, 9];
@@ -10074,6 +10088,13 @@ function renderCheckins() {
       return;
     }
     holder.replaceChildren();
+    /* v377 (review item 16): on a carer's phone the patient's two rows say whose they are and are never raised as Due now,
+       since a check-in belongs to whoever fills it in and the patient is then locked out of it */
+    if (isCarerUser()) {
+      const n = patientFullName() ? patientWord() + "'s" : "The patient's";
+      sub.textContent = n + ' own' + (lastNight ? ', from last night' : '') + (readProgress(slot, lastNight ? due.day : day) ? ', started and not finished' : ', not done yet');
+      return;
+    }
     if (lastNight) {
       row.classList.add('is-due');
       sub.textContent = !state.readOnly && readProgress('evening', due.day) ? "Last night's, unfinished. Tap to carry on" : state.readOnly ? "Last night's is due now" : "Last night's is due now, up to 06:00";
@@ -10206,7 +10227,9 @@ function checkinSteps(slot, day, existing) {
     if (existing && existing[q.key] !== undefined) return true;
     if (q.pack && !(Array.isArray(q.pack) ? q.pack.some(packOn) : packOn(q.pack))) return false;
     if (q.when && !q.when(day)) return false;
-    if (q.kind === 'sidefx') return Boolean(sessionBefore(day));
+    /* v377 (review item 17): after an injection or infusion the side effects are asked once a day, in the evening;
+       after chemo and the other sessions, morning and evening as before (v189) */
+    if (q.kind === 'sidefx') { const ses = sessionBefore(day); return Boolean(ses) && !(slot === 'morning' && isRepeat(ses.type)); }
     if (q.weekly) {
       const from = addDays(day, -6);
       return !state.recentEntries.some((e) => isPatientCheckin(e) && e.slot === slot && e.day >= from && e.day < day && e[q.key] != null);
@@ -10226,6 +10249,16 @@ function ownsCheckin(c) {
   return !c.addedBy || c.addedBy === state.name;
 }
 function checkinOwnerWords(c) { return (c && c.addedBy ? c.addedBy + "'s check-in. " : 'This check-in. ') + 'Only the person who filled it in can change it.'; }
+/* Bowel movements ticked At night for the night before a morning: the evening before, or before noon that day (v377) */
+function nightBowelsBefore(day) {
+  const prev = addDays(day, -1), seen = new Set();
+  return [...(state.recentEntries || []), ...(state.dayEntries || [])].filter((e) => {
+    if (e.type !== 'bowel' || e.none || !e.night || seen.has(e.id)) return false;
+    seen.add(e.id);
+    const d = entryDate(e);
+    return e.day === prev || (e.day === day && d && d.getHours() < 12);
+  }).length;
+}
 function openCheckin(slot, initialDay) {
   if (isWeekSlot(slot)) { openWeekCheck(initialDay, slot); return; }
   const today = todayStr();
@@ -10253,6 +10286,20 @@ function openCheckin(slot, initialDay) {
     }
     /* the night asked simply (v260): what this check-in said, else what the night's sleep entry already holds */
     if (slot === 'morning') answers.night = nightFrom(existing && existing.night ? existing : null) || nightFrom(nightEntry);
+    /* v377 (review item 15): with Crohn's or colitis, a new morning check-in starts from the bowel movements logged as at
+       night (the evening before, or before noon today), so the night is not told twice; every answer can still be changed */
+    if (slot === 'morning' && !existing && packOn('ibd')) {
+      const n = nightBowelsBefore(day);
+      if (n) {
+        const nt = n >= 2 ? 2 : 1;
+        if (answers.nightToilet == null && 'nightToilet' in answers) answers.nightToilet = nt;
+        const nn = { ...(answers.night || {}) };
+        if (!nn.broken || nn.broken === 'no') nn.broken = 'some';
+        nn.brokenWhy = [...new Set([...(nn.brokenWhy || []), 'toilet'])];
+        if (nn.toilet == null) nn.toilet = nt;
+        answers.night = nn;
+      }
+    }
     checkinNoteKeys(slot).forEach((k) => { answers[k] = existing && existing[k] ? String(existing[k]) : ''; });
     /* an unfinished check-in for this day comes back whole, on the step it was left at (v160) */
     restored = null;
@@ -10310,6 +10357,11 @@ function openCheckin(slot, initialDay) {
         if (day !== today && day !== addDays(today, -1)) options.unshift([day, fmtDayShort(day)]);
         wrap.append(h('div', { class: 'wiz-day' }, ...options.map(([d, label]) =>
           h('button', { class: 'preset' + (d === day ? ' is-active' : ''), type: 'button', onclick: () => { if (d !== day) { day = d; load(); render(); } } }, label))));
+        /* v377 (review item 16): a carer opening the patient's own check-in is told what it means before answering */
+        if (!existing && (slot === 'morning' || slot === 'evening') && isCarerUser()) {
+          const n = patientFullName() ? patientWord() : '';
+          wrap.append(h('p', { class: 'wiz-hint wiz-for', role: 'note', text: `This is ${n ? n + "'s" : "the patient's"} own check-in. Filled in here, it counts as ${n ? n + "'s" : 'their'} answers, and only you can change it afterwards.` }));
+        }
       }
       const bar = h('div', { class: 'progress-bar' }, h('div'));
       bar.firstChild.style.width = Math.round(((step + 1) / (qs.length + 1)) * 100) + '%';
@@ -10338,7 +10390,7 @@ function openCheckin(slot, initialDay) {
       } else if (q.kind === 'sidefx') {
         /* how bad each usual side effect is, four words each (v189); a row left alone is not counted */
         const cur = { ...((answers.sidefx && answers.sidefx.grades) || {}) };
-        const rows = sidefxItems(fxSes && fxSes.type).map((name) => {
+        const rows = sidefxRows(fxSes && fxSes.type, slot, cur).map((name) => {
           const chips = h('div', { class: 'chips taps-chips', role: 'group', 'aria-label': name });
           FX_WORDS.forEach((w, i) => chips.append(h('button', { class: 'preset' + (cur[name] === i ? ' is-active' : ''), type: 'button', 'aria-pressed': cur[name] === i ? 'true' : 'false', onclick: () => {
             cur[name] = cur[name] === i ? null : i;
@@ -10349,7 +10401,7 @@ function openCheckin(slot, initialDay) {
         wrap.append(h('p', { class: 'wiz-hint', text: 'Asked on the three days after a session. Tap how bad each one is, or None. Leave a row if you are not sure. Anything else: use the Symptom tile on Today.' }), ...rows);
         getVal = () => {
           const grades = {};
-          sidefxItems(fxSes && fxSes.type).forEach((k) => { if (cur[k] != null) grades[k] = cur[k]; });
+          sidefxRows(fxSes && fxSes.type, slot, cur).forEach((k) => { if (cur[k] != null) grades[k] = cur[k]; });
           return Object.keys(grades).length && fxSes ? { session: fxSes.day, treatment: fxSes.type.key, grades } : null;
         };
       } else if (q.kind === 'own') {
@@ -10431,6 +10483,14 @@ function openCheckin(slot, initialDay) {
       } else {
         const sl = sliderBlock(q, answers[q.key]);
         wrap.append(...sl.nodes);
+        /* v377: "Same as pain right now" sets the slider to that answer and moves on, one tap */
+        if (q.sameAs && answers[q.sameAs] != null && answers[q.key] == null) {
+          const was = answers[q.sameAs];
+          wrap.append(h('button', { class: 'btn btn-secondary btn-small wiz-same', type: 'button', onclick: () => {
+            const r = sl.nodes.find((n) => n.type === 'range'); r.value = String(was); r.dispatchEvent(new Event('input'));
+            const nx = wrap.querySelector('.btn-next'); if (nx) nx.click();
+          } }, `Same as pain right now, ${was}`));
+        }
         let night = null, noteBox = null, noteBox2 = null;
         if (q.kind === 'sleep') {
           night = nightBlock(answers.night, { tracker: isTrackerNight(nightEntry) ? nightEntry : null, ibd: packOn('ibd') });
@@ -12353,7 +12413,7 @@ function buildIbdReport(n) {
       n: bloodDays.length ? `Worst ${bloodWord(worstBlood)}, on ${bloodDays.slice(0, 3).map(rDay).join(', ')}${bloodDays.length > 3 ? ' and ' + (bloodDays.length - 3) + ' more' : ''}.${blackDays.length ? ' Black or tarry on ' + plural(blackDays.length, 'day') + '.' : ''}` : 'No blood logged.' + (twDays.length ? '' : '') }
       : { k: 'Blood', v: 'None', unit: '', tone: '', n: 'Nothing logged.' },
     logged.length ? { k: stoma ? 'Leaks and nights' : 'Urgency', v: String(stoma ? accidents : rush), unit: stoma ? plural(accidents, 'leak').replace(/^\d+\s/, '') : 'straight away', tone: rush || accidents || nightN ? 'amber' : 'green',
-      n: [stoma ? '' : (rush ? 'Had to go straight away ' + plural(rush, 'time') : 'Never had to go straight away'), stoma ? '' : accidents ? plural(accidents, 'accident or leak') : 'no accidents', nightN ? plural(nightN, 'time') + ' at night' : 'none at night', wateryDays.length ? 'watery output on ' + plural(wateryDays.length, 'day') : ''].filter(Boolean).join(', ') + '.' }
+      n: [stoma ? '' : (rush ? 'Had to go straight away ' + plural(rush, 'time') : 'Never had to go straight away'), stoma ? '' : accidents ? plural(accidents, 'accident or leak') : 'no accidents', nightAsked.length ? 'up in the night on ' + nightUp.length + ' of ' + plural(nightAsked.length, 'morning') : nightN ? plural(nightN, 'time') + ' at night' : 'none at night', wateryDays.length ? 'watery output on ' + plural(wateryDays.length, 'day') : ''].filter(Boolean).join(', ') + '.' }
       : { k: 'Urgency', v: 'None', unit: '', tone: '', n: 'Nothing logged.' },
     { k: 'Flare days', v: flareDays.length ? String(flareDays.length) : 'None', unit: flareDays.length ? 'of ' + days.length : '', tone: flareDays.length ? 'amber' : '',
       n: flareDays.length ? `Marked as flaring ${runs.map(runText).join('; ')}.${calls.length ? ' ' + plural(calls.length, 'call') + ' to the advice line.' : ''}` : 'No day marked as a flare day' + (calls.length ? '; ' + plural(calls.length, 'call') + ' to the advice line.' : '.') }
@@ -12391,7 +12451,7 @@ function buildIbdReport(n) {
   /* the brief: plain sentences from the figures, never a judgement */
   const brief = [];
   brief.push({ head: what, text: logged.length ? `About ${one(mean)} a day on the ${plural(logged.length, 'day')} logged${usual ? `, against ${patient}'s usual ${usual}` : ' (no usual number set in Settings)'}; most ${most} on ${rDay(mostDay)}.` + (looseN ? ` Loose (type 6 or 7) ${plural(looseN, 'time')}.` : '') + (noneDays.size ? ` None on ${plural(noneDays.size, 'day')}.` : '') : 'No bowel movements were logged in this period.' });
-  brief.push({ head: 'Blood and urgency', text: logged.length ? [bloodDays.length ? `Blood on ${plural(bloodDays.length, 'day')}, ${bloodWord(worstBlood)} at worst` : 'No blood logged', blackDays.length ? `black or tarry on ${plural(blackDays.length, 'day')}` : '', rush ? `had to go straight away ${plural(rush, 'time')} on ${plural(rushDays.length, 'day')}` : 'never had to go straight away', accidents ? plural(accidents, stoma ? 'bag leak' : 'accident or leak') : '', nightN ? `up at night ${plural(nightN, 'time')}` : ''].filter(Boolean).join('; ') + '.' + (twDays.length ? ` Six or more with blood on ${twDays.map(rDay).join(', ')}.` : '') : 'Nothing logged.' });
+  brief.push({ head: 'Blood and urgency', text: logged.length ? [bloodDays.length ? `Blood on ${plural(bloodDays.length, 'day')}, ${bloodWord(worstBlood)} at worst` : 'No blood logged', blackDays.length ? `black or tarry on ${plural(blackDays.length, 'day')}` : '', rush ? `had to go straight away ${plural(rush, 'time')} on ${plural(rushDays.length, 'day')}` : 'never had to go straight away', accidents ? plural(accidents, stoma ? 'bag leak' : 'accident or leak') : '', nightN && !nightAsked.length ? `up at night ${plural(nightN, 'time')}` : ''].filter(Boolean).join('; ') + '.' + (twDays.length ? ` Six or more with blood on ${twDays.map(rDay).join(', ')}.` : '') : 'Nothing logged.' });
   brief.push({ head: 'Flares and treatment', text: (flareDays.length ? `Marked as flaring on ${plural(flareDays.length, 'day')}${runs.length === 1 ? ` (${runText(runs[0])})` : ''}.` : 'No flare days marked.') + (calls.length ? ` ${plural(calls.length, 'call')} to the advice line, listed below.` : '') + (steroids.length ? ` On ${steroids.map((m) => m.name).join(' and ')} in this period.` : '') + (sessLine ? ' ' + sessLine.charAt(0).toUpperCase() + sessLine.slice(1) : '') });
   brief.push({ head: 'Body', text: [ws.length ? `Weight ${fmtKg(wLast.value)} on ${rDay(wLast.day)}` + (wChange != null && Math.abs(wChange) >= 0.1 ? `, ${wChange < 0 ? 'down' : 'up'} ${Math.abs(wChange)} kg since ${rDay(wFirst.day)}` : '') : 'No weight logged', temps.length ? `temperature highest ${Number(tempHi.value).toFixed(1)} °C on ${rDay(tempHi.day)}` : '', gutPains.length ? `tummy pain or cramps averaged ${avg(gutPains)}/10, up to ${Math.max(...gutPains)}` : '', pains.length ? `pain up to ${Math.max(...pains)}/10` : '', gutStops.length ? `the gut stopped ${patient.split(/\s+/)[0]} doing something quite a bit or a lot on ${gutStopBad.length} of ${plural(gutStops.length, 'evening')}` : '', nightAsked.length ? `up in the night for the toilet on ${nightUp.length} of ${plural(nightAsked.length, 'morning')}${nightTwice.length ? ', twice or more on ' + nightTwice.length : ''}` : '', energy.length ? `energy averaged ${avg(energy)}/10 in the evening check-ins` : '', outside.length ? `outside the gut: ${outside.map((e) => (e.outside.length ? outsideText(e.outside).toLowerCase() : 'none of the usual') + ' (week to ' + rDay(e.day) + ')').join('; ')}` : ''].filter(Boolean).join('; ') + '.' });
   if (fasts.n) brief.push({ head: 'Fasting', text: `Fasting on ${fasts.n} of the ${plural(fasts.asked, 'morning')} asked: ${fasts.text}. The days are marked under the first chart.` });
@@ -12522,7 +12582,10 @@ function buildMedsReport(doses, sideFx = []) {
     /* the frequency once: "Twice a day" is not repeated above "Twice a day, morning and evening" */
     const norm = (t) => String(t || '').trim().toLowerCase().replace(/^once\b/, '1 times').replace(/^twice\b/, '2 times').replace(/^three times\b/, '3 times').replace(/^four times\b/, '4 times');
     const freq = medFrequency(m), how = (m.how || '').trim();
-    const lines = how && norm(how).startsWith(norm(freq)) ? [how] : how ? [freq, how] : [freq];
+    /* v377 (review item 18): the medicine's own How it is taken already says how often ("Up to 3 times a day when needed",
+       "At night", "With each meal"), so the app's frequency line is not printed above it as well; hospital ones keep both */
+    const saysHowOften = /\b(once|twice|times|every|needed|daily|a day|at night|in the morning|each meal)\b/i.test(how);
+    const lines = how && !m.hospital && (norm(how).startsWith(norm(freq)) || saysHowOften) ? [how] : how ? [freq, how] : [freq];
     /* a finished or stopped medicine at the dose it was last taken at, not what its Dose box says now (v187) */
     const shown = kind === 'now' ? (m.dose || '') : shownDose(m, st.ds);
     const changes = kind === 'now' && Array.isArray(m.doseChanges) ? m.doseChanges.map(doseChangeText) : [];
@@ -15784,7 +15847,7 @@ function daySideEffects(key) {
     });
     box.replaceChildren(h('p', { class: 'day-fx-title', text: title }),
       rows.length ? h('ul', { class: 'day-fx-list' }, ...rows)
-        : h('p', { class: 'hint', text: ses ? 'Nothing logged for this day. The morning and evening check-ins ask about side effects on the three days after a session.' : 'Nothing logged for this day.' }));
+        : h('p', { class: 'hint', text: ses ? (isRepeat(ses.type) ? 'Nothing logged for this day. The evening check-in asks about side effects on the three days after an injection or infusion.' : 'Nothing logged for this day. The morning and evening check-ins ask about side effects on the three days after a session.') : 'Nothing logged for this day.' }));
   })();
   return box;
 }
