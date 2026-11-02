@@ -6,6 +6,9 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v385 (2 November 2026): Notes for the team's charts fit what the person logs (review item 26)
+`twoPageCharts()`: a reading with nothing logged in the period is left off the charts page (Robin's report had empty Temperature and Oxygen charts); Pain and Mood always stay; then each number or score from Things I track gets its own chart from the evening check-ins ("Hours at my desk (hours)", "Stiffness first thing (0 to 10)", "Average 3.2", teal line, no colour judgement), up to eight charts in all. Yes or no tracks stay one line in the Summary. Sam's report is unchanged (every reading logged). Tested on Robin's and Sam's previews against v384: eight charts on two pages for Robin, Sam's nine as before, no page errors.
+
 ### v384 (2 November 2026): long reports over sparse months (review item 24)
 - **Empty weeks fold into one row:** on the Crohn's and colitis, Pain and Mood reports (screen and print), a run of weeks with nothing logged is one row, "10 Apr to 18 Sep, Nothing logged" (`foldEmptyWeeks()`, each week's `_none`), instead of a row of Nones a week. Notes for the team already left empty weeks out.
 - **Custom ranges up to 200 days** (`CUSTOM_RANGE_MAX_DAYS`, was 180): six months between clinics is often 26 weeks and a few days.

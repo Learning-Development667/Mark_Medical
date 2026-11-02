@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '384';
+const APP_VERSION = '385';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -7984,7 +7984,23 @@ function twoPageCharts(entries, days) {
       legend: [{ c: REPORT_SLATE, t: 'Hard (1 to 2)' }, { c: teal, t: 'Types 3 to 5' }, { c: REPORT_WARM, t: 'Loose (6 to 7)' }, { c: red, t: 'Blood', dot: true }] });
   }
 
-  return { charts, facts: { tv, tPeak, hv, hPeak, bpAll, bpRed, bpAmber, ov, oLow, wSorted, wDrop, nights, shortN, pAvg, pDays: pv.length, pWorst, painAll, lowMood, moodDay, moodScores, moodBetweenN } };
+  /* v385 (review item 26): the charts fit what this person logs. A reading nobody logged in the period is left off (a lupus
+     report had empty Temperature and Oxygen charts), pain and mood always stay, and each number or score from Things I
+     track gets a chart of its own from the evening check-ins, up to eight charts in all. */
+  const hasData = (c) => (c.series || []).some((sr) => (sr.d || []).some((v) => v != null && v !== 0)) || ['pain', 'mood'].includes(c.key);
+  const shown = charts.filter(hasData);
+  ownTracks().filter((t) => t.kind === 'number' || t.kind === 'score').forEach((t) => {
+    if (shown.length >= 8) return;
+    const d = days.map((day) => { const ci = entries.find((e) => isPatientCheckin(e) && e.slot === 'evening' && e.day === day && e.own && e.own[t.id] && e.own[t.id].v != null); return ci ? Number(ci.own[t.id].v) : null; });
+    const v = vals(d);
+    if (!v.length) return;
+    const score = t.kind === 'score';
+    const top = score ? 10 : Math.max(1, Math.ceil(Math.max(...v) * 1.15));
+    const mean = v.reduce((a, b) => a + b, 0) / v.length;
+    shown.push({ key: 'own-' + t.id, title: t.name + (score ? ' (0 to 10)' : t.unit ? ' (' + t.unit + ')' : ''), stat: 'Average ' + fmtQtyNumber(Math.abs(mean) >= 100 ? Math.round(mean) : Math.round(mean * 10) / 10), tone: '',
+      min: 0, max: top, ticks: score ? [0, 5, 10] : [0, Math.round(top / 2), top], series: [{ d, c: teal }], legend: [{ c: teal, t: 'From the evening check-in', line: true }] });
+  });
+  return { charts: shown, facts: { tv, tPeak, hv, hPeak, bpAll, bpRed, bpAmber, ov, oLow, wSorted, wDrop, nights, shortN, pAvg, pDays: pv.length, pWorst, painAll, lowMood, moodDay, moodScores, moodBetweenN } };
 }
 const REPORT_INK = '#17263A', REPORT_TEAL = '#1E7F86', REPORT_AMBER = '#E0A030', REPORT_RED = '#C8453B';
 const REPORT_SLATE = '#8FA6B8', REPORT_WARM = '#C2703D';
