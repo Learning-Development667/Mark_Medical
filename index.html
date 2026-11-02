@@ -19,7 +19,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=381">
+  <link rel="stylesheet" href="styles.css?v=382">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -959,7 +959,13 @@
             <span>Daily protein target in grams, from the dietitian (optional)</span>
             <input id="settings-protein" type="number" inputmode="numeric" min="0" step="5">
           </label>
+          <label class="check"><input id="settings-protein-limit" type="checkbox"><span>It is a limit to stay under (a kidney diet, say)</span></label>
           <p class="hint">Each day's estimated protein is compared with it in the Food diary and in Notes for the team.</p>
+          <label class="field settings-target">
+            <span>Daily fluid limit in ml, from your team (optional)</span>
+            <input id="settings-fluid" type="text" inputmode="numeric" autocomplete="off">
+          </label>
+          <p class="hint">For a fluid restriction (a kidney or heart diet). Set, Notes for the team compares each day's drinks with it instead of the 1 litre line.</p>
         </div>
         <h2 class="section-title">Notes for the team</h2>
         <div id="settings-report" class="card settings-group">
@@ -1221,6 +1227,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script type="module" src="scripts.js?v=381"></script>
+  <script type="module" src="scripts.js?v=382"></script>
 </body>
 </html>

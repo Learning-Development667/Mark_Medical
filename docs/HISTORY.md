@@ -6,6 +6,14 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v382 (2 November 2026): flares and steroid courses for every condition, a fluid limit and a protein limit (review item 22; part of 24)
+- **Steroid course** tick in Edit medicine for every pack (it was Crohn's only); `steroidCourses()` no longer checks the pack, so the calendar shading, the key and the 12-month line work for lupus, RA or MS.
+- **A flare day** on the day sheet for Something else too (`flareRow`). The I think I'm flaring sheet stays Crohn's own. On Notes for the team, without the Crohn's pack, the Summary has teal lines "Marked as a flare day on 2 days (...)" and "Steroid course: Prednisolone from 3 Oct to 30 Oct" (facts only).
+- **Fluid limit** (More > Settings > Food, `#settings-fluid`, `profile/main.fluidLimit`, read with `readNum()`, 100 to 6,000 ml): set, the Summary compares each day's drinks with it ("Drinks over the 1.2 L limit on 6 of the 13 logged days") and the 1 litre line is not used.
+- **Protein as a limit** (`#settings-protein-limit`, `proteinIsLimit`): the same figure read as one to stay under (a kidney diet): "protein 12 g over the 50 g limit", "within the limit", in the Food bar, the Food diary tile and the Summary (`protMissed()`).
+- **Light loggers (item 24, drinks):** the 1 litre line counts only days with three or more drinks logged.
+Tested on Robin's preview with a 1.2 L limit, a 50 g protein limit and a flare day; no page errors.
+
 ### v381 (2 November 2026): appointments by name, and a Treatment tab for appointments or injections (review item 21)
 - The day sheet names an **Appointment** too: "Who or what is it?" ("e.g. rheumatology, physio"), saved as `treatName`, so the calendar and reports say "Rheumatology appointment".
 - The progress card (`renderChemoProgress()`): with only appointments it is headed **Appointments**; with only appointments or only injections and infusions there is no done-of-planned bar and no "That is a proper milestone"; it says "Next: ..." and, when nothing is booked, "Nothing coming up on the calendar." or "The next one is not on the calendar yet. Add sessions puts on the next run." A chemo course is as before.

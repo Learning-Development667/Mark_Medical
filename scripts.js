@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '381';
+const APP_VERSION = '382';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -2089,6 +2089,7 @@ function syncSettings() {
   ['settings-nutrition', 'food-nutrition'].forEach((id) => { const box = $(id); if (box.checked !== on) box.checked = on; });
   const target = $('settings-protein');
   if (document.activeElement !== target) target.value = proteinTarget() ? String(proteinTarget()) : '';
+  { const lim = $('settings-protein-limit'); if (lim) lim.checked = proteinIsLimit(); const fl = $('settings-fluid'); if (fl && document.activeElement !== fl) fl.value = fluidLimit() ? String(fluidLimit()) : ''; }
   renderFoodStatsSetting(on);
   const rname = $('settings-report-name');
   if (document.activeElement !== rname) rname.value = (state.profile && state.profile.reportName) || '';
@@ -2758,6 +2759,18 @@ $('settings-protein').addEventListener('change', async (ev) => {
   catch (e) { console.error(e); toast('Could not save the target'); }
 });
 $('food-nutrition').addEventListener('change', (ev) => setDetailedNutrition(ev.target.checked, ev.target));
+/* v382 (review item 22): the protein figure as a limit, and a daily fluid limit, both from the team */
+async function saveProfileSetting(patch, words) {
+  if (state.demo) { state.profile = { ...state.profile, ...patch }; syncSettings(); toast(words); return; }
+  try { await setDoc(hdoc('profile', 'main'), patch, { merge: true }); toast(words); } catch (e) { console.error(e); toast('Could not save the setting'); }
+}
+$('settings-protein-limit').addEventListener('change', (ev) => saveProfileSetting({ proteinIsLimit: ev.target.checked }, ev.target.checked ? 'Protein is now a limit to stay under' : 'Protein is now a target to reach'));
+$('settings-fluid').addEventListener('change', (ev) => {
+  const r = readNum(ev.target);
+  if (!r.empty && (r.value == null || r.value < 100 || r.value > 6000)) { missing(ev.target, 'Type the limit in ml, like 1500', CHECK); return; }
+  const fluidLimit = r.empty ? null : Math.round(r.value);
+  saveProfileSetting({ fluidLimit }, fluidLimit ? 'Fluid limit saved' : 'Fluid limit cleared');
+});
 /* Figures to show on the Food sheet (v285, Mark: "so the user can choose what stats they can see"), with the estimates on */
 function renderFoodStatsSetting(on) {
   const box = $('settings-foodstats');
@@ -5686,7 +5699,7 @@ function foodDayPanel(day, excludeId) {
       h('div', { class: 'daybar-stats' }, ...shown.map((k) => {
         const [, label, unit] = FOOD_STATS.find(([key]) => key === k);
         const val = fmtStatValue(k, all[k]);
-        return h('div', { class: 'daybar-stat' + (k === 'prot' && target && all.prot >= target ? ' is-met' : '') },
+        return h('div', { class: 'daybar-stat' + (k === 'prot' && target && !protMissed(all.prot) ? ' is-met' : '') },
           h('span', { class: 'daybar-val', text: val }), h('span', { class: 'daybar-unit', text: unit === 'kcal' ? 'kcal' : k === 'prot' && target ? 'Protein, of ' + target + ' g' : label + ' (g)' }));
       })),
       ...(adds ? [h('p', { class: 'daybar-adds', text: 'This adds ' + shown.map((k) => fmtStatValue(k, adds[k]) + (k === 'kcal' ? ' kcal' : ' g ' + FOOD_STATS.find(([key]) => key === k)[1].toLowerCase())).join(' · ') })] : []) // never a bare null
@@ -7249,9 +7262,14 @@ function fmtMacroLine(totals) {
 
 /* The daily protein target from the dietitian, in grams (More > Settings > Food); 0 when none is set */
 function proteinTarget() { const t = Number(state.profile && state.profile.proteinTarget); return t > 0 ? t : 0; }
+/* v382 (review item 22): the protein figure can be a limit to stay under (a kidney diet) instead of a target to reach */
+function proteinIsLimit() { return Boolean(state.profile && state.profile.proteinIsLimit); }
+function protMissed(prot) { const t = proteinTarget(); return Boolean(t) && (proteinIsLimit() ? prot > t : prot < t); }
+function fluidLimit() { const t = Number(state.profile && state.profile.fluidLimit); return t > 0 ? t : 0; }
 function proteinTargetText(prot) {
   const t = proteinTarget();
   if (!t) return '';
+  if (proteinIsLimit()) return prot <= t ? `protein within the ${t} g limit` : `protein ${Math.round(prot - t)} g over the ${t} g limit`;
   return prot >= t ? `protein target ${t} g met` : `protein ${Math.round(t - prot)} g under the ${t} g target`;
 }
 
@@ -7993,7 +8011,7 @@ function twoPageTiles(entries, from, to, f) {
   else {
     const mean = Math.round(avg(protDays.map((p) => p.prot)));
     const est = protDays.every((p) => p.logged) ? '' : ', estimated';
-    tiles.push({ k: 'Protein', v: String(mean), unit: 'g a day average', note: (target ? `Target ${target} g. ` : 'No target set. ') + `${plural(protDays.length, 'day')}${est}.`, tone: target ? (mean < target ? 'amber' : 'green') : '' });
+    tiles.push({ k: 'Protein', v: String(mean), unit: 'g a day average', note: (target ? `${proteinIsLimit() ? 'Limit' : 'Target'} ${target} g. ` : 'No target set. ') + `${plural(protDays.length, 'day')}${est}.`, tone: target ? (protMissed(mean) ? 'amber' : 'green') : '' });
   }
   const mv = f.moodDay.filter((v) => v != null);
   if (!mv.length) tiles.push(none('Mood', 'mood scores'));
@@ -9214,10 +9232,17 @@ function summaryRows(entries, from, to) {
   const drinkDays = loggedDays.filter((d) => byDay[d].some((e) => e.type === 'drink'));
   if (drinkDays.length) {
     const perDay = drinkDays.map((d) => byDay[d].filter((e) => e.type === 'drink').reduce((s, e) => s + (Number(e.value) || 0), 0));
-    const low = perDay.filter((ml) => ml < 1000).length;
     const mean = fmtMl(Math.round(avg(perDay)));
-    const lowDays = drinkDays.filter((d, i) => perDay[i] < 1000);
-    if (low) push('amber', 'Drinks', `Under 1 litre of drinks on ${low} of the ${plural(drinkDays.length, 'logged day')}; averaging ${mean} a day.`, low === 1 ? `under 1 litre of drinks on ${fmtDayShort(lowDays[0])}` : null, `Under 1 litre of drinks on ${plural(low, 'day')}`);
+    /* v382 (review items 22 and 24): a fluid limit from the team (Settings) is compared instead of the 1 litre line; and the
+       1 litre line only counts days with three or more drinks logged, so someone who logs the odd cup is not flagged */
+    const limit = fluidLimit();
+    const counts = drinkDays.map((d) => byDay[d].filter((e) => e.type === 'drink').length);
+    const lowDays = limit ? [] : drinkDays.filter((d, i) => perDay[i] < 1000 && counts[i] >= 3);
+    const low = lowDays.length;
+    const overDays = limit ? drinkDays.filter((d, i) => perDay[i] > limit) : [];
+    if (overDays.length) push('amber', 'Drinks', `Drinks over the ${fmtMl(limit)} limit on ${overDays.length} of the ${plural(drinkDays.length, 'logged day')} (${listDays(overDays)}); averaging ${mean} a day.`, overDays.length === 1 ? `drinks over the ${fmtMl(limit)} limit on ${fmtDayShort(overDays[0])}` : null, `Drinks over the ${fmtMl(limit)} limit on ${plural(overDays.length, 'day')}`);
+    else if (limit) fine.push(`drinks (${mean} a day, within the ${fmtMl(limit)} limit)`);
+    else if (low) push('amber', 'Drinks', `Under 1 litre of drinks on ${low} of the ${plural(drinkDays.length, 'logged day')}; averaging ${mean} a day.`, low === 1 ? `under 1 litre of drinks on ${fmtDayShort(lowDays[0])}` : null, `Under 1 litre of drinks on ${plural(low, 'day')}`);
     else fine.push(`drinks (${mean} a day)`);
   }
   if (loggedDays.length) {
@@ -9241,11 +9266,13 @@ function summaryRows(entries, from, to) {
     let targetText = '', underDays = 0, targetDays = 0;
     if (macros && target) {
       targetDays = perDay.length;
-      underDays = perDay.filter((p) => p.prot < target).length;
-      targetText = `; against the ${target} g protein target, ${underDays ? 'under on ' + underDays + ' of ' + plural(targetDays, 'day') : 'met on every one of ' + plural(targetDays, 'day')}`;
+      underDays = perDay.filter((p) => protMissed(p.prot)).length;
+      targetText = proteinIsLimit()
+        ? `; against the ${target} g protein limit, ${underDays ? 'over on ' + underDays + ' of ' + plural(targetDays, 'day') : 'within it on every one of ' + plural(targetDays, 'day')}`
+        : `; against the ${target} g protein target, ${underDays ? 'under on ' + underDays + ' of ' + plural(targetDays, 'day') : 'met on every one of ' + plural(targetDays, 'day')}`;
     }
-    if (noFood.length) push('amber', 'Eating', `No food logged on ${plural(noFood.length, 'day')} of the ${loggedDays.length} logged (${listDays(noFood)})${est ? '; on the other days ' + est : ''}${targetText}.`, noFood.length === 1 && !underDays ? `no food logged on ${fmtDayShort(noFood[0])}` : null, `Nothing eaten logged on ${plural(noFood.length, 'day')}${underDays ? `; ${protWord.toLowerCase()} under target on ${underDays} of ${targetDays} days` : ''}`);
-    else if (target && macros) push(underDays > targetDays / 2 ? 'amber' : 'green', 'Eating', `Eating: something every logged day, ${est}${targetText}.`, null, underDays ? `${protWord} under target on ${underDays} of ${targetDays} days` : `Eating every day, ${protWord.toLowerCase()} at the target`);
+    if (noFood.length) push('amber', 'Eating', `No food logged on ${plural(noFood.length, 'day')} of the ${loggedDays.length} logged (${listDays(noFood)})${est ? '; on the other days ' + est : ''}${targetText}.`, noFood.length === 1 && !underDays ? `no food logged on ${fmtDayShort(noFood[0])}` : null, `No food logged on ${plural(noFood.length, 'day')}${underDays ? `; ${protWord.toLowerCase()} ${proteinIsLimit() ? 'over the limit' : 'under target'} on ${underDays} of ${targetDays} days` : ''}`);
+    else if (target && macros) push(underDays > targetDays / 2 ? 'amber' : 'green', 'Eating', `Eating: something every logged day, ${est}${targetText}.`, null, underDays ? `${protWord} ${proteinIsLimit() ? 'over the limit' : 'under target'} on ${underDays} of ${targetDays} days` : `Eating every day, ${protWord.toLowerCase()} ${proteinIsLimit() ? 'within the limit' : 'at the target'}`);
     else if (anyFood) fine.push(`eating (something every logged day${est ? ', ' + est : ''})`);
   }
 
@@ -9412,6 +9439,13 @@ function summaryRows(entries, from, to) {
     else fine.push('mood');
   }
 
+  /* v382 (review item 22): flare days and steroid courses for the other packs, facts only (Crohn's has its own report) */
+  if (!packOn('ibd')) {
+    const fds = Object.keys(state.days || {}).filter((d) => d >= from && d <= to && state.days[d].flare).sort();
+    if (fds.length) push('teal', 'Flares', `Marked as a flare day on ${plural(fds.length, 'day')} (${listDays(fds)}).`, null, `Flare days: ${fds.length}`);
+    const ster = steroidCourses().filter((m) => m.courseStart <= to && (!m.courseEnd || m.courseEnd >= from));
+    if (ster.length) push('teal', 'Steroids', 'Steroid course: ' + ster.map((m) => m.name + ' from ' + fmtDayShort(m.courseStart) + (m.courseEnd ? ' to ' + fmtDayShort(m.courseEnd) + (m.courseEnd > todayStr() ? ' (planned)' : '') : '')).join('; ') + '.', null, 'On a steroid course');
+  }
   if (once.length === 1) rows.push({ level: 'amber', topic: once[0].topic, text: once[0].text, short: once[0].short });
   /* v377 (review item 13): the same words twice (sickness 6/10 from the evening slider and from the Symptom tile) print once */
   else if (once.length > 1) { const t = 'One-offs worth a mention: ' + [...new Set(once.map((o) => o.brief))].join('; ') + '.'; rows.push({ level: 'amber', topic: 'One-offs', text: t, short: 'One-offs: ' + joinAnd([...new Set(once.map((o) => o.brief.replace(/ \(.*?\)/g, '').replace(/ (on|before) \d+ \w+$/, '')))]) }); }
@@ -13895,8 +13929,9 @@ function openEditMed(m, prefill) {
   const mealBits = [h('label', { class: 'check' }, withMeals, h('span', { text: 'Ask after every meal or snack' })),
     h('p', { class: 'hint', text: 'Whenever food is logged, Daybook asks whether this was taken with it. With Ask how many each time ticked, it asks how many; without it, one tap logs the usual dose.' })];
   const schedFields = h('div', null, courseBits, courseNote,
-    ...(packOn('ibd') ? [h('label', { class: 'check' }, steroid, h('span', { text: 'A steroid course (prednisolone, budesonide, dexamethasone)' })),
-    h('p', { class: 'hint', text: 'Ticked, the course is shaded on the Treatment calendar and counted there as a course in the last 12 months.' })] : []));
+    /* v382 (review item 22): a steroid course for every condition (lupus, RA, MS have them too), not Crohn's alone */
+    h('label', { class: 'check' }, steroid, h('span', { text: 'A steroid course (prednisolone, budesonide, dexamethasone)' })),
+    h('p', { class: 'hint', text: 'Ticked, the course is shaded on the Treatment calendar and counted there as a course in the last 12 months.' }));
   const prnFields = h('div', null, field('Minimum hours between doses', minGap), field('Maximum doses per day', maxPerDay));
   /* when it is taken, the reminders and the after-meal prompt do not apply to a medicine the nurses give */
   const sync = () => {
@@ -15736,7 +15771,7 @@ function repeatInfo(today = todayStr()) {
 }
 /* Steroid courses (v204): a medicine ticked as a steroid course with its start and end dates shades the calendar */
 /* steroid courses are a Crohn's or colitis measure (v344): nothing about them shows without that pack */
-function steroidCourses() { if (!packOn('ibd')) return []; return (state.medicines || []).filter((m) => m.steroid && m.courseStart).sort((a, b) => a.courseStart.localeCompare(b.courseStart)); }
+function steroidCourses() { return (state.medicines || []).filter((m) => m.steroid && m.courseStart).sort((a, b) => a.courseStart.localeCompare(b.courseStart)); }
 function steroidOn(day) { return steroidCourses().filter((m) => m.courseStart <= day && (!m.courseEnd || m.courseEnd >= day)); }
 function chemoDays() { return Object.keys(state.days).filter((k) => state.days[k].chemo).sort(); }
 /* ---- Cycles (v189). A cycle is the run of sessions up to the next one that starts a cycle: for Mark, three weekly
@@ -16091,7 +16126,8 @@ function openDaySheet(key) {
 
   const moodInfo = info.mood ? 'Mood that day: ' + MOODS[info.mood - 1].label.toLowerCase() + (info.good ? '. ' + info.good + (/[.!?]$/.test(info.good.trim()) ? '' : '.') : '.') : '';
   const cbFlare = h('input', { type: 'checkbox', checked: !!info.flare });
-  const flareRow = packOn('ibd') || info.flare ? h('label', { class: 'check' }, cbFlare, h('span', { text: 'A flare day' })) : null;
+  /* v382 (review item 22): flare days for Something else too (lupus, RA, MS flare); the flare sheet itself stays Crohn's own */
+  const flareRow = packOn('ibd') || packOn('general') || info.flare ? h('label', { class: 'check' }, cbFlare, h('span', { text: 'A flare day' })) : null;
 
   const body = h('div', null,
     where,
