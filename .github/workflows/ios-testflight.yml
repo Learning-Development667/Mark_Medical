@@ -1,7 +1,8 @@
 # Builds the iPhone app (native/, Capacitor) with the web app inside it and sends it to TestFlight (v395).
 # Run by hand from the Actions tab for now. Needs the APP_STORE_CONNECT_API_KEY (the .p8 text),
 # APP_STORE_CONNECT_KEY_ID, APP_STORE_CONNECT_ISSUER_ID and APPLE_TEAM_ID secrets. Signing is automatic:
-# Xcode creates the distribution certificate and profile through the API key. The log never shows the key.
+# the archive is built unsigned and signed for the App Store at the export, where Xcode creates the distribution
+# certificate and profile through the API key (a development profile would need a registered iPhone). The log never shows the key.
 name: iPhone app to TestFlight
 
 on:
@@ -39,7 +40,7 @@ jobs:
             -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/Daybook.xcarchive" \
             -allowProvisioningUpdates \
             -authenticationKeyPath "$RUNNER_TEMP/keys/AuthKey.p8" -authenticationKeyID "$KEY_ID" -authenticationKeyIssuerID "$ISSUER" \
-            DEVELOPMENT_TEAM="$TEAM" CODE_SIGN_STYLE=Automatic \
+            DEVELOPMENT_TEAM="$TEAM" CODE_SIGN_STYLE=Automatic CODE_SIGNING_ALLOWED=NO \
             CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
             archive | tail -40
           test -d "$RUNNER_TEMP/Daybook.xcarchive"
