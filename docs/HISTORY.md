@@ -6,6 +6,13 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v381 (2 November 2026): appointments by name, and a Treatment tab for appointments or injections (review item 21)
+- The day sheet names an **Appointment** too: "Who or what is it?" ("e.g. rheumatology, physio"), saved as `treatName`, so the calendar and reports say "Rheumatology appointment".
+- The progress card (`renderChemoProgress()`): with only appointments it is headed **Appointments**; with only appointments or only injections and infusions there is no done-of-planned bar and no "That is a proper milestone"; it says "Next: ..." and, when nothing is booked, "Nothing coming up on the calendar." or "The next one is not on the calendar yet. Add sessions puts on the next run." A chemo course is as before.
+- The calendar key's **Rest week** shows only where there are cycles with rest weeks (`#cal-key-rest`).
+- **Add sessions** for an injection or infusion carries on from the last run: the same gap after the last one (moved on past today) and the same medicine name. **Every 12 weeks** added to How often (ustekinumab).
+Tested on the three previews: Robin's card "Appointments, 3 done, Next: Physio appointment...", no bar, no Rest week; Jo's "Next: Adalimumab (Humira) injection...", Add sessions starting 5 Nov with the name; Sam's chemo card unchanged; no page errors.
+
 ### v380 (2 November 2026): the review's wording and small fixes, and question teams by pack (item 27)
 From the reviewers' minor lists, checked against the code and the history first.
 - **Pack words:** the Around treatment days hint, the session name example (`sessionNamePh()`), the result source example, the contact role example (`contactRolePh()`) and the empty contacts line follow the packs; the check-in examples no longer assume sickness ("e.g. a new ache, worse than usual", "e.g. back worse after lunch", "e.g. the ache has eased"; the carer's "e.g. the nights, a bad day midweek"); the Symptom tile's list is the everyday ones plus chemo's with the cancer pack and Crohn's own with that pack (`symptomList()`); the Results card reads "Blood tests and other results, as given"; Tiredness got in the way? is in Your week for every pack; no confetti for an injection, infusion or appointment ticked done ("Saved. Ticked done.").

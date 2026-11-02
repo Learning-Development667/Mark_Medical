@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '380';
+const APP_VERSION = '381';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -15872,18 +15872,28 @@ function renderChemoProgress() {
   const keys = Object.keys(state.days).filter((k) => state.days[k].chemo).sort();
   const planned = keys.length;
   const done = keys.filter((k) => state.days[k].chemoDone).length;
-  $('chemo-count').textContent = `${done} of ${planned} done`;
+  /* v381 (review item 21): only appointments (or only injections and infusions) is not a course to count through: no bar,
+     no milestone; just what is next */
+  const kinds = keys.map((k) => treatmentOf(state.days[k]));
+  const apptsOnly = planned ? kinds.every((t) => t.key === 'appt') : packOn('general') && !packOn('cancer') && !packOn('ibd');
+  const repeatOnly = planned > 0 && kinds.every((t) => isRepeat(t) || t.key === 'appt') && !apptsOnly;
+  const plain = apptsOnly || repeatOnly;
+  $('chemo-count').textContent = plain ? (planned ? done + ' done' : '') : `${done} of ${planned} done`;
+  $('chemo-progress').querySelector('.tile-label').textContent = apptsOnly ? 'Appointments' : 'Sessions';
+  $('chemo-bar').parentElement.hidden = plain;
   $('chemo-bar').style.width = planned ? Math.round((done / planned) * 100) + '%' : '0%';
   const today = todayStr();
   const upcoming = keys.filter((k) => !state.days[k].chemoDone && k >= today);
   let text;
-  if (!planned) text = 'Tap a day on the calendar to mark a treatment session.';
+  if (!planned) text = apptsOnly ? 'Tap a day on the calendar to mark an appointment.' : 'Tap a day on the calendar to mark a treatment session.';
+  else if (plain && !upcoming.length) text = apptsOnly ? 'Nothing coming up on the calendar.' : 'The next one is not on the calendar yet. Add sessions puts on the next run.';
   else if (upcoming.length) {
     const next = upcoming[0];
     const gap = Math.round((parseDay(next) - parseDay(today)) / 864e5);
     const ci = cycleInfo(next);
     const what = sessionLabel(state.days[next]) + (ci && ci.session && !isRepeat(ci.type) ? ' (cycle ' + ci.index + ', session ' + ci.session + ')' : '');
-    text = next === today ? `Next session: ${what}, today.` : `Next session: ${what} on ${fmtDayLong(next)}, ${gap === 1 ? 'tomorrow' : 'in ' + gap + ' days'}.`;
+    const head = plain ? 'Next: ' : 'Next session: ';
+    text = next === today ? `${head}${what}, today.` : `${head}${what} on ${fmtDayLong(next)}, ${gap === 1 ? 'tomorrow' : 'in ' + gap + ' days'}.`;
   } else text = done === planned ? 'Every session done. That is a proper milestone.' : 'No upcoming sessions marked.';
   $('chemo-next').textContent = text;
 }
@@ -15946,6 +15956,9 @@ function renderCalKey() {
   if (st) st.hidden = !steroidCourses().length;
   const fl = $('cal-key-flare');
   if (fl) fl.hidden = !Object.keys(state.days || {}).some((k) => state.days[k] && state.days[k].flare);
+  /* v381: Rest week only where there are cycles with rest weeks (chemo and the like), not for injections or appointments */
+  const rw = $('cal-key-rest');
+  if (rw) rw.hidden = !Object.keys(state.days || {}).some((k) => state.days[k] && state.days[k].chemo && treatmentOf(state.days[k]).cycle === 'each');
 }
 /* Under the calendar, one line per cycle that touches the month on screen: "Cycle 2, chemo: 11, 18 and 25 Nov. Rest week from 2 Dec." */
 function renderCycleLines(ym) {
@@ -16031,7 +16044,8 @@ function openDaySheet(key) {
   /* an injection or infusion names its medicine (v204), offered from the medicines list */
   const nameIn = h('input', { type: 'text', class: 'input', value: info.treatName || '', list: 'treat-names', placeholder: sessionNamePh(), autocomplete: 'off' });
   const nameList = h('datalist', { id: 'treat-names' }, ...(state.medicines || []).filter((m) => m.active !== false).map((m) => h('option', { value: m.name })));
-  const nameRow = h('div', null, field('Which medicine?', nameIn), nameList);
+  const nameLabel = h('span', { text: 'Which medicine?' });
+  const nameRow = h('div', null, h('label', { class: 'field' }, nameLabel, nameIn), nameList);
   const drawTypes = () => typeRow.replaceChildren(...treatmentsFor().map((t) => h('button', { class: 'preset' + (t.key === treatment ? ' is-active' : ''), type: 'button', 'aria-pressed': t.key === treatment ? 'true' : 'false', onclick: () => { treatment = t.key; drawTypes(); } }, t.label)));
   drawTypes();
   /* Starts a new cycle (v189): ticked as the app would guess, or as saved; never offered for an Other day */
@@ -16053,7 +16067,10 @@ function openDaySheet(key) {
   const syncDone = () => {
     doneRow.hidden = !cbChemo.checked; typeRow.hidden = !cbChemo.checked; if (!cbChemo.checked) cbDone.checked = false;
     cycleRow.hidden = !cbChemo.checked || TREATMENTS.find((t) => t.key === treatment).cycle === 'never' || repeatNow();
-    nameRow.hidden = !cbChemo.checked || !repeatNow();
+    /* v381 (review item 21): an appointment is named too ("Rheumatology", "Physio") */
+    nameRow.hidden = !cbChemo.checked || !(repeatNow() || treatment === 'appt');
+    nameLabel.textContent = treatment === 'appt' ? 'Who or what is it?' : 'Which medicine?';
+    nameIn.placeholder = treatment === 'appt' ? 'e.g. rheumatology, physio' : sessionNamePh();
   };
   cbChemo.addEventListener('change', syncDone);
   typeRow.addEventListener('click', () => setTimeout(syncDone));
@@ -16092,6 +16109,7 @@ function openDaySheet(key) {
       if (flareRow) data.flare = cbFlare.checked;
       if (cbChemo.checked && TREATMENTS.find((t) => t.key === treatment).cycle !== 'never' && !repeatNow()) data.cycleStart = cbCycle.checked;
       if (cbChemo.checked && repeatNow()) { data.cycleStart = true; data.treatName = nameIn.value.trim(); }
+      if (cbChemo.checked && treatment === 'appt') data.treatName = nameIn.value.trim();
       closeSheet();
       const after = () => { if (data.chemoDone && !wasDone) { if (repeatNow() || treatment === 'appt') toast('Saved. Ticked done.'); else { confetti(); toast('One more session done. Well done.'); } if (repeatNow()) logRepeatDose(key, data.treatName); } else toast('Saved'); };
       if (state.demo) {
@@ -16173,7 +16191,7 @@ async function moveSession(from, to) {
 /* Add sessions (v189): a run of sessions in one go, from the first date, how many and how often, weekdays only.
    The first can start a new cycle; the rest carry cycleStart false so the weekly ones stay in it. A day that already
    has a session is left as it is. */
-const RUN_EVERY = [['weekday', 'Every weekday'], [7, 'Weekly'], [14, 'Every 2 weeks'], [21, 'Every 3 weeks'], [28, 'Every 4 weeks'], [42, 'Every 6 weeks'], [56, 'Every 8 weeks']];
+const RUN_EVERY = [['weekday', 'Every weekday'], [7, 'Weekly'], [14, 'Every 2 weeks'], [21, 'Every 3 weeks'], [28, 'Every 4 weeks'], [42, 'Every 6 weeks'], [56, 'Every 8 weeks'], [84, 'Every 12 weeks']];
 function runDays(first, count, every, atHome) {
   const out = [];
   let d = first;
@@ -16197,7 +16215,16 @@ function openAddSessions() {
   const cycleLabel = h('label', { class: 'check' });
   const typeRow = h('div', { class: 'wiz-day treat-chips', role: 'group', 'aria-label': 'Kind of treatment' });
   const everyRow = h('div', { class: 'wiz-day treat-chips', role: 'group', 'aria-label': 'How often' });
-  const firstIn = h('input', { type: 'date', class: 'input', value: todayStr() });
+  /* v381 (review): an injection or infusion run carries on from the last one, the same gap after it and the same medicine */
+  const lastRep = chemoDays().filter((d) => isRepeat(treatmentOf(state.days[d]))).pop();
+  let firstDay = todayStr();
+  if (lastRep && treatmentOf(state.days[lastRep]).key === treatment) {
+    const prevRep = chemoDays().filter((d) => d < lastRep && isRepeat(treatmentOf(state.days[d]))).pop();
+    const gap = prevRep ? dayGap(prevRep, lastRep) : 0;
+    if ([7, 14, 21, 28, 42, 56, 84].includes(gap)) { every = gap; let d = addDays(lastRep, gap); while (d < todayStr()) d = addDays(d, gap); firstDay = d; }
+  }
+  const firstIn = h('input', { type: 'date', class: 'input', value: firstDay });
+  if (lastRep && state.days[lastRep].treatName && treatmentOf(state.days[lastRep]).key === treatment) nameIn.value = state.days[lastRep].treatName;
   const countIn = h('input', { type: 'text', inputmode: 'numeric', class: 'input', value: '3', 'aria-describedby': 'run-count-hint' });
   const cbNew = h('input', { type: 'checkbox', checked: true });
   const preview = h('p', { class: 'cyc-preview', role: 'status' });
