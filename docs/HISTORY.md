@@ -6,6 +6,13 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v386 (2 November 2026): carers (review item 28)
+- **A carer's covering email** is about the patient, not written as them (`carerVoice()` on the words and the subject): "Ahead of Sam's next appointment, here are Sam's notes...", "how often Sam takes it", signed "Shelley, for Sam Example" as before.
+- **The Set-up's name step on a carer's phone** asks for the patient's name ("The patient's name on the reports", "Not your own name.", no name autofill); it asked "Your name on the reports" and put the carer's name on every report.
+- **Two carers in one circle**: a carer check-in (`carer`, `carermorning`, `carerevening`, `weekcarer`) saved from v386 has the writer's sign-in id in its document id (`{day}_{slot}_{uid}`, `CARER_OWN_SLOTS`), so a second carer is no longer locked out by the first's and can save their own. A carer finds their own (old ones by the uid stamp, `ownsCheckin()`); the patient and others see the carer's as before; an old one keeps its id when changed (`saveCheckin()` uses `existing.id`). Your week, as you see it finds the carer's own week. No rules change: the uid stamp was already enforced. The preview keeps the old ids.
+- **Daybook Assistant's brief** (bridge, `weekly`, `report`, `notes`): "their consultant or specialist nurse", not "their oncologist", whatever the condition.
+Tested on Sam's preview as a carer: the rows, a carer's evening check-in saved and shown as "Evening, as you saw it", and the covering email's words; no page errors. Two real carers need two sign-ins, so the id change is checked in the code only.
+
 ### v385 (2 November 2026): Notes for the team's charts fit what the person logs (review item 26)
 `twoPageCharts()`: a reading with nothing logged in the period is left off the charts page (Robin's report had empty Temperature and Oxygen charts); Pain and Mood always stay; then each number or score from Things I track gets its own chart from the evening check-ins ("Hours at my desk (hours)", "Stiffness first thing (0 to 10)", "Average 3.2", teal line, no colour judgement), up to eight charts in all. Yes or no tracks stay one line in the Summary. Sam's report is unchanged (every reading logged). Tested on Robin's and Sam's previews against v384: eight charts on two pages for Robin, Sam's nine as before, no page errors.
 

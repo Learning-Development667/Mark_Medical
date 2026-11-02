@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '385';
+const APP_VERSION = '386';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -2359,8 +2359,10 @@ function openSetup(kind, opts = {}) {
         if (medName && medName !== draft.ibdMed) { await addMedicineByName(medName, "Crohn's or colitis", ev, nx); draft.ibdMed = medName; draft.ibdEvery = ev; draft.ibdNext = nx; }
         return saveProfilePatch(patch);
       } },
-    { key: 'name', only: full, title: 'Your name on the reports', hint: 'Your full name, as the hospital has it. It goes at the top of every report and in the subject of the covering email, so the team can file them against your records.',
-      body: () => [field('Name on the report', h('input', { id: 'setup-report-name', type: 'text', autocomplete: 'name', maxlength: '60', value: draft.reportName }))],
+    /* v386 (review item 28): on a carer's phone this is the patient's name, not the carer's (autocomplete gave her own) */
+    { key: 'name', only: full, title: isCarerUser() ? "The patient's name on the reports" : 'Your name on the reports',
+      hint: isCarerUser() ? "The full name of the person the records are about, as the hospital has it. It goes at the top of every report and in the subject of the covering email, so the team can file them against the right records. Not your own name." : 'Your full name, as the hospital has it. It goes at the top of every report and in the subject of the covering email, so the team can file them against your records.',
+      body: () => [field(isCarerUser() ? "Patient's name on the report" : 'Name on the report', h('input', { id: 'setup-report-name', type: 'text', autocomplete: isCarerUser() ? 'off' : 'name', maxlength: '60', value: draft.reportName }))],
       save: async () => { const v = $('setup-report-name').value.trim(); draft.reportName = v; if (!v) return true; return saveProfilePatch({ reportName: v }); } },
     { key: 'contact', only: full, title: 'Who to contact', hint: 'The nurse, the ward or the team you ring first. Reports can be emailed to them from Daybook. More can be added later under More.',
       body: () => [
@@ -7597,7 +7599,17 @@ function isCarerUser() {
   const who = patientFullName(), me = state.name || '';
   return Boolean(who) && who.split(/\s+/)[0].toLowerCase() !== me.toLowerCase();
 }
-function emailSubject(K, range) { const who = patientFullName(); return who ? K.named(who, range) : K.subject(range); }
+function emailSubject(K, range) { const who = patientFullName(); const t = who ? K.named(who, range) : K.subject(range); return isCarerUser() ? carerVoice(t) : t; }
+/* v386 (review item 28): a carer sending a report writes about the patient, not as them ("Sam's notes", "what Sam ate"),
+   and signs it "Shelley, for Sam" as before */
+function carerVoice(t) {
+  const f = patientFullName() ? patientWord() : 'the patient', fp = patientFullName() ? patientWord() + "'s" : "the patient's";
+  return String(t)
+    .replace(/\bour (next )?(appointment|session)\b/g, (m, nx, w) => fp + ' ' + (nx || '') + w)
+    .replace(/\b[Mm]y\b/g, fp)
+    .replace(/\bI take\b/g, f + ' takes').replace(/\bI have\b/g, f + ' has').replace(/\bI was\b/g, f + ' was')
+    .replace(/\bI\b/g, f);
+}
 function emailSignOff() {
   const who = patientFullName(), me = state.name || '';
   if (!who) return me;
@@ -7630,7 +7642,7 @@ function openSendSheet(kind) {
     let blobP = makeBlob();
     const subject = h('input', { type: 'text', id: 'send-subject', value: emailSubject(K, range) });
     const note = h('textarea', { id: 'send-note', rows: '6' });
-    note.value = `${greetingFor(c)}\n\n${K.words(range, n)} The PDF is attached.\n\nThank you,\n${emailSignOff()}`.trim() + '\n\n' + SENT_FROM;
+    note.value = `${greetingFor(c)}\n\n${isCarerUser() ? carerVoice(K.words(range, n)) : K.words(range, n)} The PDF is attached.\n\nThank you,\n${emailSignOff()}`.trim() + '\n\n' + SENT_FROM;
     /* Sent by Daybook (v159): with the bridge and a real sign-in, one tap sends the email itself (the bridge's
        /send-report, from reporting@mymedicaldaybook.co.uk in the sender's name, the sender's own address as the reply
        address and in copy). The share sheet stays as "Send from my own Mail app" under it, and is the only route in the
@@ -10105,8 +10117,18 @@ function checkinTitle(slot, e) {
   if (isCarerDaySlot(slot)) { const w = slot === 'carermorning' ? 'Morning' : 'Evening'; return e && e.addedBy ? (e.addedBy === state.name ? w + ', as you saw it' : w + ' as ' + e.addedBy + ' saw it') : w + ', as you see it'; }
   return slot === 'carer' ? "Carer's view" : slot === 'week' ? 'Your week' : slotWord(slot) + ' check-in';
 }
-function checkinId(day, slot) { return day + '_' + slot; }
+/* v386 (review item 28): two carers in one circle each have their own carer check-ins. A carer slot saved from v386 on
+   carries the writer's sign-in id in its document id ({day}_{slot}_{uid}), so a second carer no longer finds the first's,
+   is locked out of it and cannot save one of their own. A carer finds their own (old ones by the uid stamp); anyone else
+   sees the carer's as before. */
+const CARER_OWN_SLOTS = ['carer', 'carermorning', 'carerevening', 'weekcarer'];
+function checkinId(day, slot) { const u = CARER_OWN_SLOTS.includes(slot) && !state.demo ? myUid() : ''; return day + '_' + slot + (u ? '_' + u : ''); }
 function findCheckin(day, slot) {
+  if (CARER_OWN_SLOTS.includes(slot)) {
+    const seen = new Set();
+    const list = [...state.dayEntries, ...state.recentEntries].filter((e) => e.type === 'checkin' && e.slot === slot && e.day === day && !seen.has(e.id) && seen.add(e.id));
+    return (isCarerUser() ? list.find((e) => ownsCheckin(e)) : list[0]) || null;
+  }
   const id = checkinId(day, slot);
   return state.dayEntries.find((e) => e.id === id) || state.recentEntries.find((e) => e.id === id) || null;
 }
@@ -10713,7 +10735,7 @@ function openCheckin(slot, initialDay) {
    goes); { done } is written as the entry's done flag (false while unfinished; a check saved before v166 has none and counts
    as done). Returns what was written, or null when nothing changed. */
 async function saveCheckin(slot, day, answers, existing, opts = {}) {
-  const id = checkinId(day, slot);
+  const id = existing && existing.id ? existing.id : checkinId(day, slot); // v386: an old carer check-in keeps its own id
   const today = todayStr();
   const at = existing ? entryDate(existing) : atFromInputs(day, day === today ? fmtTime(new Date()) : (slot === 'morning' || slot === 'carermorning' ? '09:00' : slot === 'carer' ? '20:00' : '21:00'));
   const data = { type: 'checkin', slot, day, addedBy: existing && existing.addedBy ? existing.addedBy : state.name };
@@ -10784,7 +10806,7 @@ function weekBounds(day) {
 }
 function weekCheckFor(day, slot = 'week') {
   const { from, to } = weekBounds(day);
-  const all = state.recentEntries.concat(state.dayEntries).filter((e) => e.type === 'checkin' && e.slot === slot && e.day >= from && e.day <= to);
+  const all = state.recentEntries.concat(state.dayEntries).filter((e) => e.type === 'checkin' && e.slot === slot && e.day >= from && e.day <= to && (slot !== 'weekcarer' || !isCarerUser() || ownsCheckin(e)));
   return all.sort((a, b) => b.day.localeCompare(a.day))[0] || null;
 }
 function weekQuestions(existing, slot = 'week') {
