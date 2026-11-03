@@ -6,6 +6,9 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v396 (3 November 2026): a contact address on the privacy page
+- `window.DAYBOOK_CONTACT` in `config.js` is now support@mymedicaldaybook.co.uk, so the privacy page, terms and About show "Contact: support@mymedicaldaybook.co.uk" (`openLegal()` fills every `[data-contact]`); Apple and Google both ask for one. `config.js` now carries `?v=` like the others.
+
 ### v395 (2 November 2026): the iPhone app's first build to TestFlight
 Mark set up Apple: the App Store Connect API key (Admin, "Daybook Github"; secrets `APP_STORE_CONNECT_API_KEY`, `APP_STORE_CONNECT_KEY_ID`, `APP_STORE_CONNECT_ISSUER_ID`, and `APPLE_TEAM_ID`), the App ID `uk.co.mark1apps.daybook` (HealthKit and Push Notifications ticked), and the app record in App Store Connect (My Medical Daybook, English (U.K.), SKU daybook-001, seller Mark 1 Apps Ltd); the updated licence accepted.
 - The Capacitor shell from v342 (`native/`) kept as it was, with: Daybook's own icon in place of Capacitor's sample, splash screens in the page colour with the icon, iPhone only (`TARGETED_DEVICE_FAMILY = 1`, so no iPad screenshots or iPad review), `ITSAppUsesNonExemptEncryption` false (HTTPS only).

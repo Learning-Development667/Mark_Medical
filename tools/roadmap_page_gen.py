@@ -8,7 +8,7 @@ asked for a paste-ready prompt on every step.
 """
 import html, json, re, datetime
 
-VERSION = '394'
+VERSION = '396'
 UPDATED = '2 November 2026'
 REPO = 'learning-development667/mark_medical'
 
@@ -24,7 +24,6 @@ def P(n, title, body, end):
 GROUPS = []
 
 store = [
- ('The contact email on the privacy page', 'Mark', 'Apple asks for a privacy page and a support address. The privacy page and terms name no email yet; choose one (support@mymedicaldaybook.co.uk, say).', 'Help me choose the contact address for the privacy page, terms and About, then set it (window.DAYBOOK_CONTACT in config.js) and check it shows on all three.', 'next'),
  ('The iPhone app, with Apple Health and Siri', 'Claude', 'The first build reached TestFlight on 2 November (built and sent by GitHub). Next: you install it through TestFlight and check signing in; then Apple Health and notifications.', 'Start the iPhone app: a thin native wrapper around the web app built in Xcode on my MacBook Air, reading Apple Health directly (steps, sleep, weight, workouts) instead of Health Auto Export, with Siri actions "Log a dose" and "Log my temperature". Plan it with me first: the project layout, what lives in the repository, and the first step I do in Xcode.', 'later'),
  ('The Android app, with Health Connect', 'Claude', 'The Google Play account (Mark 1 Apps Ltd, organisation, verified) and the app (uk.co.mark1apps.daybook) were made on 2 November. Next: the Android build from GitHub, and its first upload by hand to internal testing.', 'Plan the Android wrapper: the web app inside a native shell reading Health Connect directly, built from GitHub so I need no Android machine. Tell me what accounts and steps it needs, and whether a free Health Connect forwarding app could serve Android Beta testers sooner.', 'later'),
  ('Quick checks on the phone', 'Mark', 'Three things built but never confirmed: a morning weigh-in arriving from Apple Health by itself; Scan a barcode on a few real UK products; a real physio plan through Add from a photo or PDF.', 'Help me do three quick checks on my phone and tell you what I see: a weigh-in arriving from Apple Health, Scan a barcode on three real products, and a real physio plan through Add from a photo or PDF of the plan. Fix anything that misbehaves.', 'open'),

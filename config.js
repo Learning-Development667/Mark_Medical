@@ -31,3 +31,6 @@ window.DAYBOOK_PUSH = { publicKey: "BJ33RgWZAU7jOB8esjGKGMB2yPSXU42KmFEQX3Tn1Dgn
 
 /* The bridge, for Explain in Daybook (see worker/) */
 window.DAYBOOK_BRIDGE = { url: "https://care-log-bridge.markbrown667.workers.dev" };
+
+/* The contact address shown on the privacy page, terms and About (v396; the stores ask for one). */
+window.DAYBOOK_CONTACT = { email: "support@mymedicaldaybook.co.uk" };
