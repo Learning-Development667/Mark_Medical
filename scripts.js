@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '398';
+const APP_VERSION = '399';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -13506,9 +13506,21 @@ async function withBusy(btn, busyText, fn) {
    token, platform, private, ... }; the bridge sends to it through FCM, which reaches an iPhone through Apple's
    service. Everything else (the times, the nudge, nothing sent once a dose is logged) is the bridge's, unchanged. */
 function nativeApp() { return Boolean(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()); }
+/* The plugin is reached through Capacitor's own bridge (nativePromise and addListener), because Daybook has no
+   build step and so does not load @capacitor/core, which is where registerPlugin lives (v399: in v398 the switch
+   stayed grey in the apps because registerPlugin was missing). Every method returns a promise. */
 let fcmPlugin = null;
 function fcm() {
-  if (!fcmPlugin && nativeApp() && window.Capacitor.registerPlugin) fcmPlugin = window.Capacitor.registerPlugin('FirebaseMessaging');
+  if (fcmPlugin || !nativeApp()) return fcmPlugin;
+  const C = window.Capacitor;
+  if (C.registerPlugin) { fcmPlugin = C.registerPlugin('FirebaseMessaging'); return fcmPlugin; }
+  if (!C.nativePromise) return null;
+  const call = (m) => (opts) => C.nativePromise('FirebaseMessaging', m, opts || {});
+  fcmPlugin = {
+    checkPermissions: call('checkPermissions'), requestPermissions: call('requestPermissions'),
+    getToken: call('getToken'), deleteToken: call('deleteToken'), createChannel: call('createChannel'),
+    addListener: (ev, cb) => { try { return Promise.resolve(C.addListener('FirebaseMessaging', ev, cb)); } catch (e) { return Promise.reject(e); } },
+  };
   return fcmPlugin;
 }
 const FCM_TOKEN_KEY = 'daybook.fcmToken';
