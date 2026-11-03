@@ -8,7 +8,7 @@ asked for a paste-ready prompt on every step.
 """
 import html, json, re, datetime
 
-VERSION = '396'
+VERSION = '397'
 UPDATED = '2 November 2026'
 REPO = 'learning-development667/mark_medical'
 
@@ -25,7 +25,7 @@ GROUPS = []
 
 store = [
  ('The iPhone app, with Apple Health and Siri', 'Claude', 'The first build reached TestFlight on 2 November (built and sent by GitHub). Next: you install it through TestFlight and check signing in; then Apple Health and notifications.', 'Start the iPhone app: a thin native wrapper around the web app built in Xcode on my MacBook Air, reading Apple Health directly (steps, sleep, weight, workouts) instead of Health Auto Export, with Siri actions "Log a dose" and "Log my temperature". Plan it with me first: the project layout, what lives in the repository, and the first step I do in Xcode.', 'later'),
- ('The Android app, with Health Connect', 'Claude', 'The Google Play account (Mark 1 Apps Ltd, organisation, verified) and the app (uk.co.mark1apps.daybook) were made on 2 November. Next: the Android build from GitHub, and its first upload by hand to internal testing.', 'Plan the Android wrapper: the web app inside a native shell reading Health Connect directly, built from GitHub so I need no Android machine. Tell me what accounts and steps it needs, and whether a free Health Connect forwarding app could serve Android Beta testers sooner.', 'later'),
+ ('The Android app, with Health Connect', 'Claude', 'The Google Play account and the app (uk.co.mark1apps.daybook) were made on 2 November; the Android project and its GitHub build on 3 November (v397). Next: you add the ANDROID_KEYSTORE_PASSWORD secret, Claude runs the build, you upload the first .aab by hand to Internal testing.', 'Plan the Android wrapper: the web app inside a native shell reading Health Connect directly, built from GitHub so I need no Android machine. Tell me what accounts and steps it needs, and whether a free Health Connect forwarding app could serve Android Beta testers sooner.', 'later'),
  ('Quick checks on the phone', 'Mark', 'Three things built but never confirmed: a morning weigh-in arriving from Apple Health by itself; Scan a barcode on a few real UK products; a real physio plan through Add from a photo or PDF.', 'Help me do three quick checks on my phone and tell you what I see: a weigh-in arriving from Apple Health, Scan a barcode on three real products, and a real physio plan through Add from a photo or PDF of the plan. Fix anything that misbehaves.', 'open'),
  ('Before testing: accessibility re-check', 'Claude', 'axe-core on every screen and sheet in both colour schemes, the hand checks, and the date on the Settings App card renewed. Last full check: 28 September.', 'Run axe-core over every screen, tab, report and sheet in light and dark at 390 and 320 wide, plus the hand checks in CLAUDE.md (focus order, every sheet a real dialog, 44px targets, nothing off the edge). Fix every violation, then renew the date on the App card and in About.', 'open'),
  ('Before testing: security', 'Claude', 'Parts 1 and 2 of the review are done (v291, v329 to v331). Left: pdf.js 4 now; the operator’s own key once the iPhone app reads Apple Health; the admin tool in a private repository once the GitHub organisation exists; a review before TestFlight.', 'Move the letter reader from pdf.js 3.11 to pdf.js 4 in vendor/ (the CSP and the worker path), test a PDF letter, and list what else on the security checklist in ROADMAP.md can be done now and what must wait.', 'open'),

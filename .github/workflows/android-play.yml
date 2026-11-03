@@ -1,0 +1,75 @@
+# Builds the Android app (native/android, Capacitor) with the web app inside it, signed with the upload key,
+# as the .aab file Google Play takes (v397). Run by hand from the Actions tab. Needs one secret,
+# ANDROID_KEYSTORE_PASSWORD: a long password Mark chose and keeps in the password manager.
+# The first run makes the upload key and keeps it in the repository ENCRYPTED with that password
+# (native/android/upload-key.p12.enc); every later run decrypts it, so the key never changes. The log never
+# shows the password or the key. The .aab is kept on the run for 7 days to download and upload to Play by hand
+# the first time (Play Console, Testing, Internal testing); automatic upload can follow.
+name: Android app for Google Play
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Check the password is set
+        env:
+          PW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          if [ ${#PW} -lt 20 ]; then echo "ANDROID_KEYSTORE_PASSWORD is missing or shorter than 20 characters"; exit 1; fi
+      - name: Make the upload key (first run only)
+        env:
+          PW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -f native/android/upload-key.p12.enc ]; then echo "Upload key already made"; exit 0; fi
+          keytool -genkeypair -alias upload -keyalg RSA -keysize 4096 -validity 10000 -storetype PKCS12 \
+            -keystore "$RUNNER_TEMP/upload.p12" -storepass:env PW -keypass:env PW \
+            -dname "CN=Mark 1 Apps Ltd, O=Mark 1 Apps Ltd, L=London, C=GB" > /dev/null
+          openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -salt -pass env:PW \
+            -in "$RUNNER_TEMP/upload.p12" -out native/android/upload-key.p12.enc
+          rm -f "$RUNNER_TEMP/upload.p12"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add native/android/upload-key.p12.enc
+          git commit -m "Android upload key, encrypted with the ANDROID_KEYSTORE_PASSWORD secret"
+          git push
+      - name: Copy the web app into the Android project
+        working-directory: native
+        run: npm ci && node scripts/copy-web.mjs && npx cap sync android
+      - name: Unlock the upload key
+        env:
+          PW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -pass env:PW -in native/android/upload-key.p12.enc -out "$RUNNER_TEMP/upload.p12"
+      - name: Build the signed app bundle
+        working-directory: native/android
+        env:
+          ANDROID_KEYSTORE_FILE: ${{ runner.temp }}/upload.p12
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_VERSION_CODE: ${{ github.run_number }}
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon bundleRelease
+          ls -la app/build/outputs/bundle/release/
+      - name: Remove the key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/upload.p12"
+      - name: Keep the app bundle for download
+        uses: actions/upload-artifact@v4
+        with:
+          name: daybook-android-${{ github.run_number }}
+          path: native/android/app/build/outputs/bundle/release/app-release.aab
+          retention-days: 7

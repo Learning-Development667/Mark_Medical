@@ -1,12 +1,13 @@
 {
   "name": "daybook-native",
   "private": true,
-  "description": "The iPhone (and later Android) app around Daybook's web code. See README.md.",
+  "description": "The iPhone and Android apps around Daybook's web code. See README.md.",
   "scripts": {
     "copy-web": "node scripts/copy-web.mjs",
-    "sync": "node scripts/copy-web.mjs && npx cap sync ios"
+    "sync": "node scripts/copy-web.mjs && npx cap sync"
   },
   "dependencies": {
+    "@capacitor/android": "8.6.0",
     "@capacitor/core": "8.6.0",
     "@capacitor/ios": "8.6.0"
   },

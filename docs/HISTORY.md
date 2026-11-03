@@ -6,6 +6,11 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v397 (3 November 2026): the Android app
+- `native/android`: Capacitor 8.6 Android beside the iPhone app (`@capacitor/android`), the same appId `uk.co.mark1apps.daybook`, name Daybook. Icons from `icons/icon-1024.png` in every density (an adaptive icon: the picture at 68% over a blurred copy of itself, so the sun and books stay inside every mask shape), and the opening screen in page colour #F6F4EF with the icon, as on the iPhone.
+- The manifest asks for the camera (barcodes, letters) and the microphone (voice notes, Tap to speak), each optional hardware, and turns off Android's cloud backup and device transfer (`allowBackup=false`, `data_extraction_rules.xml`): nothing Daybook keeps on the phone goes to Google's backup.
+- `.github/workflows/android-play.yml` (Android app for Google Play, run by hand): Node 22, Java 21, `cap sync android`, then `bundleRelease` signed with the upload key. The key is made on the first run and kept in the repository only encrypted (`native/android/upload-key.p12.enc`, AES-256 with PBKDF2, 600,000 rounds) with the `ANDROID_KEYSTORE_PASSWORD` secret, which must be 20 characters or more; `versionCode` is the run number. The .aab stays on the run for 7 days; the first upload to Play is by hand (Internal testing).
+
 ### v396 (3 November 2026): a contact address on the privacy page
 - `window.DAYBOOK_CONTACT` in `config.js` is now support@mymedicaldaybook.co.uk, so the privacy page, terms and About show "Contact: support@mymedicaldaybook.co.uk" (`openLegal()` fills every `[data-contact]`); Apple and Google both ask for one. `config.js` now carries `?v=` like the others.
 
