@@ -6,6 +6,9 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v401 (3 November 2026): the screen check where it is easy to find
+- The check measured the page behind About (More fitted) and Mark could not find About. Now each page shown in the apps is measured 1.5 seconds after it opens (`noteOverflow()` from `showTab()`, and Today at 3 and 8 seconds after start), and Settings shows the result under the version (`#screen-check`, refreshed whenever Settings opens): the widths, the root and body text sizes, and per page either "fits" or the parts sticking out. The "Add Daybook to the Home Screen" line in Settings' App card is hidden in the apps. Mark then reported build 5 no longer scrolls sideways; the check stays in to catch it if it comes back, and goes before the stores.
+
 ### v400 (3 November 2026): a screen check in the apps' About
 - Mark, on build 4 through TestFlight: the page is wider than the phone (the right edge cut off, sideways scrolling), which the Home Screen version on the same phone does not do. `screenCheckText()`, shown under the version in About only inside the apps (`nativeApp()`), reports the window, page, content and visible widths, the scale and the root text size, and the four widest parts sticking out past the page (tag, id and two classes, never any words from the circle), so one screenshot shows what to fix.
 

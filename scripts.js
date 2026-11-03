@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '400';
+const APP_VERSION = '401';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -1022,20 +1022,28 @@ $('nohousehold-signout').addEventListener('click', () => { $('nohousehold').hidd
 /* A screen check for the iPhone and Android apps (v400), shown under the version in About: the page in the apps
    was laid out wider than the phone (Mark, build 4), so this reports the widths and the parts that stick out,
    for one screenshot to show what to fix. Names classes and ids only, never anything written in Daybook. */
-function screenCheckText() {
-  const vw = window.innerWidth, cw = document.documentElement.clientWidth, sw = document.documentElement.scrollWidth;
-  const vv = window.visualViewport ? Math.round(window.visualViewport.width) : '-';
-  const wide = [];
+const overflowSeen = {};
+function overflowParts(limit) {
+  const cw = document.documentElement.clientWidth, wide = [];
   for (const el of document.querySelectorAll('body *')) {
     const r = el.getBoundingClientRect();
-    if (r.width && r.right > cw + 1) wide.push({ el, right: Math.round(r.right) });
+    if (r.width && r.right > cw + 1) wide.push({ el, right: Math.round(r.right), w: Math.round(r.width) });
   }
   wide.sort((a, b) => b.right - a.right);
   const name = (el) => el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + (el.classList.length ? '.' + [...el.classList].slice(0, 2).join('.') : '');
-  const seen = new Set(); const top = [];
-  for (const w of wide) { const n = name(w.el); if (!seen.has(n)) { seen.add(n); top.push(n + ' ' + w.right); } if (top.length >= 4) break; }
-  const fs = getComputedStyle(document.documentElement).fontSize;
-  return `Screen check: window ${vw}, page ${cw}, content ${sw}, visible ${vv}, scale ${window.devicePixelRatio}, text ${fs}. Wider: ${top.join(', ') || 'none'}.`;
+  const seen = new Set(), top = [];
+  for (const x of wide) { const n = name(x.el); if (!seen.has(n)) { seen.add(n); top.push(n + ' ' + x.right + '/' + x.w); } if (top.length >= limit) break; }
+  return top;
+}
+function noteOverflow(page) {
+  try { overflowSeen[page] = { content: document.documentElement.scrollWidth, parts: overflowParts(5) }; } catch (e) { /* a check only */ }
+}
+function screenCheckText() {
+  const vw = window.innerWidth, cw = document.documentElement.clientWidth;
+  const vv = window.visualViewport ? Math.round(window.visualViewport.width) : '-';
+  const fs = getComputedStyle(document.documentElement).fontSize, bfs = getComputedStyle(document.body).fontSize;
+  const pages = Object.keys(overflowSeen).map((k) => `${k} ${overflowSeen[k].content}: ${overflowSeen[k].parts.join(', ') || 'fits'}`);
+  return `Screen check: window ${vw}, page ${cw}, visible ${vv}, scale ${window.devicePixelRatio}, text ${fs}/${bfs}. ${pages.join('. ') || 'No pages checked yet.'}`;
 }
 const LEGAL_PAGES = { privacy: 'Privacy', terms: 'Terms of use', about: 'About Daybook' };
 function openLegal(which) {
@@ -3055,6 +3063,7 @@ function showTab(name) {
   document.body.dataset.accent = highlight; // each screen takes its tab's colour as a quiet accent (v356)
   document.body.dataset.page = name; // the watercolour behind the app is stronger on the hub pages (styles.css, v229)
   setBrand(PAGE_TITLES[name] || '');
+  if (nativeApp()) setTimeout(() => noteOverflow(name), 1500); // the apps' screen check (v400)
   /* every page opens at its top (v287, Mark on his iPhone and Mac: tiles opened the next page part way down). Safari
      can ignore one scroll made while the old page is still laid out or a flick is still moving, so it is made again
      once the new page has drawn */
@@ -13637,6 +13646,7 @@ $('settings-reminders').addEventListener('change', (ev) => setReminders(ev.targe
 /* In the apps: a token that changes (a restore, a new install) replaces the old document; a tapped
    notification opens the screen it names; one arriving while Daybook is open shows as a toast. */
 (function watchNativePush() {
+  if (nativeApp()) { setTimeout(() => noteOverflow(document.body.dataset.page || 'today'), 3000); setTimeout(() => noteOverflow(document.body.dataset.page || 'today'), 8000); }
   const plugin = fcm();
   if (!plugin) return;
   plugin.addListener('tokenReceived', async ({ token }) => {
@@ -17623,6 +17633,14 @@ function openContactsSheet(addNew) {
 /* ------------------------------------------------------------------ */
 
 $('app-version').textContent = versionText();
+/* In the apps (v400): no "add to the Home Screen" line, and the screen check under the version, refreshed each time Settings opens */
+if (nativeApp()) {
+  const homeLine = $('app-version').parentElement.querySelector('p');
+  if (homeLine && /Home Screen/.test(homeLine.textContent)) homeLine.hidden = true;
+  const check = h('p', { class: 'muted mono', id: 'screen-check' });
+  $('app-version').after(check);
+  new MutationObserver(() => { if (document.body.dataset.page === 'settings') check.textContent = screenCheckText(); }).observe(document.body, { attributes: true, attributeFilter: ['data-page'] });
+}
 syncStage();
 
 /* ---- Opener: the loading page, shown on every cold start while the account check runs. Since v222 a short
