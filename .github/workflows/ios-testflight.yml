@@ -44,6 +44,13 @@ jobs:
             CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
             archive | tail -40
           test -d "$RUNNER_TEMP/Daybook.xcarchive"
+      - name: Put the notifications entitlement on the app
+        # The archive is built unsigned, so it carries no entitlements; an ad-hoc signature with App.entitlements
+        # (aps-environment, v398) gives the export something to keep when it signs for the App Store.
+        run: |
+          APP="$RUNNER_TEMP/Daybook.xcarchive/Products/Applications/App.app"
+          codesign --force --sign - --entitlements native/ios/App/App/App.entitlements "$APP"
+          codesign -d --entitlements :- "$APP" | grep -q aps-environment
       - name: Send to TestFlight
         working-directory: native/ios/App
         env:

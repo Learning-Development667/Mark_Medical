@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "270131122577",
+    "project_id": "care-log-3d05a",
+    "storage_bucket": "care-log-3d05a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:270131122577:android:4ad4d1a943231398560a30",
+        "android_client_info": {
+          "package_name": "uk.co.mark1apps.daybook"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB_xfdjqwEBl9KheesDZ5bE2jlQdBQD_uc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -707,6 +707,7 @@ async function encryptPayload(sub, text) {
 }
 /* Sends one notification; a dead subscription (404, 410) is removed so it is not tried again */
 async function sendPush(env, fs, subDoc, payload) {
+  if (f(subDoc.fields, 'kind') === 'fcm') return sendFcm(env, fs, subDoc, payload);
   const endpoint = f(subDoc.fields, 'endpoint');
   const keys = subDoc.fields.keys && subDoc.fields.keys.mapValue ? subDoc.fields.keys.mapValue.fields : {};
   const sub = { endpoint, p256dh: f(keys, 'p256dh'), auth: f(keys, 'auth') };
@@ -718,6 +719,40 @@ async function sendPush(env, fs, subDoc, payload) {
     if (!r.ok) return 'push service ' + r.status + ' ' + (await r.text()).slice(0, 120);
     return 'sent';
   } catch (e) { return 'error ' + (e && e.message || e); }
+}
+
+/* The iPhone and Android apps (v398): one notification through Firebase Cloud Messaging's HTTP v1 API, with the
+   bridge's own service account (FCM reaches an iPhone through the APNs key uploaded to Firebase). The body is
+   exactly what Web Push would carry, private or not; a token FCM no longer knows is removed. */
+async function sendFcm(env, fs, subDoc, payload) {
+  const token = f(subDoc.fields, 'token');
+  if (!token) return 'incomplete subscription';
+  try {
+    const sa = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT || '{}');
+    if (!sa.client_email || !sa.private_key || !sa.project_id) return 'no service account';
+    const bearer = await accessToken(sa, 'https://www.googleapis.com/auth/firebase.messaging');
+    const r = await fetch(`https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages:send`, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + bearer, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: fcmMessage(token, payload, Math.floor(Date.now() / 1000)) }),
+    });
+    if (r.ok) return 'sent';
+    const text = (await r.text()).slice(0, 300);
+    if (r.status === 404 || /UNREGISTERED|registration-token-not-registered/.test(text)) { await fs.remove(subDoc.path || ('pushSubs/' + subDoc.id)); return 'gone, removed'; }
+    return 'fcm ' + r.status + ' ' + text.slice(0, 120);
+  } catch (e) { return 'error ' + (e && e.message || e); }
+}
+/* The FCM message for one phone: a notification both platforms show, the screen to open in data.url,
+   Android's reminders channel, and on an iPhone a sound and one collapse id per reminder */
+function fcmMessage(token, payload, nowSec) {
+  const tag = String(payload.tag || 'daybook').slice(0, 60);
+  return {
+    token,
+    notification: { title: payload.title || 'Daybook', body: payload.body || '' },
+    data: { url: String(payload.url || ''), tag },
+    android: { priority: 'HIGH', ttl: '3600s', notification: { channel_id: 'reminders', tag, icon: 'ic_stat_daybook', color: '#18727A' } },
+    apns: { headers: { 'apns-priority': '10', 'apns-expiration': String(nowSec + 3600), 'apns-collapse-id': tag }, payload: { aps: { sound: 'default' } } },
+  };
 }
 
 /* Firestore's typed JSON */
@@ -1776,7 +1811,7 @@ async function googleKey(kid, fetchFn) {
 }
 
 /* For the test harness only (scratchpad): nothing in the app or the workflow uses these */
-export const _test = { verifyEmailHtml, mapOffProduct, handleFood, verifyFirebaseToken, askClaude, aiErrorMessage, EXPLAIN_SYSTEM, distanceKm, payloadFor, sha256Hex, hp, stretchNudgeDue, stretchTickedOn, planEntryFromDocs, planEntryDue, readPlanDoc, planEntryFields, runReminders, runHouseholdReminders, touchPlan, firestore, buildUsage, countCircle, readUsageDoc, handleUsage, USAGE_PATH };
+export const _test = { fcmMessage, sendFcm, sendPush, verifyEmailHtml, mapOffProduct, handleFood, verifyFirebaseToken, askClaude, aiErrorMessage, EXPLAIN_SYSTEM, distanceKm, payloadFor, sha256Hex, hp, stretchNudgeDue, stretchTickedOn, planEntryFromDocs, planEntryDue, readPlanDoc, planEntryFields, runReminders, runHouseholdReminders, touchPlan, firestore, buildUsage, countCircle, readUsageDoc, handleUsage, USAGE_PATH };
 
 /* ------------------------------------------------------------------ */
 /* Plumbing                                                             */

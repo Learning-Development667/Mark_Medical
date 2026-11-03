@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '397';
+const APP_VERSION = '398';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -2255,7 +2255,7 @@ function renderSetupRow() {
   row.classList.toggle('is-due', !done && !state.readOnly);
   sub.textContent = done ? 'What Daybook is for, your name on reports, who to contact, the Home Screen. Run it again any time.' : 'Not done yet. What Daybook is for, your name on reports, who to contact, the Home Screen.';
 }
-function isStandalone() { return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true; }
+function isStandalone() { return nativeApp() || window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true; }
 /* The usual Crohn's and colitis medicines, offered by the set-up (v221); any name can be typed */
 const IBD_SETUP_MEDS = ['Adalimumab (Humira)', 'Adalimumab (Amgevita)', 'Adalimumab (Yuflyma)', 'Infliximab (Remicade)', 'Infliximab (Remsima)', 'Vedolizumab (Entyvio)', 'Ustekinumab (Stelara)', 'Risankizumab (Skyrizi)', 'Mirikizumab (Omvoh)', 'Golimumab (Simponi)', 'Upadacitinib (Rinvoq)', 'Tofacitinib (Xeljanz)', 'Filgotinib (Jyseleca)', 'Azathioprine', 'Mercaptopurine', 'Methotrexate', 'Mesalazine (Pentasa)', 'Mesalazine (Octasa)', 'Mesalazine (Asacol)', 'Budesonide', 'Prednisolone'];
 /* A medicine from its name alone (the set-up): the dose, times and how come later from Edit medicine on the Meds tab */
@@ -13501,7 +13501,21 @@ async function withBusy(btn, busyText, fn) {
   try { return await fn(); }
   finally { btn.disabled = false; btn.textContent = label; btn.removeAttribute('aria-busy'); }
 }
+/* Inside the iPhone and Android apps (v398) reminders come through Firebase Cloud Messaging, not Web Push:
+   the Capacitor plugin asks the phone's permission and gives a token, stored as pushSubs/{id} { kind: 'fcm',
+   token, platform, private, ... }; the bridge sends to it through FCM, which reaches an iPhone through Apple's
+   service. Everything else (the times, the nudge, nothing sent once a dose is logged) is the bridge's, unchanged. */
+function nativeApp() { return Boolean(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()); }
+let fcmPlugin = null;
+function fcm() {
+  if (!fcmPlugin && nativeApp() && window.Capacitor.registerPlugin) fcmPlugin = window.Capacitor.registerPlugin('FirebaseMessaging');
+  return fcmPlugin;
+}
+const FCM_TOKEN_KEY = 'daybook.fcmToken';
+function storedFcmToken() { try { return localStorage.getItem(FCM_TOKEN_KEY) || ''; } catch (e) { return ''; } }
+function rememberFcmToken(t) { try { if (t) localStorage.setItem(FCM_TOKEN_KEY, t); else localStorage.removeItem(FCM_TOKEN_KEY); } catch (e) { /* private mode */ } }
 function pushSupported() {
+  if (nativeApp()) return Boolean(fcm());
   return Boolean(PUSH && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window);
 }
 function pushSubId(endpoint) {
@@ -13513,6 +13527,22 @@ function urlBase64ToUint8Array(s) {
   const b = atob((s + '='.repeat((4 - s.length % 4) % 4)).replace(/-/g, '+').replace(/_/g, '/'));
   return Uint8Array.from(b, (c) => c.charCodeAt(0));
 }
+/* This phone's subscription, whichever kind: { id } or null */
+async function currentPushSub() {
+  if (nativeApp()) {
+    const t = storedFcmToken();
+    if (!t) return null;
+    const p = await fcm().checkPermissions().catch(() => ({ receive: 'denied' }));
+    return p.receive === 'granted' ? { id: pushSubId('fcm:' + t), token: t } : null;
+  }
+  const reg = await navigator.serviceWorker.ready;
+  const sub = await reg.pushManager.getSubscription();
+  return sub ? { id: pushSubId(sub.endpoint), web: sub } : null;
+}
+async function pushPermissionDenied() {
+  if (nativeApp()) { const p = await fcm().checkPermissions().catch(() => ({ receive: 'prompt' })); return p.receive === 'denied'; }
+  return Notification.permission === 'denied';
+}
 /* Reflects this phone's state in Settings: on, off, unsupported, or blocked */
 async function syncReminders() {
   const group = $('settings-reminders-group'), box = $('settings-reminders'), hint = $('settings-reminders-hint');
@@ -13522,37 +13552,83 @@ async function syncReminders() {
   group.hidden = state.readOnly || state.viewer;
   $('settings-private-row').hidden = true;
   if (demo) { box.checked = false; box.disabled = true; hint.textContent = 'Not available in the demo.'; state.pushEnabled = false; return; }
-  if (!pushSupported()) { box.checked = false; box.disabled = true; hint.textContent = standalone ? 'This browser cannot show notifications.' : 'On iPhone, add Daybook to the Home Screen first (Share, then Add to Home Screen), then turn this on from there.'; state.pushEnabled = false; return; }
+  if (!pushSupported()) { box.checked = false; box.disabled = true; hint.textContent = standalone || nativeApp() ? 'This phone cannot show notifications.' : 'On iPhone, add Daybook to the Home Screen first (Share, then Add to Home Screen), then turn this on from there.'; state.pushEnabled = false; return; }
   box.disabled = false;
   try {
-    const reg = await navigator.serviceWorker.ready;
-    const sub = await reg.pushManager.getSubscription();
+    const sub = await currentPushSub();
     state.pushEnabled = Boolean(sub);
     box.checked = Boolean(sub);
     await syncPrivate(sub);
-    hint.textContent = sub ? 'This phone gets a notification at each medicine\'s reminder times, and one nudge 30 minutes later if the dose is still not logged.' : (Notification.permission === 'denied' ? 'Notifications are blocked for Daybook in this phone\'s settings. Allow them there, then turn this on.' : 'A notification at each medicine\'s reminder times (set under Manage medicines), only on phones where this is on.');
+    hint.textContent = sub ? 'This phone gets a notification at each medicine\'s reminder times, and one nudge 30 minutes later if the dose is still not logged.' : ((await pushPermissionDenied()) ? 'Notifications are blocked for Daybook in this phone\'s settings. Allow them there, then turn this on.' : 'A notification at each medicine\'s reminder times (set under Manage medicines), only on phones where this is on.');
   } catch (e) { console.warn(e); box.disabled = true; hint.textContent = 'Could not check notifications on this phone.'; }
 }
 async function setReminders(on) {
   const box = $('settings-reminders');
+  const who = { private: $('settings-private').checked, addedBy: state.name, uid: state.user ? state.user.uid : null, agent: navigator.userAgent.slice(0, 120), addedAt: serverTimestamp() };
   try {
-    const reg = await navigator.serviceWorker.ready;
-    const existing = await reg.pushManager.getSubscription();
-    if (!on) {
-      if (existing) { await deleteDoc(hdoc('pushSubs', pushSubId(existing.endpoint))).catch(() => {}); await existing.unsubscribe(); }
-      toast('Reminders off on this phone'); touchReminderPlan();
+    if (nativeApp()) {
+      const plugin = fcm();
+      const old = storedFcmToken();
+      if (!on) {
+        if (old) await deleteDoc(hdoc('pushSubs', pushSubId('fcm:' + old))).catch(() => {});
+        await plugin.deleteToken().catch(() => {});
+        rememberFcmToken('');
+        toast('Reminders off on this phone'); touchReminderPlan();
+      } else {
+        const perm = await plugin.requestPermissions();
+        if (perm.receive !== 'granted') { box.checked = false; toast('Notifications were not allowed'); await syncReminders(); return; }
+        if (window.Capacitor.getPlatform() === 'android') await plugin.createChannel({ id: 'reminders', name: 'Medicine reminders', description: 'Reminders at your medicine times', importance: 4, visibility: 0 }).catch(() => {});
+        const { token } = await plugin.getToken();
+        if (old && old !== token) await deleteDoc(hdoc('pushSubs', pushSubId('fcm:' + old))).catch(() => {});
+        rememberFcmToken(token);
+        await setDoc(hdoc('pushSubs', pushSubId('fcm:' + token)), { kind: 'fcm', token, platform: window.Capacitor.getPlatform(), ...who }, { merge: true });
+        toast('Reminders on for this phone'); touchReminderPlan();
+      }
     } else {
-      const perm = await Notification.requestPermission();
-      if (perm !== 'granted') { box.checked = false; toast('Notifications were not allowed'); await syncReminders(); return; }
-      const sub = existing || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(PUSH.publicKey) });
-      const j = sub.toJSON();
-      await setDoc(hdoc('pushSubs', pushSubId(sub.endpoint)), { endpoint: sub.endpoint, keys: { p256dh: j.keys.p256dh, auth: j.keys.auth }, private: $('settings-private').checked, addedBy: state.name, uid: state.user ? state.user.uid : null, agent: navigator.userAgent.slice(0, 120), addedAt: serverTimestamp() }, { merge: true });
-      toast('Reminders on for this phone'); touchReminderPlan();
+      const reg = await navigator.serviceWorker.ready;
+      const existing = await reg.pushManager.getSubscription();
+      if (!on) {
+        if (existing) { await deleteDoc(hdoc('pushSubs', pushSubId(existing.endpoint))).catch(() => {}); await existing.unsubscribe(); }
+        toast('Reminders off on this phone'); touchReminderPlan();
+      } else {
+        const perm = await Notification.requestPermission();
+        if (perm !== 'granted') { box.checked = false; toast('Notifications were not allowed'); await syncReminders(); return; }
+        const sub = existing || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(PUSH.publicKey) });
+        const j = sub.toJSON();
+        await setDoc(hdoc('pushSubs', pushSubId(sub.endpoint)), { endpoint: sub.endpoint, keys: { p256dh: j.keys.p256dh, auth: j.keys.auth }, ...who }, { merge: true });
+        toast('Reminders on for this phone'); touchReminderPlan();
+      }
     }
   } catch (e) { console.error(e); toast('Could not change reminders on this phone'); }
   await syncReminders();
 }
 $('settings-reminders').addEventListener('change', (ev) => setReminders(ev.target.checked));
+/* In the apps: a token that changes (a restore, a new install) replaces the old document; a tapped
+   notification opens the screen it names; one arriving while Daybook is open shows as a toast. */
+(function watchNativePush() {
+  const plugin = fcm();
+  if (!plugin) return;
+  plugin.addListener('tokenReceived', async ({ token }) => {
+    const old = storedFcmToken();
+    if (!old || !token || old === token || !state.hid) return;
+    try {
+      const snap = await getDoc(hdoc('pushSubs', pushSubId('fcm:' + old)));
+      const keep = snap.exists() ? snap.data() : {};
+      await setDoc(hdoc('pushSubs', pushSubId('fcm:' + token)), { ...keep, kind: 'fcm', token, platform: window.Capacitor.getPlatform(), addedAt: serverTimestamp() }, { merge: true });
+      await deleteDoc(hdoc('pushSubs', pushSubId('fcm:' + old))).catch(() => {});
+      rememberFcmToken(token); touchReminderPlan();
+    } catch (e) { console.warn(e); }
+  }).catch(() => {});
+  plugin.addListener('notificationReceived', ({ notification }) => {
+    const n = notification || {};
+    if (n.body || n.title) toast(n.body || n.title);
+  }).catch(() => {});
+  plugin.addListener('notificationActionPerformed', ({ notification }) => {
+    const url = notification && notification.data && notification.data.url;
+    const m = url && /[?&]tab=([a-z]+)/.exec(url);
+    if (m && typeof showTab === 'function') { try { showTab(m[1]); } catch (e) { /* not signed in yet */ } }
+  }).catch(() => {});
+})();
 
 /* Private notifications (since v74), per phone and on unless switched off: the bridge sends this phone
    "A medicine is due" rather than the name and dose, so nothing personal shows on a locked screen.
@@ -13564,17 +13640,16 @@ async function syncPrivate(sub) {
   row.hidden = !sub;
   if (!sub) return;
   let priv = true;
-  try { const snap = await getDoc(hdoc('pushSubs', pushSubId(sub.endpoint))); if (snap.exists() && snap.data().private === false) priv = false; } catch (e) { console.warn(e); }
+  try { const snap = await getDoc(hdoc('pushSubs', sub.id)); if (snap.exists() && snap.data().private === false) priv = false; } catch (e) { console.warn(e); }
   box.checked = priv;
   $('settings-private-hint').textContent = priv ? PRIVATE_HINT_ON : PRIVATE_HINT_OFF;
 }
 $('settings-private').addEventListener('change', async (ev) => {
   const on = ev.target.checked;
   try {
-    const reg = await navigator.serviceWorker.ready;
-    const sub = await reg.pushManager.getSubscription();
+    const sub = await currentPushSub();
     if (!sub) return;
-    await setDoc(hdoc('pushSubs', pushSubId(sub.endpoint)), { private: on }, { merge: true });
+    await setDoc(hdoc('pushSubs', sub.id), { private: on }, { merge: true });
     $('settings-private-hint').textContent = on ? PRIVATE_HINT_ON : PRIVATE_HINT_OFF;
     toast(on ? 'Medicine names hidden on this phone' : 'Medicine names shown on this phone');
   } catch (e) { console.error(e); ev.target.checked = !on; toast('Could not change this setting'); }
