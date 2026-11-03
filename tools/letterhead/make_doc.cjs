@@ -9,7 +9,7 @@
 
    Markdown understood: # title, ## and ### headings, paragraphs with **bold**, - bullets, - [ ] tasks,
    1. numbered lines, pipe tables (an all-empty header row is dropped), and ![caption](picture.png) on
-   its own line for a picture. Body text Arial 11 pt so it reads the same on any computer and in Pages. */
+   its own line for a picture (![caption|300](pic.png) for 300 px wide). Body text Arial 11 pt so it reads the same on any computer and in Pages. */
 const fs = require('fs');
 const path = require('path');
 const { Document, Packer, Paragraph, TextRun, ImageRun, Header, Footer, AlignmentType, TabStopType,
@@ -32,7 +32,7 @@ const float = (file, w, h, y, alt) => new ImageRun({ type: 'jpg', data: fs.readF
 // **bold** inside a line
 const runs = (text, o = {}) => text.split(/(\*\*[^*]+\*\*)/).filter(s => s !== '').map(s => {
   const b = s.startsWith('**') && s.endsWith('**');
-  return new TextRun({ text: (b ? s.slice(2, -2) : s).replace(/\\([.\-*_\[\]#])/g, '$1').replace(/&#91;/g, '['),
+  return new TextRun({ text: (b ? s.slice(2, -2) : s).replace(/\\([.\-*_\[\]#])/g, '$1').replace(/&#91;/g, '[').replace(/`/g, ''),
     font: F, size: o.size || 22, color: o.color || INK, bold: o.bold || b });
 });
 
@@ -84,8 +84,9 @@ for (let i = 0; i < md.length; i++) {
     const file = path.resolve(path.dirname(inFile), m[2]);
     const buf = fs.readFileSync(file);
     const w = buf.readUInt32BE(16), h = buf.readUInt32BE(20); // PNG size
-    const dw = 642, dh = Math.round(h * dw / w);
-    out.push(new Paragraph({ spacing: { before: 60, after: 160 }, keepNext: false, children: [new ImageRun({ type: 'png', data: buf, transformation: { width: dw, height: dh }, altText: { title: m[1], description: m[1], name: 'picture' } })] }));
+    const want = Number((m[1].match(/\|(\d+)$/) || [])[1]) || 642; // ![caption|300](pic.png) sets the width
+    const dw = Math.min(642, want), dh = Math.round(h * dw / w);
+    out.push(new Paragraph({ spacing: { before: 60, after: 160 }, keepNext: false, children: [new ImageRun({ type: 'png', data: buf, transformation: { width: dw, height: dh }, altText: { title: m[1].replace(/\|\d+$/, ''), description: m[1].replace(/\|\d+$/, ''), name: 'picture' } })] }));
     continue;
   }
   if ((m = l.match(/^# (.+)/))) { out.push(new Paragraph({ spacing: { before: 0, after: 80 }, keepNext: true, children: runs(m[1], { size: 34, bold: true, color: NAVY }) })); continue; }
