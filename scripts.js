@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '401';
+const APP_VERSION = '402';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -3442,7 +3442,7 @@ function readingRows(e) {
 function renderTiles() {
   const entries = state.dayEntries;
   /* v383 (review item 23): how many times today, on the Bowels tile itself */
-  { const qa = document.querySelector('.qa[data-add="bowel"]'); if (qa) { const n = entries.filter((e) => e.type === 'bowel' && !e.none).length; let c = qa.querySelector('.qa-count'); if (!c) { c = h('span', { class: 'qa-count' }); qa.append(c); } c.textContent = n ? String(n) : ''; c.hidden = !n; qa.setAttribute('aria-label', 'Bowels' + (n ? ', ' + plural(n, 'time') + ' ' + (state.selectedDay === todayStr() ? 'today' : 'this day') : '')); } }
+  { const qa = document.querySelector('.qa[data-add="bowel"]'); if (qa) { const n = packOn('ibd') ? entries.filter((e) => e.type === 'bowel' && !e.none).length : 0; /* the count is for a Crohn's or colitis flare only (Mark, v402) */ let c = qa.querySelector('.qa-count'); if (!c) { c = h('span', { class: 'qa-count' }); qa.append(c); } c.textContent = n ? String(n) : ''; c.hidden = !n; qa.setAttribute('aria-label', 'Bowels' + (n ? ', ' + plural(n, 'time') + ' ' + (state.selectedDay === todayStr() ? 'today' : 'this day') : '')); } }
   const temps = entries.filter((e) => e.type === 'temp');
   const tileT = $('tile-temp');
   tileT.classList.remove('is-red', 'is-amber', 'is-green');

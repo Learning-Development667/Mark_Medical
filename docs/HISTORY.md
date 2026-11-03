@@ -6,6 +6,9 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v402 (3 November 2026): the Bowels tile's count for Crohn's and colitis only
+- Mark (cancer pack): he does not want the day's count on the Bowels tile. `.qa-count` (v383) now shows only when the circle has the Crohn's or colitis pack (`packOn('ibd')`); without it the tile is plain and reads "Bowels". Same as last time is unchanged.
+
 ### v401 (3 November 2026): the screen check where it is easy to find
 - The check measured the page behind About (More fitted) and Mark could not find About. Now each page shown in the apps is measured 1.5 seconds after it opens (`noteOverflow()` from `showTab()`, and Today at 3 and 8 seconds after start), and Settings shows the result under the version (`#screen-check`, refreshed whenever Settings opens): the widths, the root and body text sizes, and per page either "fits" or the parts sticking out. The "Add Daybook to the Home Screen" line in Settings' App card is hidden in the apps. Mark then reported build 5 no longer scrolls sideways; the check stays in to catch it if it comes back, and goes before the stores.
 
