@@ -6,6 +6,14 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v403 (3 November 2026): Apple Health inside the iPhone app
+- **Why:** Mark: Apple Health should be in the app; with notifications it is what makes the iPhone app more than a website, and it ends the need for the paid Health Auto Export app.
+- **App** (`scripts.js`): in the iPhone app Settings' Apple Health card shows **Connect Apple Health** (`#settings-health-native`) in place of the Health Auto Export address and key (`#settings-health-hae`, kept for the Home Screen version). `healthPlugin()` reaches `@capgo/capacitor-health` (8.11.12) through the bridge as `fcm()` does. Connect asks HealthKit to read steps, sleep, workouts, weight and dietary energy (`HEALTH_READ`, nothing written) and remembers it per phone and circle (`daybook.health.on`). `syncHealth()` runs 4 seconds after sign-in and whenever the app comes back, at most every 20 minutes, over the days since the last send (7 at least, 30 the first time): `healthPayload()` builds a Health Auto Export shaped body (daily step and food energy sums, each weight, `sleepNights()` (each source's segments split at gaps of 3 hours or more, a night on the day it ended, the source with more sleep kept, naps under an hour left out), and workouts with distance and energy) and posts it to the bridge with `bridgeCall('/health-app')`. The card shows when it last brought something in and what.
+- **Bridge:** `handleHealth()`'s writing is now `ingestHealth(fs, hid, body, sourceTag)`, shared by the inbox key route and the new **`/health-app`** (a signed-in family member, the demo answered with ok, `source: 'apple-health-app'`). Checked in the scratchpad: steps, sleep, weight, food energy and a walk each written.
+- **Native:** HealthKit entitlements (`com.apple.developer.healthkit`, empty `access`) beside `aps-environment`, `NSHealthShareUsageDescription` (and the update one saying it never writes). `capacitor.config.json` `includePlugins` keeps the Health plugin out of Android, whose manifest would otherwise claim Health Connect permissions before Play's declaration is made (Health Connect comes later). Mark ticks HealthKit on the App ID.
+- **Privacy** (app and website, dated 3 November): the in-app route, never written to, never for advertising, how to stop it in the Health app.
+- Not yet tried on a phone.
+
 ### v402 (3 November 2026): the Bowels tile's count for Crohn's and colitis only
 - Mark (cancer pack): he does not want the day's count on the Bowels tile. `.qa-count` (v383) now shows only when the circle has the Crohn's or colitis pack (`packOn('ibd')`); without it the tile is plain and reads "Bowels". Same as last time is unchanged.
 

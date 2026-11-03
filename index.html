@@ -19,7 +19,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=402">
+  <link rel="stylesheet" href="styles.css?v=403">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -1042,11 +1042,18 @@
         <div id="settings-health" hidden>
           <h2 class="section-title">Apple Health</h2>
           <div class="card settings-group">
+            <div id="settings-health-native" hidden>
+              <p class="hint">Steps, sleep, workouts, weight and the day's food energy come straight from Apple Health into this circle. Daybook only reads; it never writes to Apple Health.</p>
+              <button id="settings-health-connect" class="btn btn-primary btn-block" type="button">Connect Apple Health</button>
+              <p class="hint" id="settings-health-status" aria-live="polite"></p>
+            </div>
+            <div id="settings-health-hae">
             <p class="hint">Optional. Steps, sleep, workouts, weight and food totals can arrive through the Health Auto Export app (iPhone, paid version). Its automation posts to the address below with this key in the X-Care-Log-Key header.</p>
             <p class="mono keybox" id="settings-health-url"></p>
             <button id="settings-health-key" class="btn btn-secondary btn-block" type="button">Show the inbox key</button>
             <p class="mono keybox" id="settings-health-keytext" hidden></p>
             <p class="hint" id="settings-health-hint" hidden></p>
+            </div>
           </div>
         </div>
         <h2 class="section-title">App</h2>
@@ -1088,7 +1095,7 @@
   <!-- Privacy, terms and About (since v90): plain English, opened in the sheet from the Settings App card,
        the sign-in and sign-up screens, or ?page=privacy|terms|about in the address (openLegal()). -->
   <template id="tpl-privacy">
-    <p class="legal-date mono">Last updated 2 November 2026</p>
+    <p class="legal-date mono">Last updated 3 November 2026</p>
     <p>My Medical Daybook (Daybook for short) is made and run by Mark 1 Apps Ltd, a company registered in England and Wales (company number 17510025), which is responsible for the information the app holds (the "data controller" in UK law). Mark 1 Apps Ltd is registered with the Information Commissioner's Office, registration number ZC275185. <span data-contact></span></p>
     <h3>The short version</h3>
     <ul>
@@ -1126,7 +1133,7 @@
       <li><b>Save as PDF, Print, Share and Copy</b> make a copy for you to give to the clinic or someone else. Once it has left the app, it is in your hands.</li>
       <li><b>Tap to speak</b> uses your phone's own speech recognition (Apple's on an iPhone, Google's in Chrome). Depending on the phone, the audio may be processed on the phone or on that company's servers under their terms. Daybook receives only the words.</li>
       <li><b>Provide feedback</b> (while Daybook is in Beta) sends what you type, any picture you add, which screen you were on, the app version and the kind of phone to Mark 1 Apps Ltd through the bridge, so the app can be put right. It is kept only until the Beta is over, is never part of your circle's records and is read by Mark alone. Never put health details in it unless the problem needs them.</li>
-      <li><b>Apple Health.</b> Nothing goes to Apple from Daybook. If you set up the Health Auto Export app to send steps, sleep, workouts, weight and BMI, and food totals, that data comes from your phone to Daybook's bridge and into your circle's space. The bridge keeps the last message it received, trimmed, so a problem with the feed can be checked.</li>
+      <li><b>Apple Health.</b> Nothing goes to Apple from Daybook, and Daybook never writes to Apple Health. In the iPhone app, if you tap Connect Apple Health and allow it, Daybook reads your steps, sleep, workouts, weight and the day's food energy from Apple Health each time it opens and sends them through Daybook's bridge into your circle's space, where they are kept like anything else you record. You can stop it at any time in the Health app (Sharing, Apps, Daybook). Health data from Apple Health is never used for advertising or anything other than showing it in your Daybook and its reports. If instead you set up the Health Auto Export app to send steps, sleep, workouts, weight and BMI, and food totals, that data comes from your phone to Daybook's bridge and into your circle's space. The bridge keeps the last message it received, trimmed, so a problem with the feed can be checked.</li>
       <li><b>Reminders.</b> If you turn on medicine reminders, each notification goes through your browser's push service (Apple, Google or Mozilla). The message is encrypted so that service cannot read it, and unless you switch it off it names no medicine ("A medicine is due"), so no medicine name shows on your lock screen.</li>
       <li><b>Fonts and database code.</b> The app loads its fonts from Google Fonts and the database's code from Google. Those servers see your phone's internet address when the app loads, as with any website. None of your entries go to them. Every other code library is kept inside Daybook itself.</li>
       <li><b>Daybook's bridge.</b> A small service on Cloudflare that handles sign-up, invites, the Apple Health feed, reminders, the emailed reports and Daybook Assistant's requests. It checks your sign-in, or for the Apple Health feed your circle's inbox key, and writes only your circle's records and your own sign-up record. Cloudflare keeps standard request logs for a short time.</li>
@@ -1226,7 +1233,7 @@
     <button id="toast-action" class="toast-btn" type="button" hidden></button>
   </div>
 
-  <script src="config.js?v=402"></script>
-  <script type="module" src="scripts.js?v=402"></script>
+  <script src="config.js?v=403"></script>
+  <script type="module" src="scripts.js?v=403"></script>
 </body>
 </html>

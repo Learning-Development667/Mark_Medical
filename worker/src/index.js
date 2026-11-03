@@ -39,6 +39,7 @@ export default {
       if (url.pathname === '/member-remove' && request.method === 'POST') return withCors(request, await handleRemoveMember(request, env));
       if (url.pathname === '/owner-transfer' && request.method === 'POST') return withCors(request, await handleOwnerTransfer(request, env));
       if (url.pathname === '/plan' && request.method === 'POST') return withCors(request, await handlePlan(request, env));
+      if (url.pathname === '/health-app' && request.method === 'POST') return withCors(request, await handleHealthApp(request, env));
       if (url.pathname === '/usage' && request.method === 'POST') return withCors(request, await handleUsage(request, env));
       /* Diagnostic: what the phone last sent and what was written, for checking the field names.
          The household's inbox key goes in the X-Care-Log-Key header (v331: never in the address, where it lands in logs and
@@ -136,7 +137,24 @@ async function handleHealth(request, env) {
   if (!hid) return json({ error: 'Unauthorised', message: 'This key is not linked to a household. Link it with the household workflow on the Actions tab.' }, 401);
   const body = await request.json().catch(() => null);
   if (!body) return json({ error: 'Expected JSON' }, 400);
+  return json(await ingestHealth(fs, hid, body, 'health-auto-export'));
+}
 
+/* Apple Health read by the iPhone app itself (v403): the same payload shape as Health Auto Export, built on the
+   phone from HealthKit, sent by a signed-in family member, so a circle needs no inbox key and no paid app. */
+async function handleHealthApp(request, env) {
+  const a = await whoIs(request, env); if (a.error) return a.error;
+  if (a.demo) return json({ ok: true, demo: true });
+  const { who, fs } = a;
+  const me = await memberOf(fs, who.uid);
+  if (!me.hid || me.role !== 'family') return json({ error: 'unauthorised', message: 'Only family members can bring in Apple Health.' }, 403);
+  const body = await readJson(request);
+  if (!body || !body.data) return json({ error: 'Expected JSON' }, 400);
+  return json(await ingestHealth(fs, me.hid, body, 'apple-health-app'));
+}
+
+/* What both routes share: writes steps, sleep, weight and BMI, food totals and workouts into the circle */
+async function ingestHealth(fs, hid, body, sourceTag) {
   /* Keep the last raw payload (trimmed) so the exact shape can be checked after the first real send */
   await fs.set(hp(hid, 'bridge/last'), { receivedAt: nowTs(), sample: strVal(JSON.stringify(body).slice(0, 20000)) });
 
@@ -180,7 +198,7 @@ async function handleHealth(request, env) {
         const mins = (h) => Math.round(h * 60);
         const fields = {
           day: strVal(day), type: strVal('sleep'), value: intVal(mins(asleep)),
-          addedBy: strVal('Apple Health'), source: strVal('health-auto-export'),
+          addedBy: strVal('Apple Health'), source: strVal(sourceTag),
           at: tsVal(toIso(end) || day + 'T07:00:00Z'), updatedAt: nowTs()
         };
         if (core > 0) fields.core = intVal(mins(core));
@@ -277,7 +295,7 @@ async function handleHealth(request, env) {
     const ef = (existing && existing.fields) || {};
     const byHand = existing && ((ef.byHand && ef.byHand.booleanValue === true) || (ef.addedBy && ef.addedBy.stringValue !== 'Apple Health'));
     if (byHand) { result.skipped.push('weight ' + day + ' (changed by hand)'); continue; }
-    const fields = { day: strVal(day), type: strVal('weight'), addedBy: strVal('Apple Health'), source: strVal('health-auto-export'), updatedAt: nowTs() };
+    const fields = { day: strVal(day), type: strVal('weight'), addedBy: strVal('Apple Health'), source: strVal(sourceTag), updatedAt: nowTs() };
     if (b.kg) { fields.value = doubleVal(Math.round(b.kg.v * 10) / 10); fields.at = tsVal(b.kg.at); }
     if (b.bmi) fields.bmi = doubleVal(Math.round(b.bmi.v * 10) / 10);
     if (!existing) fields.createdAt = nowTs();
@@ -285,7 +303,7 @@ async function handleHealth(request, env) {
     result.weight++;
   }
   await fs.merge(hp(hid, 'bridge/last'), { result: strVal(JSON.stringify(result)) });
-  return json({ ok: true, ...result });
+  return { ok: true, ...result };
 }
 
 /* Health Auto Export dates look like "2026-09-24 07:05:00 +0100" (local time with offset) */
@@ -1811,7 +1829,7 @@ async function googleKey(kid, fetchFn) {
 }
 
 /* For the test harness only (scratchpad): nothing in the app or the workflow uses these */
-export const _test = { fcmMessage, sendFcm, sendPush, verifyEmailHtml, mapOffProduct, handleFood, verifyFirebaseToken, askClaude, aiErrorMessage, EXPLAIN_SYSTEM, distanceKm, payloadFor, sha256Hex, hp, stretchNudgeDue, stretchTickedOn, planEntryFromDocs, planEntryDue, readPlanDoc, planEntryFields, runReminders, runHouseholdReminders, touchPlan, firestore, buildUsage, countCircle, readUsageDoc, handleUsage, USAGE_PATH };
+export const _test = { ingestHealth, fcmMessage, sendFcm, sendPush, verifyEmailHtml, mapOffProduct, handleFood, verifyFirebaseToken, askClaude, aiErrorMessage, EXPLAIN_SYSTEM, distanceKm, payloadFor, sha256Hex, hp, stretchNudgeDue, stretchTickedOn, planEntryFromDocs, planEntryDue, readPlanDoc, planEntryFields, runReminders, runHouseholdReminders, touchPlan, firestore, buildUsage, countCircle, readUsageDoc, handleUsage, USAGE_PATH };
 
 /* ------------------------------------------------------------------ */
 /* Plumbing                                                             */

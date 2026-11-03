@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '402';
+const APP_VERSION = '403';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -1203,6 +1203,7 @@ async function enterApp(user) {
     if (wanted && PAGE_TITLES[wanted] && !state.viewer) { showTab(wanted); history.replaceState(null, '', location.pathname + location.hash); }
     await startData();
     syncReminders();
+    setTimeout(() => syncHealth(false), 4000); // Apple Health in the iPhone app (v403)
     setTimeout(() => offerDraft(), 1500);
     setTimeout(offerCircle, 2500);
     syncUsageRow();
@@ -2752,6 +2753,10 @@ function syncHealthCard() {
   const show = !!BRIDGE && !!state.household && !state.demo && !state.demoLive && !state.readOnly && !state.viewer;
   card.hidden = !show;
   if (!show) return;
+  const ios = nativeApp() && window.Capacitor.getPlatform() === 'ios';
+  $('settings-health-native').hidden = !ios;
+  $('settings-health-hae').hidden = ios;
+  if (ios) { syncHealthStatus(); return; }
   $('settings-health-url').textContent = BRIDGE.url.replace(/\/$/, '') + '/health';
   $('settings-health-keytext').hidden = true;
   $('settings-health-hint').hidden = true;
@@ -2772,6 +2777,135 @@ $('settings-health-key').addEventListener('click', async () => {
   } catch (e) { console.error(e); toast('Could not read the inbox key'); }
   btn.disabled = false;
 });
+
+/* Apple Health inside the iPhone app (v403): the Health plugin (@capgo/capacitor-health) reads steps, sleep,
+   workouts, weight and food energy, which are shaped like a Health Auto Export send and posted to the bridge's
+   /health-app as the signed-in family member; the bridge writes them exactly as before (ingestHealth). It runs when
+   the app opens or comes back, at most every 20 minutes, over the days since the last send (7 at least, 30 the
+   first time). Read only: nothing is written to Apple Health. */
+const HEALTH_READ = ['steps', 'sleep', 'workouts', 'weight', 'dietaryEnergyConsumed'];
+const HEALTH_ON_KEY = 'daybook.health.on', HEALTH_LAST_KEY = 'daybook.health.last', HEALTH_NOTE_KEY = 'daybook.health.note';
+let healthPluginObj = null;
+function healthPlugin() {
+  if (healthPluginObj || !nativeApp()) return healthPluginObj;
+  const C = window.Capacitor;
+  if (C.registerPlugin) { healthPluginObj = C.registerPlugin('Health'); return healthPluginObj; }
+  if (!C.nativePromise) return null;
+  const call = (m) => (opts) => C.nativePromise('Health', m, opts || {});
+  healthPluginObj = { isAvailable: call('isAvailable'), requestAuthorization: call('requestAuthorization'), readSamples: call('readSamples'), queryAggregated: call('queryAggregated'), queryWorkouts: call('queryWorkouts') };
+  return healthPluginObj;
+}
+const lsGet = (k) => { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } };
+const lsSet = (k, v) => { try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); } catch (e) { /* private mode */ } };
+function healthOn() { return lsGet(HEALTH_ON_KEY) === state.household; }
+/* Health Auto Export's date form, local time with the offset: 2026-11-03 07:05:00 +0000 */
+function haeStamp(d) {
+  const p2 = (n) => String(n).padStart(2, '0');
+  const off = -d.getTimezoneOffset(), sign = off >= 0 ? '+' : '-', a = Math.abs(off);
+  return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())} ${sign}${p2(Math.floor(a / 60))}${p2(a % 60)}`;
+}
+const WORKOUT_WORDS = { traditionalStrengthTraining: 'Strength training', functionalStrengthTraining: 'Strength training', highIntensityIntervalTraining: 'HIIT', mindAndBody: 'Mind and body', swimmingPool: 'Pool swim', swimmingOpenWater: 'Open water swim', other: 'Workout' };
+function workoutWords(t) { return WORKOUT_WORDS[t] || String(t || 'Workout').replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase()).replace(/ (\w)/g, (m, c) => ' ' + c.toLowerCase()); }
+/* Nights from sleep samples: each source's segments split where there is a gap of 3 hours or more, a night
+   belongs to the day it ended, and where a watch and a phone both recorded it the one with more sleep is kept */
+function sleepNights(samples) {
+  const ASLEEP = { asleep: 1, rem: 1, deep: 1, light: 1 };
+  const bySource = {};
+  for (const s of samples || []) {
+    const segs = Array.isArray(s.stages) && s.stages.length ? s.stages.map((g) => ({ st: g.stage, a: Date.parse(g.startDate), b: Date.parse(g.endDate) })) : [{ st: s.sleepState, a: Date.parse(s.startDate), b: Date.parse(s.endDate) }];
+    const k = s.sourceId || s.sourceName || 'health';
+    for (const g of segs) if (isFinite(g.a) && isFinite(g.b) && g.b > g.a && (ASLEEP[g.st] || g.st === 'awake')) (bySource[k] = bySource[k] || []).push(g);
+  }
+  const best = {};
+  for (const segs of Object.values(bySource)) {
+    segs.sort((x, y) => x.a - y.a);
+    let cur = null; const sessions = [];
+    for (const g of segs) { if (!cur || g.a - cur.b >= 3 * 3600e3) { cur = { a: g.a, b: g.b, segs: [] }; sessions.push(cur); } cur.segs.push(g); cur.b = Math.max(cur.b, g.b); }
+    for (const n of sessions) {
+      const mins = { asleep: 0, rem: 0, deep: 0, light: 0, awake: 0 };
+      for (const g of n.segs) mins[g.st] += (g.b - g.a) / 60000;
+      const total = mins.asleep + mins.rem + mins.deep + mins.light;
+      if (total < 60) continue;
+      const day = haeStamp(new Date(n.b)).slice(0, 10);
+      if (!best[day] || best[day].total < total) best[day] = { total, n, mins };
+    }
+  }
+  return Object.values(best).map(({ total, n, mins }) => {
+    const row = { sleepStart: haeStamp(new Date(n.a)), sleepEnd: haeStamp(new Date(n.b)), asleep: total / 60 };
+    if (mins.deep) row.deep = mins.deep / 60;
+    if (mins.rem) row.rem = mins.rem / 60;
+    if (mins.light) row.core = mins.light / 60;
+    if (mins.awake) row.awake = mins.awake / 60;
+    return row;
+  });
+}
+async function healthPayload(days) {
+  const H = healthPlugin();
+  const end = new Date(), start = new Date(); start.setHours(0, 0, 0, 0); start.setDate(start.getDate() - days);
+  const range = { startDate: start.toISOString(), endDate: end.toISOString() };
+  const tryCall = async (fn) => { try { return await fn(); } catch (e) { console.warn(e); return null; } };
+  const steps = await tryCall(() => H.queryAggregated({ dataType: 'steps', ...range, bucket: 'day', aggregation: 'sum' }));
+  const kcal = await tryCall(() => H.queryAggregated({ dataType: 'dietaryEnergyConsumed', ...range, bucket: 'day', aggregation: 'sum' }));
+  const weight = await tryCall(() => H.readSamples({ dataType: 'weight', ...range, limit: 500, ascending: true }));
+  const sleep = await tryCall(() => H.readSamples({ dataType: 'sleep', ...range, limit: 5000, ascending: true }));
+  const workouts = await tryCall(() => H.queryWorkouts({ ...range, limit: 200, ascending: true }));
+  const daily = (r) => ((r && r.samples) || []).filter((x) => Number(x.value) > 0).map((x) => ({ date: haeStamp(new Date(x.startDate)), qty: Number(x.value) }));
+  const metrics = [
+    { name: 'step_count', units: 'count', data: daily(steps) },
+    { name: 'dietary_energy', units: 'kcal', data: daily(kcal) },
+    { name: 'weight_body_mass', units: 'kg', data: ((weight && weight.samples) || []).filter((x) => Number(x.value) > 0).map((x) => ({ date: haeStamp(new Date(x.startDate)), qty: Number(x.value) })) },
+    { name: 'sleep_analysis', units: 'hr', data: sleepNights(sleep && sleep.samples) },
+  ].filter((m) => m.data.length);
+  const wk = ((workouts && workouts.workouts) || []).map((w) => {
+    const o = { name: workoutWords(w.workoutType), start: haeStamp(new Date(w.startDate)), end: haeStamp(new Date(w.endDate)) };
+    if (Number(w.totalDistance) > 0) o.distance = { qty: Number(w.totalDistance), units: 'm' };
+    if (Number(w.totalEnergyBurned) > 0) o.activeEnergyBurned = { qty: Number(w.totalEnergyBurned) };
+    return o;
+  });
+  return { data: { metrics, workouts: wk } };
+}
+let healthBusy = false;
+async function syncHealth(manual) {
+  if (healthBusy || !healthOn() || !healthPlugin() || !BRIDGE || state.demo || state.demoLive || state.readOnly || state.viewer) return;
+  const last = Number(lsGet(HEALTH_LAST_KEY)) || 0;
+  if (!manual && Date.now() - last < 20 * 60e3) return;
+  healthBusy = true;
+  try {
+    const days = last ? Math.min(30, Math.max(7, Math.ceil((Date.now() - last) / 864e5) + 2)) : 30;
+    const payload = await healthPayload(days);
+    const r = await bridgeCall('/health-app', payload, 'Apple Health could not be brought in just now.');
+    lsSet(HEALTH_LAST_KEY, String(Date.now()));
+    const bits = [r.steps && plural(r.steps, 'day') + ' of steps', r.sleep && plural(r.sleep, 'night') + ' of sleep', r.weight && plural(r.weight, 'weight'), r.workouts && plural(r.workouts, 'day') + ' of workouts', r.nutrition && plural(r.nutrition, 'day') + ' of food energy'].filter(Boolean);
+    lsSet(HEALTH_NOTE_KEY, bits.length ? bits.join(', ') : 'nothing new');
+    if (manual) toast(bits.length ? 'Brought in from Apple Health' : 'Nothing new in Apple Health');
+  } catch (e) { console.warn(e); if (manual) toast(e.message || 'Apple Health could not be brought in just now.'); }
+  finally { healthBusy = false; syncHealthStatus(); }
+}
+function syncHealthStatus() {
+  const el = $('settings-health-status'), btn = $('settings-health-connect');
+  if (!el || !btn) return;
+  const last = Number(lsGet(HEALTH_LAST_KEY)) || 0;
+  if (!healthOn()) { btn.textContent = 'Connect Apple Health'; el.textContent = 'Your iPhone asks which of these Daybook may read. You can change it later in the Health app.'; return; }
+  btn.textContent = 'Bring in from Apple Health now';
+  el.textContent = last ? `Connected. Last brought in ${new Date(last).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}: ${lsGet(HEALTH_NOTE_KEY) || 'nothing new'}. It updates each time Daybook opens.` : 'Connected. It updates each time Daybook opens.';
+}
+$('settings-health-connect').addEventListener('click', async (ev) => {
+  const H = healthPlugin();
+  if (!H) { toast('Apple Health is not available on this phone'); return; }
+  const btn = ev.currentTarget; btn.disabled = true;
+  try {
+    if (!healthOn()) {
+      const av = await H.isAvailable().catch(() => ({ available: true }));
+      if (av && av.available === false) { toast('Apple Health is not available on this phone'); return; }
+      await H.requestAuthorization({ read: HEALTH_READ, write: [] });
+      lsSet(HEALTH_ON_KEY, state.household);
+      lsSet(HEALTH_LAST_KEY, '');
+    }
+    await syncHealth(true);
+  } catch (e) { console.warn(e); toast('Apple Health could not be connected'); }
+  finally { btn.disabled = false; syncHealthStatus(); }
+});
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') syncHealth(false); });
 
 /* The same account-wide setting, switchable from Settings and from the top of the Food diary */
 async function setDetailedNutrition(detailedNutrition, input) {

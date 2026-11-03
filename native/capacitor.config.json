@@ -4,7 +4,11 @@
   "webDir": "www",
   "ios": {
     "contentInset": "never",
-    "limitsNavigationsToAppBoundDomains": false
+    "limitsNavigationsToAppBoundDomains": false,
+    "includePlugins": [
+      "@capacitor-firebase/messaging",
+      "@capgo/capacitor-health"
+    ]
   },
   "plugins": {
     "FirebaseMessaging": {
@@ -25,5 +29,10 @@
         }
       }
     }
+  },
+  "android": {
+    "includePlugins": [
+      "@capacitor-firebase/messaging"
+    ]
   }
 }
