@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '399';
+const APP_VERSION = '400';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -1019,6 +1019,24 @@ $('nohousehold-signout').addEventListener('click', () => { $('nohousehold').hidd
    sheet so they open from the sign-in screen as well as from Settings; ?page=privacy in the address opens
    one directly, which gives the store listings a link. The contact email comes from config.js
    (window.DAYBOOK_CONTACT.email) so no address is written into the page. */
+/* A screen check for the iPhone and Android apps (v400), shown under the version in About: the page in the apps
+   was laid out wider than the phone (Mark, build 4), so this reports the widths and the parts that stick out,
+   for one screenshot to show what to fix. Names classes and ids only, never anything written in Daybook. */
+function screenCheckText() {
+  const vw = window.innerWidth, cw = document.documentElement.clientWidth, sw = document.documentElement.scrollWidth;
+  const vv = window.visualViewport ? Math.round(window.visualViewport.width) : '-';
+  const wide = [];
+  for (const el of document.querySelectorAll('body *')) {
+    const r = el.getBoundingClientRect();
+    if (r.width && r.right > cw + 1) wide.push({ el, right: Math.round(r.right) });
+  }
+  wide.sort((a, b) => b.right - a.right);
+  const name = (el) => el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + (el.classList.length ? '.' + [...el.classList].slice(0, 2).join('.') : '');
+  const seen = new Set(); const top = [];
+  for (const w of wide) { const n = name(w.el); if (!seen.has(n)) { seen.add(n); top.push(n + ' ' + w.right); } if (top.length >= 4) break; }
+  const fs = getComputedStyle(document.documentElement).fontSize;
+  return `Screen check: window ${vw}, page ${cw}, content ${sw}, visible ${vv}, scale ${window.devicePixelRatio}, text ${fs}. Wider: ${top.join(', ') || 'none'}.`;
+}
 const LEGAL_PAGES = { privacy: 'Privacy', terms: 'Terms of use', about: 'About Daybook' };
 function openLegal(which) {
   const tpl = $('tpl-' + which);
@@ -1031,6 +1049,7 @@ function openLegal(which) {
     else el.textContent = 'Contact: Mark 1 Apps Ltd.';
   }
   for (const el of wrap.querySelectorAll('[data-version]')) el.textContent = versionText();
+  if (which === 'about' && nativeApp()) for (const el of wrap.querySelectorAll('[data-version]')) el.after(h('p', { class: 'muted mono', text: screenCheckText() }));
   for (const el of wrap.querySelectorAll('[data-stage-note]')) el.hidden = !APP_STAGE;
   openSheet(LEGAL_PAGES[which], wrap);
 }

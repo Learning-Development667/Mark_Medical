@@ -6,6 +6,9 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v400 (3 November 2026): a screen check in the apps' About
+- Mark, on build 4 through TestFlight: the page is wider than the phone (the right edge cut off, sideways scrolling), which the Home Screen version on the same phone does not do. `screenCheckText()`, shown under the version in About only inside the apps (`nativeApp()`), reports the window, page, content and visible widths, the scale and the root text size, and the four widest parts sticking out past the page (tag, id and two classes, never any words from the circle), so one screenshot shows what to fix.
+
 ### v399 (3 November 2026): the Reminders switch in the apps
 - Mark, on build 4: the switch could not be turned on. `fcm()` used `Capacitor.registerPlugin`, which lives in `@capacitor/core`, and Daybook has no build step, so the apps' web page only has Capacitor's native bridge; `pushSupported()` was false and the switch stayed grey. `fcm()` now builds the plugin from the bridge's own `nativePromise` (checkPermissions, requestPermissions, getToken, deleteToken, createChannel) and `addListener`, still preferring `registerPlugin` if it is ever present. Checked in the scratchpad with a bridge stub that has no `registerPlugin`: the three listeners attach and nothing throws.
 
