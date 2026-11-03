@@ -1,0 +1,20 @@
+# Sends "Reminders are working on this phone." to every phone with reminders on in the operator's own circle
+# (Mark's), through the bridge's /push-test with the BRIDGE_KEY secret in the X-Care-Log-Key header (v402).
+# Run by hand from the Actions tab. The log shows only how many phones and each one's result (sent, gone, an
+# error code); no name, medicine or key.
+name: Send a test notification
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Send
+        env:
+          KEY: ${{ secrets.BRIDGE_KEY }}
+        run: |
+          curl -sS --fail-with-body -H "X-Care-Log-Key: $KEY" "https://care-log-bridge.markbrown667.workers.dev/push-test"
+          echo
