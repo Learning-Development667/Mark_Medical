@@ -2452,3 +2452,13 @@ body[data-accent] .view .section-title::before { content: ""; display: block; wi
 .guide-controls { flex-wrap: nowrap; min-width: 0; }
 .guide-controls #guide-play { min-width: 0; }
 @media (max-width: 360px) { .guide-controls { gap: 6px; } .guide-controls #guide-prev, .guide-controls #guide-next, .guide-controls #guide-voice { flex-basis: 50px; padding-left: 0; padding-right: 0; } }
+
+/* v410: every iPhone, held either way. In landscape the camera housing sits at the side, so the top bar, the page, the tab
+   bar and the sheets keep clear of it (safe-area-inset-left and -right; 0 in portrait, so nothing moves there). */
+:root { --safe-l: env(safe-area-inset-left, 0px); --safe-r: env(safe-area-inset-right, 0px); }
+.topbar { padding-left: calc(var(--s-4) + var(--safe-l)); padding-right: calc(var(--s-4) + var(--safe-r)); }
+.main { padding-left: calc(var(--s-4) + var(--safe-l)); padding-right: calc(var(--s-4) + var(--safe-r)); }
+.tabs { padding-left: var(--safe-l); padding-right: var(--safe-r); }
+.sheet-panel { margin-left: var(--safe-l); margin-right: var(--safe-r); }
+/* A wide screen (a foldable opened out, or a phone on its side): the sheets match the page's 640px column and sit centred */
+@media (min-width: 700px) { .sheet-panel { width: min(640px, calc(100% - var(--safe-l) - var(--safe-r))); margin-left: auto; margin-right: auto; } }
