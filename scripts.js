@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '404';
+const APP_VERSION = '405';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -8674,7 +8674,7 @@ function buildTwoPage(n) {
     patient, period, prepared: rDay(today) + ' ' + parseDay(today).getFullYear(),
     latest, tiles, meds, hospital, steady, sideFx: twoPageSideFx(entries, new Set(fxLog ? fxLog.used : [])), results: twoPageResults(entries), own: (() => { const t = ownTally(entries, from, to); return t.length ? t.map((x) => x.short).join('. ') + '.' : null; })(),
     questions: qs, more: 0, older: report.older.length, olderFrom: rDay(from), extraQ: [], weeksPage3: false, lines: 3,
-    charts, days: labels, weeks, carer: carerWeekLog(entries, from, to), carerTail: false, carerPage1: false,
+    charts, days: labels, weeks, carer: moodWordsToTeam() ? carerWeekLog(entries, from, to) : null, carerTail: false, carerPage1: false,
     fx: fxLog, fxTail: false,
     weeksNote: ai ? 'Summarised from the daily notes by Daybook Assistant, an AI helper. Every note is in Daybook.' : 'The most telling note of each day. Every note is in Daybook.',
     foot: 'Notes for the team'
@@ -9895,7 +9895,9 @@ function buildNotesReport(entries, questionsAll, from, to, rangeLabel) {
   lines.push('', 'Summary (simple checks by the app, not a diagnosis):');
   if (glance.length) glance.forEach((g) => lines.push(`- ${LEVEL_WORD[g.level]}: ${g.text}`));
   else lines.push('- No readings logged in this period.');
-  const carerCl = carerWeekLog(entries, from, to);
+  /* the carer's weekly review is about mood and the week, so like the patient's mood words it stays off the team's
+     report unless Settings' tick says to include it; it is always on the Mood and wellbeing report (Mark, v405) */
+  const carerCl = moodWordsToTeam() ? carerWeekLog(entries, from, to) : null;
   if (carerCl) {
     lines.push('', carerCl.title + ' (' + carerCl.note + '):');
     carerCl.days.forEach((d) => lines.push(`- Week ${d.when}: ${[d.moods, ...d.texts].filter(Boolean).join('. ')}`));

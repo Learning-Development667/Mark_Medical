@@ -8,7 +8,7 @@ asked for a paste-ready prompt on every step.
 """
 import html, json, re, datetime
 
-VERSION = '404'
+VERSION = '405'
 UPDATED = '2 November 2026'
 REPO = 'learning-development667/mark_medical'
 
