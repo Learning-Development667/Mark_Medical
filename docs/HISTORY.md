@@ -7,6 +7,7 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 _Add a short section per version here._
 
 ### v404 (4 November 2026): Apple Health sent in batches
+- Worked on Mark's iPhone (build 11): "8 days of steps, 8 nights of sleep, 1 weight, 1 day of workouts" on a manual bring-in after the opening send had already brought the 30 days.
 - Mark's first Connect Apple Health (build 10) answered "Daybook's bridge hit a problem". The first send carries 30 days, and writing a day takes up to seven Firestore calls, far past the free plan's 50 subrequests a request (Health Auto Export never met it, sending a day or two at a time). `syncHealth()` now splits the payload by day and posts four days a request in turn, adding up the counts.
 
 ### v403 (3 November 2026): Apple Health inside the iPhone app
