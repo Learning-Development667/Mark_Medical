@@ -6,6 +6,10 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v411 (4 November 2026): builds reach the testers by themselves
+- iPhone: the TestFlight workflow has a second job, `testers` (Linux, after the Mac build), running `tools/testflight_group.mjs` with the same App Store Connect API key: it waits for Apple's processing (up to 45 minutes), sets What to Test in English (U.K.) from `native/ios/what-to-test.txt`, adds the build to the external group Circle Testers and asks for beta review (a conflict answer, meaning not needed, is fine). Prints ids and states only. The text names no Beta code; the repository is public.
+- Android, the same evening: the Play workflow uploads to the internal testing track itself when the `PLAY_SERVICE_ACCOUNT_JSON` secret is set (a Google Cloud service account in the Firebase project, invited to Play Console with Release apps to testing tracks; the Google Play Android Developer API switched on). Release 8 was the first to arrive this way.
+
 ### v410 (4 November 2026): every iPhone, either way up, and the foldable
 - Mark asked for the foldable iPhone and every other model. Checked all six tabs in the preview at the iPhone widths from the first SE (320) to the 17 Pro Max (440), a foldable's outer (420) and opened inner screen (600 and 740 wide), and two phones on their side: nothing sideways, nothing off the edge, the tab bar always on screen, no page errors. The page column was already capped at 640px and centred.
 - Two fixes: in landscape the camera housing sits at the side, so the top bar, the page, the tab bar and the sheets now keep clear of it (`--safe-l`, `--safe-r` from `env(safe-area-inset-left/right)`, 0 in portrait); and on a screen 700px or wider the sheets match the 640px column, centred, instead of stretching edge to edge. Not tried on a real foldable or in WebKit.

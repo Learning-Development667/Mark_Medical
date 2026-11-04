@@ -66,3 +66,31 @@ jobs:
       - name: Remove the key
         if: always()
         run: rm -rf "$RUNNER_TEMP/keys"
+
+  # Hands the build to the testers (v411): waits for Apple's processing, sets What to Test from native/ios/what-to-test.txt,
+  # adds it to Circle Testers and asks for beta review. On Linux, so the wait costs no Mac minutes. Prints ids and states only.
+  testers:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Write the API key
+        env:
+          P8: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/keys"
+          printf '%s\n' "$P8" > "$RUNNER_TEMP/keys/AuthKey.p8"
+      - name: Give the build to Circle Testers
+        env:
+          ASC_KEY_PATH: ${{ runner.temp }}/keys/AuthKey.p8
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: node tools/testflight_group.mjs
+      - name: Remove the key again
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/keys"
