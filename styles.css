@@ -2462,3 +2462,10 @@ body[data-accent] .view .section-title::before { content: ""; display: block; wi
 .sheet-panel { margin-left: var(--safe-l); margin-right: var(--safe-r); }
 /* A wide screen (a foldable opened out, or a phone on its side): the sheets match the page's 640px column and sit centred */
 @media (min-width: 700px) { .sheet-panel { width: min(640px, calc(100% - var(--safe-l) - var(--safe-r))); margin-left: auto; margin-right: auto; } }
+
+/* v411: What's new labelled New, Improved or Fixed (text colours, each 4.5:1 or more on the card in both schemes) */
+.whatsnew-list li.has-tag { list-style: none; margin-left: -1.2em; }
+.wn-tag { display: inline-block; margin-right: 8px; padding: 0 8px; border-radius: 999px; border: 1px solid currentColor; font: 600 13px/22px var(--font-body); vertical-align: 1px; }
+.wn-new { color: var(--teal); }
+.wn-improved { color: var(--success); }
+.wn-fixed { color: var(--warning); }

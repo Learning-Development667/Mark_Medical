@@ -48,7 +48,7 @@ if (!build) { console.error('Build ' + BUILD + ' was not ready after 45 minutes.
 console.log('Build ' + BUILD + ' processed');
 
 /* What to Test, in English (U.K.) */
-const words = fs.readFileSync(new URL('../native/ios/what-to-test.txt', import.meta.url), 'utf8').trim();
+const words = fs.readFileSync(process.env.NOTES_FILE || new URL('../native/ios/what-to-test.txt', import.meta.url), 'utf8').trim(); // the day's notes (tools/release_notes.mjs), else the standing text
 const locs = await asc('GET', `/builds/${build.id}/betaBuildLocalizations`);
 const gb = ((locs.json && locs.json.data) || []).find((l) => /^en-GB$/i.test(l.attributes.locale));
 const wt = gb

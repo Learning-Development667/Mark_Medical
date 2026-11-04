@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '410';
+const APP_VERSION = '411';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -3695,6 +3695,18 @@ $('feedback-row').addEventListener('click', () => openFeedbackSheet());
    localStorage: when it first saw this (batches before that day are never shown as new), which batches
    it has seen, and the Beta welcome. Nothing is stored in the circle. */
 const WHATS_NEW = [
+  /* tag (v411, Mark): new, improved or fixed, shown as a label and grouped in that order; the newest batch is also the
+     release notes for TestFlight and Google Play (tools/release_notes.mjs) */
+  { id: '2026-11-04', items: [
+    { tag: 'new', text: 'A short tour of Daybook the first time you open it. Take it again any time from More, Help and what\'s new.' },
+    { tag: 'new', text: 'Guides for logging food and drink, how you feel, and a note.' },
+    { tag: 'new', text: 'The Guide can read each step aloud: tap the speaker.' },
+    { tag: 'improved', text: 'More is tidier. Who to contact shows one line each, with Email first, and the other settings sit where you use them: Choose tiles on Today, Apple Health and the gentle nudge on Exercise, Report details on Reports, and food targets on the Food diary.' },
+    { tag: 'improved', text: 'Coming back from a setting returns you to where you were.' },
+    { tag: 'improved', text: 'Tap to speak saves your words straight away, without a second check.' },
+    { tag: 'improved', text: 'Daybook fits foldable phones, and phones turned on their side.' },
+    { tag: 'fixed', text: 'A carer\'s weekly review stays off Notes for the team unless mood words are switched on.' }
+  ] },
   { id: '2026-11-02', items: [
     { text: 'A medicine taken once a week, every 2 weeks or every few weeks: open it in Manage medicines and choose How often. On its days it is under Scheduled with its reminders; on the others it waits under Not due today, with the day it is next due.' },
     { text: 'A medicine taken more than four times a day: Add another time, in Edit medicine.' },
@@ -3740,7 +3752,12 @@ function unseenItems() {
   const seen = new Set(s.seen || []);
   return WHATS_NEW.filter((b) => b.id >= (s.since || todayStr())).flatMap(wnItems).filter((it) => !seen.has(it.key));
 }
-function wnList(items) { return h('ul', { class: 'whatsnew-list' }, items.map((it) => h('li', { text: it.text }))); }
+const WN_TAGS = { new: 'New', improved: 'Improved', fixed: 'Fixed' };
+function wnList(items) {
+  const order = (it) => ({ new: 0, improved: 1, fixed: 2 }[it.tag] ?? 3);
+  return h('ul', { class: 'whatsnew-list' }, [...items].sort((a, b) => order(a) - order(b)).map((it) =>
+    h('li', { class: it.tag ? 'has-tag' : null }, ...(WN_TAGS[it.tag] ? [h('span', { class: 'wn-tag wn-' + it.tag, text: WN_TAGS[it.tag] })] : []), h('span', { text: it.text }))));
+}
 function renderWhatsNew() {
   const box = $('whatsnew'); if (!box) return;
   // Waits for the circle's profile, so the condition filter never guesses

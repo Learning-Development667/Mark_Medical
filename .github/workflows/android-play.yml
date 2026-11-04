@@ -79,6 +79,9 @@ jobs:
       # downloading the .aab by hand). The key is a GitHub secret, PLAY_SERVICE_ACCOUNT_JSON, the JSON file of a Google
       # Cloud service account invited to Play Console with Release to testing tracks on this app. Without it the step is
       # skipped and the file above is still there to upload by hand.
+      - name: Write the release notes
+        if: env.HAS_PLAY_KEY == 'true'
+        run: node tools/release_notes.mjs "$RUNNER_TEMP/notes"
       - name: Upload to Google Play internal testing
         if: env.HAS_PLAY_KEY == 'true'
         uses: r0adkll/upload-google-play@v1.1.3
@@ -88,3 +91,4 @@ jobs:
           releaseFiles: native/android/app/build/outputs/bundle/release/app-release.aab
           track: internal
           status: completed
+          whatsNewDirectory: ${{ runner.temp }}/notes/whatsnew
