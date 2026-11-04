@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '405';
+const APP_VERSION = '406';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -2136,6 +2136,8 @@ function syncSettings() {
   renderSetupRow();
   const nudge = $('settings-stretch-nudge');
   if (nudge) { const on = !!(state.profile && state.profile.stretchNudge); if (nudge.checked !== on) nudge.checked = on; nudge.disabled = state.readOnly || state.demo; }
+  renderMoreRows.ready = true;
+  renderMoreRows();
 }
 /* What Daybook is for (v145): the condition packs, and with Crohn's or colitis which it is, whether
    there is a stoma and the usual number a day the reports compare with. Saved as each change is made. */
@@ -2517,6 +2519,7 @@ async function syncHouseholdCard() {
   if (!card) return;
   const show = !!BRIDGE && !!state.household && !state.demo && !state.demoLive && !state.readOnly && !state.viewer;
   card.hidden = !show;
+  $('more-circle-section').hidden = !show;
   if (!show) return;
   const list = $('settings-members');
   try {
@@ -2530,6 +2533,8 @@ async function syncHouseholdCard() {
     const patientName = (patient && patient.name) || (house.exists() && (house.data().patientName || house.data().name)) || '';
     if (patientName && !state.patientName) state.patientName = patientName;
     $('settings-household-name').textContent = patientName ? patientName + '\'s care circle' : 'Your care circle';
+    $('more-circle-title').textContent = patientName ? patientName + '\'s care circle' : 'Your care circle';
+    $('more-circle-sub').textContent = rows.length === 1 ? 'Just you so far. Invite someone' : rows.length + ' people. Invite someone, or see who is in';
     const canRun = runsCircle(owner);
     $('settings-invite').hidden = !canRun;
     $('settings-invite-hint').textContent = canRun
@@ -2574,6 +2579,7 @@ async function syncRecordsCard() {
   if (!card) return;
   const show = !!state.household && !state.demo && !state.demoLive && !state.viewer;
   card.hidden = !show;
+  $('more-records').hidden = !show;
   if (!show) return;
   const del = $('settings-delete');
   del.replaceChildren();
@@ -2904,6 +2910,7 @@ function syncHealthStatus() {
   if (!healthOn()) { btn.textContent = 'Connect Apple Health'; el.textContent = 'Your iPhone asks which of these Daybook may read. You can change it later in the Health app.'; return; }
   btn.textContent = 'Bring in from Apple Health now';
   el.textContent = last ? `Connected. Last brought in ${new Date(last).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}: ${lsGet(HEALTH_NOTE_KEY) || 'nothing new'}. It updates each time Daybook opens.` : 'Connected. It updates each time Daybook opens.';
+  if (typeof renderMoreRows === 'function' && state.profile) renderMoreRows();
 }
 $('settings-health-connect').addEventListener('click', async (ev) => {
   const H = healthPlugin();
@@ -3206,7 +3213,8 @@ function showTab(name) {
   /* Report pages highlight the tab they were opened from (Documents can be reached from a report too) */
   let highlight = name;
   if (name === 'docs') highlight = state.docsReturn || 'more';
-  if (name === 'settings' || name === 'guide' || name === 'usage') highlight = 'more';
+  if (name === 'settings') highlight = state.settingsReturn || 'more';
+  if (name === 'guide' || name === 'usage') highlight = 'more';
   if (highlight === 'food' || highlight === 'notes' || highlight === 'mood' || highlight === 'pain' || highlight === 'results' || highlight === 'ibd') highlight = state.reportReturn || 'vitals';
   document.querySelectorAll('.tab').forEach((b) => { const on = b.dataset.tab === highlight; b.classList.toggle('is-active', on); if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
   document.querySelectorAll('.view').forEach((v) => { v.hidden = v.dataset.view !== name; });
@@ -4355,6 +4363,7 @@ function setSpeakCheck(on) { try { localStorage.setItem(SPEAK_CHECK_KEY, on ? '1
 function syncSpeakCheck() {
   const box = $('settings-speakcheck'); if (box) box.checked = speakCheckOn();
   const card = $('settings-speak'); if (card) card.hidden = !SpeechRec;
+  if (state.profile) renderMoreRows();
 }
 function markSpoken(t) { t.dataset.spoken = '1'; delete t.dataset.spokenSeen; }
 function uncheckedSpoken() {
@@ -6010,9 +6019,81 @@ function deleteMeal(id) {
 }
 
 $('more-meals').addEventListener('click', openManageMeals);
-$('more-settings').addEventListener('click', () => { showTab('settings'); syncWeekSetting(); renderTilesCard(); renderTracksCard(); });
 if ($('settings-track-add')) $('settings-track-add').addEventListener('click', () => openTrackSheet(null));
-$('settings-back').addEventListener('click', () => showTab('more'));
+/* Settings, one group at a time (v406, Mark: Settings was "a scrolling dump site"). Each setting now sits where it is used:
+   Choose tiles and Things I track on Today, Apple Health and the gentle nudge on Exercise, Report details on Reports, the
+   targets on the Food diary, and the rest as rows on More with their state in a line. Every group is its own small screen
+   (#view-settings shows one data-group at a time) and Back returns to the tab it was opened from. The ids and the
+   listeners of every setting are unchanged, so nothing that worked before works differently. */
+const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const SETTINGS_GROUP_TITLES = { packs: 'What Daybook is for', tiles: 'Choose tiles', tracks: 'Things I track', food: 'Food targets', reports: 'Report details', phone: 'This phone', reminders: 'Reminders', circle: 'Your care circle', records: 'Your records', health: 'Apple Health', about: 'Privacy, terms and version' };
+function openSettingsGroup(name, returnTab) {
+  state.settingsReturn = returnTab || 'more';
+  document.querySelectorAll('#view-settings .settings-group-view').forEach((g) => { g.hidden = g.dataset.group !== name; });
+  $('settings-back').textContent = '\u2039 Back to ' + (PAGE_TITLES[state.settingsReturn] || 'More');
+  showTab('settings');
+  setBrand(SETTINGS_GROUP_TITLES[name] || 'Settings');
+  if (name === 'reports') syncWeekSetting();
+  if (name === 'tiles') renderTilesCard();
+  if (name === 'tracks') renderTracksCard();
+  if (name === 'circle') syncHouseholdCard();
+  if (name === 'records') syncRecordsCard();
+  if (name === 'health') syncHealthCard();
+  if (name === 'reminders') syncReminders();
+}
+$('settings-back').addEventListener('click', () => showTab(state.settingsReturn || 'more'));
+[['more-packs', 'packs'], ['more-reminders', 'reminders'], ['more-health', 'health'], ['more-phone', 'phone'], ['more-circle', 'circle'], ['more-records', 'records'], ['more-about', 'about']]
+  .forEach(([id, group]) => $(id).addEventListener('click', () => openSettingsGroup(group, 'more')));
+$('today-tiles').addEventListener('click', () => openSettingsGroup('tiles', 'today'));
+$('today-tracks-change').addEventListener('click', () => openSettingsGroup('tracks', 'today'));
+$('ex-health').addEventListener('click', () => openSettingsGroup('health', 'exercise'));
+$('reports-details').addEventListener('click', () => openSettingsGroup('reports', 'vitals'));
+$('food-targets').addEventListener('click', () => openSettingsGroup('food', 'food'));
+/* The state lines under each row on More and on the tabs, so a setting can be read without opening it */
+function renderMoreRows() {
+  if (!renderMoreRows.ready) return; // nothing to say until the profile has loaded (syncSettings); the speech and health checks run at load
+  const p = state.profile || {};
+  const on = packs();
+  const names = PACKS.filter((k) => on[k.key]).map((k) => k.key === 'general' && p.condition ? p.condition : k.name);
+  $('more-packs-sub').textContent = names.length ? names.join(', ') + (setupDone() ? '' : '. Set-up not finished yet') : 'Not set yet';
+  const demo = state.demo || state.demoLive;
+  $('more-reminders-sub').textContent = demo ? 'Not available in the demo' : state.pushEnabled ? 'On this phone' + ($('settings-private').checked ? ', medicine names kept off the lock screen' : '') : 'Off on this phone';
+  $('more-reminders').hidden = Boolean(state.readOnly || state.viewer);
+  $('more-about-sub').textContent = versionText();
+  $('more-phone').hidden = !SpeechRec;
+  $('more-phone-sub').textContent = 'Tap to speak check ' + (speakCheckOn() ? 'on' : 'off');
+  $('more-records').hidden = $('settings-records').hidden;
+  $('more-circle-section').hidden = $('settings-household').hidden;
+  const ios = nativeApp() && window.Capacitor.getPlatform() === 'ios';
+  const healthShown = !$('settings-health').hidden && (ios || !nativeApp());
+  $('more-health').hidden = !healthShown;
+  const last = Number(lsGet(HEALTH_LAST_KEY)) || 0;
+  const when = last ? new Date(last).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '';
+  const healthSub = !ios ? 'Can arrive through the Health Auto Export app on an iPhone' : !healthOn() ? 'Not connected' : when ? 'Connected, brought in at ' + when : 'Connected';
+  $('more-health-sub').textContent = healthSub;
+  /* Exercise: the same state as a row above the workouts */
+  $('ex-health-section').hidden = !(healthShown || !$('ex-workouts').hidden);
+  $('ex-health').hidden = !healthShown;
+  $('ex-health-title').textContent = !ios ? 'Through Health Auto Export' : healthOn() ? 'Connected' : 'Not connected';
+  $('ex-health-sub').textContent = !ios ? 'Steps, sleep, workouts and weight can come in from an iPhone. Tap for how.' : healthOn() ? 'Steps, sleep, workouts and weight' + (when ? '. Brought in at ' + when : '') : 'Tap to connect Apple Health';
+  $('ex-nudge').hidden = Boolean(state.readOnly || state.viewer);
+  /* Today: what is tracked of your own */
+  const tracks = ownTracks();
+  const line = $('today-tracks'), change = $('today-tracks-change');
+  const locked = Boolean(state.readOnly || state.viewer);
+  line.textContent = tracks.length ? 'Things I track: ' + tracks.map((t) => t.name).join(', ') : locked ? '' : 'Track something of your own in the evening check-in';
+  change.hidden = locked; change.textContent = tracks.length ? 'Change' : 'Add';
+  /* Reports: the details in a line */
+  const mw = moodWordsToTeam();
+  $('reports-details-sub').textContent = [(p.reportName ? 'Name on report: ' + p.reportName : 'No name on the report yet'), 'mood words ' + (mw ? 'on' : 'off'), 'week ends on ' + WEEKDAY_NAMES[weekEndDay()]].join(' \u00b7 ');
+  $('reports-details').hidden = Boolean(state.viewer);
+  /* Food diary: the targets from the team */
+  const bits = [];
+  if (proteinTarget()) bits.push('Protein ' + (proteinIsLimit() ? 'limit' : 'target') + ' ' + proteinTarget() + ' g');
+  if (fluidLimit()) bits.push('Fluid limit ' + fluidLimit() + ' ml');
+  $('food-targets-sub').textContent = bits.length ? bits.join(' \u00b7 ') + '.' : 'No targets from your team set.';
+  $('food-targets').hidden = locked;
+}
 
 /* ---------- The Guide (v167) ----------
    More > Guide: one topic per job, each a walk-through of the real screens (made by tools/guide_shots.js from the
@@ -6273,7 +6354,7 @@ function renderUsage() {
     tiles, features, from, trend, table, countBtn);
 }
 $('more-usage').addEventListener('click', openUsage);
-$('usage-back').addEventListener('click', () => showTab('settings'));
+$('usage-back').addEventListener('click', () => showTab('more'));
 
 function openManageMeals() {
   const list = h('div', { class: 'medlist' });
@@ -11005,7 +11086,6 @@ async function saveCheckin(slot, day, answers, existing, opts = {}) {
 /* The week ends on a day the person chooses (v228, Mark: his chemo is on Fridays and he wanted his week, and so its wellbeing check, to
    end there): profile/main.weekEnd, 0 Sunday to 6 Saturday, Sunday when not set, so a household that never chose keeps Monday to Sunday.
    weekPos(day) is the day's place in its week, 0 the first day, 6 the last. */
-const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 function weekEndDay() { const n = state.profile && state.profile.weekEnd; return Number.isInteger(n) && n >= 0 && n <= 6 ? n : 0; }
 function weekPos(day) { return (parseDay(day).getDay() - weekEndDay() - 1 + 14) % 7; }
 function weekBounds(day) {
@@ -13753,6 +13833,7 @@ async function syncReminders() {
     await syncPrivate(sub);
     hint.textContent = sub ? 'This phone gets a notification at each medicine\'s reminder times, and one nudge 30 minutes later if the dose is still not logged.' : ((await pushPermissionDenied()) ? 'Notifications are blocked for Daybook in this phone\'s settings. Allow them there, then turn this on.' : 'A notification at each medicine\'s reminder times (set under Manage medicines), only on phones where this is on.');
   } catch (e) { console.warn(e); box.disabled = true; hint.textContent = 'Could not check notifications on this phone.'; }
+  if (state.profile) renderMoreRows();
 }
 async function setReminders(on) {
   const box = $('settings-reminders');
@@ -17234,6 +17315,7 @@ function renderExercise() {
   const workouts = Array.isArray(rec.workouts) ? rec.workouts : [];
   const items = programmeItems();
   $('ex-workouts').hidden = !workouts.length;
+  if (state.profile) renderMoreRows();
   $('ex-workouts-list').replaceChildren(...workouts.map((w) => {
     const bits = [];
     if (w.minutes) bits.push(w.minutes + ' min');
@@ -17682,19 +17764,42 @@ function extWords(ext) {
 function renderCalls() {
   const wrap = $('calls');
   const calls = (state.profile && state.profile.calls) || [];
-  wrap.replaceChildren(...calls.map((c) => h('div', { class: 'card callcard' },
-    h('div', { class: 'call-info' },
-      h('div', { class: 'call-label', text: c.label }),
-      c.role ? h('div', { class: 'call-role', text: c.role }) : '',
-      c.number ? h('div', { class: 'call-number', text: c.number }) : '',
-      c.number && c.ext ? h('div', { class: 'call-ext', text: extWords(c.ext) }) : '',
-      c.email ? h('div', { class: 'call-email', text: c.email }) : ''),
-    h('div', { class: 'call-btns' },
-      c.number ? h('a', { class: 'btn btn-primary', href: telHref(c.number), 'aria-label': 'Call ' + c.label + (c.ext ? ', ' + extWords(c.ext).toLowerCase() : '') }, 'Call') : '',
-      c.email ? h('a', { class: 'btn btn-secondary', href: 'mailto:' + encodeURIComponent(c.email), 'aria-label': 'Email ' + c.label }, 'Email') : '')
-  )));
+  /* One line per contact (v406): the name and role, and one round button that emails them, or calls where there is no
+     email (Mark: "we mostly email over calling"). The name opens a panel with everything: Email, Call with its extension,
+     Edit and Remove. */
+  wrap.replaceChildren(...calls.map((c, i) => {
+    const act = c.email
+      ? h('a', { class: 'btn btn-primary contact-act', href: 'mailto:' + encodeURIComponent(c.email), 'aria-label': 'Email ' + c.label }, icon('send', 'contact-act-icon'), 'Email')
+      : h('a', { class: 'btn btn-primary contact-act', href: telHref(c.number), 'aria-label': 'Call ' + c.label + (c.ext ? ', ' + extWords(c.ext).toLowerCase() : '') }, icon('speaker', 'contact-act-icon'), 'Call');
+    return h('div', { class: 'contact' },
+      h('button', { class: 'contact-main', type: 'button', onclick: () => openContactSheet(c, i), 'aria-label': c.label + (c.role ? ', ' + c.role : '') + '. Phone, email, edit' },
+        h('span', { class: 'contact-name', text: c.label }),
+        c.role ? h('span', { class: 'contact-role', text: c.role }) : null),
+      act);
+  }));
   if (!calls.length) wrap.append(h('p', { class: 'empty', 'data-art': 'call', text: packOn('cancer') ? 'No contacts saved yet. Add the ward, your nurse, the hospice or GP so they are one tap away.' : "No contacts saved yet. Add your nurse, your team's advice line or your GP so they are one tap away." }));
-  $('calls-edit').hidden = !calls.length; // nothing to edit yet: Add a new contact is the one button
+  $('calls-edit').hidden = !calls.length; // nothing to edit yet: Add is the one button
+  $('calls-hint').hidden = !calls.length;
+}
+/* A contact opened: everything about them and the ways to reach them, biggest first */
+function openContactSheet(c, i) {
+  const locked = Boolean(state.readOnly || state.viewer);
+  const body = h('div', { class: 'contact-sheet' },
+    c.role ? h('p', { class: 'contact-sheet-role', text: c.role }) : null,
+    c.email ? h('a', { class: 'btn btn-primary btn-block', href: 'mailto:' + encodeURIComponent(c.email) }, 'Email ' + c.label) : null,
+    c.email ? h('p', { class: 'hint contact-sheet-line', text: c.email }) : null,
+    c.number ? h('a', { class: 'btn ' + (c.email ? 'btn-secondary' : 'btn-primary') + ' btn-block', href: telHref(c.number), 'aria-label': 'Call ' + c.label + (c.ext ? ', ' + extWords(c.ext).toLowerCase() : '') }, 'Call ' + c.number) : null,
+    c.number && c.ext ? h('p', { class: 'hint contact-sheet-line', text: extWords(c.ext) }) : null,
+    locked ? null : h('div', { class: 'contact-sheet-tools' },
+      h('button', { class: 'btn btn-link btn-small', type: 'button', onclick: () => { closeSheet({ force: true }); setTimeout(() => openContactsSheet(false), 50); } }, 'Edit'),
+      h('button', { class: 'btn btn-link btn-small contact-remove', type: 'button', onclick: async () => {
+        closeSheet({ force: true });
+        if (!(await confirmSheet('Remove ' + c.label + '?', 'They come off Who to contact. Nothing else changes.', 'Remove', true))) return;
+        const calls = ((state.profile && state.profile.calls) || []).filter((x, k) => k !== i);
+        if (state.demo) { state.profile = { ...state.profile, calls }; renderCalls(); toast(c.label + ' removed'); return; }
+        try { await setDoc(hdoc('profile', 'main'), { calls }, { merge: true }); toast(c.label + ' removed'); } catch (e) { console.error(e); toast('Could not save'); }
+      } }, 'Remove')));
+  openSheet(c.label, body);
 }
 
 /* The two buttons sit above the list (v165; Edit contacts alone sat below it until then, and Mark wanted

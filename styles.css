@@ -2410,3 +2410,36 @@ body[data-accent] .view .section-title::before { content: ""; display: block; wi
 /* v391: medicine names from the NHS list under the Name box */
 .med-suggest { margin-top: -4px; }
 .med-suggest .preset { text-align: left; white-space: normal; }
+
+/* v406: More rebuilt, Settings one group at a time, each setting where it is used */
+.section-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-3); margin: var(--s-6) 0 var(--s-3); }
+.section-head .section-title { margin: 0; }
+.section-links { display: inline-flex; gap: var(--s-2); flex-shrink: 0; }
+.section-links .btn-link { min-height: 44px; padding: 0 var(--s-2); margin: 0; font-size: 16px; }
+.contacts { gap: var(--s-2); }
+.contact { display: flex; align-items: center; gap: var(--s-2); border-radius: var(--r-md); background: var(--grad-raised); box-shadow: var(--elev-raised); padding: 6px 6px 6px var(--s-4); }
+.contact-main { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-height: 48px; padding: var(--s-2) 0; background: none; border: 0; color: var(--text-primary); text-align: left; font: inherit; cursor: pointer; }
+.contact-name { font-family: var(--font-head); font-weight: 600; font-size: 20px; line-height: 1.15; overflow-wrap: anywhere; }
+.contact-role { color: var(--text-secondary); font-size: 15px; overflow-wrap: anywhere; }
+.contact-act { margin: 0; min-height: 48px; min-width: 104px; padding: 0 var(--s-4); border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; flex-shrink: 0; font-size: 16px; }
+.contact-act-icon { width: 20px; height: 20px; }
+#calls-hint { margin-top: var(--s-2); }
+.contact-sheet .btn-block { margin-top: var(--s-3); }
+.contact-sheet-role { margin: 0; color: var(--text-secondary); }
+.contact-sheet-line { margin: 4px 0 0; text-align: center; overflow-wrap: anywhere; }
+.contact-sheet-tools { display: flex; justify-content: center; gap: var(--s-4); margin-top: var(--s-4); }
+.contact-sheet-tools .btn-link { min-height: 44px; }
+.contact-remove { color: var(--danger); }
+.menu-row-plain .checkin-title { font-size: 18px; }
+.more-quiet { margin-top: var(--s-6); }
+.today-tools { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); margin: 0 0 var(--s-2); }
+.today-tools .hint { margin: 0; flex: 1; min-width: 0; }
+.today-tools .section-links { flex-shrink: 0; }
+#ex-nudge { margin-top: var(--s-3); }
+#ex-health-section .menu { margin-top: 0; }
+#ex-workouts { margin-top: var(--s-2); }
+.reports-details-menu { margin: 0 0 var(--s-4); }
+.food-targets-line { display: flex; flex-wrap: wrap; align-items: center; gap: 0 var(--s-2); }
+.food-targets-line .btn-link { min-height: 44px; margin: 0; padding: 0; }
+.settings-group-view .section-title { margin-top: var(--s-5); }
+#settings-back { min-height: 44px; }

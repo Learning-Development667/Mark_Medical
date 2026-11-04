@@ -89,7 +89,7 @@ const QUALITY = 0.8;
   await shot('Rested, and whether the night was broken: if it was, what broke it and roughly for how long. It goes on the Sleep chart and the reports.', '#sheet-body .btn-next');
   await page.click('#sheet-body .btn-next'); await settle();
   await page.fill('#sheet-body textarea', 'Nothing new overnight.');
-  await shot('A written answer has Tap to speak under it: tap, say it, tap again to stop. To see what was heard before it is saved, switch that on in Settings. Skip is always there.', '#sheet-body .btn-next');
+  await shot('A written answer has Tap to speak under it: tap, say it, tap again to stop. To see what was heard before it is saved, switch that on under More, This phone. Skip is always there.', '#sheet-body .btn-next');
   await page.click('#sheet-body .btn-next'); await settle();
   await toRange();
   await slider('#sheet-body input[type="range"]', 3);
@@ -112,7 +112,7 @@ const QUALITY = 0.8;
   await page.click('#meds-scheduled .med-toggle'); await settle(500);
   await shot('Logged: the line counts it, and the name opens the card with the time of each dose, Other time and Log a side effect. A when-needed medicine says when the next dose can be given.');
   await shot('The arrows at the foot of an open card, or holding the name for a second and sliding it, put the list in your own order.', '#meds-scheduled .med-order');
-  await shot('Manage medicines adds one, changes a dose or the times it is taken. Reminders arrive as notifications once they are switched on under Settings.', '#meds-manage');
+  await shot('Manage medicines adds one, changes a dose or the times it is taken. Reminders arrive as notifications once they are switched on under More, Reminders.', '#meds-manage');
   await page.click('#meds-manage'); await page.waitForSelector('#sheet:not([hidden])');
   await shot('Add a medicine sits at the top. Under it, every medicine on the list, with what it is for and Edit. A finished course keeps its history under Medicine history.', '#sheet-body .medrow:has-text("Diazepam") button');
   await page.click('#sheet-body .medrow:has-text("Diazepam") button'); await settle(700);
@@ -182,8 +182,8 @@ const QUALITY = 0.8;
   await shot('Finish when it is done. Close it instead and Today says it is not finished yet, with everything kept.', '#sheet-body .btn-primary');
   await page.click('#sheet-body .btn-primary'); await settle(700);
   await shot('Done for the week. Tap the row again to change an answer.');
-  await tab('more'); await page.click('#more-settings'); await settle(700);
-  await shot('The week ends on Sunday unless you change it under More, Settings, Your week. With treatment on the calendar, one tap makes it end on your treatment day.', '#settings-week');
+  await tab('vitals'); await page.click('#reports-details'); await settle(700);
+  await shot('The week ends on Sunday unless you change it under Report details, at the top of Reports. With treatment on the calendar, one tap makes it end on your treatment day.', '#settings-week');
 
   /* 6. reports */
   begin('reports', 'Reports, and emailing them', 'Notes for the team, the Food diary, Mood and wellbeing, Pain, and the charts.', 'Each report is a page or two for one person on the team, made from what is already logged.');
@@ -217,19 +217,23 @@ const QUALITY = 0.8;
   await shot('Mood and wellbeing: the best and hardest days, how often you felt low, sleep and pain behind it, and the weeks, with a carer\'s view in its own area.', '#mood-send');
 
   /* 7. contacts and the set-up */
-  begin('contacts', 'Who to contact, and the set-up', 'The ward, the nurse, the GP: one tap to call or email, and where the reports go.', 'More holds Who to contact first, then Help and what\'s new, and Settings.');
+  begin('contacts', 'Who to contact, and the set-up', 'The ward, the nurse, the GP: one tap to call or email, and where the reports go.', 'More holds Who to contact first, then what Daybook is for, reminders, help, and your records.');
   await tab('more');
-  await shot('More: Who to contact first, then Help and what\'s new, and Settings. Tap Add contact.', '#calls-add');
+  await shot('More: Who to contact first, then the rows that say what Daybook is for, reminders and help, each with its state in a line. Tap Add.', '#calls-add');
   await page.click('#calls-add'); await page.waitForSelector('#sheet:not([hidden])'); await settle();
   const inputs = await page.$$('#sheet .contactrow.is-new input');
   await inputs[0].fill('Sarah'); await inputs[1].fill('Oncology nurse specialist'); await inputs[2].fill('01234 567890'); await inputs[4].fill('sarah@example.nhs.uk');
   await shot('A name, and a phone number or an email address, or both. Save.', '#sheet-body .btn-primary:has-text("Save")');
   await page.click('#sheet-body .btn-primary:has-text("Save")'); await settle(700);
-  await shot('Call and Email are one tap. To change a contact, tap Edit contacts: a Save button appears under the one you change.', '#more-settings');
-  await page.click('#more-settings'); await settle(700);
-  await shot('Settings opens with the Set-up, Saved meals and every choice about the app.', '#more-setup');
+  await shot('The button emails them, or calls where there is no email. Tap the name for the number, the extension, Edit and Remove.', '#calls .contact-main');
+  await page.click('#calls .contact-main'); await page.waitForSelector('#sheet:not([hidden])'); await settle();
+  await shot('Everything about one contact, the biggest button the way you reach them most. Edit changes any contact.');
+  await closeSheet();
+  await shot('What Daybook is for shows the conditions ticked, and holds the set-up.', '#more-packs');
+  await page.click('#more-packs'); await settle(700);
+  await shot('Tick what applies. Run the set-up again is under it.', '#more-setup');
   await page.click('#more-setup'); await page.waitForSelector('#sheet:not([hidden])'); await settle();
-  await shot('The Set-up: what Daybook is for, your name on the reports, a contact, the Home Screen and Tap to speak. Run it again any time from Settings.');
+  await shot('The Set-up: what Daybook is for, your name on the reports, a contact, the Home Screen and Tap to speak. Run it again any time from More, What Daybook is for.');
   await closeSheet();
 
   /* 8. a carer's phone */
@@ -285,7 +289,7 @@ const QUALITY = 0.8;
   await page.evaluate(() => document.getElementById('guest-pill').click()); await page.waitForSelector('#sheet:not([hidden])'); await settle();
   await page.click('#sheet-body .btn-primary, #sheet-body .btn-danger'); await page.waitForSelector('#signin:not([hidden])'); await settle(600);
   await page.click('#guest-button'); await page.click('[data-preview="ibd"]'); await page.waitForSelector('#app:not([hidden])'); await page.waitForTimeout(1500);
-  begin('ibd', 'Crohn\'s or colitis', 'Bowels, flares, injections, results and the report for the IBD team.', 'With Crohn\'s or colitis ticked in Settings, Daybook adds what an IBD team asks about.');
+  begin('ibd', 'Crohn\'s or colitis', 'Bowels, flares, injections, results and the report for the IBD team.', 'With Crohn\'s or colitis ticked under More, What Daybook is for, Daybook adds what an IBD team asks about.');
   await tab('today');
   await shot('With Crohn\'s or colitis set up, Today has I think I\'m flaring under the check-ins.', '#flare-row');
   await page.click('#flare-row'); await page.waitForSelector('#sheet:not([hidden])'); await settle(700);

@@ -19,7 +19,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=405">
+  <link rel="stylesheet" href="styles.css?v=406">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -319,6 +319,10 @@
             <button class="qa" type="button" data-add="symptom"><svg class="icon qa-icon" aria-hidden="true"><use href="#i-symptom"/></svg>Symptom</button>
             <button class="qa" type="button" data-add="mood"><svg class="icon qa-icon" aria-hidden="true"><use href="#i-mood"/></svg>Mood</button>
           </div>
+          <div class="today-tools">
+            <p id="today-tracks" class="hint hint-small"></p>
+            <span class="section-links"><button id="today-tracks-change" class="btn btn-link btn-small" type="button" hidden>Things I track</button><button id="today-tiles" class="btn btn-link btn-small" type="button">Choose tiles</button></span>
+          </div>
         </div>
 
         <h2 class="section-title">Timeline</h2>
@@ -396,6 +400,12 @@
           <button id="reports-show-trends" class="seg" type="button" aria-pressed="false">Trends</button>
         </div>
         <div id="trends-reports">
+          <div class="menu reports-details-menu">
+            <button id="reports-details" class="checkin-row menu-row menu-row-plain" type="button">
+              <span class="checkin-main"><span class="checkin-title">Report details</span><span class="checkin-sub" id="reports-details-sub"></span></span>
+              <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
+            </button>
+          </div>
           <h3 class="reports-group">For the team</h3>
           <button id="rep-notes" class="report report-feature tint-teal" type="button"><svg class="icon report-icon" aria-hidden="true"><use href="#i-list"/></svg><span class="report-text"><span class="report-name">Notes for the team</span><span class="report-sub">Two pages for your next appointment: preview, print or email</span></span><svg class="icon report-go" aria-hidden="true"><use href="#i-chevron"/></svg></button>
           <div class="reports reports-2">
@@ -544,9 +554,17 @@
           <div class="chart-wrap"><canvas id="chart-steps"></canvas></div>
         </div>
 
-        <div id="ex-workouts" hidden>
-          <h2 class="section-title">From Apple Health</h2>
-          <div id="ex-workouts-list" class="workouts"></div>
+        <div id="ex-health-section" hidden>
+          <h2 class="section-title" id="ex-health-heading">From Apple Health</h2>
+          <div class="menu">
+            <button id="ex-health" class="checkin-row menu-row menu-row-plain" type="button">
+              <span class="checkin-main"><span class="checkin-title" id="ex-health-title">Not connected</span><span class="checkin-sub" id="ex-health-sub"></span></span>
+              <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
+            </button>
+          </div>
+          <div id="ex-workouts" hidden>
+            <div id="ex-workouts-list" class="workouts"></div>
+          </div>
         </div>
 
         <button id="ex-pick" class="btn btn-primary btn-block" type="button">Choose exercises</button>
@@ -556,6 +574,13 @@
           <div id="ex-stretch" class="goals"></div>
           <p id="ex-stretch-empty" class="muted" hidden>Nothing chosen yet. Tap Choose exercises to pick from twenty-four gentle ones.</p>
           <p id="ex-stretch-not-today" class="muted ex-not-today" hidden></p>
+          <div id="ex-nudge" class="card settings-group">
+            <label class="check settings-toggle">
+              <input id="settings-stretch-nudge" type="checkbox">
+              <span>Gentle nudge at 10:00 if nothing is logged here</span>
+            </label>
+            <p class="hint">One notification, no pressure. Shared by the whole circle; needs reminders on for at least one phone.</p>
+          </div>
         </div>
 
         <h2 class="section-title">Daily exercises</h2>
@@ -635,6 +660,7 @@
           <input id="food-nutrition" type="checkbox">
           <span>Show calorie and macro estimates</span>
         </label>
+        <p class="hint food-targets-line"><span id="food-targets-sub"></span> <button id="food-targets" class="btn btn-link btn-small" type="button">Targets and saved meals</button></p>
         <button id="food-totals" class="btn btn-secondary btn-block" type="button">Day totals from your food app</button>
         <p class="hint">Tags from the UK food table say what a food is like, not how much was eaten. A guide, not medical advice.</p>
         <div id="food-overview" class="status food-overview" role="group" aria-label="Days with each kind of food" hidden></div>
@@ -835,22 +861,65 @@
       <!-- MORE -->
       <section id="view-more" class="view" data-view="more" hidden>
         <p class="more-signed">Signed in as <strong id="more-user"></strong></p>
-        <h2 class="section-title">Who to contact</h2>
-        <div class="btnrow calls-actions">
-          <button id="calls-add" class="btn btn-primary" type="button">Add contact</button>
-          <button id="calls-edit" class="btn btn-secondary" type="button">Edit contacts</button>
+        <div class="section-head">
+          <h2 class="section-title">Who to contact</h2>
+          <span class="section-links"><button id="calls-add" class="btn btn-link btn-small" type="button">Add</button><button id="calls-edit" class="btn btn-link btn-small" type="button">Edit</button></span>
         </div>
-        <div id="calls" class="cards"></div>
-        <h2 class="section-title">Help and settings</h2>
+        <div id="calls" class="menu contacts"></div>
+        <p id="calls-hint" class="hint hint-small">The button emails them, or calls where there is no email. Tap the name for the number, the extension and the rest.</p>
+
+        <div id="more-circle-section" hidden>
+          <h2 class="section-title">Your care circle</h2>
+          <div class="menu">
+            <button id="more-circle" class="checkin-row menu-row" type="button">
+              <svg class="icon checkin-icon" aria-hidden="true"><use href="#i-party"/></svg>
+              <span class="checkin-main"><span class="checkin-title" id="more-circle-title">Your care circle</span><span class="checkin-sub" id="more-circle-sub">The people who see these records</span></span>
+              <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <h2 class="section-title">Daybook</h2>
         <div class="menu">
+          <button id="more-packs" class="checkin-row menu-row" type="button">
+            <svg class="icon checkin-icon" aria-hidden="true"><use href="#i-check"/></svg>
+            <span class="checkin-main"><span class="checkin-title">What Daybook is for</span><span class="checkin-sub" id="more-packs-sub"></span></span>
+            <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
+          </button>
+          <button id="more-reminders" class="checkin-row menu-row" type="button">
+            <svg class="icon checkin-icon" aria-hidden="true"><use href="#i-pill"/></svg>
+            <span class="checkin-main"><span class="checkin-title">Reminders</span><span class="checkin-sub" id="more-reminders-sub"></span></span>
+            <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
+          </button>
+          <button id="more-health" class="checkin-row menu-row" type="button" hidden>
+            <svg class="icon checkin-icon" aria-hidden="true"><use href="#i-walk"/></svg>
+            <span class="checkin-main"><span class="checkin-title" id="more-health-title">Apple Health</span><span class="checkin-sub" id="more-health-sub"></span></span>
+            <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
+          </button>
+          <button id="more-phone" class="checkin-row menu-row" type="button" hidden>
+            <svg class="icon checkin-icon" aria-hidden="true"><use href="#i-mic"/></svg>
+            <span class="checkin-main"><span class="checkin-title">This phone</span><span class="checkin-sub" id="more-phone-sub"></span></span>
+            <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
+          </button>
           <button id="more-guide" class="checkin-row menu-row" type="button">
             <svg class="icon checkin-icon" aria-hidden="true"><use href="#i-eye"/></svg>
             <span class="checkin-main"><span class="checkin-title">Help and what's new</span><span class="checkin-sub">The Guide, what has changed, and telling Mark what you think</span></span>
             <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
           </button>
-          <button id="more-settings" class="checkin-row menu-row" type="button">
-            <svg class="icon checkin-icon" aria-hidden="true"><use href="#i-list"/></svg>
-            <span class="checkin-main"><span class="checkin-title">Settings</span><span class="checkin-sub">Set-up, what Daybook is for, food and saved meals, reminders, your records and the app</span></span>
+          <button id="more-usage" class="checkin-row menu-row" type="button" hidden>
+            <svg class="icon checkin-icon" aria-hidden="true"><use href="#i-trend"/></svg>
+            <span class="checkin-main"><span class="checkin-title">Usage</span><span class="checkin-sub">How Daybook is being used, in counts. Shown only to the circle that runs Daybook</span></span>
+            <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
+          </button>
+        </div>
+
+        <div class="menu more-quiet">
+          <button id="more-records" class="checkin-row menu-row menu-row-plain" type="button" hidden>
+            <span class="checkin-main"><span class="checkin-title">Your records</span><span class="checkin-sub" id="more-records-sub">Download everything, or delete the circle</span></span>
+            <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
+          </button>
+          <button id="more-about" class="checkin-row menu-row menu-row-plain" type="button">
+            <span class="checkin-main"><span class="checkin-title">Privacy, terms and version</span><span class="checkin-sub" id="more-about-sub"></span></span>
             <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
           </button>
         </div>
@@ -909,154 +978,176 @@
         <div class="diary-head">
           <button id="settings-back" class="btn btn-link" type="button">&#8249; Back</button>
         </div>
-        <div class="menu settings-menu">
-          <button id="more-setup" class="checkin-row menu-row" type="button">
-            <svg class="icon checkin-icon" aria-hidden="true"><use href="#i-check"/></svg>
-            <span class="checkin-main"><span class="checkin-title">Set-up</span><span id="more-setup-sub" class="checkin-sub">What Daybook is for, your name on reports, who to contact, the Home Screen</span></span>
-            <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
-          </button>
-          <button id="more-meals" class="checkin-row menu-row" type="button">
-            <svg class="icon checkin-icon" aria-hidden="true"><use href="#i-food"/></svg>
-            <span class="checkin-main"><span class="checkin-title">Saved meals</span><span class="checkin-sub">The quick buttons offered when logging food</span></span>
-            <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
-          </button>
-          <button id="more-usage" class="checkin-row menu-row" type="button" hidden>
-            <svg class="icon checkin-icon" aria-hidden="true"><use href="#i-trend"/></svg>
-            <span class="checkin-main"><span class="checkin-title">Usage</span><span class="checkin-sub">How Daybook is being used, in counts. Shown only to the circle that runs Daybook</span></span>
-            <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
-          </button>
-        </div>
-        <h2 class="section-title">Your Today screen</h2>
-        <div id="settings-tiles" class="card settings-group">
-          <p class="hint">Tick the tiles you use. The rest are hidden from Today, on this phone only. Anything already logged stays on the timeline and the reports.</p>
-          <div id="settings-tiles-list" class="tile-ticks"></div>
-        </div>
-        <h2 class="section-title">Things I track</h2>
-        <div id="settings-tracks" class="card settings-group">
-          <p class="hint">Your own things, such as caffeine, screen time or a day at work. Asked in the evening check-in and shown on Notes for the team. Shared by everyone in the circle.</p>
-          <div id="settings-tracks-list"></div>
-          <button id="settings-track-add" class="btn btn-primary btn-block" type="button">Add something to track</button>
-        </div>
-        <h2 class="section-title">What Daybook is for</h2>
-        <div id="settings-packs" class="card settings-group">
-          <p class="hint">Tick what applies; more than one is fine. Each brings its own questions and its own limits on the reports. Shared by everyone in the circle.</p>
-          <div id="settings-packs-list"></div>
-          <div id="settings-ibd" class="ibd-setup" hidden></div>
-        </div>
-        <h2 class="section-title">Food</h2>
-        <div id="settings-food" class="card settings-group">
-          <label class="check settings-toggle">
-            <input id="settings-nutrition" type="checkbox">
-            <span>Show calorie and macro estimates</span>
-          </label>
-          <p class="hint">Rough calorie, protein, carb and fat figures from typical portions. Estimates only, not medical advice.</p>
-          <div id="settings-foodstats" class="foodstats" hidden>
-            <p class="fieldlabel">Figures to show on the Food screen</p>
-            <div id="settings-foodstats-list" class="foodstats-list"></div>
-            <p class="hint">The day's running total as food is logged, in the figures ticked.</p>
+
+        <div class="settings-group-view" data-group="packs" hidden>
+          <div id="settings-packs" class="card settings-group">
+            <p class="hint">Tick what applies; more than one is fine. Each brings its own questions and its own limits on the reports. Shared by everyone in the circle.</p>
+            <div id="settings-packs-list"></div>
+            <div id="settings-ibd" class="ibd-setup" hidden></div>
           </div>
-          <label class="field settings-target">
-            <span>Daily protein target in grams, from the dietitian (optional)</span>
-            <input id="settings-protein" type="number" inputmode="numeric" min="0" step="5">
-          </label>
-          <label class="check"><input id="settings-protein-limit" type="checkbox"><span>It is a limit to stay under (a kidney diet, say)</span></label>
-          <p class="hint">Each day's estimated protein is compared with it in the Food diary and in Notes for the team.</p>
-          <label class="field settings-target">
-            <span>Daily fluid limit in ml, from your team (optional)</span>
-            <input id="settings-fluid" type="text" inputmode="numeric" autocomplete="off">
-          </label>
-          <p class="hint">For a fluid restriction (a kidney or heart diet). Set, Notes for the team compares each day's drinks with it instead of the 1 litre line.</p>
+          <div class="menu settings-menu">
+            <button id="more-setup" class="checkin-row menu-row" type="button">
+              <svg class="icon checkin-icon" aria-hidden="true"><use href="#i-check"/></svg>
+              <span class="checkin-main"><span class="checkin-title">Run the set-up again</span><span id="more-setup-sub" class="checkin-sub">What Daybook is for, your name on reports, who to contact, the Home Screen</span></span>
+              <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
+            </button>
+          </div>
         </div>
-        <h2 class="section-title">Notes for the team</h2>
-        <div id="settings-report" class="card settings-group">
-          <label class="field">
-            <span>Name on the report</span>
-            <input id="settings-report-name" type="text" autocomplete="name" maxlength="60">
-          </label>
-          <p class="hint">Your full name, as the hospital has it, so the team can file the reports against your records.</p>
-          <label class="check"><input id="settings-mood-words" type="checkbox"><span>Include what I write about my mood, and a carer's weekly review</span></label>
-          <p class="hint">Off, the team sees your average mood on a chart and nothing written about mood or the week. It all stays in Daybook and on the Mood and wellbeing report.</p>
+
+        <div class="settings-group-view" data-group="tiles" hidden>
+          <div id="settings-tiles" class="card settings-group">
+            <p class="hint">Tick the tiles you use. The rest are hidden from Today, on this phone only. Anything already logged stays on the timeline and the reports.</p>
+            <div id="settings-tiles-list" class="tile-ticks"></div>
+          </div>
         </div>
-        <h2 class="section-title">Your week</h2>
-        <div id="settings-week" class="card settings-group">
-          <label class="field">
-            <span>My week ends on</span>
-            <select id="settings-week-end">
-              <option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option><option value="6">Saturday</option><option value="0">Sunday</option>
-            </select>
-          </label>
-          <button id="settings-week-treatment" class="btn btn-secondary btn-block" type="button" hidden>Use my treatment day</button>
-          <p class="hint">The weekly check-in covers the week up to this day.</p>
+
+        <div class="settings-group-view" data-group="tracks" hidden>
+          <div id="settings-tracks" class="card settings-group">
+            <p class="hint">Your own things, such as caffeine, screen time or a day at work. Asked in the evening check-in and shown on Notes for the team. Shared by everyone in the circle.</p>
+            <div id="settings-tracks-list"></div>
+            <button id="settings-track-add" class="btn btn-primary btn-block" type="button">Add something to track</button>
+          </div>
         </div>
-        <div id="settings-speak">
-          <h2 class="section-title">Talking instead of typing</h2>
-          <div class="card settings-group">
+
+        <div class="settings-group-view" data-group="food" hidden>
+          <div id="settings-food" class="card settings-group">
             <label class="check settings-toggle">
-              <input id="settings-speakcheck" type="checkbox">
-              <span>Show me what was heard before anything is saved</span>
+              <input id="settings-nutrition" type="checkbox">
+              <span>Show calorie and macro estimates</span>
             </label>
-            <p class="hint">Optional, this phone only. Shows the words it heard before anything is saved, so a misheard word can be put right.</p>
-          </div>
-        </div>
-        <h2 class="section-title">Reminders</h2>
-        <div id="settings-reminders-group" class="card settings-group">
-          <label class="check settings-toggle">
-            <input id="settings-reminders" type="checkbox">
-            <span>Reminders on this phone</span>
-          </label>
-          <p class="hint" id="settings-reminders-hint"></p>
-          <div id="settings-private-row" hidden>
-            <label class="check settings-toggle">
-              <input id="settings-private" type="checkbox" checked>
-              <span>Keep medicine names off the lock screen</span>
-            </label>
-            <p class="hint" id="settings-private-hint"></p>
-          </div>
-          <label class="check settings-toggle">
-            <input id="settings-stretch-nudge" type="checkbox">
-            <span>Gentle nudge at 10:00 if nothing is logged on the Exercise tab</span>
-          </label>
-          <p class="hint">One notification, no pressure. Needs reminders on for at least one phone in the circle.</p>
-        </div>
-        <div id="settings-household" hidden>
-          <h2 class="section-title">Your care circle</h2>
-          <div class="card settings-group">
-            <p id="settings-household-name" class="big"></p>
-            <p class="hint">The people you have chosen to see these records. Nobody else can.</p>
-            <ul id="settings-members" class="members"></ul>
-            <button id="settings-invite" class="btn btn-primary btn-block" type="button">Invite someone</button>
-            <p class="hint" id="settings-invite-hint">An invite is a link that works once and expires in a week.</p>
-            <div id="settings-handover"></div>
-          </div>
-        </div>
-        <div id="settings-records" hidden>
-          <h2 class="section-title">Your records</h2>
-          <div class="card settings-group">
-            <p class="hint">Download everything the circle has recorded: every entry, medicine, check-in, letter and recording, in one zip file to keep or to take elsewhere.</p>
-            <button id="settings-export" class="btn btn-secondary btn-block" type="button">Download all the records</button>
-            <p class="hint" id="settings-export-said" role="status"></p>
-            <div id="settings-export-save"></div>
-            <div id="settings-delete"></div>
-          </div>
-        </div>
-        <div id="settings-health" hidden>
-          <h2 class="section-title">Apple Health</h2>
-          <div class="card settings-group">
-            <div id="settings-health-native" hidden>
-              <p class="hint">Steps, sleep, workouts, weight and the day's food energy come straight from Apple Health into this circle. Daybook only reads; it never writes to Apple Health.</p>
-              <button id="settings-health-connect" class="btn btn-primary btn-block" type="button">Connect Apple Health</button>
-              <p class="hint" id="settings-health-status" aria-live="polite"></p>
+            <p class="hint">Rough calorie, protein, carb and fat figures from typical portions. Estimates only, not medical advice.</p>
+            <div id="settings-foodstats" class="foodstats" hidden>
+              <p class="fieldlabel">Figures to show on the Food screen</p>
+              <div id="settings-foodstats-list" class="foodstats-list"></div>
+              <p class="hint">The day's running total as food is logged, in the figures ticked.</p>
             </div>
-            <div id="settings-health-hae">
-            <p class="hint">Optional. Steps, sleep, workouts, weight and food totals can arrive through the Health Auto Export app (iPhone, paid version). Its automation posts to the address below with this key in the X-Care-Log-Key header.</p>
-            <p class="mono keybox" id="settings-health-url"></p>
-            <button id="settings-health-key" class="btn btn-secondary btn-block" type="button">Show the inbox key</button>
-            <p class="mono keybox" id="settings-health-keytext" hidden></p>
-            <p class="hint" id="settings-health-hint" hidden></p>
+            <label class="field settings-target">
+              <span>Daily protein target in grams, from the dietitian (optional)</span>
+              <input id="settings-protein" type="number" inputmode="numeric" min="0" step="5">
+            </label>
+            <label class="check"><input id="settings-protein-limit" type="checkbox"><span>It is a limit to stay under (a kidney diet, say)</span></label>
+            <p class="hint">Each day's estimated protein is compared with it in the Food diary and in Notes for the team.</p>
+            <label class="field settings-target">
+              <span>Daily fluid limit in ml, from your team (optional)</span>
+              <input id="settings-fluid" type="text" inputmode="numeric" autocomplete="off">
+            </label>
+            <p class="hint">For a fluid restriction (a kidney or heart diet). Set, Notes for the team compares each day's drinks with it instead of the 1 litre line.</p>
+          </div>
+          <div class="menu settings-menu">
+            <button id="more-meals" class="checkin-row menu-row" type="button">
+              <svg class="icon checkin-icon" aria-hidden="true"><use href="#i-food"/></svg>
+              <span class="checkin-main"><span class="checkin-title">Saved meals</span><span class="checkin-sub">The quick buttons offered when logging food</span></span>
+              <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="settings-group-view" data-group="reports" hidden>
+          <div id="settings-report" class="card settings-group">
+            <label class="field">
+              <span>Name on the report</span>
+              <input id="settings-report-name" type="text" autocomplete="name" maxlength="60">
+            </label>
+            <p class="hint">Your full name, as the hospital has it, so the team can file the reports against your records.</p>
+            <label class="check"><input id="settings-mood-words" type="checkbox"><span>Include what I write about my mood, and a carer's weekly review</span></label>
+            <p class="hint">Off, the team sees your average mood on a chart and nothing written about mood or the week. It all stays in Daybook and on the Mood and wellbeing report.</p>
+          </div>
+          <h2 class="section-title">Your week</h2>
+          <div id="settings-week" class="card settings-group">
+            <label class="field">
+              <span>My week ends on</span>
+              <select id="settings-week-end">
+                <option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option><option value="6">Saturday</option><option value="0">Sunday</option>
+              </select>
+            </label>
+            <button id="settings-week-treatment" class="btn btn-secondary btn-block" type="button" hidden>Use my treatment day</button>
+            <p class="hint">The weekly check-in covers the week up to this day.</p>
+          </div>
+        </div>
+
+        <div class="settings-group-view" data-group="phone" hidden>
+          <div id="settings-speak">
+            <div class="card settings-group">
+              <label class="check settings-toggle">
+                <input id="settings-speakcheck" type="checkbox">
+                <span>Tap to speak: show me what was heard before anything is saved</span>
+              </label>
+              <p class="hint">This phone only. Shows the words it heard before anything is saved, so a misheard word can be put right.</p>
             </div>
           </div>
         </div>
-        <h2 class="section-title">App</h2>
+
+        <div class="settings-group-view" data-group="reminders" hidden>
+          <div id="settings-reminders-group" class="card settings-group">
+            <label class="check settings-toggle">
+              <input id="settings-reminders" type="checkbox">
+              <span>Reminders on this phone</span>
+            </label>
+            <p class="hint" id="settings-reminders-hint"></p>
+            <div id="settings-private-row" hidden>
+              <label class="check settings-toggle">
+                <input id="settings-private" type="checkbox" checked>
+                <span>Keep medicine names off the lock screen</span>
+              </label>
+              <p class="hint" id="settings-private-hint"></p>
+            </div>
+          </div>
+          <p class="hint">The times are set on each medicine, under Meds. The gentle exercise nudge is on the Exercise tab.</p>
+        </div>
+
+        <div class="settings-group-view" data-group="circle" hidden>
+          <div id="settings-household" hidden>
+            <div class="card settings-group">
+              <p id="settings-household-name" class="big"></p>
+              <p class="hint">The people you have chosen to see these records. Nobody else can.</p>
+              <ul id="settings-members" class="members"></ul>
+              <button id="settings-invite" class="btn btn-primary btn-block" type="button">Invite someone</button>
+              <p class="hint" id="settings-invite-hint">An invite is a link that works once and expires in a week.</p>
+              <div id="settings-handover"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-group-view" data-group="records" hidden>
+          <div id="settings-records" hidden>
+            <div class="card settings-group">
+              <p class="hint">Download everything the circle has recorded: every entry, medicine, check-in, letter and recording, in one zip file to keep or to take elsewhere.</p>
+              <button id="settings-export" class="btn btn-secondary btn-block" type="button">Download all the records</button>
+              <p class="hint" id="settings-export-said" role="status"></p>
+              <div id="settings-export-save"></div>
+            </div>
+            <div id="settings-delete" class="card settings-group records-danger"></div>
+          </div>
+        </div>
+
+        <div class="settings-group-view" data-group="health" hidden>
+          <div id="settings-health" hidden>
+            <div class="card settings-group">
+              <div id="settings-health-native" hidden>
+                <p class="hint">Steps, sleep, workouts, weight and the day's food energy come straight from Apple Health into this circle. Daybook only reads; it never writes to Apple Health.</p>
+                <button id="settings-health-connect" class="btn btn-primary btn-block" type="button">Connect Apple Health</button>
+                <p class="hint" id="settings-health-status" aria-live="polite"></p>
+              </div>
+              <div id="settings-health-hae">
+              <p class="hint">Optional. Steps, sleep, workouts, weight and food totals can arrive through the Health Auto Export app (iPhone, paid version). Its automation posts to the address below with this key in the X-Care-Log-Key header.</p>
+              <p class="mono keybox" id="settings-health-url"></p>
+              <button id="settings-health-key" class="btn btn-secondary btn-block" type="button">Show the inbox key</button>
+              <p class="mono keybox" id="settings-health-keytext" hidden></p>
+              <p class="hint" id="settings-health-hint" hidden></p>
+              </div>
+            </div>
+            <div class="card settings-group">
+              <p class="fieldlabel">What comes in, and where it goes</p>
+              <ul class="about-list">
+                <li>Steps and workouts: the Exercise tab</li>
+                <li>Sleep and weight: Today and Trends</li>
+                <li>Food energy: the Food diary</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-group-view" data-group="about" hidden>
         <div class="card">
           <p>Add Daybook to the Home Screen from the Share menu in Safari to use it like an app.</p>
           <p>Built to meet WCAG 2.2 level AA, the web accessibility standard. Last checked on 28 September 2026, with automated tests (axe-core) and by hand, in light and dark.</p>
@@ -1074,6 +1165,7 @@
             <li>Memorial Sloan Kettering Cancer Center, Chair Exercises</li>
           </ul>
           <p class="hint">Body area tags are a guide only. Your care team has the final say.</p>
+        </div>
         </div>
       </section>
 
@@ -1234,6 +1326,6 @@
   </div>
 
   <script src="config.js?v=405"></script>
-  <script type="module" src="scripts.js?v=405"></script>
+  <script type="module" src="scripts.js?v=406"></script>
 </body>
 </html>

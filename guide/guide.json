@@ -1,5 +1,5 @@
 {
- "made": "2026-11-02",
+ "made": "2026-11-04",
  "width": 390,
  "height": 844,
  "topics": [
@@ -71,7 +71,7 @@
     },
     {
      "file": "checkin-4.webp",
-     "caption": "A written answer has Tap to speak under it: tap, say it, tap again to stop. To see what was heard before it is saved, switch that on in Settings. Skip is always there.",
+     "caption": "A written answer has Tap to speak under it: tap, say it, tap again to stop. To see what was heard before it is saved, switch that on under More, This phone. Skip is always there.",
      "tap": {
       "x": 0.697,
       "y": 0.427
@@ -139,7 +139,7 @@
     },
     {
      "file": "meds-4.webp",
-     "caption": "Manage medicines adds one, changes a dose or the times it is taken. Reminders arrive as notifications once they are switched on under Settings.",
+     "caption": "Manage medicines adds one, changes a dose or the times it is taken. Reminders arrive as notifications once they are switched on under More, Reminders.",
      "tap": {
       "x": 0.264,
       "y": 0.206
@@ -295,10 +295,10 @@
     },
     {
      "file": "week-5.webp",
-     "caption": "The week ends on Sunday unless you change it under More, Settings, Your week. With treatment on the calendar, one tap makes it end on your treatment day.",
+     "caption": "The week ends on Sunday unless you change it under Report details, at the top of Reports. With treatment on the calendar, one tap makes it end on your treatment day.",
      "tap": {
       "x": 0.5,
-      "y": 0.435
+      "y": 0.714
      }
     }
    ]
@@ -366,7 +366,7 @@
      "caption": "Beside Notes for the team: Pain and pain relief for the pain team, the Food diary for the dietitian, Mood and wellbeing for a therapist or GP.",
      "tap": {
       "x": 0.5,
-      "y": 0.389
+      "y": 0.518
      }
     },
     {
@@ -399,7 +399,7 @@
    "key": "ibd",
    "title": "Crohn's or colitis",
    "sub": "Bowels, flares, injections, results and the report for the IBD team.",
-   "intro": "With Crohn's or colitis ticked in Settings, Daybook adds what an IBD team asks about.",
+   "intro": "With Crohn's or colitis ticked under More, What Daybook is for, Daybook adds what an IBD team asks about.",
    "steps": [
     {
      "file": "ibd-1.webp",
@@ -459,14 +459,14 @@
    "key": "contacts",
    "title": "Who to contact, and the set-up",
    "sub": "The ward, the nurse, the GP: one tap to call or email, and where the reports go.",
-   "intro": "More holds Who to contact first, then Help and what's new, and Settings.",
+   "intro": "More holds Who to contact first, then what Daybook is for, reminders, help, and your records.",
    "steps": [
     {
      "file": "contacts-1.webp",
-     "caption": "More: Who to contact first, then Help and what's new, and Settings. Tap Add contact.",
+     "caption": "More: Who to contact first, then the rows that say what Daybook is for, reminders and help, each with its state in a line. Tap Add.",
      "tap": {
-      "x": 0.264,
-      "y": 0.204
+      "x": 0.761,
+      "y": 0.152
      }
     },
     {
@@ -479,23 +479,35 @@
     },
     {
      "file": "contacts-3.webp",
-     "caption": "Call and Email are one tap. To change a contact, tap Edit contacts: a Save button appears under the one you change.",
+     "caption": "The button emails them, or calls where there is no email. Tap the name for the number, the extension, Edit and Remove.",
      "tap": {
-      "x": 0.5,
-      "y": 0.729
+      "x": 0.362,
+      "y": 0.236
      }
     },
     {
      "file": "contacts-4.webp",
-     "caption": "Settings opens with the Set-up, Saved meals and every choice about the app.",
-     "tap": {
-      "x": 0.5,
-      "y": 0.217
-     }
+     "caption": "Everything about one contact, the biggest button the way you reach them most. Edit changes any contact."
     },
     {
      "file": "contacts-5.webp",
-     "caption": "The Set-up: what Daybook is for, your name on the reports, a contact, the Home Screen and Tap to speak. Run it again any time from Settings."
+     "caption": "What Daybook is for shows the conditions ticked, and holds the set-up.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.813
+     }
+    },
+    {
+     "file": "contacts-6.webp",
+     "caption": "Tick what applies. Run the set-up again is under it.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.801
+     }
+    },
+    {
+     "file": "contacts-7.webp",
+     "caption": "The Set-up: what Daybook is for, your name on the reports, a contact, the Home Screen and Tap to speak. Run it again any time from More, What Daybook is for."
     }
    ]
   },
@@ -590,7 +602,7 @@
      "caption": "Before the appointment, open Reports. Everything since the last one is already there.",
      "tap": {
       "x": 0.5,
-      "y": 0.257
+      "y": 0.385
      }
     },
     {
