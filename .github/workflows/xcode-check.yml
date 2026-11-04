@@ -1,0 +1,21 @@
+# Lists the Xcode versions on GitHub's Mac images, to choose the one the iPhone build uses (v412: the foldable iPhone
+# needs apps built with its SDK, or it shows them letterboxed). Builds nothing and sends nothing to TestFlight.
+name: Xcode versions on GitHub's Macs
+
+on:
+  workflow_dispatch:
+
+jobs:
+  list:
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [macos-15, macos-26, macos-latest]
+    runs-on: ${{ matrix.image }}
+    steps:
+      - name: List Xcode
+        run: |
+          sw_vers -productVersion
+          ls -d /Applications/Xcode*.app
+          for x in /Applications/Xcode*.app; do echo "$x: $("$x/Contents/Developer/usr/bin/xcodebuild" -version 2>/dev/null | tr '\n' ' ')"; done
+          xcodebuild -showsdks | grep -i iphoneos || true
