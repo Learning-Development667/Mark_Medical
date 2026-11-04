@@ -30,7 +30,7 @@ const QUALITY = 0.8;
   const begin = (key, title, sub, intro) => { topic = { key, title, sub, intro, steps: [] }; topics.push(topic); };
   const settle = (ms) => page.waitForTimeout(ms || 450);
   /* one frame: the screen as it is now, the ring on `tap` (a selector or a locator), the caption */
-  async function shot(caption, tap) {
+  async function shot(caption, tap, extra) {
     await settle();
     let ring = null;
     if (tap) {
@@ -46,7 +46,7 @@ const QUALITY = 0.8;
     const n = topic.steps.length + 1;
     const file = `${topic.key}-${n}.webp`;
     fs.writeFileSync(path.join(OUT, file), Buffer.from(webp.split(',')[1], 'base64'));
-    topic.steps.push({ file, caption, ...(ring ? { tap: ring } : {}) });
+    topic.steps.push({ file, caption, ...(ring ? { tap: ring } : {}), ...(extra || {}) });
     process.stdout.write(`${file} ${(fs.statSync(path.join(OUT, file)).size / 1024).toFixed(0)} KB\n`);
   }
   const slider = async (sel, v) => page.$eval(sel, (el, v) => { el.value = String(v); el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }, v);
@@ -284,6 +284,60 @@ const QUALITY = 0.8;
   await page.click('#sheet-body .pickrow'); await settle(900);
   await shot('Send to the team emails the PDF to the nurse, the dietitian or the oncologist, with a copy to you. One tap, and it is done.', '#send-go, #sheet-body .btn-primary');
   await closeSheet();
+
+  /* 11. the tour (v409): shown once after the set-up, and from Help; one line a tab, for someone tired or medicated */
+  begin('tour', 'A tour of Daybook', 'A minute across the six tabs. Shown once when you start, and here any time.', 'One line for each tab. Skip it any time; it is here again under Help.');
+  await tab('today');
+  await shot('This is Daybook. Six tabs along the bottom. This tour takes a minute, and you can skip it any time.', '#tabs');
+  await shot('Today is where most things happen. The morning and evening check-ins, the tiles for a reading, a drink, food or a note, and the day\'s timeline underneath.', '.quickadd');
+  await tab('meds');
+  await shot('Meds lists every medicine. Tap Log now when a dose is taken. Reminders can come to this phone.', '#meds-scheduled .med-toggle');
+  await tab('chemo');
+  await shot('Treatment is the calendar: sessions, appointments and how the days after went.', '#cal-grid', { captions: { ibd: 'Treatment is the calendar: injections, appointments and the flare plan.', general: 'Treatment is the calendar: appointments, and any course of treatment.' } });
+  await tab('exercise');
+  await shot('Exercise keeps steps and gentle exercises. Nothing here is expected of you.');
+  await tab('vitals');
+  await shot('Reports turns what is logged into a page or two for the team. Preview it, print it, or email it from here.', '#rep-notes');
+  await tab('more');
+  await shot('More holds who to contact, your care circle and what Daybook is for.', '#calls');
+  await tab('today');
+  await shot('That is it. Log what you can, when you can. The Guide under More shows each job step by step.');
+
+  /* 12. food and drink */
+  begin('food', 'Food and drink', 'From the Food and Drink tiles, with your saved meals one tap away.', 'Food and drink are logged from two tiles on Today, and add up on the Food diary for a dietitian.');
+  await shot('Tap Food on Today.', '.qa[data-add="food"]');
+  await page.click('.qa[data-add="food"]'); await page.waitForSelector('#sheet:not([hidden])'); await settle();
+  await shot('Type what was eaten, or tap one of your saved meals.', '#sheet-body .pickrow');
+  await page.click('#sheet-body .pickrow'); await settle(700);
+  await shot('Which meal it was, and how much of it went. Then Save.', '#sheet-body .btn-primary');
+  await page.click('#sheet-body .btn-primary'); await settle(700);
+  /* a medicine taken with meals asks whether it was taken too (Creon in the preview): Not this time, and on */
+  if (await page.$('#sheet:not([hidden])')) { await page.click('#sheet-body .btn-link:has-text("Not this time"), #sheet-body .btn-secondary:has-text("Cancel")').catch(() => {}); await settle(500); }
+  if (await page.$('#sheet:not([hidden])')) { await closeSheet(); }
+  await shot('Drink is its own tile: what it was and the size. The day\'s total shows at the top of Today.', '.qa[data-add="drink"]');
+  await page.click('.qa[data-add="drink"]'); await page.waitForSelector('#sheet:not([hidden])'); await settle();
+  await shot('Water and 200 ml are already chosen; tap another drink or size if it was different, then Save.', '#sheet-body .btn-primary');
+  await closeSheet();
+
+  /* 13. mood */
+  begin('mood', 'How you feel', 'Mood is asked in the check-ins; the Mood tile logs it at any other time.', 'Mood is 0 to 10, with your own words if you want them. The team sees the chart; the words stay yours unless you share them.');
+  await shot('Mood is asked morning and evening in the check-ins, 0 to 10. For any other time, tap Mood.', '.qa[data-add="mood"]');
+  await page.click('.qa[data-add="mood"]'); await page.waitForSelector('#sheet:not([hidden])'); await settle();
+  await slider('#sheet-body input[type="range"]', 7);
+  await shot('Slide to the number, and add a word or two about what is behind it if you want. Then Save.', '#sheet-body .btn-primary');
+  await page.click('#sheet-body .btn-secondary:has-text("Cancel")'); await settle(500);
+  await tab('vitals');
+  await shot('Your words stay in Daybook unless you tick them on under Report details. The team\'s report shows the chart.', '#reports-details');
+  await tab('today');
+
+  /* 14. a note */
+  begin('note', 'A note in your own words', 'Anything that does not fit a tile: who came, what was said, how the day went.', 'A note is for anything in your own words, at any time. It goes on the timeline and, as your own words, on Notes for the team.');
+  await shot('Tap Note on Today for anything that does not fit a tile: who came, what was said, how the day went.', '.qa[data-add="note"]');
+  await page.click('.qa[data-add="note"]'); await page.waitForSelector('#sheet:not([hidden])'); await settle();
+  await shot('Type it, or tap Tap to speak and say it: the words go in as you speak.', '#sheet-body .speakbtn');
+  await page.fill('#sheet-body textarea', 'District nurse came at ten. Dressing changed, all fine.');
+  await shot('Save. The note is on the timeline, and in your own words on Notes for the team.', '#sheet-body .btn-primary');
+  await page.click('#sheet-body .btn-secondary:has-text("Cancel")'); await settle(500);
 
   /* 10. Crohn's or colitis (v204 to v221), on Jo's preview */
   await page.evaluate(() => document.getElementById('guest-pill').click()); await page.waitForSelector('#sheet:not([hidden])'); await settle();

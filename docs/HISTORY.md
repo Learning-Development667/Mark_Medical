@@ -6,6 +6,11 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v409 (4 November 2026): the first-time tour, three everyday Guide topics, and the Guide read aloud
+- **The tour** (Mark: "guides are very important, some users might be quite medicated"): a Guide topic, `tour`, eight frames across the six tabs with one line each, opened once after the set-up finishes (`offerTour()`, `daybook.tour.seen` on the phone), again from Help and what's new (Take the tour again) and first in the Guide's list. While it is the tour, the player's top link reads Skip the tour and goes to Today; Play stops at its last step instead of going round. The Treatment line changes by condition (`captions.ibd`, `captions.general`, chosen by `guideCaption()` when cancer is not on).
+- **Three Guide topics**: Food and drink (the Food tile, a saved meal, how much, the Drink tile), How you feel (the check-ins, the Mood tile, Report details for the words) and A note in your own words (the Note tile, Tap to speak, Notes for the team). `tools/guide_shots.js`: `shot()` takes an extra object for the step.
+- **Read aloud** (Mark, after hearing a good voice in a page): a speaker button beside Play. On, each step's caption is read in the phone's own speech, with the best UK English voice the phone offers (`pickVoice()`: an Enhanced or Premium voice first, then the known Siri and Google UK names, then any en-GB) rather than the first one listed, and Play waits for the reading to end before moving on. Remembered on the phone (`daybook.guide.voice`). A line under the controls says how to download an Enhanced voice on iPhone. Tapping another tab mid-sentence cancels the speech. The voice could not be heard here: Mark to judge which one his iPhone picks.
+
 ### v408 (4 November 2026): the Tap to speak review option removed
 - Mark: the words appear as you speak, so a box showing them again before the save was one step too many. The option is gone from the set-up and from More (the This phone row and its group), `speakCheckOn()` is always false, and the review code stays unused behind it. The Guide's check-in caption no longer mentions it; the frame is unchanged.
 

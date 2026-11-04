@@ -4,6 +4,186 @@
  "height": 844,
  "topics": [
   {
+   "key": "tour",
+   "title": "A tour of Daybook",
+   "sub": "A minute across the six tabs. Shown once when you start, and here any time.",
+   "intro": "One line for each tab. Skip it any time; it is here again under Help.",
+   "steps": [
+    {
+     "file": "tour-1.webp",
+     "caption": "This is Daybook. Six tabs along the bottom. This tour takes a minute, and you can skip it any time.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.955
+     }
+    },
+    {
+     "file": "tour-2.webp",
+     "caption": "Today is where most things happen. The morning and evening check-ins, the tiles for a reading, a drink, food or a note, and the day's timeline underneath.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.732
+     }
+    },
+    {
+     "file": "tour-3.webp",
+     "caption": "Meds lists every medicine. Tap Log now when a dose is taken. Reminders can come to this phone.",
+     "tap": {
+      "x": 0.335,
+      "y": 0.434
+     }
+    },
+    {
+     "file": "tour-4.webp",
+     "caption": "Treatment is the calendar: sessions, appointments and how the days after went.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.332
+     },
+     "captions": {
+      "ibd": "Treatment is the calendar: injections, appointments and the flare plan.",
+      "general": "Treatment is the calendar: appointments, and any course of treatment."
+     }
+    },
+    {
+     "file": "tour-5.webp",
+     "caption": "Exercise keeps steps and gentle exercises. Nothing here is expected of you."
+    },
+    {
+     "file": "tour-6.webp",
+     "caption": "Reports turns what is logged into a page or two for the team. Preview it, print it, or email it from here.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.385
+     }
+    },
+    {
+     "file": "tour-7.webp",
+     "caption": "More holds who to contact, your care circle and what Daybook is for.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.397
+     }
+    },
+    {
+     "file": "tour-8.webp",
+     "caption": "That is it. Log what you can, when you can. The Guide under More shows each job step by step."
+    }
+   ]
+  },
+  {
+   "key": "food",
+   "title": "Food and drink",
+   "sub": "From the Food and Drink tiles, with your saved meals one tap away.",
+   "intro": "Food and drink are logged from two tiles on Today, and add up on the Food diary for a dietitian.",
+   "steps": [
+    {
+     "file": "food-1.webp",
+     "caption": "Tap Food on Today.",
+     "tap": {
+      "x": 0.187,
+      "y": 0.825
+     }
+    },
+    {
+     "file": "food-2.webp",
+     "caption": "Type what was eaten, or tap one of your saved meals.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.639
+     }
+    },
+    {
+     "file": "food-3.webp",
+     "caption": "Which meal it was, and how much of it went. Then Save.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.967
+     }
+    },
+    {
+     "file": "food-4.webp",
+     "caption": "Drink is its own tile: what it was and the size. The day's total shows at the top of Today.",
+     "tap": {
+      "x": 0.813,
+      "y": 0.73
+     }
+    },
+    {
+     "file": "food-5.webp",
+     "caption": "Water and 200 ml are already chosen; tap another drink or size if it was different, then Save.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.967
+     }
+    }
+   ]
+  },
+  {
+   "key": "mood",
+   "title": "How you feel",
+   "sub": "Mood is asked in the check-ins; the Mood tile logs it at any other time.",
+   "intro": "Mood is 0 to 10, with your own words if you want them. The team sees the chart; the words stay yours unless you share them.",
+   "steps": [
+    {
+     "file": "mood-1.webp",
+     "caption": "Mood is asked morning and evening in the check-ins, 0 to 10. For any other time, tap Mood.",
+     "tap": {
+      "x": 0.813,
+      "y": 0.435
+     }
+    },
+    {
+     "file": "mood-2.webp",
+     "caption": "Slide to the number, and add a word or two about what is behind it if you want. Then Save.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.967
+     }
+    },
+    {
+     "file": "mood-3.webp",
+     "caption": "Your words stay in Daybook unless you tick them on under Report details. The team's report shows the chart.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.209
+     }
+    }
+   ]
+  },
+  {
+   "key": "note",
+   "title": "A note in your own words",
+   "sub": "Anything that does not fit a tile: who came, what was said, how the day went.",
+   "intro": "A note is for anything in your own words, at any time. It goes on the timeline and, as your own words, on Notes for the team.",
+   "steps": [
+    {
+     "file": "note-1.webp",
+     "caption": "Tap Note on Today for anything that does not fit a tile: who came, what was said, how the day went.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.825
+     }
+    },
+    {
+     "file": "note-2.webp",
+     "caption": "Type it, or tap Tap to speak and say it: the words go in as you speak.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.654
+     }
+    },
+    {
+     "file": "note-3.webp",
+     "caption": "Save. The note is on the timeline, and in your own words on Notes for the team.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.601
+     }
+    }
+   ]
+  },
+  {
    "key": "reading",
    "title": "Log a reading",
    "sub": "Vitals, pain, a drink, food, a note, sleep, bowels, a symptom or how you feel, from Today.",

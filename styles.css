@@ -2443,3 +2443,12 @@ body[data-accent] .view .section-title::before { content: ""; display: block; wi
 .food-targets-line .btn-link { min-height: 44px; margin: 0; padding: 0; }
 .settings-group-view .section-title { margin-top: var(--s-5); }
 #settings-back { min-height: 44px; }
+
+/* v409: the Guide read aloud, and the tour */
+.guide-controls #guide-voice { flex: 0 0 64px; }
+.guide-controls #guide-voice .icon { width: 26px; height: 26px; }
+.guide-controls #guide-voice[aria-pressed="true"] { background: var(--teal-fill); color: #fff; }
+#guide-voice-hint { margin-top: var(--s-2); }
+.guide-controls { flex-wrap: nowrap; min-width: 0; }
+.guide-controls #guide-play { min-width: 0; }
+@media (max-width: 360px) { .guide-controls { gap: 6px; } .guide-controls #guide-prev, .guide-controls #guide-next, .guide-controls #guide-voice { flex-basis: 50px; padding-left: 0; padding-right: 0; } }

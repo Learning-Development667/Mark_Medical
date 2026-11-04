@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '408';
+const APP_VERSION = '409';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -2466,6 +2466,7 @@ function openSetup(kind, opts = {}) {
     closeSheet();
     renderSetupRow();
     toast(full ? "You're set. Today is where each day starts." : 'You are in. Today is where each day starts.');
+    if (offerTour()) return;
     if (!$('view-today').hidden) renderToday(); else showTab('today');
   };
   const draw = (dir) => {
@@ -3213,6 +3214,7 @@ function showTab(name) {
   if (highlight === 'food' || highlight === 'notes' || highlight === 'mood' || highlight === 'pain' || highlight === 'results' || highlight === 'ibd') highlight = state.reportReturn || 'vitals';
   document.querySelectorAll('.tab').forEach((b) => { const on = b.dataset.tab === highlight; b.classList.toggle('is-active', on); if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
   document.querySelectorAll('.view').forEach((v) => { v.hidden = v.dataset.view !== name; });
+  if (name !== 'guide' && document.body.dataset.page === 'guide' && typeof speechSynthesis !== 'undefined') { try { speechSynthesis.cancel(); } catch (e) { /* ignore */ } } // a tab tapped mid-reading (v409); the player stops itself
   document.body.dataset.accent = highlight; // each screen takes its tab's colour as a quiet accent (v356)
   document.body.dataset.page = name; // the watercolour behind the app is stronger on the hub pages (styles.css, v229)
   setBrand(PAGE_TITLES[name] || '');
@@ -6093,7 +6095,7 @@ function renderMoreRows() {
    arrows; never plays itself under prefers-reduced-motion. Mark, 14 October 2026: "screenshots have real value, even
    more so if you animate them being completed". */
 const GUIDE_STEP_MS = 2600;
-const guide = { data: null, topic: null, i: 0, timer: 0, playing: false };
+const guide = { data: null, topic: null, i: 0, timer: 0, playing: false, voice: null, sayId: 0 };
 async function loadGuide() {
   if (guide.data) return guide.data;
   const r = await fetch('guide/guide.json?v=' + APP_VERSION);
@@ -6108,7 +6110,8 @@ function openGuide() {
   const list = $('guide-list');
   list.replaceChildren(h('p', { class: 'hint', text: 'Loading the guide' }));
   loadGuide().then((d) => {
-    list.replaceChildren(...d.topics.map((t) => h('button', { class: 'checkin-row menu-row', type: 'button', 'data-topic': t.key, onclick: () => openGuideTopic(t) },
+    const ordered = [...d.topics].sort((a, b) => (a.key === 'tour' ? -1 : b.key === 'tour' ? 1 : 0));
+    list.replaceChildren(...ordered.map((t) => h('button', { class: 'checkin-row menu-row', type: 'button', 'data-topic': t.key, onclick: () => openGuideTopic(t) },
       icon('eye', 'icon checkin-icon'),
       h('span', { class: 'checkin-main' }, h('span', { class: 'checkin-title', text: t.title }), h('span', { class: 'checkin-sub', text: t.sub + ' ' + plural(t.steps.length, 'step') + '.' })),
       icon('chevron', 'icon checkin-chev'))));
@@ -6117,6 +6120,8 @@ function openGuide() {
 function openGuideTopic(t) {
   guide.topic = t; guide.i = 0;
   $('guide-topics').hidden = true; $('guide-player').hidden = false;
+  $('guide-all').textContent = t.key === 'tour' ? 'Skip the tour' : '\u2039 All topics';
+  syncGuideVoice();
   $('guide-title').textContent = t.title;
   $('guide-intro').textContent = t.intro || '';
   $('guide-words').replaceChildren(...t.steps.map((st, i) => h('li', { onclick: () => { guideStop(); guideShow(i); } }, st.caption)));
@@ -6138,21 +6143,79 @@ function guideShow(i) {
   const ring = $('guide-tap');
   if (st.tap) { ring.hidden = false; ring.style.left = (st.tap.x * 100) + '%'; ring.style.top = (st.tap.y * 100) + '%'; } else ring.hidden = true;
   $('guide-step').textContent = 'Step ' + (guide.i + 1) + ' of ' + t.steps.length;
-  $('guide-caption').textContent = st.caption;
+  const cap = guideCaption(st);
+  $('guide-caption').textContent = cap;
   [...$('guide-words').children].forEach((li, k) => li.classList.toggle('is-current', k === guide.i));
+  guideSay(cap);
+}
+/* The tour's Treatment line differs by condition (v409): captions.ibd or captions.general when that pack is on without cancer */
+function guideCaption(st) {
+  if (st.captions && !packOn('cancer')) { if (packOn('ibd') && st.captions.ibd) return st.captions.ibd; if (st.captions.general) return st.captions.general; }
+  return st.caption;
+}
+/* Read aloud (v409, Mark: "could we have a voice read out the guide?"): the phone's own speech, its best UK English voice
+   chosen over the first one offered (the robotic one). On, each step is read as it appears and Play waits for the
+   reading to end before moving on. Remembered on the phone (daybook.guide.voice). On iPhone the best voices are the
+   Enhanced ones downloaded under Settings, Accessibility, Spoken Content, Voices, English. */
+const GUIDE_VOICE_KEY = 'daybook.guide.voice';
+function speechAvailable() { return typeof window.speechSynthesis !== 'undefined' && typeof window.SpeechSynthesisUtterance === 'function'; }
+function guideVoiceOn() { return speechAvailable() && lsGet(GUIDE_VOICE_KEY) === '1'; }
+function pickVoice() {
+  let voices = [];
+  try { voices = speechSynthesis.getVoices() || []; } catch (e) { return null; }
+  const gb = voices.filter((v) => /^en[-_]GB/i.test(v.lang));
+  const score = (v) => (/enhanced|premium|natural/i.test(v.name) ? 8 : 0) + (/daniel|kate|serena|oliver|stephanie|martha|arthur|google uk english/i.test(v.name) ? 4 : 0) + (/female/i.test(v.name) ? 1 : 0) + (v.localService ? 1 : 0);
+  gb.sort((a, b) => score(b) - score(a));
+  return gb[0] || voices.find((v) => /^en/i.test(v.lang)) || null;
+}
+if (speechAvailable()) { try { speechSynthesis.getVoices(); speechSynthesis.addEventListener('voiceschanged', () => { guide.voice = null; }); } catch (e) { /* no voices */ } }
+function guideSay(text) {
+  if (!guideVoiceOn() || $('view-guide').hidden) return;
+  try {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    if (!guide.voice) guide.voice = pickVoice();
+    if (guide.voice) u.voice = guide.voice;
+    u.lang = 'en-GB'; u.rate = 0.92;
+    const mine = ++guide.sayId;
+    u.onend = () => { if (mine !== guide.sayId || !guide.playing) return; guide.timer = setTimeout(() => guideAdvance(), 900); };
+    u.onerror = u.onend;
+    speechSynthesis.speak(u);
+  } catch (e) { console.warn(e); }
+}
+function guideQuiet() { guide.sayId++; try { if (speechAvailable()) speechSynthesis.cancel(); } catch (e) { /* ignore */ } }
+function syncGuideVoice() {
+  const btn = $('guide-voice'), hint = $('guide-voice-hint');
+  btn.hidden = !speechAvailable();
+  hint.hidden = !speechAvailable();
+  const on = guideVoiceOn();
+  btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  btn.setAttribute('aria-label', on ? 'Stop reading the steps aloud' : 'Read the steps aloud');
+  hint.textContent = on ? 'Reading each step aloud in your phone\'s own voice.' + (/iPhone|iPad/.test(navigator.userAgent) ? ' For a better voice, download an Enhanced English (UK) voice under Settings, Accessibility, Spoken Content, Voices.' : '') : 'The speaker reads each step aloud.';
+}
+$('guide-voice').addEventListener('click', () => {
+  const on = !guideVoiceOn();
+  lsSet(GUIDE_VOICE_KEY, on ? '1' : '0');
+  syncGuideVoice();
+  if (on) guideSay(guideCaption(guide.topic.steps[guide.i])); else { guideQuiet(); if (guide.playing) guidePlay(); }
+});
+/* The next step: the tour stops at its last step; the other topics go round again */
+function guideAdvance() {
+  if ($('view-guide').hidden || $('guide-player').hidden) { guideStop(); return; }
+  if (guide.topic && guide.topic.key === 'tour' && guide.i >= guide.topic.steps.length - 1) { guideStop(); return; }
+  guideShow(guide.i + 1);
 }
 function guidePlay() {
   guide.playing = true;
   $('guide-play').textContent = 'Pause'; $('guide-play').setAttribute('aria-pressed', 'true');
-  clearInterval(guide.timer);
-  guide.timer = setInterval(() => {
-    if ($('view-guide').hidden || $('guide-player').hidden) { guideStop(); return; }
-    guideShow(guide.i + 1);
-  }, GUIDE_STEP_MS);
+  clearTimeout(guide.timer);
+  if (guideVoiceOn()) return; // the reading's end moves it on (guideSay)
+  const tick = () => { guideAdvance(); if (guide.playing) guide.timer = setTimeout(tick, GUIDE_STEP_MS); };
+  guide.timer = setTimeout(tick, GUIDE_STEP_MS);
 }
 function guideStop() {
   guide.playing = false;
-  clearInterval(guide.timer); guide.timer = 0;
+  clearTimeout(guide.timer); guide.timer = 0;
   $('guide-play').textContent = 'Play'; $('guide-play').setAttribute('aria-pressed', 'false');
 }
 /* Help and what's new (v351): one row on More opens the Guide, What's new and, in the Beta, Provide feedback */
@@ -6164,13 +6227,24 @@ function openHelpSheet() {
   const rows = [
     row('eye', 'Guide', 'How to do each thing, shown on screen step by step', openGuide),
     row('sun', "What's new", 'The changes made to Daybook, newest first', openWhatsNewSheet),
+    row('walk', 'Take the tour again', 'A minute across the six tabs', () => openTour(true)),
   ];
   if (feedbackShown()) rows.push(row('send', 'Provide feedback', 'Tell Mark what you think', openFeedbackSheet));
   openSheet("Help and what's new", h('div', { class: 'menu' }, ...rows));
 }
 $('more-guide').addEventListener('click', openHelpSheet);
-$('guide-back').addEventListener('click', () => { guideStop(); showTab('more'); });
-$('guide-all').addEventListener('click', () => { guideStop(); $('guide-player').hidden = true; $('guide-topics').hidden = false; setBrand(PAGE_TITLES.guide); window.scrollTo(0, 0); });
+$('guide-back').addEventListener('click', () => { guideStop(); guideQuiet(); showTab(guide.fromTour ? 'today' : 'more'); guide.fromTour = false; });
+$('guide-all').addEventListener('click', () => { guideStop(); guideQuiet(); if (guide.fromTour) { guide.fromTour = false; showTab('today'); return; } $('guide-player').hidden = true; $('guide-topics').hidden = false; setBrand(PAGE_TITLES.guide); window.scrollTo(0, 0); });
+/* The tour (v409): once, after the set-up, on this phone (daybook.tour.seen); again from Help and what's new, and as the first Guide topic */
+const TOUR_SEEN_KEY = 'daybook.tour.seen';
+function openTour(again) {
+  lsSet(TOUR_SEEN_KEY, '1');
+  showTab('guide');
+  guide.fromTour = true;
+  loadGuide().then((d) => { const t = d.topics.find((x) => x.key === 'tour'); if (t) openGuideTopic(t); else showTab('today'); })
+    .catch(() => { showTab('today'); if (again) toast('The tour needs a connection the first time.'); });
+}
+function offerTour() { if (lsGet(TOUR_SEEN_KEY) === '1' || state.readOnly || state.viewer) return false; openTour(false); return true; }
 $('guide-prev').addEventListener('click', () => { guideStop(); guideShow(guide.i - 1); });
 $('guide-next').addEventListener('click', () => { guideStop(); guideShow(guide.i + 1); });
 $('guide-play').addEventListener('click', () => { if (guide.playing) guideStop(); else { guideShow(guide.i + 1); guidePlay(); } });

@@ -7,6 +7,7 @@ My Medical Daybook: a private health tracker shared by a care circle (a patient 
 ## Working rules (Mark's, in force)
 - **Ask before a big decision** (22 October 2026). When a request could be read more than one way, or would remove, replace or change the kind of something already there (a tile, a section, a screen, a count turned into an average, a feature taken off), ask first in one short question with a recommendation. Do the clearly asked part straight away; never widen a request on your own reading of it. Small obvious fixes inside what he asked need no question.
 - **Change nothing on a screen until Mark agrees it** when he is reviewing a design; show a mock-up first for anything visual and new.
+- **One app build a day** (Mark, 4 November 2026): the web updates with every push, but the iPhone (TestFlight) and Android (Play internal track) builds go once at the end of the day with everything that landed, never one per tweak; testers get a notification for each build. Sooner only when the app itself is broken and Mark wants it fixed.
 - All work is committed directly to `main`. No branches, no pull requests, unless Mark asks. Bump on every commit: `APP_VERSION` in `scripts.js` and the `?v=` on `scripts.js` and `styles.css` in `index.html`.
 - Run `node --check` on every JS file (including `worker/src/index.js`) before committing.
 - UK English. **No em dashes** anywhere a person reads.
