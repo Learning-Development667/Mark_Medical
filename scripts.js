@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '406';
+const APP_VERSION = '407';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -6029,6 +6029,7 @@ const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', '
 const SETTINGS_GROUP_TITLES = { packs: 'What Daybook is for', tiles: 'Choose tiles', tracks: 'Things I track', food: 'Food targets', reports: 'Report details', phone: 'This phone', reminders: 'Reminders', circle: 'Your care circle', records: 'Your records', health: 'Apple Health', about: 'Privacy, terms and version' };
 function openSettingsGroup(name, returnTab) {
   state.settingsReturn = returnTab || 'more';
+  state.settingsScroll = window.scrollY || 0; // Back lands where the row was, not at the top (v407, Mark)
   document.querySelectorAll('#view-settings .settings-group-view').forEach((g) => { g.hidden = g.dataset.group !== name; });
   $('settings-back').textContent = '\u2039 Back to ' + (PAGE_TITLES[state.settingsReturn] || 'More');
   showTab('settings');
@@ -6041,7 +6042,7 @@ function openSettingsGroup(name, returnTab) {
   if (name === 'health') syncHealthCard();
   if (name === 'reminders') syncReminders();
 }
-$('settings-back').addEventListener('click', () => showTab(state.settingsReturn || 'more'));
+$('settings-back').addEventListener('click', () => { showTab(state.settingsReturn || 'more'); const y = state.settingsScroll || 0; if (y) setTimeout(() => window.scrollTo(0, y), 120); }); // after showTab's own scrolls to the top (up to 80ms)
 [['more-packs', 'packs'], ['more-reminders', 'reminders'], ['more-health', 'health'], ['more-phone', 'phone'], ['more-circle', 'circle'], ['more-records', 'records'], ['more-about', 'about']]
   .forEach(([id, group]) => $(id).addEventListener('click', () => openSettingsGroup(group, 'more')));
 $('today-tiles').addEventListener('click', () => openSettingsGroup('tiles', 'today'));
@@ -6354,6 +6355,7 @@ function renderUsage() {
     tiles, features, from, trend, table, countBtn);
 }
 $('more-usage').addEventListener('click', openUsage);
+$('usage-back-foot').addEventListener('click', () => showTab('more'));
 $('usage-back').addEventListener('click', () => showTab('more'));
 
 function openManageMeals() {

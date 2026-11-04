@@ -6,6 +6,9 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v407 (4 November 2026): Back lands where you were, and a Back at the foot of Usage
+- Mark: opening Reminders from More and coming back landed at the top of More. `openSettingsGroup()` keeps the scroll position (`state.settingsScroll`) and Back restores it after `showTab`'s own scrolls to the top. Usage has a Back to More button under the counts, so a long page is not scrolled back up to leave.
+
 ### v406 (4 November 2026): More rebuilt, Settings one group at a time, each setting where it is used
 - Mark: "I really don't like settings. It looks and feels like a scrolling dump site", then "I never actually meant a cog on each page. I always meant clear visible settings." Built from the agreed clickable demo (the Design canvas "Daybook More and Settings").
 - **More** is now: Signed in; **Who to contact** as one line a contact (name and role, with one round button that emails them, or calls where there is no email, since "we mostly email over calling"; tapping the name opens a panel with Email, Call with its extension, Edit and Remove; Add and Edit are small links in the heading); **Your care circle** (the patient's circle, how many people, tap for the members and Invite); **Daybook** rows, each with its state in a line: What Daybook is for (the packs ticked, and Run the set-up again under it), Reminders (on or off on this phone, names off the lock screen), Apple Health (connected and when it last brought in, or the Health Auto Export route on the web), This phone (Tap to speak check), Help and what's new, Usage (operator only); a quieter card with Your records (download, hand over, delete) and Privacy, terms and version; Sign out.
