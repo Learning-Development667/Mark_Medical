@@ -19,7 +19,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=407">
+  <link rel="stylesheet" href="styles.css?v=408">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -896,11 +896,6 @@
             <span class="checkin-main"><span class="checkin-title" id="more-health-title">Apple Health</span><span class="checkin-sub" id="more-health-sub"></span></span>
             <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
           </button>
-          <button id="more-phone" class="checkin-row menu-row" type="button" hidden>
-            <svg class="icon checkin-icon" aria-hidden="true"><use href="#i-mic"/></svg>
-            <span class="checkin-main"><span class="checkin-title">This phone</span><span class="checkin-sub" id="more-phone-sub"></span></span>
-            <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
-          </button>
           <button id="more-guide" class="checkin-row menu-row" type="button">
             <svg class="icon checkin-icon" aria-hidden="true"><use href="#i-eye"/></svg>
             <span class="checkin-main"><span class="checkin-title">Help and what's new</span><span class="checkin-sub">The Guide, what has changed, and telling Mark what you think</span></span>
@@ -1063,18 +1058,6 @@
             </label>
             <button id="settings-week-treatment" class="btn btn-secondary btn-block" type="button" hidden>Use my treatment day</button>
             <p class="hint">The weekly check-in covers the week up to this day.</p>
-          </div>
-        </div>
-
-        <div class="settings-group-view" data-group="phone" hidden>
-          <div id="settings-speak">
-            <div class="card settings-group">
-              <label class="check settings-toggle">
-                <input id="settings-speakcheck" type="checkbox">
-                <span>Tap to speak: show me what was heard before anything is saved</span>
-              </label>
-              <p class="hint">This phone only. Shows the words it heard before anything is saved, so a misheard word can be put right.</p>
-            </div>
           </div>
         </div>
 
@@ -1327,6 +1310,6 @@
   </div>
 
   <script src="config.js?v=405"></script>
-  <script type="module" src="scripts.js?v=407"></script>
+  <script type="module" src="scripts.js?v=408"></script>
 </body>
 </html>

@@ -89,7 +89,7 @@ const QUALITY = 0.8;
   await shot('Rested, and whether the night was broken: if it was, what broke it and roughly for how long. It goes on the Sleep chart and the reports.', '#sheet-body .btn-next');
   await page.click('#sheet-body .btn-next'); await settle();
   await page.fill('#sheet-body textarea', 'Nothing new overnight.');
-  await shot('A written answer has Tap to speak under it: tap, say it, tap again to stop. To see what was heard before it is saved, switch that on under More, This phone. Skip is always there.', '#sheet-body .btn-next');
+  await shot('A written answer has Tap to speak under it: tap, say it, tap again to stop. Skip is always there.', '#sheet-body .btn-next');
   await page.click('#sheet-body .btn-next'); await settle();
   await toRange();
   await slider('#sheet-body input[type="range"]', 3);

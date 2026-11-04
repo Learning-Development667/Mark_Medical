@@ -71,7 +71,7 @@
     },
     {
      "file": "checkin-4.webp",
-     "caption": "A written answer has Tap to speak under it: tap, say it, tap again to stop. To see what was heard before it is saved, switch that on under More, This phone. Skip is always there.",
+     "caption": "A written answer has Tap to speak under it: tap, say it, tap again to stop. Skip is always there.",
      "tap": {
       "x": 0.697,
       "y": 0.427

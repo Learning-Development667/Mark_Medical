@@ -6,6 +6,9 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v408 (4 November 2026): the Tap to speak review option removed
+- Mark: the words appear as you speak, so a box showing them again before the save was one step too many. The option is gone from the set-up and from More (the This phone row and its group), `speakCheckOn()` is always false, and the review code stays unused behind it. The Guide's check-in caption no longer mentions it; the frame is unchanged.
+
 ### v407 (4 November 2026): Back lands where you were, and a Back at the foot of Usage
 - Mark: opening Reminders from More and coming back landed at the top of More. `openSettingsGroup()` keeps the scroll position (`state.settingsScroll`) and Back restores it after `showTab`'s own scrolls to the top. Usage has a Back to More button under the counts, so a long page is not scrolled back up to leave.
 

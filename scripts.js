@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '407';
+const APP_VERSION = '408';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -2453,10 +2453,6 @@ function openSetup(kind, opts = {}) {
         if (SpeechRec) {
           const ta = h('textarea', { rows: 2, placeholder: 'Try it here', 'aria-label': 'Try Tap to speak', 'data-nocheck': '1' });
           out.push(h('div', { class: 'setup-try' }, field('Try it', ta), speakButton(ta)));
-          const tick = h('input', { type: 'checkbox', id: 'setup-speakcheck' }); tick.checked = speakCheckOn();
-          tick.addEventListener('change', () => setSpeakCheck(tick.checked));
-          out.push(h('label', { class: 'check settings-toggle' }, tick, h('span', { text: 'Show me what was heard before anything is saved' })),
-            para(SPEAK_CHECK_HINT));
         }
         else out.push(para('This browser has no speech of its own; the microphone key on the keyboard still works.'));
         return out;
@@ -2998,7 +2994,6 @@ async function setWeekEnd(n) {
 }
 $('settings-week-end').addEventListener('change', (ev) => setWeekEnd(parseInt(ev.target.value, 10)));
 $('settings-week-treatment').addEventListener('click', () => { const tw = treatmentWeekday(); if (tw != null) setWeekEnd(tw); });
-$('settings-speakcheck').addEventListener('change', (ev) => { setSpeakCheck(ev.target.checked); toast(ev.target.checked ? 'Daybook will show what it heard before saving' : 'Words from Tap to speak go in as heard'); });
 $('settings-mood-words').addEventListener('change', (ev) => saveProfilePatch({ moodWordsToTeam: ev.target.checked },
   ev.target.checked ? 'Your mood words will go on Notes for the team' : 'Notes for the team will show your mood on a chart only'));
 $('settings-report-name').addEventListener('change', async (ev) => {
@@ -4358,13 +4353,9 @@ function speakButton(target) {
    change counts as checked (data-spokenSeen); more speech marks it again. */
 const SPEAK_CHECK_KEY = 'daybook.speak.check';
 const SPEAK_CHECK_HINT = 'Optional. Before a note is saved, Daybook shows the words it heard, with a button to read them out, so a misheard word can be put right. Leave it off if you would rather trust the words as they come; you can always change them in the box.';
-function speakCheckOn() { try { return localStorage.getItem(SPEAK_CHECK_KEY) === '1'; } catch (e) { return false; } }
+function speakCheckOn() { return false; } // the option was removed in v408 (Mark): the words show as they are spoken, so the review step was one too many
 function setSpeakCheck(on) { try { localStorage.setItem(SPEAK_CHECK_KEY, on ? '1' : '0'); } catch (e) { /* private window */ } syncSpeakCheck(); }
-function syncSpeakCheck() {
-  const box = $('settings-speakcheck'); if (box) box.checked = speakCheckOn();
-  const card = $('settings-speak'); if (card) card.hidden = !SpeechRec;
-  if (state.profile) renderMoreRows();
-}
+function syncSpeakCheck() { /* nothing to show since v408 */ }
 function markSpoken(t) { t.dataset.spoken = '1'; delete t.dataset.spokenSeen; }
 function uncheckedSpoken() {
   return [...document.querySelectorAll('#sheet-body textarea[data-spoken="1"]')].filter((t) => !t.closest('[hidden]') && t.dataset.nocheck !== '1'
@@ -6026,7 +6017,7 @@ if ($('settings-track-add')) $('settings-track-add').addEventListener('click', (
    (#view-settings shows one data-group at a time) and Back returns to the tab it was opened from. The ids and the
    listeners of every setting are unchanged, so nothing that worked before works differently. */
 const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-const SETTINGS_GROUP_TITLES = { packs: 'What Daybook is for', tiles: 'Choose tiles', tracks: 'Things I track', food: 'Food targets', reports: 'Report details', phone: 'This phone', reminders: 'Reminders', circle: 'Your care circle', records: 'Your records', health: 'Apple Health', about: 'Privacy, terms and version' };
+const SETTINGS_GROUP_TITLES = { packs: 'What Daybook is for', tiles: 'Choose tiles', tracks: 'Things I track', food: 'Food targets', reports: 'Report details', reminders: 'Reminders', circle: 'Your care circle', records: 'Your records', health: 'Apple Health', about: 'Privacy, terms and version' };
 function openSettingsGroup(name, returnTab) {
   state.settingsReturn = returnTab || 'more';
   state.settingsScroll = window.scrollY || 0; // Back lands where the row was, not at the top (v407, Mark)
@@ -6043,7 +6034,7 @@ function openSettingsGroup(name, returnTab) {
   if (name === 'reminders') syncReminders();
 }
 $('settings-back').addEventListener('click', () => { showTab(state.settingsReturn || 'more'); const y = state.settingsScroll || 0; if (y) setTimeout(() => window.scrollTo(0, y), 120); }); // after showTab's own scrolls to the top (up to 80ms)
-[['more-packs', 'packs'], ['more-reminders', 'reminders'], ['more-health', 'health'], ['more-phone', 'phone'], ['more-circle', 'circle'], ['more-records', 'records'], ['more-about', 'about']]
+[['more-packs', 'packs'], ['more-reminders', 'reminders'], ['more-health', 'health'], ['more-circle', 'circle'], ['more-records', 'records'], ['more-about', 'about']]
   .forEach(([id, group]) => $(id).addEventListener('click', () => openSettingsGroup(group, 'more')));
 $('today-tiles').addEventListener('click', () => openSettingsGroup('tiles', 'today'));
 $('today-tracks-change').addEventListener('click', () => openSettingsGroup('tracks', 'today'));
@@ -6061,8 +6052,6 @@ function renderMoreRows() {
   $('more-reminders-sub').textContent = demo ? 'Not available in the demo' : state.pushEnabled ? 'On this phone' + ($('settings-private').checked ? ', medicine names kept off the lock screen' : '') : 'Off on this phone';
   $('more-reminders').hidden = Boolean(state.readOnly || state.viewer);
   $('more-about-sub').textContent = versionText();
-  $('more-phone').hidden = !SpeechRec;
-  $('more-phone-sub').textContent = 'Tap to speak check ' + (speakCheckOn() ? 'on' : 'off');
   $('more-records').hidden = $('settings-records').hidden;
   $('more-circle-section').hidden = $('settings-household').hidden;
   const ios = nativeApp() && window.Capacitor.getPlatform() === 'ios';
