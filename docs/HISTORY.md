@@ -6,6 +6,9 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v404 (4 November 2026): Apple Health sent in batches
+- Mark's first Connect Apple Health (build 10) answered "Daybook's bridge hit a problem". The first send carries 30 days, and writing a day takes up to seven Firestore calls, far past the free plan's 50 subrequests a request (Health Auto Export never met it, sending a day or two at a time). `syncHealth()` now splits the payload by day and posts four days a request in turn, adding up the counts.
+
 ### v403 (3 November 2026): Apple Health inside the iPhone app
 - **Why:** Mark: Apple Health should be in the app; with notifications it is what makes the iPhone app more than a website, and it ends the need for the paid Health Auto Export app.
 - **App** (`scripts.js`): in the iPhone app Settings' Apple Health card shows **Connect Apple Health** (`#settings-health-native`) in place of the Health Auto Export address and key (`#settings-health-hae`, kept for the Home Screen version). `healthPlugin()` reaches `@capgo/capacitor-health` (8.11.12) through the bridge as `fcm()` does. Connect asks HealthKit to read steps, sleep, workouts, weight and dietary energy (`HEALTH_READ`, nothing written) and remembers it per phone and circle (`daybook.health.on`). `syncHealth()` runs 4 seconds after sign-in and whenever the app comes back, at most every 20 minutes, over the days since the last send (7 at least, 30 the first time): `healthPayload()` builds a Health Auto Export shaped body (daily step and food energy sums, each weight, `sleepNights()` (each source's segments split at gaps of 3 hours or more, a night on the day it ended, the source with more sleep kept, naps under an hour left out), and workouts with distance and energy) and posts it to the bridge with `bridgeCall('/health-app')`. The card shows when it last brought something in and what.

@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '403';
+const APP_VERSION = '404';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -2873,7 +2873,23 @@ async function syncHealth(manual) {
   try {
     const days = last ? Math.min(30, Math.max(7, Math.ceil((Date.now() - last) / 864e5) + 2)) : 30;
     const payload = await healthPayload(days);
-    const r = await bridgeCall('/health-app', payload, 'Apple Health could not be brought in just now.');
+    /* In batches of four days (v404): the bridge's free plan allows about 50 database calls a request, and a day
+       can need seven, so 30 days in one send failed ("the bridge hit a problem", Mark's first try) */
+    const dayKey = (stamp) => String(stamp || '').slice(0, 10);
+    const allDays = new Set();
+    for (const m of payload.data.metrics) for (const row of m.data) allDays.add(dayKey(row.date || row.sleepEnd));
+    for (const w of payload.data.workouts) allDays.add(dayKey(w.start));
+    const sorted = [...allDays].filter(Boolean).sort();
+    const r = { steps: 0, sleep: 0, weight: 0, workouts: 0, nutrition: 0 };
+    for (let i = 0; i < sorted.length; i += 4) {
+      const batch = new Set(sorted.slice(i, i + 4));
+      const part = { data: {
+        metrics: payload.data.metrics.map((m) => ({ ...m, data: m.data.filter((row) => batch.has(dayKey(row.date || row.sleepEnd))) })).filter((m) => m.data.length),
+        workouts: payload.data.workouts.filter((w) => batch.has(dayKey(w.start))),
+      } };
+      const got = await bridgeCall('/health-app', part, 'Apple Health could not be brought in just now.');
+      for (const k of Object.keys(r)) r[k] += Number(got[k]) || 0;
+    }
     lsSet(HEALTH_LAST_KEY, String(Date.now()));
     const bits = [r.steps && plural(r.steps, 'day') + ' of steps', r.sleep && plural(r.sleep, 'night') + ' of sleep', r.weight && plural(r.weight, 'weight'), r.workouts && plural(r.workouts, 'day') + ' of workouts', r.nutrition && plural(r.nutrition, 'day') + ' of food energy'].filter(Boolean);
     lsSet(HEALTH_NOTE_KEY, bits.length ? bits.join(', ') : 'nothing new');
