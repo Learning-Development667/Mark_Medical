@@ -10,7 +10,9 @@ on:
 
 jobs:
   build:
-    runs-on: macos-15
+    # xcode-27 (v412): the foldable iPhone letterboxes apps built before its SDK, which arrived in Xcode 27.1; macos-15
+    # and macos-26 only carry Xcode 26
+    runs-on: xcode-27
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
@@ -18,7 +20,8 @@ jobs:
         with:
           node-version: '22'
       - name: Choose Xcode
-        run: sudo xcode-select -s "$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)" && xcodebuild -version
+        # pinned to the released 27.1, never a release candidate (App Store Connect refuses those)
+        run: sudo xcode-select -s /Applications/Xcode_27.1.app && xcodebuild -version && xcodebuild -showsdks | grep iphoneos
       - name: Copy the web app into the iPhone project
         working-directory: native
         run: npm ci && node scripts/copy-web.mjs && npx cap sync ios

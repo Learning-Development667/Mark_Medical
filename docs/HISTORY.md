@@ -6,6 +6,9 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v412 (4 November 2026): the iPhone build made with Xcode 27.1, for the foldable
+- Mark's tester on the foldable iPhone (iPhone Duo): v410 made no difference. Apps built before the foldable's SDK run letterboxed on its inner screen, and every build so far came from Xcode 26.3 (the macos-15 image; macos-26 carries only Xcode 26 too, checked with the new Xcode versions workflow, which builds nothing). The iPhone workflow now runs on GitHub's `xcode-27` image with Xcode 27.1 pinned (iOS 27.1 SDK), never a release candidate. The page itself already adapts (v410).
+
 ### v411 (4 November 2026): builds reach the testers by themselves, with labelled notes
 - What's new items carry a `tag` (new, improved, fixed), shown as a small label and grouped in that order (`wnList()`, `.wn-tag`). The batch of 4 November is Mark's approved wording. `tools/release_notes.mjs` turns the newest batch (if from the last three days) into the TestFlight text and Google Play's `whatsnew-en-GB` (500 characters: whole items only, then a pointer to What's new); both workflows use it. Without a recent batch TestFlight gets `native/ios/what-to-test.txt`.
 - iPhone: the TestFlight workflow has a second job, `testers` (Linux, after the Mac build), running `tools/testflight_group.mjs` with the same App Store Connect API key: it waits for Apple's processing (up to 45 minutes), sets What to Test in English (U.K.) from `native/ios/what-to-test.txt`, adds the build to the external group Circle Testers and asks for beta review (a conflict answer, meaning not needed, is fine). Prints ids and states only. The text names no Beta code; the repository is public.
