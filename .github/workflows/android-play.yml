@@ -17,6 +17,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    env:
+      HAS_PLAY_KEY: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -73,3 +75,16 @@ jobs:
           name: daybook-android-${{ github.run_number }}
           path: native/android/app/build/outputs/bundle/release/app-release.aab
           retention-days: 7
+      # Straight to Play's internal testing track when the service account key is set (Mark, 4 November 2026: no more
+      # downloading the .aab by hand). The key is a GitHub secret, PLAY_SERVICE_ACCOUNT_JSON, the JSON file of a Google
+      # Cloud service account invited to Play Console with Release to testing tracks on this app. Without it the step is
+      # skipped and the file above is still there to upload by hand.
+      - name: Upload to Google Play internal testing
+        if: env.HAS_PLAY_KEY == 'true'
+        uses: r0adkll/upload-google-play@v1.1.3
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: uk.co.mark1apps.daybook
+          releaseFiles: native/android/app/build/outputs/bundle/release/app-release.aab
+          track: internal
+          status: completed
