@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '413';
+const APP_VERSION = '414';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -4459,6 +4459,16 @@ const BRISTOL = [
   { t: 6, name: 'Mushy', hint: 'Loose, mushy pieces with uneven edges' },
   { t: 7, name: 'Watery', hint: 'All liquid, no solid pieces' }
 ];
+/* Stool colour (v414, Mark: with pancreatic cancer a change of colour matters to his team): words only, as facts; Daybook never
+   says what a colour means. Optional, one choice, under the seven types. */
+const STOOL_COLOURS = [['darkbrown', 'Dark brown'], ['lightbrown', 'Light brown'], ['yellow', 'Yellow'], ['grey', 'Grey']];
+function stoolColourWord(e) { const c = STOOL_COLOURS.find(([k]) => k === e.colour); return c ? c[1] : ''; }
+/* "colour: dark brown 5, yellow 3" over the movements that had one, most first; '' when none was given */
+function stoolColourCounts(list) {
+  const n = {}; list.forEach((e) => { if (stoolColourWord(e)) n[e.colour] = (n[e.colour] || 0) + 1; });
+  const ks = STOOL_COLOURS.map(([k]) => k).filter((k) => n[k]).sort((a, b) => n[b] - n[a]);
+  return ks.length ? 'colour: ' + ks.map((k) => stoolColourWord({ colour: k }).toLowerCase() + ' ' + n[k]).join(', ') : '';
+}
 const BOWEL_FLAGS = [['blood', 'Blood (red)'], ['black', 'Black or tarry'], ['mucus', 'Mucus'], ['urgent', 'Urgent, or an accident'], ['pain', 'Pain or straining'], ['night', 'At night']];
 /* With Crohn's or colitis (v145): blood graded as IBD teams ask it (the Mayo bleeding grades in plain
    words), urgency as how long you could wait, an accident or leak said plainly, and for a stoma the
@@ -4473,6 +4483,7 @@ const bloodGradeOf = (e) => Number(e.bloodGrade) > 0 ? Number(e.bloodGrade) : e.
 function bristolName(t) { const b = BRISTOL.find((x) => x.t === Number(t)); return b ? b.name : ''; }
 function bowelFlagWords(e) {
   const w = [];
+  if (stoolColourWord(e)) w.push(stoolColourWord(e));
   if (Number(e.bloodGrade) > 0) w.push(BLOOD_WORDS[Number(e.bloodGrade)] || 'Blood'); else if (e.blood) w.push('Blood (red)');
   if (e.black) w.push('Black or tarry');
   if (e.mucus) w.push('Mucus');
@@ -5104,6 +5115,7 @@ function openAdd(type, editEntry, preset) {
       return { node: h('div', { class: 'presets', role: 'group', 'aria-label': name }, ...btns), get: () => value };
     };
     const output = stoma ? pickOne('What was the output like', STOMA_OUTPUT, editEntry && editEntry.output ? editEntry.output : null) : null;
+    const colourPick = pickOne('Colour', STOOL_COLOURS, editEntry && editEntry.colour ? editEntry.colour : null);
     const bloodPick = ibd ? pickOne('Any blood', BLOOD_GRADES, editEntry ? bloodGradeOf(editEntry) : null) : null;
     const urgePick = ibd ? pickOne('How long could you wait', URGENCY, editEntry && editEntry.urgency != null ? Number(editEntry.urgency) : null) : null;
     const flagList = ibd
@@ -5138,7 +5150,7 @@ function openAdd(type, editEntry, preset) {
         if (at > new Date(Date.now() + 60000)) { missing(time, 'That time is still to come', CHECK); return; }
         const hr = at.getHours();
         const copy = {};
-        ['types', 'bristol', 'stoma', 'output', 'bloodGrade', 'blood', 'urgency', 'urgent', ...flagList.map(([k]) => k).filter((k) => k !== 'night')].forEach((k) => { if (lastB[k] !== undefined) copy[k] = lastB[k]; });
+        ['types', 'bristol', 'stoma', 'output', 'colour', 'bloodGrade', 'blood', 'urgency', 'urgent', ...flagList.map(([k]) => k).filter((k) => k !== 'night')].forEach((k) => { if (lastB[k] !== undefined) copy[k] = lastB[k]; });
         closeSheet();
         const n = hasNone(day); if (n) deleteEntry(n.id);
         const id = await addEntry({ type: 'bowel', none: false, ...copy, night: hr >= 23 || hr < 6, note: '', at });
@@ -5154,6 +5166,7 @@ function openAdd(type, editEntry, preset) {
       h('p', { class: 'wiz-q', text: 'What was it like?' }),
       h('p', { class: 'wiz-hint', text: 'Seven types, from hard lumps (1) to watery (7). Tap the nearest. If it was a mix, tap every type in it.' }),
       h('div', { class: 'bristol', role: 'group', 'aria-label': 'Stool type, 1 to 7, tap every type in it' }, ...rows));
+    body.append(h('p', { class: 'fieldlabel', text: 'Colour (optional)' }), colourPick.node);
     if (ibd) body.append(
       h('p', { class: 'wiz-q', text: 'Any blood?' }), bloodPick.node,
       stoma ? '' : h('p', { class: 'wiz-q', text: 'How long could you wait?' }), stoma ? '' : urgePick.node);
@@ -5175,6 +5188,7 @@ function openAdd(type, editEntry, preset) {
         d = { type: 'bowel', none: false, types, bristol: types[types.length - 1], note: bowelNote.value.trim() };
       }
       for (const [k] of flagList) d[k] = flags.has(k);
+      d.colour = colourPick.get() || null;
       if (ibd) {
         const g = bloodPick.get(), u = stoma ? null : urgePick.get();
         d.bloodGrade = g == null ? 0 : g;
@@ -8380,6 +8394,7 @@ function twoPageCharts(entries, days) {
     const statBits = [common ? 'Mostly type ' + common[0] : plural(bowels.length, 'movement')];
     if (looseDays) statBits.push('loose on ' + plural(looseDays, 'day'));
     if (bloodDays.length) statBits.push('blood on ' + plural(bloodDays.length, 'day'));
+    { const c = stoolColourCounts(bowels); if (c) statBits.push(c); } // v414: facts only, never the chart's tone
     charts.push({ key: 'bowel', title: 'Bowels a day', type: 'stack', stat: statBits.join(', '),
       tone: toneOf(bloodDays.length, looseDays || hardDays >= 3), min: 0, max: bTop, ticks: [0, bTop / 2, bTop],
       dots: bloodDays, dotC: red,
@@ -9837,7 +9852,9 @@ function summaryRows(entries, from, to) {
     if (longest >= 2) { parts.push(`${stoma ? 'no output' : 'no bowel movement'} for ${longest} days in a row to ${fmtDayShort(runEnd)}`); shortParts.push(`none for ${longest} days`); }
     const level = twDays.length || blackDays.length || worstBlood >= 3 || longest >= 3 ? 'red'
       : above || bloodDays.length || rushDays.length || accidents || nightDays.length || wateryDays.length >= 2 || longest >= 2 ? 'amber' : 'green';
-    if (level === 'green') fine.push(`bowels (${logged.length ? 'about ' + one(avg(logged.map((d) => perDay[d]))) + ' a day' : 'none logged'}${usual ? ', usual ' + usual : ''})`);
+    const colourTxt = stoolColourCounts(real); // a fact only, never part of the level
+    if (colourTxt) { parts.push(colourTxt); shortParts.push(colourTxt); }
+    if (level === 'green') fine.push(`bowels (${logged.length ? 'about ' + one(avg(logged.map((d) => perDay[d]))) + ' a day' : 'none logged'}${usual ? ', usual ' + usual : ''}${colourTxt ? ', ' + colourTxt : ''})`);
     else push(level, 'Bowels', 'Bowels: ' + parts.join('; ') + '.', null, 'Bowels: ' + shortParts.join(', '));
   } else if (bowels.length) {
     const real = bowels.filter((e) => !e.none);
@@ -9867,12 +9884,14 @@ function summaryRows(entries, from, to) {
     if (hardDays >= 3) shortParts.push(`hard on ${plural(hardDays, 'day')}`);
     if (mixedDays.length) shortParts.push('hard and loose together');
     const level = bloodDays.length || nightDays.length || (worstLoose && looseByDay[worstLoose] >= 4) || longest >= 3 ? 'red' : parts.length ? 'amber' : 'green';
+    const colourTxt = stoolColourCounts(real); // a fact only, never part of the level
+    if (colourTxt) { parts.push(colourTxt); shortParts.push(colourTxt); }
     if (level === 'green') {
       const types = real.flatMap(bowelTypes);
-      fine.push(`bowels (${plural(real.length, 'movement')}${types.length ? ', types ' + Math.min(...types) + ' to ' + Math.max(...types) : ''}${noneDays.size ? ', none on ' + plural(noneDays.size, 'day') : ''})`);
+      fine.push(`bowels (${plural(real.length, 'movement')}${types.length ? ', types ' + Math.min(...types) + ' to ' + Math.max(...types) : ''}${colourTxt ? ', ' + colourTxt : ''}${noneDays.size ? ', none on ' + plural(noneDays.size, 'day') : ''})`);
     } else {
       const text = parts.join('; ');
-      push(level, 'Bowels', 'Bowels: ' + text + '.', level === 'amber' && parts.length === 1 && looseDays.length === 1 ? `loose stools on ${fmtDayShort(looseDays[0])}` : null, 'Bowels: ' + shortParts.join(', '));
+      push(level, 'Bowels', 'Bowels: ' + text + '.', level === 'amber' && parts.length === (colourTxt ? 2 : 1) && looseDays.length === 1 ? `loose stools on ${fmtDayShort(looseDays[0])}` : null, 'Bowels: ' + shortParts.join(', '));
     }
   }
 
@@ -13044,6 +13063,7 @@ function buildIbdReport(n) {
   const brief = [];
   brief.push({ head: what, text: logged.length ? `About ${one(mean)} a day on the ${plural(logged.length, 'day')} logged${usual ? `, against ${patient}'s usual ${usual}` : ' (no usual number set in Settings)'}; most ${most} on ${rDay(mostDay)}.` + (looseN ? ` Loose (type 6 or 7) ${plural(looseN, 'time')}.` : '') + (noneDays.size ? ` None on ${plural(noneDays.size, 'day')}.` : '') : 'No bowel movements were logged in this period.' });
   brief.push({ head: 'Blood and urgency', text: logged.length ? [bloodDays.length ? `Blood on ${plural(bloodDays.length, 'day')}, ${bloodWord(worstBlood)} at worst` : 'No blood logged', blackDays.length ? `black or tarry on ${plural(blackDays.length, 'day')}` : '', rush ? `had to go straight away ${plural(rush, 'time')} on ${plural(rushDays.length, 'day')}` : 'never had to go straight away', accidents ? plural(accidents, stoma ? 'bag leak' : 'accident or leak') : '', nightN && !nightAsked.length ? `up at night ${plural(nightN, 'time')}` : ''].filter(Boolean).join('; ') + '.' + (twDays.length ? ` Six or more with blood on ${twDays.map(rDay).join(', ')}.` : '') : 'Nothing logged.' });
+  { const c = stoolColourCounts(real); if (c) brief.push({ head: 'Colour', text: 'Colour as logged: ' + c.replace(/^colour: /, '') + '.' }); } // facts only (v414)
   brief.push({ head: 'Flares and treatment', text: (flareDays.length ? `Marked as flaring on ${plural(flareDays.length, 'day')}${runs.length === 1 ? ` (${runText(runs[0])})` : ''}.` : 'No flare days marked.') + (calls.length ? ` ${plural(calls.length, 'call')} to the advice line, listed below.` : '') + (steroids.length ? ` On ${steroids.map((m) => m.name).join(' and ')} in this period.` : '') + (sessLine ? ' ' + sessLine.charAt(0).toUpperCase() + sessLine.slice(1) : '') });
   brief.push({ head: 'Body', text: [ws.length ? `Weight ${fmtKg(wLast.value)} on ${rDay(wLast.day)}` + (wChange != null && Math.abs(wChange) >= 0.1 ? `, ${wChange < 0 ? 'down' : 'up'} ${Math.abs(wChange)} kg since ${rDay(wFirst.day)}` : '') : 'No weight logged', temps.length ? `temperature highest ${Number(tempHi.value).toFixed(1)} °C on ${rDay(tempHi.day)}` : '', gutPains.length ? `tummy pain or cramps averaged ${avg(gutPains)}/10, up to ${Math.max(...gutPains)}` : '', pains.length ? `pain up to ${Math.max(...pains)}/10` : '', gutStops.length ? `the gut stopped ${patient.split(/\s+/)[0]} doing something quite a bit or a lot on ${gutStopBad.length} of ${plural(gutStops.length, 'evening')}` : '', nightAsked.length ? `up in the night for the toilet on ${nightUp.length} of ${plural(nightAsked.length, 'morning')}${nightTwice.length ? ', twice or more on ' + nightTwice.length : ''}` : '', energy.length ? `energy averaged ${avg(energy)}/10 in the evening check-ins` : '', outside.length ? `outside the gut: ${outside.map((e) => (e.outside.length ? outsideText(e.outside).toLowerCase() : 'none of the usual') + ' (week to ' + rDay(e.day) + ')').join('; ')}` : ''].filter(Boolean).join('; ') + '.' });
   if (fasts.n) brief.push({ head: 'Fasting', text: `Fasting on ${fasts.n} of the ${plural(fasts.asked, 'morning')} asked: ${fasts.text}. The days are marked under the first chart.` });

@@ -6,6 +6,10 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v414 (5 November 2026): stool colour
+- Mark (pancreatic cancer: a change of colour matters to his team): the Bowels sheet is unchanged, pictures and all, with one line under the seven types, Colour (optional): Dark brown, Light brown, Yellow, Grey (`STOOL_COLOURS`, saved as `colour` on the entry, null when not given). The first mock-up (five full-width rows with swatches and three more ticks) was rejected as making colour the most prominent thing; Mark asked for words only, then added Grey.
+- Facts only, never a meaning and never part of a level or tone: the colour leads `bowelFlagWords()` (timeline, Trends table, Same as last time, which also copies it), the Notes for the team Bowels chart's line ("colour: yellow 2, dark brown 1"), the flags text in both the cancer and the IBD branch (added after the level is set), and a Colour line in the Crohn's and colitis report's brief (`stoolColourCounts()`).
+
 ### v413 (5 November 2026): Chris's feedback, part one
 - **Light or dark** (More): Match my phone, Always light or Always dark, on this phone (`daybook.look`, `applyLook()`, `:root[data-theme]`). Every `@media (prefers-color-scheme: dark)` block in styles.css now reads `:root:not([data-theme="light"])` inside and has a `:root[data-theme="dark"]` twin outside, made by a script that copies each rule (24 twins added); forced and phone-chosen light and dark were compared pixel for pixel on Today, Meds, Reports and More: identical. The theme-color meta follows the choice.
 - **Findable**: the questions list from Today starts with Record the appointment, and each question's Record or write the answer is now a primary button with the microphone; the Treatment tab has Record an appointment under Sessions (`#chemo-record`); Log a dose with no medicines set up offers Add your first medicine at once instead of pointing to the Meds tab.
