@@ -6,6 +6,10 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v419 (5 November 2026): larger text checked on the simulators
+- The first full run of the simulator screenshots (iPhone 17e, 17, 18 Pro Max) showed the iPhone's Text Size reaching Daybook (v417) and every tab rearranging, with one fault: at accessibility-large the top bar's name was cut to "Dayb...". The top bar's name and its button keep their own size at larger text; everything below still grows.
+- `tools/sim_shots.sh`: the iPhone Duo's pictures had failed silently (it has two displays), so `shot()` tries the default display, then each named display, and says why if none work; Safari is opened once and given 15 seconds before the pictures, since the first caught its Start Page.
+
 ### v418 (5 November 2026): resting heart rate from Apple Health
 - Mark: add pulse from Apple Health or Health Connect; he chose resting heart rate, one figure a day, over every reading. The iPhone app reads `restingHeartRate` (added to `HEALTH_READ`, so phones ask again at the next Connect) and sends it as `resting_heart_rate`; the bridge keeps the day's last on `exercise/{day}.restingHr` (25 to 220 only). It never mixes with pulses typed into Vitals: on Notes for the team it is a dashed teal line on the Heart rate chart with its own fact ("resting 62 to 68 (Apple Health)"), and the chart's peak and tone stay with typed readings; the Exercise tab's Apple Health row says today's figure. Health Connect (Android) will bring the same once it is set up.
 - A phone connected before is asked once for the new kind at its next send (`daybook.health.kinds`).

@@ -2596,3 +2596,7 @@ html.text-big .tile-label { font-size: calc(11px / var(--ts, 1) * 1.2); }
 html.text-huge .tiles, html.text-huge .quickadd, html.text-huge .reports { grid-template-columns: minmax(0, 1fr); }
 html.text-huge .checkin-row { align-items: flex-start; }
 html.text-big .typepick, html.text-big .presets { flex-wrap: wrap; }
+/* v419: the top bar's name keeps its own size at larger text, so "Daybook: Today" is never cut to "Dayb..." (the
+   simulator's accessibility-large screenshots); everything below it still grows */
+html.text-big .topbar .brand { font-size: calc(clamp(21px, 6vw, 26px) / var(--ts, 1)); }
+html.text-big .topbar .btn, html.text-big .topbar .pill { font-size: calc(16px / var(--ts, 1) * 1.15); }
