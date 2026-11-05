@@ -6,6 +6,10 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v416 (5 November 2026): daily screenshots on Apple's iPhone simulators
+- Chris's idea, Mark agreed: the iPhone screenshots workflow (`ios-screens.yml`, on the `xcode-27` image with Xcode 27.1) builds the app for the simulator (unsigned, nothing to TestFlight) and `tools/sim_shots.sh` photographs, on the iPhone SE, a standard iPhone, the Pro Max and the iPhone Duo when the image carries it, in light and dark: the real app's opening screen (full screen, not letterboxed) and each tab of the cancer preview in Safari, the same WebKit the app uses. Kept 14 days as the run's artifact. Run with the daily build and look at every picture before the build goes to testers.
+- The preview opens on a chosen tab with `?preview=cancer&tab=meds` (any key of `PAGE_TITLES`).
+
 ### v415 (5 November 2026): End the tour? asks first
 - Mark: a tester closed the first-time tour by accident and then did not know where it was. Skip the tour and Back, before the tour's last step, now open End the tour? with Keep going (the main button, play resumes) and End the tour, and the question itself says where to take it again (More, Help and what's new, Take the tour again), so even a mistaken tap leaves them knowing (`leaveTour()`, `tourMidway()`). On the last step the link reads Finish the tour and leaves without asking.
 
