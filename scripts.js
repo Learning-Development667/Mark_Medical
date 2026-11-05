@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '411';
+const APP_VERSION = '413';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -1998,7 +1998,7 @@ function buildGeneralFixture() {
 
 function startDemoData(pack) {
   /* a hook for the Playwright harness, preview only: nothing here can reach Firestore */
-  window.daybookPreview = { state, addEntry, renderExercise, exerciseLogFor, syncUsageRow, openUsage, logMed, deleteEntry, doseWaterMl, syncMedWater, renderDocsList, renderMeds };
+  window.daybookPreview = { state, openSessionsFromPhoto, addEntry, renderExercise, exerciseLogFor, syncUsageRow, openUsage, logMed, deleteEntry, doseWaterMl, syncMedWater, renderDocsList, renderMeds };
   state.previewPack = pack === 'ibd' || pack === 'general' ? pack : 'cancer';
   const fixture = state.previewPack === 'ibd' ? buildIbdFixture() : state.previewPack === 'general' ? buildGeneralFixture() : buildDemoFixture();
   const seed = state.previewPack === 'ibd' ? IBD_MEDICINES : state.previewPack === 'general' ? GENERAL_MEDICINES : DEMO_MEDICINES;
@@ -3906,7 +3906,9 @@ function openDoseSheet() {
     prn.length ? h('div', { class: 'doserows' }, ...prn.map((m) => row(m, prnStatus(m)))) : null,
     sched.length ? h('p', { class: 'fieldlabel', text: 'Scheduled' }) : null,
     sched.length ? h('div', { class: 'doserows' }, ...sched.map((m) => { const n = countMedOnDay(m.id, today); if (m.hospital) return row(m, n ? { level: 'teal', text: n + ' given today' } : null); return row(m, m.perDay ? { level: n >= m.perDay ? 'green' : 'teal', text: n + ' of ' + m.perDay + ' today' } : null); })) : null,
-    !prn.length && !sched.length ? h('p', { class: 'empty', 'data-art': 'pill', text: 'No medicines set up yet. Add them on the Meds tab.' }) : null,
+    !prn.length && !sched.length ? h('p', { class: 'empty', 'data-art': 'pill', text: 'No medicines set up yet.' }) : null,
+    /* v413 (Chris): the first medicine is added from here, not by going to the Meds tab */
+    !prn.length && !sched.length && !state.readOnly ? h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => { closeSheet({ force: true }); openEditMed(null); } }, 'Add your first medicine') : null,
     h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => openHospitalDose(null) }, 'Given in hospital'),
     h('p', { class: 'hint', text: 'For a drip, an injection or anything the hospital gave that is not on your list.' }),
     h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Cancel')
@@ -6036,7 +6038,26 @@ if ($('settings-track-add')) $('settings-track-add').addEventListener('click', (
    (#view-settings shows one data-group at a time) and Back returns to the tab it was opened from. The ids and the
    listeners of every setting are unchanged, so nothing that worked before works differently. */
 const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-const SETTINGS_GROUP_TITLES = { packs: 'What Daybook is for', tiles: 'Choose tiles', tracks: 'Things I track', food: 'Food targets', reports: 'Report details', reminders: 'Reminders', circle: 'Your care circle', records: 'Your records', health: 'Apple Health', about: 'Privacy, terms and version' };
+const SETTINGS_GROUP_TITLES = { look: 'Light or dark', packs: 'What Daybook is for', tiles: 'Choose tiles', tracks: 'Things I track', food: 'Food targets', reports: 'Report details', reminders: 'Reminders', circle: 'Your care circle', records: 'Your records', health: 'Apple Health', about: 'Privacy, terms and version' };
+/* Light or dark (v413, Chris, a tester): Match my phone (the default), Always light or Always dark, kept on this phone
+   (daybook.look). styles.css answers to :root[data-theme] as well as the phone's setting, so a choice gives exactly the
+   same screens as the phone's own light or dark. */
+const LOOK_KEY = 'daybook.look';
+function lookChoice() { try { const v = localStorage.getItem(LOOK_KEY); return v === 'light' || v === 'dark' ? v : 'system'; } catch (e) { return 'system'; } }
+function applyLook() {
+  const v = lookChoice(), root = document.documentElement;
+  if (v === 'system') delete root.dataset.theme; else root.dataset.theme = v;
+  const dark = v === 'dark' || (v === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  document.querySelectorAll('meta[name="theme-color"]').forEach((m) => { m.setAttribute('content', dark ? '#0F1B24' : '#F6F4EF'); m.removeAttribute('media'); });
+  document.querySelectorAll('input[name="look"]').forEach((r) => { r.checked = r.value === v; });
+}
+applyLook();
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyLook);
+document.querySelectorAll('input[name="look"]').forEach((r) => r.addEventListener('change', () => {
+  try { if (r.value === 'system') localStorage.removeItem(LOOK_KEY); else localStorage.setItem(LOOK_KEY, r.value); } catch (e) { /* private window */ }
+  applyLook();
+  if (state.profile) renderMoreRows();
+}));
 function openSettingsGroup(name, returnTab) {
   state.settingsReturn = returnTab || 'more';
   state.settingsScroll = window.scrollY || 0; // Back lands where the row was, not at the top (v407, Mark)
@@ -6053,7 +6074,7 @@ function openSettingsGroup(name, returnTab) {
   if (name === 'reminders') syncReminders();
 }
 $('settings-back').addEventListener('click', () => { showTab(state.settingsReturn || 'more'); const y = state.settingsScroll || 0; if (y) setTimeout(() => window.scrollTo(0, y), 120); }); // after showTab's own scrolls to the top (up to 80ms)
-[['more-packs', 'packs'], ['more-reminders', 'reminders'], ['more-health', 'health'], ['more-circle', 'circle'], ['more-records', 'records'], ['more-about', 'about']]
+[['more-packs', 'packs'], ['more-look', 'look'], ['more-reminders', 'reminders'], ['more-health', 'health'], ['more-circle', 'circle'], ['more-records', 'records'], ['more-about', 'about']]
   .forEach(([id, group]) => $(id).addEventListener('click', () => openSettingsGroup(group, 'more')));
 $('today-tiles').addEventListener('click', () => openSettingsGroup('tiles', 'today'));
 $('today-tracks-change').addEventListener('click', () => openSettingsGroup('tracks', 'today'));
@@ -6071,6 +6092,7 @@ function renderMoreRows() {
   $('more-reminders-sub').textContent = demo ? 'Not available in the demo' : state.pushEnabled ? 'On this phone' + ($('settings-private').checked ? ', medicine names kept off the lock screen' : '') : 'Off on this phone';
   $('more-reminders').hidden = Boolean(state.readOnly || state.viewer);
   $('more-about-sub').textContent = versionText();
+  $('more-look-sub').textContent = { light: 'Always light', dark: 'Always dark' }[lookChoice()] || 'Matches your phone';
   $('more-records').hidden = $('settings-records').hidden;
   $('more-circle-section').hidden = $('settings-household').hidden;
   const ios = nativeApp() && window.Capacitor.getPlatform() === 'ios';
@@ -6273,7 +6295,7 @@ $('guide-phone').addEventListener('click', () => { if (guide.playing) guideStop(
    household whose inbox key is BRIDGE_KEY); every other circle is refused, and the row under More never shows for them.
    Counts only, never content: no names, nothing anyone wrote; each circle is a pseudonym. The answer to "is this circle
    the operator's" is cached on the phone for a day (daybook.operator.{uid}) so the row is there at once next time. */
-const USAGE_KIND_NAMES = { document: 'Explain a letter or result', report: 'Notes for the team summary', weekly: 'Weekly notes summary (older app)', mood: 'Mood and wellbeing brief', pain: 'Pain report brief', programme: 'Exercise plan from a photo', medicine: 'Medicine from a photo', flare: 'Flare plan from a photo', notes: 'Suggested questions' };
+const USAGE_KIND_NAMES = { document: 'Explain a letter or result', report: 'Notes for the team summary', weekly: 'Weekly notes summary (older app)', mood: 'Mood and wellbeing brief', pain: 'Pain report brief', programme: 'Exercise plan from a photo', medicine: 'Medicine from a photo', flare: 'Flare plan from a photo', sessions: 'Sessions from a photo', notes: 'Suggested questions' };
 let usageData = null;
 function syncUsageRow() {
   const row = $('more-usage');
@@ -10092,7 +10114,7 @@ function questionCard(q, redraw) {
     h('div', { class: 'question-text', text: q.text }),
     h('div', { class: 'docitem-sub' }, h('span', { class: 'pill q-team', text: q.teamLabel }), ` ${q.who} · ${fmtDayNum(q.day)}`),
     state.readOnly ? null : h('div', { class: 'question-btns' },
-      h('button', { class: 'btn btn-secondary btn-small', type: 'button', onclick: () => { const full = allQuestions().find((x) => x.id === q.id); if (full) openAnswerSheet(full); } }, 'Record or write the answer'),
+      h('button', { class: 'btn btn-primary btn-small', type: 'button', onclick: () => { const full = allQuestions().find((x) => x.id === q.id); if (full) openAnswerSheet(full); } }, icon('mic'), ' Record or write the answer'),
       h('button', { class: 'btn btn-link btn-small', type: 'button', onclick: async () => {
         await updateEntry(q.id, { answered: true, answeredAt: stampNow() });
         toast('Marked as answered', { label: 'Undo', onClick: async () => { await updateEntry(q.id, { answered: false }); redraw(); } });
@@ -10711,6 +10733,8 @@ function openQuestionsList() {
       h('p', { class: 'hint', text: open.length
         ? `${plural(open.length, 'question')} not yet marked as answered, from any date. If the team has already dealt with one, tap Mark as answered and it leaves this list and the report.`
         : 'Nothing waiting. Every question has been marked as answered.' }),
+      /* v413 (Chris): the appointment recording is offered where the questions are, not only on Notes for the team */
+      open.length && !state.readOnly && canRecord() ? h('button', { class: 'recbtn recbtn-appt', type: 'button', onclick: () => { closeSheet({ force: true }); openAppointmentSheet(); } }, icon('mic'), h('span', { text: 'Record the appointment' })) : null,
       ...open.map((q) => questionCard(q, draw)),
       h('button', { class: 'btn btn-primary', type: 'button', onclick: () => openAdd('question') }, 'Add a question'));
   };
@@ -16305,6 +16329,7 @@ function renderFlareCard() {
 $('flare-card-edit').addEventListener('click', () => openFlarePlanSheet(() => { closeSheet(); renderFlareCard(); }));
 $('flare-card-go').addEventListener('click', () => openFlareSheet(todayStr()));
 function renderChemo() {
+  { const rb = $('chemo-record'); if (rb) rb.hidden = state.readOnly || state.viewer || !canRecord(); }
   renderFlareCard();
   renderChemoProgress();
   renderCalendar();
@@ -16863,6 +16888,9 @@ function openAddSessions() {
   draw();
   const body = h('div', null,
     h('p', { class: 'hint', text: 'A run of sessions in one go. Tap any day later to move or remove it.' }),
+    /* v413 (Chris, a tester): the dates read from a photo of the treatment plan or appointment letter, as with the flare plan */
+    explainAvailable() ? h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => { closeSheet({ force: true }); readSessionsPhoto((d) => openSessionsFromPhoto(d), () => openAddSessions()); } }, icon('image'), ' Read the dates from a photo') : null,
+    explainAvailable() ? h('p', { class: 'hint hint-small', text: 'A photo of the treatment plan or appointment letter. Daybook Assistant (Claude, by Anthropic) reads the dates; you check them before anything is saved.' }) : null,
     h('p', { class: 'field-label', text: 'What is it?' }), typeRow,
     nameRow,
     field('First session', firstIn),
@@ -16894,6 +16922,76 @@ function openAddSessions() {
   openSheet('Add sessions', body);
 }
 $('chemo-add-run').addEventListener('click', openAddSessions);
+$('chemo-record').addEventListener('click', openAppointmentSheet);
+/* Sessions from a photo (v413): Daybook Assistant reads every date in the plan or letter, then a sheet lists them, ticked,
+   with the kind and the medicine, for the person to check before they go on the calendar. Days that already have a
+   session are shown and left alone. */
+function readSessionsPhoto(onRead, onCancel) {
+  const input = h('input', { type: 'file', accept: 'image/*,application/pdf,.pdf', multiple: true, style: 'display:none' });
+  document.body.append(input);
+  input.addEventListener('change', async () => {
+    const files = Array.from(input.files || []);
+    input.remove();
+    if (!files.length) { onCancel(); return; }
+    const status = h('p', { class: 'hint', role: 'status', text: 'Reading the dates, about half a minute' });
+    openSheet('Reading the dates', h('div', null, status, h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => { closeSheet(); onCancel(); } }, 'Cancel')));
+    try {
+      const read = await processFiles(files.slice(0, 4), (label) => { status.textContent = label; });
+      status.textContent = 'Reading the dates, about half a minute';
+      const reply = await bridgeExplain(read.pages.length ? { kind: 'sessions', pages: read.pages.slice(0, 4).map((pg) => pg.data) } : { kind: 'sessions', text: read.text || '' });
+      let t = String(reply.text || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+      const a = t.indexOf('{'), b = t.lastIndexOf('}'); if (a >= 0 && b > a) t = t.slice(a, b + 1);
+      let d = {}; try { d = JSON.parse(t); } catch (e) { d = {}; }
+      const days = [...new Set((Array.isArray(d.days) ? d.days : []).map((x) => String(x || '').trim()).filter((x) => /^\d{4}-\d{2}-\d{2}$/.test(x) && !isNaN(parseDay(x))))].sort().slice(0, 60);
+      if (!days.length) { toast('Could not read any dates in that. Add them by hand instead.'); onCancel(); return; }
+      onRead({ days, kind: TREATMENTS.some((x) => x.key === d.kind) ? d.kind : null, name: d.name == null ? '' : String(d.name).trim().slice(0, 60), from: d.from == null ? '' : String(d.from).trim().slice(0, 80) });
+    } catch (e) { console.warn(e); toast(e.message || 'Could not read the dates'); onCancel(); }
+  });
+  input.click();
+}
+function openSessionsFromPhoto(found) {
+  const offered = treatmentsFor().filter((t) => t.cycle !== 'never' || t.key === 'appt');
+  let treatment = offered.some((t) => t.key === found.kind) ? found.kind : offered.some((t) => t.key === latestTreatmentKey()) ? latestTreatmentKey() : (offered[0] || TREATMENTS[0]).key;
+  const tOf = () => TREATMENTS.find((t) => t.key === treatment) || TREATMENTS[0];
+  const typeRow = h('div', { class: 'wiz-day treat-chips', role: 'group', 'aria-label': 'Kind of treatment' });
+  const nameIn = h('input', { type: 'text', class: 'input', autocomplete: 'off', value: found.name || '', placeholder: sessionNamePh() });
+  const nameRow = h('div', null, field('Which medicine? (optional)', nameIn));
+  const ticks = found.days.map((d) => {
+    const had = !!(state.days[d] && state.days[d].chemo);
+    const box = h('input', { type: 'checkbox', checked: !had, disabled: had });
+    return { d, box, el: h('label', { class: 'check' }, box, h('span', { text: fmtDayShort(d) + (had ? ', already on the calendar' : '') })) };
+  });
+  const draw = () => {
+    typeRow.replaceChildren(...offered.map((t) => h('button', { class: 'preset' + (t.key === treatment ? ' is-active' : ''), type: 'button', 'aria-pressed': t.key === treatment ? 'true' : 'false', onclick: () => { treatment = t.key; draw(); } }, t.label)));
+    nameRow.hidden = !isRepeat(tOf()) && treatment !== 'chemo' && treatment !== 'immuno';
+  };
+  draw();
+  const body = h('div', null,
+    h('p', { class: 'hint', text: plural(found.days.length, 'date') + ' read' + (found.from ? ' from ' + found.from : '') + '. Check them against the letter: untick any that are wrong, then add them. Each can be moved or removed later.' }),
+    h('p', { class: 'field-label', text: 'What are they?' }), typeRow, nameRow,
+    h('p', { class: 'field-label', text: 'The dates' }), h('div', { class: 'tile-ticks' }, ...ticks.map((t) => t.el)),
+    h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
+      const days = ticks.filter((t) => t.box.checked && !t.box.disabled).map((t) => t.d);
+      if (!days.length) { toast('Tick at least one date'); return; }
+      closeSheet({ force: true });
+      const rep = isRepeat(tOf());
+      const name = nameIn.value.trim();
+      const rows = days.map((d, i) => [d, { chemo: true, chemoDone: d < todayStr(), treatment, cycleStart: rep ? true : i === 0, ...(name ? { treatName: name } : {}), updatedBy: state.name }]);
+      const words = plural(days.length, treatment === 'appt' ? 'appointment' : 'session') + ' added, ' + fmtDayShort(days[0]) + (days.length > 1 ? ' to ' + fmtDayShort(days[days.length - 1]) : '');
+      if (state.demo) { rows.forEach(([d, data]) => { state.days[d] = { ...(state.days[d] || {}), ...data }; }); state.chemoMonth = days[0].slice(0, 7); renderChemo(); toast(words); return; }
+      try {
+        const batch = writeBatch(db);
+        rows.forEach(([d, data]) => batch.set(hdoc('days', d), { ...data, updatedAt: serverTimestamp() }, { merge: true }));
+        await batch.commit();
+        touchTreatPlan();
+        state.chemoMonth = days[0].slice(0, 7);
+        renderCalendar();
+        toast(words);
+      } catch (e) { console.error(e); toast('Could not add the dates'); }
+    } }, 'Add them to the calendar'),
+    h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => closeSheet({ force: true }) }, 'Cancel'));
+  openSheet('Dates from the photo', body);
+}
 
 /* A short, calm confetti burst when a session is marked done. Skipped for reduced motion. */
 function confetti() {

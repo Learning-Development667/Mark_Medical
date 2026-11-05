@@ -6,6 +6,11 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v413 (5 November 2026): Chris's feedback, part one
+- **Light or dark** (More): Match my phone, Always light or Always dark, on this phone (`daybook.look`, `applyLook()`, `:root[data-theme]`). Every `@media (prefers-color-scheme: dark)` block in styles.css now reads `:root:not([data-theme="light"])` inside and has a `:root[data-theme="dark"]` twin outside, made by a script that copies each rule (24 twins added); forced and phone-chosen light and dark were compared pixel for pixel on Today, Meds, Reports and More: identical. The theme-color meta follows the choice.
+- **Findable**: the questions list from Today starts with Record the appointment, and each question's Record or write the answer is now a primary button with the microphone; the Treatment tab has Record an appointment under Sessions (`#chemo-record`); Log a dose with no medicines set up offers Add your first medicine at once instead of pointing to the Meds tab.
+- **Sessions from a photo**: Add sessions has Read the dates from a photo; the bridge's new `sessions` kind returns `{from, kind, name, days}` copied from the plan or letter (never worked out), and a sheet lists the dates ticked, with the kind and the medicine, for checking before they go on the calendar (`readSessionsPhoto()`, `openSessionsFromPhoto()`). Days already holding a session are shown and left alone.
+
 ### v412 (4 November 2026): the iPhone build made with Xcode 27.1, for the foldable
 - Mark's tester on the foldable iPhone (iPhone Duo): v410 made no difference. Apps built before the foldable's SDK run letterboxed on its inner screen, and every build so far came from Xcode 26.3 (the macos-15 image; macos-26 carries only Xcode 26 too, checked with the new Xcode versions workflow, which builds nothing). The iPhone workflow now runs on GitHub's `xcode-27` image with Xcode 27.1 pinned (iOS 27.1 SDK), never a release candidate. The page itself already adapts (v410).
 

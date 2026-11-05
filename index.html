@@ -19,7 +19,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=411">
+  <link rel="stylesheet" href="styles.css?v=413">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -527,6 +527,7 @@
           <p class="muted" id="chemo-next">Tap a day on the calendar to mark a treatment session.</p>
           <button id="chemo-add-run" class="btn btn-secondary btn-block" type="button">Add sessions</button>
         </div>
+        <button id="chemo-record" class="recbtn recbtn-appt" type="button" hidden><svg class="icon" aria-hidden="true"><use href="#i-mic"/></svg><span>Record an appointment</span></button>
 
         <div id="chemo-docs-section">
           <h2 class="section-title">Plan documents</h2>
@@ -896,6 +897,11 @@
             <span class="checkin-main"><span class="checkin-title" id="more-health-title">Apple Health</span><span class="checkin-sub" id="more-health-sub"></span></span>
             <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
           </button>
+          <button id="more-look" class="checkin-row menu-row" type="button">
+            <svg class="icon checkin-icon" aria-hidden="true"><use href="#i-moon"/></svg>
+            <span class="checkin-main"><span class="checkin-title">Light or dark</span><span class="checkin-sub" id="more-look-sub"></span></span>
+            <svg class="icon checkin-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
+          </button>
           <button id="more-guide" class="checkin-row menu-row" type="button">
             <svg class="icon checkin-icon" aria-hidden="true"><use href="#i-eye"/></svg>
             <span class="checkin-main"><span class="checkin-title">Help and what's new</span><span class="checkin-sub">The Guide, what has changed, and telling Mark what you think</span></span>
@@ -1060,6 +1066,15 @@
             </label>
             <button id="settings-week-treatment" class="btn btn-secondary btn-block" type="button" hidden>Use my treatment day</button>
             <p class="hint">The weekly check-in covers the week up to this day.</p>
+          </div>
+        </div>
+
+        <div class="settings-group-view" data-group="look" hidden>
+          <div class="card settings-group" role="radiogroup" aria-label="Light or dark">
+            <label class="check settings-toggle"><input type="radio" name="look" value="system"><span>Match my phone</span></label>
+            <label class="check settings-toggle"><input type="radio" name="look" value="light"><span>Always light</span></label>
+            <label class="check settings-toggle"><input type="radio" name="look" value="dark"><span>Always dark</span></label>
+            <p class="hint">This phone only. Match my phone follows the phone's own setting, light by day and dark at night if it is set to change.</p>
           </div>
         </div>
 
@@ -1312,6 +1327,6 @@
   </div>
 
   <script src="config.js?v=405"></script>
-  <script type="module" src="scripts.js?v=411"></script>
+  <script type="module" src="scripts.js?v=413"></script>
 </body>
 </html>

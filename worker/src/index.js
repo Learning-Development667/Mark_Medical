@@ -831,6 +831,10 @@ const EXPLAIN_SYSTEM = {
     'Reply with JSON only, no prose and no code fence, in exactly this shape: {"from": string or null, "given": "YYYY-MM-DD" or null, "steps": string, "when": string, "wait": string}. ' +
     '"from" is who gave the plan (a nurse, a team, a hospital), "given" its date, "steps" what the team told the patient to do when symptoms flare, in their own words tidied into plain UK English sentences, "when" the signs they said should prompt a call (stools a day, blood, temperature, pain, weight), "wait" what to do if it does not settle or out of hours (ring again after so many hours, 111, A&E). ' +
     'Copy only what the document says, never add advice, thresholds or reassurance of your own; an empty string where the document says nothing. No em dashes.',
+  sessions: 'You read a treatment plan, a schedule or an appointment letter (chemotherapy, radiotherapy, immunotherapy, injections, infusions or clinic appointments) from photos or pasted text, for a patient putting the dates on a calendar in an app. ' +
+    'Reply with JSON only, no prose and no code fence, in exactly this shape: {"from": string or null, "kind": "chemo" or "radio" or "immuno" or "inject" or "infuse" or "appt" or null, "name": string or null, "days": ["YYYY-MM-DD"]}. ' +
+    '"from" is who issued it (a hospital, a unit, a team), "kind" the kind of treatment the dates are for ("appt" for clinic appointments, null if it is not clear), "name" the medicine or regimen named for them (as printed, for example FOLFIRINOX or Adalimumab), or null, and "days" every treatment or appointment date in the document, in order, each once. ' +
+    'Use the year printed; if a date has no year, take the next one after the document date. Copy only what the document says: never work out dates the document does not list, never add advice, and leave out any date you cannot read clearly. No em dashes.',
   results: 'You read test results (blood tests, faecal calprotectin, drug levels) from a results sheet, a clinic letter or an app screenshot, for a patient recording them in an app. ' +
     'Reply with JSON only, no prose and no code fence, in exactly this shape: {"day": "YYYY-MM-DD" or null, "source": string or null, "results": [{"test": string, "value": string, "unit": string, "range": string or null}]}. ' +
     '"day" is the date the sample was taken (the collection or sample date, else the report date), "source" who issued them (a GP surgery, a hospital, a lab, a team), one item per test with "test" the name as printed, "value" the number as printed (keep a leading < or > when the lab printed one), "unit" as printed, "range" the reference range exactly as printed ("0 - 5", "<50", "120-150") or null when none is printed. ' +
@@ -1516,7 +1520,7 @@ const USAGE_AT = 3 * 60 + 30;           // 03:30 London, inside the five-minute 
 const USAGE_HISTORY_DAYS = 90;
 const USAGE_WEEK = 7;
 const USAGE_MAX_ROWS = 2000;            // past this the document nears Firestore's 1 MB: shard the rows then
-const AI_KINDS = ['document', 'report', 'weekly', 'mood', 'pain', 'programme', 'medicine', 'flare', 'results', 'notes'];
+const AI_KINDS = ['document', 'report', 'weekly', 'mood', 'pain', 'programme', 'medicine', 'flare', 'sessions', 'results', 'notes'];
 const dayMinus = (day, n) => { const d = new Date(day + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() - n); return d.toISOString().slice(0, 10); };
 function readUsageDoc(doc) {
   if (!doc || !doc.fields) return null;
@@ -1697,7 +1701,7 @@ async function handleExplain(request, env) {
 
   let body;
   try { body = await request.json(); } catch (e) { return json({ error: 'bad-request', message: 'Could not read what was sent. Try again.' }, 400); }
-  const kind = ['notes', 'programme', 'medicine', 'weekly', 'report', 'mood', 'pain', 'flare', 'results', 'label'].includes(body.kind) ? body.kind : 'document';
+  const kind = ['notes', 'programme', 'medicine', 'weekly', 'report', 'mood', 'pain', 'flare', 'sessions', 'results', 'label'].includes(body.kind) ? body.kind : 'document';
   const text = String(body.text || '').slice(0, EXPLAIN_MAX_TEXT_CHARS);
   const pages = Array.isArray(body.pages) ? body.pages.slice(0, EXPLAIN_MAX_PAGES).filter((p) => typeof p === 'string' && p.length > 100 && p.length <= EXPLAIN_MAX_PAGE_CHARS) : [];
   if (!text.trim() && !pages.length) return json({ error: 'bad-request', message: 'Nothing to explain.' }, 400);
@@ -1731,6 +1735,7 @@ async function handleExplain(request, env) {
     : kind === 'medicine' ? 'A photo of a medicine follows.'
     : kind === 'label' ? 'A photo of the nutrition panel on a food or drink packet follows.'
     : kind === 'flare' ? 'The flare plan or letter follows, as page photos or as text.'
+    : kind === 'sessions' ? 'The treatment plan, schedule or appointment letter follows, as page photos or as text.'
     : kind === 'results' ? 'The test results follow, as page photos or as text: a results sheet, a clinic letter or a screenshot from an app.'
     : kind === 'weekly' ? 'Care notes from Daybook, grouped by week.'
     : kind === 'report' ? 'Care notes and open questions from Daybook, for the two-page report.'
