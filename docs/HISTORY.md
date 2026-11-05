@@ -6,6 +6,9 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v420 (5 November 2026): Tap to speak on Android stops repeating words
+Mark's screenshots from the Android app: "does does does this does this push...". Android's recogniser sends each growing version of a sentence as its own final result, and `speakButton()` joined them all. On Android (`IS_ANDROID_SPEECH`) it now listens one sentence a session (`continuous` off; the v170 restart carries on from the box), and `speechParts()` lets a result that only grows the one before it replace it. iPhone and desktop are unchanged. Tested with a stub recogniser in Chromium under an Android user agent; not yet tried on a real Android phone. Also a working rule in CLAUDE.md: never start an app build until Mark directly says so (Android release 11 went to the internal track at 16:33 without his word; the iPhone build 16 was cancelled).
+
 ### v419 (5 November 2026): larger text checked on the simulators
 - The first full run of the simulator screenshots (iPhone 17e, 17, 18 Pro Max) showed the iPhone's Text Size reaching Daybook (v417) and every tab rearranging, with one fault: at accessibility-large the top bar's name was cut to "Dayb...". The top bar's name and its button keep their own size at larger text; everything below still grows.
 - The calendar's day names keep their size too (they ran together on the 17e at accessibility-large).

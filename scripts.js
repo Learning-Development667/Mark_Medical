@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '419';
+const APP_VERSION = '420';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -4298,6 +4298,24 @@ const SPEAK_DEAD_MAX = 4;
    `speechLive` is the one button listening now; a new tap stops it first, and anything that takes a box off
    the screen calls stopSpeech(). */
 let speechLive = null;
+/* Android's recogniser (Chrome and the app's web view) sends each growing version of a sentence as its own result,
+   "does", "does this", "does this push", so joining them wrote every word over and over (v420, Mark's screenshots
+   from the Android app). There it listens one sentence a session, and a result that only grows the one before it
+   replaces it instead of being added. */
+const IS_ANDROID_SPEECH = /Android/i.test(navigator.userAgent);
+function speechParts(results) {
+  const parts = [];
+  for (let i = 0; i < results.length; i++) {
+    const t = String(results[i][0].transcript || '').trim();
+    if (!t) continue;
+    const prev = parts.length ? parts[parts.length - 1].toLowerCase() : null;
+    const low = t.toLowerCase();
+    if (prev !== null && low.startsWith(prev)) parts[parts.length - 1] = t;
+    else if (prev !== null && prev.startsWith(low)) continue;
+    else parts.push(t);
+  }
+  return parts;
+}
 function stopSpeech() { if (speechLive) speechLive(); }
 function speakButton(target) {
   if (!SpeechRec) return null;
@@ -4339,13 +4357,14 @@ function speakButton(target) {
     let heard = false;
     r.lang = 'en-GB';
     r.interimResults = true;
-    r.continuous = true;
+    r.continuous = !IS_ANDROID_SPEECH; // Android: one sentence a session, the restart below carries on (v420)
     r.onstart = () => { if (rec !== r) return; lastErr = ''; setState(true); }; // a reason shown on the button is cleared once a session really starts
     r.onresult = (ev) => {
       if (rec !== r) return;
       if (!target.isConnected) { quietStop(); return; }
       let text = '';
-      for (let i = 0; i < ev.results.length; i++) text += ev.results[i][0].transcript + (ev.results[i].isFinal ? ' ' : '');
+      if (IS_ANDROID_SPEECH) text = speechParts(ev.results).join(' ');
+      else for (let i = 0; i < ev.results.length; i++) text += ev.results[i][0].transcript + (ev.results[i].isFinal ? ' ' : '');
       if (text.trim()) { heard = true; dead = 0; everHeard = true; lastErr = ''; setState(true); markSpoken(target); }
       target.value = join(text);
       target.dispatchEvent(new Event('input', { bubbles: true }));
