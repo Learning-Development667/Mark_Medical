@@ -8,7 +8,7 @@
    it is in the brand rules doc). NODE_PATH must reach the docx package (/opt/node-tools/node_modules here).
 
    Markdown understood: # title, ## and ### headings, paragraphs with **bold**, - bullets, - [ ] tasks,
-   1. numbered lines, pipe tables (an all-empty header row is dropped), and ![caption](picture.png) on
+   1. numbered lines, <space> on its own line for room to sign, pipe tables (an all-empty header row is dropped), and ![caption](picture.png) on
    its own line for a picture (![caption|300](pic.png) for 300 px wide). Body text Arial 11 pt so it reads the same on any computer and in Pages. */
 const fs = require('fs');
 const path = require('path');
@@ -78,6 +78,7 @@ const gap = (after = 120) => new Paragraph({ spacing: { before: 0, after }, chil
 for (let i = 0; i < md.length; i++) {
   const l = md[i];
   if (!l.trim()) continue;
+  if (l.trim() === '<space>') { out.push(gap(480)); continue; } // room to sign or write by hand
   if (l.startsWith('|')) { const t = []; while (i < md.length && md[i].startsWith('|')) t.push(md[i++]); i--; out.push(table(t), gap(160)); continue; }
   let m;
   if ((m = l.match(/^!\[(.*)\]\((.+)\)\s*$/))) {
