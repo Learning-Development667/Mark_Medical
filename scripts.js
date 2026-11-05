@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '416';
+const APP_VERSION = '417';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -6070,6 +6070,31 @@ function applyLook() {
 }
 applyLook();
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyLook);
+/* The iPhone's own text size (v417, a tester with Larger Text on saw Daybook at the standard size: the app's text is set in
+   pixels, which iOS does not scale). WebKit sizes `font: -apple-system-body` by the phone's Text Size setting (17px as
+   standard), so that tells us the person's size; the whole page's text is then scaled with -webkit-text-size-adjust, up to
+   double, and html.text-big or .text-huge let the busiest layouts rearrange. Read again whenever Daybook comes back. */
+function applyTextSize() {
+  const root = document.documentElement;
+  let scale = 1;
+  try {
+    if (window.CSS && CSS.supports('font', '-apple-system-body')) {
+      const probe = document.createElement('span');
+      probe.style.cssText = 'font: -apple-system-body; position: absolute; visibility: hidden; pointer-events: none; -webkit-text-size-adjust: none';
+      probe.textContent = 'x';
+      document.body.append(probe);
+      const px = parseFloat(getComputedStyle(probe).fontSize) || 17;
+      probe.remove();
+      scale = Math.min(2, Math.max(1, px / 17));
+    }
+  } catch (e) { scale = 1; }
+  root.style.setProperty('--ts', String(Math.round(scale * 100) / 100));
+  root.style.webkitTextSizeAdjust = scale > 1.04 ? Math.round(scale * 100) + '%' : '100%';
+  root.classList.toggle('text-big', scale >= 1.25);
+  root.classList.toggle('text-huge', scale >= 1.6);
+}
+applyTextSize();
+document.addEventListener('visibilitychange', () => { if (!document.hidden) applyTextSize(); });
 document.querySelectorAll('input[name="look"]').forEach((r) => r.addEventListener('change', () => {
   try { if (r.value === 'system') localStorage.removeItem(LOOK_KEY); else localStorage.setItem(LOOK_KEY, r.value); } catch (e) { /* private window */ }
   applyLook();

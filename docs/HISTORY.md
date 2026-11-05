@@ -6,6 +6,10 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v417 (5 November 2026): the iPhone's own text size
+- A tester with Larger Text on his iPhone saw Daybook at the standard size (his screenshot: the status bar large, Daybook's 17px text unchanged). The app's text is set in pixels, which iOS does not scale. `applyTextSize()` reads the person's size from a hidden `font: -apple-system-body` probe (17px at the standard setting; only where `CSS.supports` it, so other browsers are unchanged), scales the page's text with `-webkit-text-size-adjust` up to 200%, sets `--ts`, and toggles `html.text-big` (125% and over: quick-add tiles, report tiles and number tiles two across) and `.text-huge` (160% and over: one across); the tab bar's words and the tile labels keep their size so the six tabs still fit. Read again whenever Daybook comes back to the front.
+- Not testable in Chromium (it ignores text-size-adjust): the simulator screenshots now add every tab at two text sizes, extra-extra-extra-large and accessibility-large, on each iPhone.
+
 ### v416 (5 November 2026): daily screenshots on Apple's iPhone simulators
 - Chris's idea, Mark agreed: the iPhone screenshots workflow (`ios-screens.yml`, on the `xcode-27` image with Xcode 27.1) builds the app for the simulator (unsigned, nothing to TestFlight) and `tools/sim_shots.sh` photographs, on the iPhone SE, a standard iPhone, the Pro Max and the iPhone Duo when the image carries it, in light and dark: the real app's opening screen (full screen, not letterboxed) and each tab of the cancer preview in Safari, the same WebKit the app uses. Kept 14 days as the run's artifact. Run with the daily build and look at every picture before the build goes to testers.
 - The preview opens on a chosen tab with `?preview=cancer&tab=meds` (any key of `PAGE_TITLES`).

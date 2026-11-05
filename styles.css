@@ -2585,3 +2585,14 @@ body[data-accent] .view .section-title::before { content: ""; display: block; wi
 .wn-new { color: var(--teal); }
 .wn-improved { color: var(--success); }
 .wn-fixed { color: var(--warning); }
+
+/* v417: larger text from the iPhone's own Text Size (html.text-big from 125%, .text-huge from 160%; --ts is the scale).
+   Text grows through -webkit-text-size-adjust; these let the busiest rows make room. The tab bar's words and the small
+   capital labels on the number tiles keep their size, so six tabs still fit one row. */
+html.text-big .quickadd, html.text-big .reports { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+html.text-big .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+html.text-big .tab { font-size: calc(var(--fs-xs) / var(--ts, 1) * 1.15); }
+html.text-big .tile-label { font-size: calc(11px / var(--ts, 1) * 1.2); }
+html.text-huge .tiles, html.text-huge .quickadd, html.text-huge .reports { grid-template-columns: minmax(0, 1fr); }
+html.text-huge .checkin-row { align-items: flex-start; }
+html.text-big .typepick, html.text-big .presets { flex-wrap: wrap; }

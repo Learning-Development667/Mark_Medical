@@ -1,7 +1,7 @@
 #!/bin/bash
 # Daily screenshots on Apple's iPhone simulators (v416, Chris's idea, Mark: "yes set up item 5").
 # For each chosen iPhone (the smallest SE, a standard size, the largest Pro Max and the iPhone Duo when the image has it),
-# in light and dark: the real app's opening screen (checks it fills the screen, not letterboxed), then each tab of the
+# in light and dark, and at two larger text sizes: the real app's opening screen (checks it fills the screen, not letterboxed), then each tab of the
 # cancer preview in Safari (?preview=cancer&tab=...), the same WebKit the app runs on. Made-up data only.
 # Usage: tools/sim_shots.sh <path to App.app> <out dir>
 set -u
@@ -32,6 +32,17 @@ echo "$DEVICES" | while IFS='|' read -r UDID NAME; do
     done
     xcrun simctl terminate "$UDID" com.apple.mobilesafari 2>/dev/null
   done
+  # Larger Text (v417): the phone's Text Size at the largest standard step and at an accessibility size, light only
+  xcrun simctl ui "$UDID" appearance light
+  for SIZE in extra-extra-extra-large accessibility-large; do
+    xcrun simctl ui "$UDID" content_size "$SIZE"
+    for TAB in $TABS; do
+      xcrun simctl openurl "$UDID" "${URL}?preview=cancer&tab=$TAB"; sleep 9
+      xcrun simctl io "$UDID" screenshot "$OUT/$SLUG-text-$SIZE-$TAB.png" >/dev/null 2>&1
+    done
+    xcrun simctl terminate "$UDID" com.apple.mobilesafari 2>/dev/null
+  done
+  xcrun simctl ui "$UDID" content_size large
   xcrun simctl shutdown "$UDID"
   echo "$NAME: done"
 done
