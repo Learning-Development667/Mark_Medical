@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '421';
+const APP_VERSION = '422';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -3718,7 +3718,8 @@ const WHATS_NEW = [
     { tag: 'improved', text: 'Record the appointment is now with your questions on Today, and on the Treatment tab.' },
     { tag: 'improved', text: 'Each question has a clear Record or write the answer button.' },
     { tag: 'improved', text: 'Log a dose with no medicines yet lets you add your first one straight away.' },
-    { tag: 'improved', text: 'Leaving the tour part way asks first, and says where to find it again.' }
+    { tag: 'improved', text: 'Leaving the tour part way asks first, and says where to find it again.' },
+    { tag: 'fixed', text: 'Tap to speak on Android no longer repeats your words.' }
   ] },
   { id: '2026-11-04', items: [
     { tag: 'new', text: 'A short tour of Daybook the first time you open it. Take it again any time from More, Help and what\'s new.' },

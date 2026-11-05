@@ -6,6 +6,9 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v422 (5 November 2026): What's new, the Android speech fix
+Mark agreed the words: "Fixed: Tap to speak on Android no longer repeats your words." in the 5 November batch. It is in the TestFlight text; Google Play's 500 characters fill with the New and Improved items first, so it does not fit there.
+
 ### v421 (5 November 2026): the iPhone Duo's two screens in the simulator pictures
 Run 4's log showed why the Duo had no pictures: simctl numbers its displays (`--display=1`, the cover screen, 1398x2034; `--display=3`, the inner screen, 2007x2853), it does not name them. `shot()` now reads the numbers from simctl's own message and takes each, the file named with the display and its size. The screenshots workflow has an "only" box (`ONLY`, e.g. Duo) for a quick run on one phone. No TestFlight build has yet come from Xcode 27.1: build 15 was Xcode 26.3, and build 16, the first on 27.1, was cancelled, so the Duo tester has never had the fix.
 
