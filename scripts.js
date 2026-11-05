@@ -3709,6 +3709,17 @@ $('feedback-row').addEventListener('click', () => openFeedbackSheet());
 const WHATS_NEW = [
   /* tag (v411, Mark): new, improved or fixed, shown as a label and grouped in that order; the newest batch is also the
      release notes for TestFlight and Google Play (tools/release_notes.mjs) */
+  { id: '2026-11-05', items: [
+    { tag: 'new', text: 'Choose light or dark under More, or let Daybook match your phone.' },
+    { tag: 'new', text: 'Add treatment dates from a photo of the plan or letter: Add sessions, Read the dates from a photo. You check them before they go on the calendar.' },
+    { tag: 'new', text: 'Record the colour of a bowel movement: dark brown, light brown, yellow or grey.' },
+    { tag: 'new', text: 'Daybook\'s text now follows your iPhone\'s Text Size setting.' },
+    { tag: 'new', text: 'Resting heart rate from Apple Health, once a day, on the Exercise tab and Notes for the team.' },
+    { tag: 'improved', text: 'Record the appointment is now with your questions on Today, and on the Treatment tab.' },
+    { tag: 'improved', text: 'Each question has a clear Record or write the answer button.' },
+    { tag: 'improved', text: 'Log a dose with no medicines yet lets you add your first one straight away.' },
+    { tag: 'improved', text: 'Leaving the tour part way asks first, and says where to find it again.' }
+  ] },
   { id: '2026-11-04', items: [
     { tag: 'new', text: 'A short tour of Daybook the first time you open it. Take it again any time from More, Help and what\'s new.' },
     { tag: 'new', text: 'Guides for logging food and drink, how you feel, and a note.' },
