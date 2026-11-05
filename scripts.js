@@ -2879,6 +2879,13 @@ async function syncHealth(manual) {
   if (!manual && Date.now() - last < 20 * 60e3) return;
   healthBusy = true;
   try {
+    /* A phone connected before a kind was added (v418: resting heart rate) is asked once for the new ones; iOS shows only
+       what it has not been asked about before */
+    const want = HEALTH_READ.join(',');
+    if (lsGet('daybook.health.kinds') !== want) {
+      await healthPlugin().requestAuthorization({ read: HEALTH_READ, write: [] }).catch((e) => console.warn(e));
+      lsSet('daybook.health.kinds', want);
+    }
     const days = last ? Math.min(30, Math.max(7, Math.ceil((Date.now() - last) / 864e5) + 2)) : 30;
     const payload = await healthPayload(days);
     /* In batches of four days (v404): the bridge's free plan allows about 50 database calls a request, and a day
@@ -2923,7 +2930,7 @@ $('settings-health-connect').addEventListener('click', async (ev) => {
       const av = await H.isAvailable().catch(() => ({ available: true }));
       if (av && av.available === false) { toast('Apple Health is not available on this phone'); return; }
       await H.requestAuthorization({ read: HEALTH_READ, write: [] });
-      lsSet(HEALTH_ON_KEY, state.household);
+      lsSet(HEALTH_ON_KEY, state.household); lsSet('daybook.health.kinds', HEALTH_READ.join(','));
       lsSet(HEALTH_LAST_KEY, '');
     }
     await syncHealth(true);

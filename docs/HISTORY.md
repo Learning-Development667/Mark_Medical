@@ -8,6 +8,7 @@ _Add a short section per version here._
 
 ### v418 (5 November 2026): resting heart rate from Apple Health
 - Mark: add pulse from Apple Health or Health Connect; he chose resting heart rate, one figure a day, over every reading. The iPhone app reads `restingHeartRate` (added to `HEALTH_READ`, so phones ask again at the next Connect) and sends it as `resting_heart_rate`; the bridge keeps the day's last on `exercise/{day}.restingHr` (25 to 220 only). It never mixes with pulses typed into Vitals: on Notes for the team it is a dashed teal line on the Heart rate chart with its own fact ("resting 62 to 68 (Apple Health)"), and the chart's peak and tone stay with typed readings; the Exercise tab's Apple Health row says today's figure. Health Connect (Android) will bring the same once it is set up.
+- A phone connected before is asked once for the new kind at its next send (`daybook.health.kinds`).
 - The privacy page (dated 5 November, copied to the website), the iPhone's Health permission wording and the Apple Health screen list resting heart rate.
 
 ### v417 (5 November 2026): the iPhone's own text size
