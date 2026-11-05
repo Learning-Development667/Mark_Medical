@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '417';
+const APP_VERSION = '418';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -2789,7 +2789,7 @@ $('settings-health-key').addEventListener('click', async () => {
    /health-app as the signed-in family member; the bridge writes them exactly as before (ingestHealth). It runs when
    the app opens or comes back, at most every 20 minutes, over the days since the last send (7 at least, 30 the
    first time). Read only: nothing is written to Apple Health. */
-const HEALTH_READ = ['steps', 'sleep', 'workouts', 'weight', 'dietaryEnergyConsumed'];
+const HEALTH_READ = ['steps', 'sleep', 'workouts', 'weight', 'dietaryEnergyConsumed', 'restingHeartRate'];
 const HEALTH_ON_KEY = 'daybook.health.on', HEALTH_LAST_KEY = 'daybook.health.last', HEALTH_NOTE_KEY = 'daybook.health.note';
 let healthPluginObj = null;
 function healthPlugin() {
@@ -2855,12 +2855,14 @@ async function healthPayload(days) {
   const weight = await tryCall(() => H.readSamples({ dataType: 'weight', ...range, limit: 500, ascending: true }));
   const sleep = await tryCall(() => H.readSamples({ dataType: 'sleep', ...range, limit: 5000, ascending: true }));
   const workouts = await tryCall(() => H.queryWorkouts({ ...range, limit: 200, ascending: true }));
+  const resting = await tryCall(() => H.readSamples({ dataType: 'restingHeartRate', ...range, limit: 500, ascending: true })); // v418: one a day, the day's last kept
   const daily = (r) => ((r && r.samples) || []).filter((x) => Number(x.value) > 0).map((x) => ({ date: haeStamp(new Date(x.startDate)), qty: Number(x.value) }));
   const metrics = [
     { name: 'step_count', units: 'count', data: daily(steps) },
     { name: 'dietary_energy', units: 'kcal', data: daily(kcal) },
     { name: 'weight_body_mass', units: 'kg', data: ((weight && weight.samples) || []).filter((x) => Number(x.value) > 0).map((x) => ({ date: haeStamp(new Date(x.startDate)), qty: Number(x.value) })) },
     { name: 'sleep_analysis', units: 'hr', data: sleepNights(sleep && sleep.samples) },
+    { name: 'resting_heart_rate', units: 'bpm', data: ((resting && resting.samples) || []).filter((x) => Number(x.value) > 0).map((x) => ({ date: haeStamp(new Date(x.startDate)), qty: Number(x.value) })) },
   ].filter((m) => m.data.length);
   const wk = ((workouts && workouts.workouts) || []).map((w) => {
     const o = { name: workoutWords(w.workoutType), start: haeStamp(new Date(w.startDate)), end: haeStamp(new Date(w.endDate)) };
@@ -2886,7 +2888,7 @@ async function syncHealth(manual) {
     for (const m of payload.data.metrics) for (const row of m.data) allDays.add(dayKey(row.date || row.sleepEnd));
     for (const w of payload.data.workouts) allDays.add(dayKey(w.start));
     const sorted = [...allDays].filter(Boolean).sort();
-    const r = { steps: 0, sleep: 0, weight: 0, workouts: 0, nutrition: 0 };
+    const r = { steps: 0, sleep: 0, weight: 0, workouts: 0, nutrition: 0, pulse: 0 };
     for (let i = 0; i < sorted.length; i += 4) {
       const batch = new Set(sorted.slice(i, i + 4));
       const part = { data: {
@@ -2897,7 +2899,7 @@ async function syncHealth(manual) {
       for (const k of Object.keys(r)) r[k] += Number(got[k]) || 0;
     }
     lsSet(HEALTH_LAST_KEY, String(Date.now()));
-    const bits = [r.steps && plural(r.steps, 'day') + ' of steps', r.sleep && plural(r.sleep, 'night') + ' of sleep', r.weight && plural(r.weight, 'weight'), r.workouts && plural(r.workouts, 'day') + ' of workouts', r.nutrition && plural(r.nutrition, 'day') + ' of food energy'].filter(Boolean);
+    const bits = [r.steps && plural(r.steps, 'day') + ' of steps', r.sleep && plural(r.sleep, 'night') + ' of sleep', r.weight && plural(r.weight, 'weight'), r.workouts && plural(r.workouts, 'day') + ' of workouts', r.nutrition && plural(r.nutrition, 'day') + ' of food energy', r.pulse && plural(r.pulse, 'day') + ' of resting heart rate'].filter(Boolean);
     lsSet(HEALTH_NOTE_KEY, bits.length ? bits.join(', ') : 'nothing new');
     if (manual) toast(bits.length ? 'Brought in from Apple Health' : 'Nothing new in Apple Health');
   } catch (e) { console.warn(e); if (manual) toast(e.message || 'Apple Health could not be brought in just now.'); }
@@ -6148,7 +6150,8 @@ function renderMoreRows() {
   $('ex-health-section').hidden = !(healthShown || !$('ex-workouts').hidden);
   $('ex-health').hidden = !healthShown;
   $('ex-health-title').textContent = !ios ? 'Through Health Auto Export' : healthOn() ? 'Connected' : 'Not connected';
-  $('ex-health-sub').textContent = !ios ? 'Steps, sleep, workouts and weight can come in from an iPhone. Tap for how.' : healthOn() ? 'Steps, sleep, workouts and weight' + (when ? '. Brought in at ' + when : '') : 'Tap to connect Apple Health';
+  const rhr = Number(((state.exercise || {})[todayStr()] || {}).restingHr) || 0; // v418
+  $('ex-health-sub').textContent = (rhr ? 'Resting heart rate today ' + rhr + ' bpm. ' : '') + (!ios ? 'Steps, sleep, workouts and weight can come in from an iPhone. Tap for how.' : healthOn() ? 'Steps, sleep, workouts and weight' + (when ? '. Brought in at ' + when : '') : 'Tap to connect Apple Health');
   $('ex-nudge').hidden = Boolean(state.readOnly || state.viewer);
   /* Today: what is tracked of your own */
   const tracks = ownTracks();
@@ -8333,10 +8336,16 @@ function twoPageCharts(entries, days) {
 
   const hr = by((e) => e.type === 'vitals' && Number(e.heartRate) > 0).map((l) => maxOf(l, (e) => Number(e.heartRate)));
   const hv = vals(hr), hPeak = hv.length ? Math.max(...hv) : null;
-  charts.push({ key: 'heart', title: 'Heart rate (bpm)', stat: hPeak == null ? 'No readings' : 'Peak ' + Math.round(hPeak) + ' bpm', tone: hPeak == null ? '' : toneOf(hPeak >= 120, hPeak >= 100 || Math.min(...hv) <= 50),
-    min: Math.min(40, ...hv.map((v) => Math.floor(v / 10) * 10 - 10)), max: Math.max(140, ...hv.map((v) => Math.ceil(v / 10) * 10 + 10)), ticks: [60, 100, 120],
-    bands: [{ from: 100, to: 120, c: amber }, { from: 120, to: 300, c: red }], series: [{ d: hr, c: ink }],
-    legend: [{ c: 'amber', t: '100 to 119' }, { c: 'red', t: '120 or over' }] });
+  /* Resting heart rate from Apple Health or Health Connect (v418): its own dashed line and its own fact, never part of the
+     peak or the tone, which stay with the pulses typed into Vitals */
+  const rest = days.map((d) => { const v = Number(((state.exercise || {})[d] || {}).restingHr); return v > 0 ? v : null; });
+  const rv = vals(rest);
+  const hStat = [hPeak == null ? (rv.length ? '' : 'No readings') : 'Peak ' + Math.round(hPeak) + ' bpm', rv.length ? 'resting ' + (Math.min(...rv) === Math.max(...rv) ? Math.min(...rv) : Math.min(...rv) + ' to ' + Math.max(...rv)) + ' (Apple Health)' : ''].filter(Boolean).join(', ');
+  const hAll = [...hv, ...rv];
+  charts.push({ key: 'heart', title: 'Heart rate (bpm)', stat: capFirst(hStat), tone: hPeak == null ? '' : toneOf(hPeak >= 120, hPeak >= 100 || Math.min(...hv) <= 50),
+    min: Math.min(40, ...hAll.map((v) => Math.floor(v / 10) * 10 - 10)), max: Math.max(140, ...hAll.map((v) => Math.ceil(v / 10) * 10 + 10)), ticks: [60, 100, 120],
+    bands: [{ from: 100, to: 120, c: amber }, { from: 120, to: 300, c: red }], series: [{ d: hr, c: ink }, ...(rv.length ? [{ d: rest, c: teal, dash: true }] : [])],
+    legend: [{ c: 'amber', t: '100 to 119' }, { c: 'red', t: '120 or over' }, ...(rv.length ? [{ c: teal, t: 'Resting, from Apple Health' }] : [])] });
 
   /* Blood pressure: each day's reading with the highest systolic, so the pair stays together */
   const bpDay = by((e) => e.type === 'vitals' && Number(e.systolic) > 0 && Number(e.diastolic) > 0).map((l) => (l.length ? l.reduce((a, b) => (Number(b.systolic) > Number(a.systolic) ? b : a)) : null));

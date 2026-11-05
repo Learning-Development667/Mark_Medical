@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>NSHealthShareUsageDescription</key>
-	<string>Daybook reads your steps, sleep, workouts, weight and the day's food energy from Apple Health, so they appear in your Daybook and on the reports you take to your care team. Daybook never writes to Apple Health.</string>
+	<string>Daybook reads your steps, sleep, workouts, weight, the day's food energy and your resting heart rate from Apple Health, so they appear in your Daybook and on the reports you take to your care team. Daybook never writes to Apple Health.</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>Daybook does not write to Apple Health.</string>
 	<key>FirebaseMessagingAutoInitEnabled</key>

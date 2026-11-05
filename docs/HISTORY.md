@@ -6,6 +6,10 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v418 (5 November 2026): resting heart rate from Apple Health
+- Mark: add pulse from Apple Health or Health Connect; he chose resting heart rate, one figure a day, over every reading. The iPhone app reads `restingHeartRate` (added to `HEALTH_READ`, so phones ask again at the next Connect) and sends it as `resting_heart_rate`; the bridge keeps the day's last on `exercise/{day}.restingHr` (25 to 220 only). It never mixes with pulses typed into Vitals: on Notes for the team it is a dashed teal line on the Heart rate chart with its own fact ("resting 62 to 68 (Apple Health)"), and the chart's peak and tone stay with typed readings; the Exercise tab's Apple Health row says today's figure. Health Connect (Android) will bring the same once it is set up.
+- The privacy page (dated 5 November, copied to the website), the iPhone's Health permission wording and the Apple Health screen list resting heart rate.
+
 ### v417 (5 November 2026): the iPhone's own text size
 - A tester with Larger Text on his iPhone saw Daybook at the standard size (his screenshot: the status bar large, Daybook's 17px text unchanged). The app's text is set in pixels, which iOS does not scale. `applyTextSize()` reads the person's size from a hidden `font: -apple-system-body` probe (17px at the standard setting; only where `CSS.supports` it, so other browsers are unchanged), scales the page's text with `-webkit-text-size-adjust` up to 200%, sets `--ts`, and toggles `html.text-big` (125% and over: quick-add tiles, report tiles and number tiles two across) and `.text-huge` (160% and over: one across); the tab bar's words and the tile labels keep their size so the six tabs still fit. Read again whenever Daybook comes back to the front.
 - Not testable in Chromium (it ignores text-size-adjust): the simulator screenshots now add every tab at two text sizes, extra-extra-extra-large and accessibility-large, on each iPhone.

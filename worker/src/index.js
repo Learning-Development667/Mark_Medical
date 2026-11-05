@@ -159,7 +159,7 @@ async function ingestHealth(fs, hid, body, sourceTag) {
   await fs.set(hp(hid, 'bridge/last'), { receivedAt: nowTs(), sample: strVal(JSON.stringify(body).slice(0, 20000)) });
 
   const metrics = (body.data && Array.isArray(body.data.metrics)) ? body.data.metrics : [];
-  const result = { steps: 0, sleep: 0, nutrition: 0, workouts: 0, weight: 0, skipped: [] };
+  const result = { steps: 0, sleep: 0, nutrition: 0, workouts: 0, weight: 0, pulse: 0, skipped: [] };
   /* Food totals per day from whatever app writes them into Apple Health (MyFitnessPal, Nutracheck, Apple's own):
      gathered across the four metrics first, then written once per day */
   const foodDays = {};
@@ -182,6 +182,15 @@ async function ingestHealth(fs, hid, body, sourceTag) {
         if (steps <= 0) continue;
         await fs.merge(hp(hid, 'exercise/' + day), { day: strVal(day), steps: intVal(steps), addedBy: strVal('Apple Health'), updatedAt: nowTs() });
         result.steps++;
+      }
+    } else if (name === 'resting_heart_rate' || name === 'resting_heart_rate_bpm') {
+      /* Resting heart rate (v418, Mark): the one figure Apple Health or Health Connect works out each day, kept on the day's
+         exercise document beside the steps, never mixed with pulses typed into Vitals */
+      const perDay = {};
+      for (const r of rows) { const day = dayOf(r.date); const v = Number(r.qty || r.Avg || r.avg); if (day && v >= 25 && v <= 220) perDay[day] = v; }
+      for (const [day, v] of Object.entries(perDay)) {
+        await fs.merge(hp(hid, 'exercise/' + day), { day: strVal(day), restingHr: intVal(Math.round(v)), updatedAt: nowTs() });
+        result.pulse++;
       }
     } else if (name === 'sleep_analysis' || name === 'sleep') {
       /* Sleep: hours per stage for the night, logged against the morning it ended (Care Log's convention).
