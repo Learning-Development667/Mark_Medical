@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '424';
+const APP_VERSION = '425';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -6391,7 +6391,7 @@ $('guide-phone').addEventListener('click', () => { if (guide.playing) guideStop(
    household whose inbox key is BRIDGE_KEY); every other circle is refused, and the row under More never shows for them.
    Counts only, never content: no names, nothing anyone wrote; each circle is a pseudonym. The answer to "is this circle
    the operator's" is cached on the phone for a day (daybook.operator.{uid}) so the row is there at once next time. */
-const USAGE_KIND_NAMES = { document: 'Explain a letter or result', report: 'Notes for the team summary', weekly: 'Weekly notes summary (older app)', mood: 'Mood and wellbeing brief', pain: 'Pain report brief', programme: 'Exercise plan from a photo', medicine: 'Medicine from a photo', flare: 'Flare plan from a photo', sessions: 'Sessions from a photo', notes: 'Suggested questions' };
+const USAGE_KIND_NAMES = { document: 'Explain a letter or result', report: 'Notes for the team summary', weekly: 'Weekly notes summary (older app)', mood: 'Mood and wellbeing brief', pain: 'Pain report brief', programme: 'Exercise plan from a photo', medicine: 'Medicine from a photo', flare: 'Flare plan from a photo', sessions: 'Sessions from a photo', notes: 'Suggested questions', results: 'Results from a photo', label: 'Food label from a photo' };
 let usageData = null;
 function syncUsageRow() {
   const row = $('more-usage');

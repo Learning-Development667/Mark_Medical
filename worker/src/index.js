@@ -1529,7 +1529,7 @@ const USAGE_AT = 3 * 60 + 30;           // 03:30 London, inside the five-minute 
 const USAGE_HISTORY_DAYS = 90;
 const USAGE_WEEK = 7;
 const USAGE_MAX_ROWS = 2000;            // past this the document nears Firestore's 1 MB: shard the rows then
-const AI_KINDS = ['document', 'report', 'weekly', 'mood', 'pain', 'programme', 'medicine', 'flare', 'sessions', 'results', 'notes'];
+const AI_KINDS = ['document', 'report', 'weekly', 'mood', 'pain', 'programme', 'medicine', 'flare', 'sessions', 'results', 'notes', 'label'];
 const dayMinus = (day, n) => { const d = new Date(day + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() - n); return d.toISOString().slice(0, 10); };
 function readUsageDoc(doc) {
   if (!doc || !doc.fields) return null;

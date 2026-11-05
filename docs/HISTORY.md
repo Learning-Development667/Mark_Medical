@@ -6,6 +6,9 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v425 (5 November 2026): Usage names every Assistant kind
+Mark's Usage screenshot showed "label 3": the food label from a photo (`label`, v-era nutrition panel) had no name in `USAGE_KIND_NAMES`, nor did `results`. Both named; `label` added to the worker's `AI_KINDS`.
+
 ### v424 (5 November 2026): the iPhone Duo confirmed
 TestFlight build 17 (v423), the first built with Xcode 27.1, fills the Duo's inner screen edge to edge: the tester's screenshot of Today unfolded, three tiles a row, the tab bar full width. Every iPhone build stays on the xcode-27 image with Xcode 27.1 or later; never go back to an older Xcode.
 
