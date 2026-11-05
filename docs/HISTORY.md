@@ -6,6 +6,9 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v424 (5 November 2026): the iPhone Duo confirmed
+TestFlight build 17 (v423), the first built with Xcode 27.1, fills the Duo's inner screen edge to edge: the tester's screenshot of Today unfolded, three tiles a row, the tab bar full width. Every iPhone build stays on the xcode-27 image with Xcode 27.1 or later; never go back to an older Xcode.
+
 ### v422 (5 November 2026): What's new, the Android speech fix
 Mark agreed the words: "Fixed: Tap to speak on Android no longer repeats your words." in the 5 November batch. It is in the TestFlight text; Google Play's 500 characters fill with the New and Improved items first, so it does not fit there.
 
