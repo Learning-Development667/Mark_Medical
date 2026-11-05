@@ -6,6 +6,9 @@ name: iPhone screenshots on the simulators
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   shots:
     runs-on: xcode-27
@@ -29,6 +32,16 @@ jobs:
           ls -d "$RUNNER_TEMP/dd/Build/Products/Debug-iphonesimulator/App.app"
       - name: Take the screenshots
         run: bash tools/sim_shots.sh "$RUNNER_TEMP/dd/Build/Products/Debug-iphonesimulator/App.app" "$RUNNER_TEMP/shots"
+      # Smaller copies on the sim-screens branch, replaced each run (one commit, no history), so they can be fetched
+      # with git; made-up preview data only
+      - name: Put smaller copies on the sim-screens branch
+        run: |
+          mkdir -p "$RUNNER_TEMP/small" && cd "$RUNNER_TEMP/shots"
+          for f in *.png; do sips -s format jpeg -s formatOptions 60 -Z 900 "$f" --out "$RUNNER_TEMP/small/${f%.png}.jpg" >/dev/null; done
+          cp devices.txt "$RUNNER_TEMP/small/" 2>/dev/null || true
+          cd "$RUNNER_TEMP/small" && git init -q -b sim-screens && git add -A
+          git -c user.name="Daybook screenshots" -c user.email="actions@users.noreply.github.com" commit -q -m "iPhone screenshots, run ${{ github.run_number }}"
+          git push -q -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" sim-screens
       - name: Keep the screenshots
         uses: actions/upload-artifact@v4
         with:

@@ -12,12 +12,12 @@ TABS="today meds chemo exercise vitals more"
 
 xcrun simctl list devices available > "$OUT/devices.txt"
 pick() { grep -E "$1" "$OUT/devices.txt" | grep -v -i "ipad" | head -1 | sed -E 's/^ *(.*) \(([0-9A-F-]{36})\).*/\2|\1/'; }
-DEVICES=$( { pick 'iPhone SE'; pick 'iPhone 1[0-9] \('; pick 'Pro Max'; pick 'Duo'; } | grep -v '^$' | sort -u )
+DEVICES=$( { pick 'iPhone SE'; pick 'iPhone 1[0-9]e \('; pick 'iPhone 1[0-9] \('; pick 'Pro Max'; pick 'Duo'; } | grep -v '^$' | sort -u )
 echo "Devices:"; echo "$DEVICES" | cut -d'|' -f2
 
 echo "$DEVICES" | while IFS='|' read -r UDID NAME; do
   [ -z "$UDID" ] && continue
-  SLUG=$(echo "$NAME" | tr ' ()' '-__' | tr -s '-_' | tr 'A-Z' 'a-z')
+  SLUG=$(echo "$NAME" | tr 'A-Z ' 'a-z-' | sed 's/[^a-z0-9-]//g')
   xcrun simctl boot "$UDID" 2>/dev/null; xcrun simctl bootstatus "$UDID" -b >/dev/null
   xcrun simctl status_bar "$UDID" override --time 09:41 --batteryState charged --batteryLevel 100 --wifiBars 3 2>/dev/null
   xcrun simctl install "$UDID" "$APP"
