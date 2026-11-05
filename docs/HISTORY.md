@@ -6,6 +6,9 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v415 (5 November 2026): End the tour? asks first
+- Mark: a tester closed the first-time tour by accident and then did not know where it was. Skip the tour and Back, before the tour's last step, now open End the tour? with Keep going (the main button, play resumes) and End the tour, and the question itself says where to take it again (More, Help and what's new, Take the tour again), so even a mistaken tap leaves them knowing (`leaveTour()`, `tourMidway()`). On the last step the link reads Finish the tour and leaves without asking.
+
 ### v414 (5 November 2026): stool colour
 - Mark (pancreatic cancer: a change of colour matters to his team): the Bowels sheet is unchanged, pictures and all, with one line under the seven types, Colour (optional): Dark brown, Light brown, Yellow, Grey (`STOOL_COLOURS`, saved as `colour` on the entry, null when not given). The first mock-up (five full-width rows with swatches and three more ticks) was rejected as making colour the most prominent thing; Mark asked for words only, then added Grey.
 - Facts only, never a meaning and never part of a level or tone: the colour leads `bowelFlagWords()` (timeline, Trends table, Same as last time, which also copies it), the Notes for the team Bowels chart's line ("colour: yellow 2, dark brown 1"), the flags text in both the cancer and the IBD branch (added after the level is set), and a Colour line in the Crohn's and colitis report's brief (`stoolColourCounts()`).

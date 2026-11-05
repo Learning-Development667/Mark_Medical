@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '414';
+const APP_VERSION = '415';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -6196,6 +6196,7 @@ function guideShow(i) {
   const ring = $('guide-tap');
   if (st.tap) { ring.hidden = false; ring.style.left = (st.tap.x * 100) + '%'; ring.style.top = (st.tap.y * 100) + '%'; } else ring.hidden = true;
   $('guide-step').textContent = 'Step ' + (guide.i + 1) + ' of ' + t.steps.length;
+  if (t.key === 'tour') $('guide-all').textContent = guide.i >= t.steps.length - 1 ? 'Finish the tour' : 'Skip the tour';
   const cap = guideCaption(st);
   $('guide-caption').textContent = cap;
   [...$('guide-words').children].forEach((li, k) => li.classList.toggle('is-current', k === guide.i));
@@ -6286,8 +6287,20 @@ function openHelpSheet() {
   openSheet("Help and what's new", h('div', { class: 'menu' }, ...rows));
 }
 $('more-guide').addEventListener('click', openHelpSheet);
-$('guide-back').addEventListener('click', () => { guideStop(); guideQuiet(); showTab(guide.fromTour ? 'today' : 'more'); guide.fromTour = false; });
-$('guide-all').addEventListener('click', () => { guideStop(); guideQuiet(); if (guide.fromTour) { guide.fromTour = false; showTab('today'); return; } $('guide-player').hidden = true; $('guide-topics').hidden = false; setBrand(PAGE_TITLES.guide); window.scrollTo(0, 0); });
+/* Leaving the tour before its last step asks first (v415, Mark: a tester closed it by accident and then did not know where it
+   was): where to find it again is said in the question, so even a mistaken Yes leaves them knowing */
+function tourMidway() { return Boolean(guide.fromTour && guide.topic && guide.topic.key === 'tour' && guide.i < guide.topic.steps.length - 1); }
+function leaveTour(go) {
+  if (!tourMidway()) { go(); return; }
+  const wasPlaying = guide.playing; guideStop(); guideQuiet();
+  const body = h('div', null,
+    h('p', { text: 'You can take it again any time: tap More, then Help and what\'s new, then Take the tour again. The Guide there also shows each job step by step.' }),
+    h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => { closeSheet({ force: true }); if (wasPlaying) guidePlay(); } }, 'Keep going'),
+    h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => { closeSheet({ force: true }); go(); } }, 'End the tour'));
+  openSheet('End the tour?', body);
+}
+$('guide-back').addEventListener('click', () => leaveTour(() => { guideStop(); guideQuiet(); showTab(guide.fromTour ? 'today' : 'more'); guide.fromTour = false; }));
+$('guide-all').addEventListener('click', () => leaveTour(() => { guideStop(); guideQuiet(); if (guide.fromTour) { guide.fromTour = false; showTab('today'); return; } $('guide-player').hidden = true; $('guide-topics').hidden = false; setBrand(PAGE_TITLES.guide); window.scrollTo(0, 0); }));
 /* The tour (v409): once, after the set-up, on this phone (daybook.tour.seen); again from Help and what's new, and as the first Guide topic */
 const TOUR_SEEN_KEY = 'daybook.tour.seen';
 function openTour(again) {
