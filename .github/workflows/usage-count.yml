@@ -1,0 +1,27 @@
+# The usage counts for the Usage page (v426): every night at about 03:35 UK winter time, and by hand from the Actions tab
+# (Run workflow) for a count now. Moved here from the bridge, whose free plan stopped the count part way from the sixth
+# circle. Uses the bridge's own secrets; the log is public, so tools/usage_count.mjs prints totals only.
+name: Count usage
+
+on:
+  schedule:
+    - cron: "35 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  count:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Count the circles
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          BRIDGE_KEY: ${{ secrets.BRIDGE_KEY }}
+        run: node tools/usage_count.mjs

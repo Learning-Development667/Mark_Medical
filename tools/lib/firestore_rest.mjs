@@ -84,6 +84,24 @@ export async function connect(sa) {
       }
       await flush();
     },
+    /* The full resource name of a document, for referenceValue filters */
+    docName(path) { return `${root}/${path}`; },
+    /* Any structured query on a collection (the path may be a subcollection); rows as { id, fields } */
+    async run(path, structuredQuery) {
+      const segs = path.split('/'); const collectionId = segs.pop(); const parent = segs.length ? '/' + segs.join('/') : '';
+      const res = await fetch(`${base}${parent}:runQuery`, { method: 'POST', headers, body: JSON.stringify({ structuredQuery: { from: [{ collectionId }], ...structuredQuery } }) });
+      if (!res.ok) throw new Error(`Query ${collectionId} failed: ${res.status} ${await res.text()}`);
+      return (await res.json()).filter((x) => x.document).map((x) => ({ id: x.document.name.split('/').pop(), fields: x.document.fields || {} }));
+    },
+    /* How many documents match: a count aggregation, one read per thousand matched */
+    async count(path, where) {
+      const segs = path.split('/'); const collectionId = segs.pop(); const parent = segs.length ? '/' + segs.join('/') : '';
+      const structuredQuery = { from: [{ collectionId }] }; if (where) structuredQuery.where = where;
+      const res = await fetch(`${base}${parent}:runAggregationQuery`, { method: 'POST', headers, body: JSON.stringify({ structuredAggregationQuery: { structuredQuery, aggregations: [{ alias: 'n', count: {} }] } }) });
+      if (!res.ok) throw new Error(`Count ${collectionId} failed: ${res.status} ${await res.text()}`);
+      const row = (await res.json()).find((x) => x.result && x.result.aggregateFields);
+      return row ? Number(row.result.aggregateFields.n.integerValue || 0) : 0;
+    },
     async deleteMany(names) {
       for (let i = 0; i < names.length; i += 400) {
         const res = await fetch(`${base}:commit`, { method: 'POST', headers, body: JSON.stringify({ writes: names.slice(i, i + 400).map((name) => ({ delete: name })) }) });

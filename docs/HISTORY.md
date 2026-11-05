@@ -6,6 +6,9 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v426 (5 November 2026): the usage counts move to GitHub Actions
+Mark's Usage page showed five circles while the CIRCLE code had been used seven times. The bridge's count (`buildUsage`, v211) needs about eight database calls a circle and the Cloudflare free plan allows about 50 a request, so from the sixth circle the nightly count and Count again now stopped part way and saved nothing. The count is now `tools/usage_count.mjs`, run by the Count usage workflow every night at 03:35 UTC and by hand: the same counts into the same `bridge/usage`, the same pseudonyms (salted with BRIDGE_KEY), eight circles side by side, no call limit, so 3,000 circles are fine. The log prints totals only. The bridge no longer counts (its cron call removed; `rebuild` answers that it moved); the Usage page's button became a line saying when it is counted and how to count now. `tools/lib/firestore_rest.mjs` gained `run`, `count` and `docName`.
+
 ### v425 (5 November 2026): Usage names every Assistant kind
 Mark's Usage screenshot showed "label 3": the food label from a photo (`label`, v-era nutrition panel) had no name in `USAGE_KIND_NAMES`, nor did `results`. Both named; `label` added to the worker's `AI_KINDS`.
 

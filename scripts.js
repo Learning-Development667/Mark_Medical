@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '425';
+const APP_VERSION = '426';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -6497,10 +6497,8 @@ function usageTile(label, value, sub, tone) {
 function renderUsage() {
   const body = $('usage-body');
   const u = usageData;
-  const countBtn = h('button', { class: 'btn btn-secondary', type: 'button', onclick: (ev) => withBusy(ev.currentTarget, 'Counting, about a minute', async () => {
-    try { const d = await bridgeCall('/usage', { what: 'rebuild' }); usageData = d.usage; renderUsage(); toast('Counted just now'); } catch (e) { toast(e.message); }
-  }) }, 'Count again now');
-  if (!u || !u.totals) { body.replaceChildren(h('p', { class: 'hint', text: 'Nothing counted yet. The first count runs tonight at 03:30, or count now.' }), countBtn); return; }
+  const countBtn = h('p', { class: 'hint', text: 'Counted every night at about 03:30. For a count now, run Count usage in GitHub, under Actions.' });
+  if (!u || !u.totals) { body.replaceChildren(h('p', { class: 'hint', text: 'Nothing counted yet. The first count runs tonight at about 03:30.' }), countBtn); return; }
   const t = u.totals;
   const pct = (a, b) => (b ? Math.round(a / b * 100) + '%' : '0%');
   const built = u.built ? new Date(u.built) : null;

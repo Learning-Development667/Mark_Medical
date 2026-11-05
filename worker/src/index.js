@@ -73,7 +73,7 @@ export default {
       /* The usage counts (v211), the same document the app's Usage page reads: BRIDGE_KEY in the header, ?rebuild=1 counts again now */
       if (url.pathname === '/usage' && request.method === 'GET') {
         if (!isOperatorKey(request, env)) return json({ error: 'Unauthorised' }, 401);
-        if (url.searchParams.get('rebuild') === '1') return json(await buildUsage(env));
+        if (url.searchParams.get('rebuild') === '1') return json({ error: 'moved', message: 'Counted nightly by the Count usage workflow (v426)' }, 400);
         const fs = await firestore(env);
         return json(readUsageDoc(await fs.get(USAGE_PATH)) || { error: 'none', message: 'No counts yet. Add ?rebuild=1 to count now.' });
       }
@@ -94,7 +94,8 @@ export default {
     ctx.waitUntil(runReminders(env).catch((e) => console.error('reminders', e)));
     /* The usage counts (v211), once a night in the quiet hours: the run that lands in the 03:30 London window counts, unless today is already counted */
     const now = londonNow();
-    if (now.minutes >= USAGE_AT && now.minutes < USAGE_AT + 5) ctx.waitUntil(buildUsage(env, { ifNotToday: true }).catch((e) => console.error('usage', e)));
+    /* v426: the nightly count moved to GitHub Actions (tools/usage_count.mjs): from the sixth circle it needed more than the
+       free plan's 50 database calls a request and stopped part way, saving nothing */
   }
 };
 
@@ -1613,7 +1614,7 @@ async function handleUsage(request, env) {
   if (!me.hid || !opHid || me.hid !== opHid) return json({ error: 'unauthorised', operator: false, message: 'Only the operator\'s own circle can see the usage counts.' }, 403);
   const body = (await readJson(request)) || {};
   if (body.what === 'check') return json({ operator: true });
-  if (body.what === 'rebuild') return json({ operator: true, usage: await buildUsage(env) });
+  if (body.what === 'rebuild') return json({ error: 'moved', message: 'Usage is counted every night now. For a count now, run Count usage in GitHub, Actions.' }, 400);
   /* The feedback itself (v370, Mark: "how am I going to know what improvements to make"): the operator alone, newest first,
      the words whole, the circle as its Usage code; a picture is fetched one at a time on a tap, never in the list */
   if (body.what === 'feedback') {
