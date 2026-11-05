@@ -6,6 +6,9 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v421 (5 November 2026): the iPhone Duo's two screens in the simulator pictures
+Run 4's log showed why the Duo had no pictures: simctl numbers its displays (`--display=1`, the cover screen, 1398x2034; `--display=3`, the inner screen, 2007x2853), it does not name them. `shot()` now reads the numbers from simctl's own message and takes each, the file named with the display and its size. The screenshots workflow has an "only" box (`ONLY`, e.g. Duo) for a quick run on one phone. No TestFlight build has yet come from Xcode 27.1: build 15 was Xcode 26.3, and build 16, the first on 27.1, was cancelled, so the Duo tester has never had the fix.
+
 ### v420 (5 November 2026): Tap to speak on Android stops repeating words
 Mark's screenshots from the Android app: "does does does this does this push...". Android's recogniser sends each growing version of a sentence as its own final result, and `speakButton()` joined them all. On Android (`IS_ANDROID_SPEECH`) it now listens one sentence a session (`continuous` off; the v170 restart carries on from the box), and `speechParts()` lets a result that only grows the one before it replace it. iPhone and desktop are unchanged. Tested with a stub recogniser in Chromium under an Android user agent; not yet tried on a real Android phone. Also a working rule in CLAUDE.md: never start an app build until Mark directly says so (Android release 11 went to the internal track at 16:33 without his word; the iPhone build 16 was cancelled).
 
