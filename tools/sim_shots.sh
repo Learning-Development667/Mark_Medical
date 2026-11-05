@@ -33,7 +33,7 @@ echo "$DEVICES" | while IFS='|' read -r UDID NAME; do
     xcrun simctl terminate "$UDID" "$BUNDLE" 2>/dev/null
     xcrun simctl openurl "$UDID" "${URL}?preview=cancer"; sleep 15 # Safari's first open, so the first picture is not its Start Page
     for TAB in $TABS; do
-      xcrun simctl openurl "$UDID" "${URL}?preview=cancer&tab=$TAB"; sleep 7
+      xcrun simctl openurl "$UDID" "${URL}?preview=cancer&tab=$TAB"; sleep 10
       shot "$UDID" "$OUT/$SLUG-$LOOK-$TAB.png"
     done
     xcrun simctl terminate "$UDID" com.apple.mobilesafari 2>/dev/null
@@ -44,7 +44,7 @@ echo "$DEVICES" | while IFS='|' read -r UDID NAME; do
     xcrun simctl ui "$UDID" content_size "$SIZE"
     xcrun simctl openurl "$UDID" "${URL}?preview=cancer"; sleep 15
     for TAB in $TABS; do
-      xcrun simctl openurl "$UDID" "${URL}?preview=cancer&tab=$TAB"; sleep 7
+      xcrun simctl openurl "$UDID" "${URL}?preview=cancer&tab=$TAB"; sleep 10
       shot "$UDID" "$OUT/$SLUG-text-$SIZE-$TAB.png"
     done
     xcrun simctl terminate "$UDID" com.apple.mobilesafari 2>/dev/null
