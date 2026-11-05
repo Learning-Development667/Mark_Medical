@@ -23,11 +23,11 @@ echo "$DEVICES" | while IFS='|' read -r UDID NAME; do
   xcrun simctl install "$UDID" "$APP"
   for LOOK in light dark; do
     xcrun simctl ui "$UDID" appearance "$LOOK"
-    xcrun simctl launch "$UDID" "$BUNDLE" >/dev/null; sleep 14
+    xcrun simctl launch "$UDID" "$BUNDLE" >/dev/null; sleep 12
     xcrun simctl io "$UDID" screenshot "$OUT/$SLUG-$LOOK-app.png" >/dev/null 2>&1
     xcrun simctl terminate "$UDID" "$BUNDLE" 2>/dev/null
     for TAB in $TABS; do
-      xcrun simctl openurl "$UDID" "${URL}?preview=cancer&tab=$TAB"; sleep 9
+      xcrun simctl openurl "$UDID" "${URL}?preview=cancer&tab=$TAB"; sleep 7
       xcrun simctl io "$UDID" screenshot "$OUT/$SLUG-$LOOK-$TAB.png" >/dev/null 2>&1
     done
     xcrun simctl terminate "$UDID" com.apple.mobilesafari 2>/dev/null
@@ -37,7 +37,7 @@ echo "$DEVICES" | while IFS='|' read -r UDID NAME; do
   for SIZE in extra-extra-extra-large accessibility-large; do
     xcrun simctl ui "$UDID" content_size "$SIZE"
     for TAB in $TABS; do
-      xcrun simctl openurl "$UDID" "${URL}?preview=cancer&tab=$TAB"; sleep 9
+      xcrun simctl openurl "$UDID" "${URL}?preview=cancer&tab=$TAB"; sleep 7
       xcrun simctl io "$UDID" screenshot "$OUT/$SLUG-text-$SIZE-$TAB.png" >/dev/null 2>&1
     done
     xcrun simctl terminate "$UDID" com.apple.mobilesafari 2>/dev/null
