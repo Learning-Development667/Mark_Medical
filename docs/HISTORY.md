@@ -6,6 +6,9 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v427 (6 November 2026): a read-only Google Play status check
+Android testers added to Circle Testers see "Item not found" after accepting. The Google Play status workflow (`tools/play_status.mjs`) opens a Play edit, prints each track's releases (build numbers and states), the internal track's Google Groups count and countries, then deletes the edit uncommitted. Prints no addresses.
+
 ### v426 (5 November 2026): the usage counts move to GitHub Actions
 Mark's Usage page showed five circles while the CIRCLE code had been used seven times. The bridge's count (`buildUsage`, v211) needs about eight database calls a circle and the Cloudflare free plan allows about 50 a request, so from the sixth circle the nightly count and Count again now stopped part way and saved nothing. The count is now `tools/usage_count.mjs`, run by the Count usage workflow every night at 03:35 UTC and by hand: the same counts into the same `bridge/usage`, the same pseudonyms (salted with BRIDGE_KEY), eight circles side by side, no call limit, so 3,000 circles are fine. The log prints totals only. The bridge no longer counts (its cron call removed; `rebuild` answers that it moved); the Usage page's button became a line saying when it is counted and how to count now. `tools/lib/firestore_rest.mjs` gained `run`, `count` and `docName`.
 
