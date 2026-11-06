@@ -6,6 +6,9 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v429 (6 November 2026): the last 7 nights on the Sleep sheet
+Mark: "a tracker on the sleep tile so you can see your last 7 days sleep"; option 1 (on the sheet, not a Today tile), built from his third mock-up (quiet labels, the average as one large figure, bars on a baseline; the second, pill-shaped bars were refused). `sleepWeekCard()` under Last night or A nap (not when editing an entry): "Last 7 nights", the average over the nights logged (`h mm`), "N of 7 nights logged" and how many were under 5 hours (the reports' mark, amber), one bar a night with its time (`6:50`) and the day under the baseline, a short grey mark for a night not logged. Naps are left out. The seven days are the live window (`RECENT_DAYS`), so no extra reads. Each night is a button ("Monday morning: 4 h 35 min asleep, under 5 hours. Tap to open.") that reopens the sheet on that day; the open night's day is in bold. CSS: the `.nights7` block at the end of styles.css. Tested at 390 light and 320 dark in Chromium: no sideways scroll, no axe violations in the card, tapping a night opens it. At 320 each night's button is about 36 px wide (128 tall), under the 44 px rule's width; not tried on an iPhone. No Guide topic shows the Sleep sheet.
+
 ### v428 (6 November 2026): daily database backups
 The DPIA's backup action, before Beta testers keep real diaries (Mark: "start with backups"). The Database backups workflow (`tools/backups.mjs`) makes Firestore's own daily backup schedule (setup), each copy kept 14 days in the database's region, and checks it (check, also every Monday at 09:17 UTC, failing the run when there is no schedule or the newest backup is over two days old). Prints dates and states only. A restore makes a new database from a backup (Google Cloud console, Firestore, Disaster recovery), never overwriting the live one.
 

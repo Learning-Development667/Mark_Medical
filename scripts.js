@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '428';
+const APP_VERSION = '429';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -5349,7 +5349,7 @@ function openAdd(type, editEntry, preset) {
       asleep.row, h('span', { class: 'fieldlabel', text: 'The four stages, in the order Apple Health lists them' }),
       h('div', { class: 'stages' }, ...Object.values(stages).map((st) => st.row)));
     details.open = tracked;
-    if (!editEntry) body.append(sleepKindSwitch('night'));
+    if (!editEntry) body.append(sleepKindSwitch('night'), sleepWeekCard());
     body.append(
       h('p', { class: 'hint', text: existing && existing.addedBy === 'Apple Health'
         ? 'This night came in from Apple Health. Change anything that is wrong and save.'
@@ -5665,6 +5665,39 @@ function openAdd(type, editEntry, preset) {
   if (foodGuard) state.sheetGuard = foodGuard;
 }
 
+/* The last 7 nights on the Sleep sheet (v429, Mark: "a tracker on the sleep tile so you can see your last 7 days sleep";
+   his third mock-up). Facts only: the hours asleep each night (naps left out), the average over the nights logged and how many
+   were under 5 hours, the same mark the reports use. The seven days are the live window (today and the six before, RECENT_DAYS),
+   so no extra reads. Tapping a night opens that night on this sheet. */
+function sleepWeekCard() {
+  const today = todayStr();
+  const days = Array.from({ length: 7 }, (_, i) => addDays(today, i - 6));
+  const nightOf = (d) => state.recentEntries.find((e) => e.type === 'sleep' && e.day === d) || null;
+  const mins = days.map((d) => { const e = nightOf(d); const v = e ? Math.round(Number(e.value) || 0) : 0; return v > 0 ? v : null; });
+  const got = mins.filter((m) => m != null);
+  const avg = got.length ? Math.round(got.reduce((t, m) => t + m, 0) / got.length) : 0;
+  const short = got.filter((m) => m < 300).length;
+  const big = (m) => Math.floor(m / 60) + ' h ' + String(m % 60).padStart(2, '0');
+  const clock = (m) => Math.floor(m / 60) + ':' + String(m % 60).padStart(2, '0');
+  const dayName = (d) => (d === today ? 'Today' : new Date(d + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'short' }));
+  const longName = (d) => (d === today ? 'This morning' : new Date(d + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'long' }) + ' morning');
+  const open = (d) => { if (d === state.selectedDay) return; closeSheet({ force: true }); state.selectedDay = d; refreshDay(); openAdd('sleep'); };
+  const cols = days.map((d, i) => {
+    const m = mins[i];
+    const label = longName(d) + ': ' + (m == null ? 'not logged.' : fmtHm(m) + ' asleep' + (m < 300 ? ', under 5 hours.' : '.')) + (d === state.selectedDay ? ' Open now.' : ' Tap to open.');
+    return h('button', { class: 'n7-col' + (d === state.selectedDay ? ' is-on' : ''), type: 'button', 'aria-label': label, onclick: () => open(d) },
+      m == null ? h('span', { class: 'n7-none' }) : h('span', { class: 'n7-v', text: clock(m) }),
+      m == null ? '' : h('span', { class: 'n7-bar' + (m < 300 ? ' is-short' : ''), style: 'height:' + Math.max(8, Math.round(Math.min(m, 600) / 600 * 80)) + 'px' }),
+      h('span', { class: 'n7-d', text: dayName(d) }));
+  });
+  return h('section', { class: 'nights7', 'aria-label': 'Your last 7 nights' },
+    h('p', { class: 'n7-k', text: 'Last 7 nights' }),
+    ...(got.length
+      ? [h('p', { class: 'n7-big' }, big(avg), h('small', { text: 'average' })),
+        h('p', { class: 'n7-sub', text: got.length + ' of 7 nights logged' + (short ? ' · ' + short + ' under 5 hours' : '') })]
+      : [h('p', { class: 'n7-sub', text: 'No nights logged in the last 7 days yet.' })]),
+    h('div', { class: 'n7-row' }, ...cols));
+}
 /* The Sleep tile's two kinds (v297): Last night or A nap, a switch at the top of the sheet that swaps one for the other */
 function sleepKindSwitch(on) {
   const b = (k, label) => h('button', { class: 'seg' + (on === k ? ' is-active' : ''), type: 'button', 'aria-pressed': on === k ? 'true' : 'false', dataset: { kind: k },
