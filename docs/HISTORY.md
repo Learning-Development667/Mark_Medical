@@ -6,6 +6,9 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v428 (6 November 2026): daily database backups
+The DPIA's backup action, before Beta testers keep real diaries (Mark: "start with backups"). The Database backups workflow (`tools/backups.mjs`) makes Firestore's own daily backup schedule (setup), each copy kept 14 days in the database's region, and checks it (check, also every Monday at 09:17 UTC, failing the run when there is no schedule or the newest backup is over two days old). Prints dates and states only. A restore makes a new database from a backup (Google Cloud console, Firestore, Disaster recovery), never overwriting the live one.
+
 ### v427 (6 November 2026): a read-only Google Play status check
 Android testers added to Circle Testers see "Item not found" after accepting. The Google Play status workflow (`tools/play_status.mjs`) opens a Play edit, prints each track's releases (build numbers and states), the internal track's Google Groups count and countries, then deletes the edit uncommitted. Prints no addresses.
 

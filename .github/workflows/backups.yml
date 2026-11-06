@@ -1,0 +1,38 @@
+# The database's daily backups (v428): Firestore's own schedule, one copy a day kept 14 days. Run by hand: "check" shows the
+# schedule and the backups held (dates and states only); "setup" makes the daily schedule if there is none. Also runs every
+# Monday as a check, so a missing backup shows as a failed run.
+name: Database backups
+
+on:
+  workflow_dispatch:
+    inputs:
+      what:
+        description: "check or setup"
+        required: true
+        default: check
+        type: choice
+        options:
+          - check
+          - setup
+  schedule:
+    - cron: "17 9 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  backups:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Backups
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          WHAT: ${{ inputs.what || 'check' }}
+        run: node tools/backups.mjs "$WHAT"
