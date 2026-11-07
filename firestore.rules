@@ -91,12 +91,24 @@ service cloud.firestore {
           return resource.data.type != 'checkin' || !('uid' in resource.data) || resource.data.uid == request.auth.uid;
         }
         allow read: if canRead(hid) || (isViewer(hid) && resource.data.type in ['med', 'temp', 'vitals', 'weight', 'sleep', 'drink']);
-        allow create: if isFamily(hid) && (!('uid' in request.resource.data) || request.resource.data.uid == request.auth.uid);
+        // (v433, Mark, 7 November: carers "only fill in their observations") the patient's own check-ins (morning, evening,
+        // week) are made by the patient alone, stamped with their id; a carer's are the carer slots. One saved before the
+        // stamp (v331) is changed by the patient only.
+        function patientSlot(d) { return d.get('type', null) == 'checkin' && d.get('slot', '') in ['morning', 'evening', 'week']; }
+        // not a carer: a member from before relations were recorded (relation '') is not locked out of their own check-ins
+        function isPatient(hid) { return get(memberPath(hid)).data.get('relation', '') != 'carer'; }
+        function checkinCreateOk() {
+          return request.resource.data.get('type', null) != 'checkin'
+            || ('uid' in request.resource.data && request.resource.data.uid == request.auth.uid
+                && (!patientSlot(request.resource.data) || isPatient(hid)));
+        }
+        function oldPatientCheckinOk() { return !(patientSlot(resource.data) && !('uid' in resource.data)) || isPatient(hid); }
+        allow create: if isFamily(hid) && (!('uid' in request.resource.data) || request.resource.data.uid == request.auth.uid) && checkinCreateOk();
         function staysWhatItWas() { // nothing turns into a check-in, or stops being one, after it is written
           return (request.resource.data.get('type', null) == 'checkin') == (resource.data.get('type', null) == 'checkin');
         }
-        allow update: if isFamily(hid) && notSomeoneElsesCheckin() && stampOk() && staysWhatItWas();
-        allow delete: if isFamily(hid) && notSomeoneElsesCheckin();
+        allow update: if isFamily(hid) && notSomeoneElsesCheckin() && stampOk() && staysWhatItWas() && oldPatientCheckinOk();
+        allow delete: if isFamily(hid) && notSomeoneElsesCheckin() && oldPatientCheckinOk();
       }
 
       // (v432) sizes capped: one medicine's words and times go into the bridge's one reminder plan for every circle

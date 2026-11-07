@@ -253,8 +253,10 @@ test('a check-in belongs to whoever filled it in (v331)', async () => {
   await assertFails(updateDoc(doc(as(SHELLEY), p('e-food-stamped')), { type: 'checkin', slot: 'morning' }));
   await assertFails(updateDoc(doc(as(MARK), p('2026-09-29_morning')), { type: 'note' }));
   await assertSucceeds(deleteDoc(doc(as(SHELLEY), p('e-food-stamped'))));
-  // a check-in saved before v331 (no stamp) stays as it was: family may change it
-  await assertSucceeds(updateDoc(doc(as(SHELLEY), p('2026-09-28_morning')), { pain: 3 }));
+  // a check-in saved before v331 (no stamp) is the patient's to change, no one else's (v433)
+  await assertSucceeds(updateDoc(doc(as(MARK), p('2026-09-28_morning')), { pain: 3 }));
+  await assertFails(updateDoc(doc(as(SHELLEY), p('2026-09-28_morning')), { pain: 3 }));
+  await assertFails(deleteDoc(doc(as(SHELLEY), p('2026-09-28_morning'))));
   // read only and other circles still cannot write at all
   await assertFails(updateDoc(doc(as(HAYLEY), p('2026-09-29_morning')), { pain: 1 }));
   await assertFails(updateDoc(doc(as(JANE), p('2026-09-29_morning')), { pain: 1 }));
@@ -282,4 +284,16 @@ test('medicines and one-off reminders stay a sensible size (v432)', async () => 
   await assertSucceeds(updateDoc(doc(as(MARK), `households/${A}/medicines/m1`), { active: false }));
   await assertFails(write(MARK, `households/${A}/reminders/r1`, { medName: 'x'.repeat(2000), dose: '', sent: false }));
   await assertSucceeds(write(MARK, `households/${A}/reminders/r2`, { medName: 'Paracetamol', dose: '2 tablets', sent: false }));
+});
+
+test("the patient's own check-ins are the patient's alone; a carer fills in the carer slots (v433)", async () => {
+  const p = (id) => `households/${A}/entries/${id}`;
+  const day = '2026-09-30';
+  await assertFails(write(SHELLEY, p(day + '_morning'), { type: 'checkin', slot: 'morning', day, pain: 5, addedBy: 'Shelley', uid: SHELLEY }));
+  await assertFails(write(SHELLEY, p(day + '_evening'), { type: 'checkin', slot: 'evening', day, pain: 5, addedBy: 'Shelley' })); // nor unstamped
+  await assertFails(write(SHELLEY, p(day + '_week'), { type: 'checkin', slot: 'week', day, addedBy: 'Shelley', uid: SHELLEY }));
+  await assertSucceeds(write(SHELLEY, p(day + '_carermorning_' + SHELLEY), { type: 'checkin', slot: 'carermorning', day, mood: 6, addedBy: 'Shelley', uid: SHELLEY }));
+  await assertSucceeds(write(MARK, p(day + '_morning'), { type: 'checkin', slot: 'morning', day, pain: 3, addedBy: 'Mark', uid: MARK }));
+  await assertFails(write(MARK, p(day + '_evening'), { type: 'checkin', slot: 'evening', day, pain: 3, addedBy: 'Mark' })); // the patient's own, but it must carry the stamp
+  await assertSucceeds(write(MARK, p('e-note-2'), { type: 'note', day, note: 'Fine', addedBy: 'Mark' })); // other entries are as before
 });

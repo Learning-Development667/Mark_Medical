@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '432';
+const APP_VERSION = '433';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -10988,6 +10988,9 @@ function openCheckin(slot, initialDay) {
   if (isWeekSlot(slot)) { openWeekCheck(initialDay, slot); return; }
   const today = todayStr();
   { const saved = findCheckin(initialDay > today ? today : initialDay, slot); if (saved && !ownsCheckin(saved)) { toast(checkinOwnerWords(saved)); return; } }
+  /* (v433, Mark: carers "only fill in their observations") the patient's own morning and evening check-ins are the patient's to fill in;
+     a carer's phone offers the carer's own rows instead (the rules refuse it too) */
+  if ((slot === 'morning' || slot === 'evening') && isCarerUser() && !state.demo) { const n = patientFullName() ? patientWord() + "'s" : "The patient's"; toast(n + ' own check-in is for ' + (patientFullName() ? patientWord() : 'them') + ' to fill in. Yours are the rows "as you see it" below.'); return; }
   let day = initialDay > today ? today : initialDay;
   const qs = checkinSteps(slot, day, findCheckin(day, slot));
   let answers = {}, existing = null, step = 0, dir = 1, sleepFrom = null, nightEntry = null, restored = null, restoredNote = false;
