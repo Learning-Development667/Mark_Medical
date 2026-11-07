@@ -23,7 +23,7 @@ const NAVY = '17263A', SLATE = '4B5B6B', INK = '1C2430', TEAL = '18727A', LINE =
 const TEXT_W = 9638; // A4 less 20 mm each side, in twentieths of a point
 const sp = { before: 0, after: 0, line: 276 };
 
-const float = (file, w, h, y, alt) => new ImageRun({ type: 'jpg', data: fs.readFileSync(path.join(here, file)),
+const float = (file, w, h, y, alt) => new ImageRun({ type: 'jpg', data: fs.readFileSync(path.isAbsolute(file) ? file : path.join(here, file)),
   transformation: { width: w, height: h }, altText: { title: alt, description: alt, name: alt },
   floating: { horizontalPosition: { relative: HorizontalPositionRelativeFrom.PAGE, offset: 0 },
     verticalPosition: { relative: VerticalPositionRelativeFrom.PAGE, offset: y * PX },
@@ -37,10 +37,12 @@ const runs = (text, o = {}) => text.split(/(\*\*[^*]+\*\*)/).filter(s => s !== '
 });
 
 const phone = process.env.LETTERHEAD_PHONE || '';
+/* The contact lines are drawn into the header picture itself (bake_header.py, run first; LETTERHEAD_HEADER names the result):
+   Pages laid the right-aligned text lines over the logo (7 November 2026, Mark: "this looks shocking"), so the header is one
+   picture that no app can rearrange. Without a baked picture the plain header.jpg is used, with no contact lines. */
+const headerPic = process.env.LETTERHEAD_HEADER || 'header.jpg';
 const header = new Header({ children: [
-  new Paragraph({ spacing: { ...sp, line: 240 }, children: [float('header.jpg', 794, 145, 0, 'Mark 1 Apps Ltd, makers of My Medical Daybook'), new TextRun({ text: '', size: 18 })] }),
-  new Paragraph({ alignment: AlignmentType.RIGHT, spacing: sp, children: [new TextRun({ text: 'mark@mark1apps.co.uk', font: F, size: 18, color: SLATE })] }),
-  new Paragraph({ alignment: AlignmentType.RIGHT, spacing: sp, children: [new TextRun({ text: phone, font: F, size: 18, color: SLATE })] }),
+  new Paragraph({ spacing: { ...sp, line: 240 }, children: [float(headerPic, 794, 145, 0, 'Mark 1 Apps Ltd, makers of My Medical Daybook'), new TextRun({ text: '', size: 18 })] }),
 ] });
 const fl = r => new Paragraph({ spacing: { ...sp, line: 250 }, tabStops: [{ type: TabStopType.RIGHT, position: TEXT_W }], children: r });
 const ft = (t, o = {}) => new TextRun({ text: t, font: F, size: o.size || 16, color: NAVY, bold: o.bold });
@@ -93,7 +95,7 @@ for (let i = 0; i < md.length; i++) {
   if ((m = l.match(/^# (.+)/))) { out.push(new Paragraph({ spacing: { before: 0, after: 80 }, keepNext: true, children: runs(m[1], { size: 34, bold: true, color: NAVY }) })); continue; }
   if ((m = l.match(/^## (.+)/))) { out.push(new Paragraph({ spacing: { before: 240, after: 100 }, keepNext: true, children: runs(m[1], { size: 27, bold: true, color: NAVY }) })); continue; }
   if ((m = l.match(/^### (.+)/))) { out.push(new Paragraph({ spacing: { before: 160, after: 80 }, keepNext: true, children: runs(m[1], { size: 23, bold: true, color: TEAL }) })); continue; }
-  if ((m = l.match(/^- \[( |x)\] (.+)/))) { out.push(new Paragraph({ spacing: { before: 0, after: 80, line: 276 }, indent: { left: 400, hanging: 400 }, children: [new TextRun({ text: (m[1] === 'x' ? '☑' : '☐') + '\t', font: 'Segoe UI Symbol', size: 22, color: NAVY }), ...runs(m[2])], tabStops: [{ type: TabStopType.LEFT, position: 400 }] })); continue; }
+  if ((m = l.match(/^- \[( |x)\] (.+)/))) { out.push(new Paragraph({ spacing: { before: 0, after: 80, line: 276 }, indent: { left: 900, hanging: 900 }, children: [new TextRun({ text: (m[1] === 'x' ? 'Done' : 'To do') + '\t', font: F, size: 22, color: NAVY, bold: true }), ...runs(m[2])], tabStops: [{ type: TabStopType.LEFT, position: 900 }] })); continue; }
   if ((m = l.match(/^- (.+)/))) { out.push(new Paragraph({ numbering: { reference: 'dots', level: 0 }, spacing: { before: 0, after: 80, line: 276 }, children: runs(m[1]) })); continue; }
   // a line that is all bold is a small heading: keep it with what follows
   out.push(new Paragraph({ spacing: { before: 0, after: 160, line: 288 }, keepNext: /^\*\*[^*]+\*\*$/.test(l.trim()), children: runs(l) }));
