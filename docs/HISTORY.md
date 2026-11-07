@@ -6,6 +6,15 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v435 (7 November 2026): the five low findings of the security review
+Mark: "all security risks should be done as soon as possible".
+- **Counts bumped on the server** (`fs.bump`, a Firestore field transform): the Assistant's day and month counts and the ceiling across circles, the report, feedback and confirmation email counts. Within a day the number is incremented where it lives, so taps at the same moment all count; a new day or month still writes the record afresh.
+- **One patient a circle, one use an invite:** `/join` refuses a patient invite when the circle already has its patient (`circleOf().patientUid`), and marks the invite used first, only if it is unchanged since it was read (`fs.mergeIf`, Firestore's `currentDocument.updateTime`), so two sign-ins accepting one link at the same moment cannot both get in. `runsCircle()` needs the patient to be family: a read-only or viewer sign-in marked patient no longer invites, removes or deletes.
+- **The page's policy is complete** (`index.html`): `default-src 'self'`, the hosts the app connects to named (`connect-src`: Google's APIs, Firebase, the bridge's address, gstatic), fonts from Google, pictures and media from the app, data and blob only, frames from the app only. A new host the app talks to must be added there (CLAUDE.md's code rule). And the app breaks out of, or hides inside, another site's frame (the first lines of `scripts.js`), since GitHub Pages cannot send `frame-ancestors`.
+- **Sign-in tokens:** `auth_time` no later than now, `sub` at most 128 characters, and an anonymous sign-in refused whatever Firebase allows (`verifyFirebaseToken`).
+- **The Household admin tool:** the typed-in name, household name, code, label and medicine are no longer passed as env (so the public log's env block cannot show them); the script reads them from the run's event file and masks them (`::add-mask::`).
+Not done: the Firebase library into `vendor/` (gstatic is not reachable from this sandbox to fetch it); the admin tool in a private repository stays on the roadmap. Tested: the preview at 390 light and 320 dark under the full policy, the report preview, no policy errors in the console.
+
 ### v434 (7 November 2026): the one good thing stays off the calendar record
 Mark: "yes move the words out". The evening check-in's one good thing was mirrored into `days/{day}.good` for the day sheet, and `days` is readable by a medicines-and-treatment-only member (the viewer), so a viewer could read those words. The mirror has stopped; the day sheet reads them from the evening check-in (`dayGoodWords()`; a day saved before v434 still shows what it carries), and never for a viewer. The mood mark on the calendar stays, as the privacy page says. Words already saved on old days are not wiped by this; a one-off clean-up is possible if wanted.
 

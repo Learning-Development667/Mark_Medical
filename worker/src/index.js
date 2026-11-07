@@ -352,6 +352,23 @@ async function firestore(env) {
       const r = await fetch(base + path + '?' + mask, { method: 'PATCH', headers, body: JSON.stringify({ fields }) });
       if (!r.ok) throw new Error('Firestore write ' + path + ': ' + r.status + ' ' + await r.text());
     },
+    /* (v435) counts bumped on the server (a field transform), so two requests at the same moment both count, instead of each
+       writing the number it read; `set` carries fields written as they are */
+    async bump(path, inc, set) {
+      const fields = set || {};
+      const write = { update: { name: this.docName(path), fields }, updateMask: { fieldPaths: Object.keys(fields) },
+        updateTransforms: Object.entries(inc).map(([k, n]) => ({ fieldPath: k, increment: { integerValue: String(n) } })) };
+      const r = await fetch(base.replace(/\/$/, '') + ':commit', { method: 'POST', headers, body: JSON.stringify({ writes: [write] }) });
+      if (!r.ok) throw new Error('Firestore bump ' + path + ': ' + r.status + ' ' + await r.text());
+    },
+    /* (v435) merge only if the document is still as it was when read (its updateTime): false when someone got there first */
+    async mergeIf(path, fields, updateTime) {
+      const mask = Object.keys(fields).map((k) => 'updateMask.fieldPaths=' + encodeURIComponent(k)).join('&');
+      const r = await fetch(base + path + '?' + mask + '&currentDocument.updateTime=' + encodeURIComponent(updateTime), { method: 'PATCH', headers, body: JSON.stringify({ fields }) });
+      if (r.status === 400 || r.status === 409 || r.status === 412) { const t = await r.text(); if (/FAILED_PRECONDITION|ABORTED/.test(t)) return false; throw new Error('Firestore merge ' + path + ': ' + r.status + ' ' + t); }
+      if (!r.ok) throw new Error('Firestore merge ' + path + ': ' + r.status + ' ' + await r.text());
+      return true;
+    },
     /* (v431) merge only the given field paths, which may reach inside a map (households.`abc`): other paths stay; a path with no field is deleted */
     async mergePaths(path, fields, paths) {
       const mask = paths.map((k) => 'updateMask.fieldPaths=' + encodeURIComponent(k)).join('&');
@@ -964,7 +981,7 @@ async function circleOf(fs, hid) {
   return { house, owner, members, patientUid: patient ? patient.path.split('/').pop() : null,
     patientName: (patient && f(patient.fields, 'name')) || (house && (f(house.fields, 'patientName') || f(house.fields, 'name'))) || '' };
 }
-const runsCircle = (circle, uid, me) => circle.owner === uid || me.relation === 'patient';
+const runsCircle = (circle, uid, me) => circle.owner === uid || (me.relation === 'patient' && me.role === 'family'); // (v435) a read-only or viewer sign-in marked patient does not run it
 
 /* Beta codes (since v152): while BETA_CODES_REQUIRED is set in wrangler.toml, a new household needs a code from
    betaCodes/{CODE} { label, active, uses, createdAt, lastUsedAt } (made with the Household admin workflow,
@@ -1030,7 +1047,7 @@ async function handleFeedback(request, env) {
   const logFields = logDoc ? logDoc.fields : {};
   const count = f(logFields, 'day') === day ? Number(f(logFields, 'count') || 0) : 0;
   if (count >= FEEDBACK_A_DAY) return json({ error: 'limit', message: 'That is plenty for one day, thank you. Email support@mymedicaldaybook.co.uk if it cannot wait.' }, 429);
-  await fs.set(hp(me.hid, 'bridge/feedbackLog'), { day: strVal(day), count: intVal(count + 1), updatedAt: nowTs() });
+  if (f(logFields, 'day') === day) await fs.bump(hp(me.hid, 'bridge/feedbackLog'), { count: 1 }, { updatedAt: nowTs() }); else await fs.set(hp(me.hid, 'bridge/feedbackLog'), { day: strVal(day), count: intVal(1), updatedAt: nowTs() });
   const id = randomCode().slice(0, 20);
   const rec = { household: strVal(me.hid), uid: strVal(who.uid), name: strVal(me.name || ''), role: strVal(me.role), kind: strVal(kind), text: strVal(text), screen: strVal(clean(body.screen, 80)), version: strVal(clean(body.version, 12)), device: strVal(clean(body.device, 160)), at: nowTs() };
   if (image) rec.image = strVal(image);
@@ -1250,7 +1267,7 @@ async function handleSendReport(request, env) {
   const logFields = logDoc ? logDoc.fields : {};
   const count = f(logFields, 'day') === day ? Number(f(logFields, 'count') || 0) : 0;
   if (count >= SEND_A_DAY) return json({ error: 'limit', message: 'That is the limit of emails for one day. Use Send from my own Mail app for the rest.' }, 429);
-  await fs.set(hp(me.hid, 'bridge/sendLog'), { day: strVal(day), count: intVal(count + 1), updatedAt: nowTs() });
+  if (f(logFields, 'day') === day) await fs.bump(hp(me.hid, 'bridge/sendLog'), { count: 1 }, { updatedAt: nowTs() }); else await fs.set(hp(me.hid, 'bridge/sendLog'), { day: strVal(day), count: intVal(1), updatedAt: nowTs() });
   const from = `${fromName.replace(/["<>]/g, '')} via My Medical Daybook <${env.SEND_FROM || SEND_FROM}>`;
   let r, data = null;
   try {
@@ -1381,9 +1398,9 @@ async function handleVerifyEmail(request, env) {
   const g = await fs.get('bridge/global');
   const allVerify = g && f(g.fields, 'verifyDay') === day ? Number(f(g.fields, 'verify') || 0) : 0;
   if (allVerify >= VERIFY_ALL_A_DAY) return json({ error: 'limit', message: 'Daybook has sent all the confirmation emails it can today. Try again tomorrow.' }, 429);
-  await fs.set(logPath, { day: strVal(day), count: intVal(count + 1), updatedAt: nowTs() });
-  await fs.set(addrPath, { day: strVal(day), count: intVal(addrCount + 1), updatedAt: nowTs() });
-  await fs.merge('bridge/global', { verifyDay: strVal(day), verify: intVal(allVerify + 1) });
+  if (logDoc && f(logDoc.fields, 'day') === day) await fs.bump(logPath, { count: 1 }, { updatedAt: nowTs() }); else await fs.set(logPath, { day: strVal(day), count: intVal(1), updatedAt: nowTs() });
+  if (addrDoc && f(addrDoc.fields, 'day') === day) await fs.bump(addrPath, { count: 1 }, { updatedAt: nowTs() }); else await fs.set(addrPath, { day: strVal(day), count: intVal(1), updatedAt: nowTs() });
+  if (g && f(g.fields, 'verifyDay') === day) await fs.bump('bridge/global', { verify: 1 }); else await fs.merge('bridge/global', { verifyDay: strVal(day), verify: intVal(1) });
   let code = '';
   try {
     const token = await accessToken(sa, 'https://www.googleapis.com/auth/cloud-platform');
@@ -1534,7 +1551,7 @@ async function loadInvite(fs, code) {
   if (f(inv.fields, 'used') === true) return { ok: false, message: 'That invite link has already been used.' };
   if (new Date(f(inv.fields, 'expiresAt')).getTime() < Date.now()) return { ok: false, message: 'That invite link has expired. Ask for a new one.' };
   const circle = await circleOf(fs, hid);
-  return { ok: true, hid, fields: inv.fields, householdName: circle.patientName };
+  return { ok: true, hid, fields: inv.fields, updateTime: inv.updateTime, householdName: circle.patientName, patientUid: circle.patientUid };
 }
 
 /* POST /join { code, name? }: a sign-in with no household joins the one the invite is for */
@@ -1549,9 +1566,13 @@ async function handleJoin(request, env) {
   const inv = await loadInvite(fs, code);
   if (!inv.ok) return json({ error: 'invite', message: inv.message }, 400);
   const name = clean(body.name, 40) || f(inv.fields, 'name') || 'Member';
+  /* (v435) one patient a circle, checked at the join as well as when the invite was made; and the invite is marked used first, only
+     if nobody else has, so two sign-ins accepting the same link at the same moment cannot both get in */
+  if (f(inv.fields, 'relation') === 'patient' && inv.patientUid) return json({ error: 'invite', message: 'This care circle already has its patient. Ask for a new invite as a carer or family member.' }, 409);
+  const got = await fs.mergeIf(hp(inv.hid, 'invites/' + code), { used: { booleanValue: true }, usedBy: strVal(who.uid), usedAt: nowTs() }, inv.updateTime);
+  if (!got) return json({ error: 'invite', message: 'That invite link has already been used.' }, 400);
   await fs.set(hp(inv.hid, 'members/' + who.uid), { name: strVal(name), role: strVal(f(inv.fields, 'role') || 'readonly'), relation: strVal(f(inv.fields, 'relation') || ''), addedBy: strVal(f(inv.fields, 'createdBy') || 'invite'), addedAt: nowTs() });
   await fs.merge('users/' + who.uid, { household: strVal(inv.hid), name: strVal(name) });
-  await fs.merge(hp(inv.hid, 'invites/' + code), { used: { booleanValue: true }, usedBy: strVal(who.uid), usedAt: nowTs() });
   await fs.remove('inviteCodes/' + code);
   return json({ ok: true, household: inv.hid, householdName: inv.householdName, patientName: inv.householdName, name, role: f(inv.fields, 'role') });
 }
@@ -1791,7 +1812,7 @@ async function handleExplain(request, env) {
   const g = await fs.get('bridge/global');
   const allToday = g && f(g.fields, 'explainDay') === day ? Number(f(g.fields, 'explain') || 0) : 0;
   if (allToday >= EXPLAIN_LIMIT_ALL) return json({ error: 'limit', message: 'Daybook Assistant has done all it can for today across every circle. Use Send to my AI app, or try again tomorrow.' }, 429);
-  await fs.merge('bridge/global', { explainDay: strVal(day), explain: intVal(allToday + 1) });
+  if (g && f(g.fields, 'explainDay') === day) await fs.bump('bridge/global', { explain: 1 }); else await fs.merge('bridge/global', { explainDay: strVal(day), explain: intVal(1) });
   if (used >= (demo ? EXPLAIN_LIMIT_DEMO : EXPLAIN_LIMIT_REAL)) return json({ error: 'limit', message: demo ? 'The demo has used Daybook Assistant for today. Try again tomorrow, or use Send to my AI app.' : 'Your care circle has used Daybook Assistant\'s requests for today (' + EXPLAIN_LIMIT_REAL + ' a day). Use Send to my AI app, or try again tomorrow.' }, 429);
   /* The month's count (v209): kept on the same document across days, reset when the month changes */
   const month = day.slice(0, 7);
@@ -1805,7 +1826,10 @@ async function handleExplain(request, env) {
   const monthKinds = (allFields.month && allFields.month.stringValue === month && allFields.monthKinds && allFields.monthKinds.mapValue) ? { ...(allFields.monthKinds.mapValue.fields || {}) } : {};
   if (!demo) monthKinds[kind] = intVal(Number(monthKinds[kind] && monthKinds[kind].integerValue || 0) + 1);
   if (!demo && !reportKind && monthUsed >= EXPLAIN_LIMIT_MONTH) return json({ error: 'limit', message: 'Your care circle has used this month\'s Daybook Assistant allowance for letters, photos and suggested questions (' + EXPLAIN_LIMIT_MONTH + '). It starts again on the 1st. The summaries on the reports still work, and Send to my AI app is there for the rest.' }, 429);
-  await fs.set(hp(hid, 'bridge/explainLog'), { day: { stringValue: day }, real: { integerValue: String(n('real') + (demo ? 0 : 1)) }, demo: { integerValue: String(n('demo') + (demo ? 1 : 0)) }, tokensIn: { integerValue: String(n('tokensIn')) }, tokensOut: { integerValue: String(n('tokensOut')) }, month: { stringValue: month }, monthReal: { integerValue: String(monthUsed + (demo || reportKind ? 0 : 1)) }, monthReports: { integerValue: String(monthReports + (demo || !reportKind ? 0 : 1)) }, monthTokensIn: { integerValue: String(monthTokIn) }, monthTokensOut: { integerValue: String(monthTokOut) }, monthKinds: { mapValue: { fields: monthKinds } }, updatedAt: { timestampValue: new Date().toISOString() } });
+  const sameDayAndMonth = (logDoc && logDoc.fields && logDoc.fields.day && logDoc.fields.day.stringValue === day) && (allFields.month && allFields.month.stringValue === month);
+  /* (v435) within a day the counts are bumped on the server, so taps at the same moment all count; a new day or month writes the document afresh */
+  if (sameDayAndMonth) await fs.bump(hp(hid, 'bridge/explainLog'), { ...(demo ? { demo: 1 } : { real: 1 }), ...(demo || reportKind ? {} : { monthReal: 1 }), ...(demo || !reportKind ? {} : { monthReports: 1 }), ...(demo ? {} : { ['monthKinds.' + kind]: 1 }) }, { updatedAt: { timestampValue: new Date().toISOString() } });
+  else await fs.set(hp(hid, 'bridge/explainLog'), { day: { stringValue: day }, real: { integerValue: String(n('real') + (demo ? 0 : 1)) }, demo: { integerValue: String(n('demo') + (demo ? 1 : 0)) }, tokensIn: { integerValue: String(n('tokensIn')) }, tokensOut: { integerValue: String(n('tokensOut')) }, month: { stringValue: month }, monthReal: { integerValue: String(monthUsed + (demo || reportKind ? 0 : 1)) }, monthReports: { integerValue: String(monthReports + (demo || !reportKind ? 0 : 1)) }, monthTokensIn: { integerValue: String(monthTokIn) }, monthTokensOut: { integerValue: String(monthTokOut) }, monthKinds: { mapValue: { fields: monthKinds } }, updatedAt: { timestampValue: new Date().toISOString() } });
 
   const content = pages.map((data) => ({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data } }));
   const head = kind === 'document'
@@ -1890,7 +1914,10 @@ async function verifyFirebaseToken(token, projects, fetchFn) {
   const now = Math.floor(Date.now() / 1000);
   if (!(claims.exp > now) || !(claims.iat <= now + 300)) throw new Error('expired');
   if (!projects.includes(claims.aud) || claims.iss !== 'https://securetoken.google.com/' + claims.aud) throw new Error('audience');
-  if (!claims.sub || typeof claims.sub !== 'string') throw new Error('subject');
+  if (!claims.sub || typeof claims.sub !== 'string' || claims.sub.length > 128) throw new Error('subject');
+  if (typeof claims.auth_time === 'number' && claims.auth_time > now + 300) throw new Error('auth_time'); // (v435) signed in no later than now
+  if (claims.firebase && claims.firebase.sign_in_provider === 'anonymous') throw new Error('anonymous'); // (v435) never an anonymous sign-in, even if one were switched on
+
   const jwk = await googleKey(header.kid, fetchFn || fetch);
   if (!jwk) throw new Error('unknown key');
   const key = await crypto.subtle.importKey('jwk', jwk, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify']);

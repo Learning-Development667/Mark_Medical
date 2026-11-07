@@ -40,7 +40,7 @@ My Medical Daybook: a private health tracker shared by a care circle (a patient 
 - Never hand `replaceChildren()` or `append()` a bare `null` (it prints "null"); spread an empty array. Anything mapping over `entryTitle()` must `filter(Boolean)`.
 - Never name a local `f` in `worker/src/index.js` (it shadows the field reader; v100).
 - Data is reached only through `hcol()` / `hdoc()` (app) and `hp()` (bridge), which prepend `households/{hid}`.
-- Any script from outside must be added to the Content Security Policy meta in `index.html` or it will not load. Libraries live in `vendor/` at fixed versions with their licences; only Firebase (gstatic) and Google Fonts come from outside. pdf.js is called with `isEvalSupported: false`.
+- Any script from outside must be added to the Content Security Policy meta in `index.html` or it will not load; since v435 the same for any host the app connects to (`connect-src`: Google's APIs, the bridge's address), loads a picture or font from, or shows in a frame. Libraries live in `vendor/` at fixed versions with their licences; only Firebase (gstatic) and Google Fonts come from outside. pdf.js is called with `isEvalSupported: false`.
 - Report frames: no `<pattern>`, `url(#...)` fills or `data:image/svg` backgrounds (Safari taints the canvas). The hidden PDF frames (`report-frame-*`) are not sandboxed (Safari's html2canvas hangs); the CSP still blocks script there.
 - Large uploads through the bridge are kept as bytes: never `JSON.parse`, regex or re-stringify megabytes in the worker (free plan's 10 ms CPU; v246).
 - Bridge keys travel in the `X-Care-Log-Key` header only, never `?key=`.

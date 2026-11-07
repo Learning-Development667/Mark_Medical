@@ -106,18 +106,14 @@ jobs:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           ACTION: ${{ inputs.action }}
           HOUSEHOLD_ID: ${{ inputs.household_id }}
-          HOUSEHOLD_NAME: ${{ inputs.household_name }}
           OWNER_UID: ${{ inputs.uid }}
-          OWNER_NAME: ${{ inputs.name }}
           OWNER_RELATION: ${{ inputs.relation }}
           USER_UID: ${{ inputs.uid }}
-          NAME: ${{ inputs.name }}
           ROLE: ${{ inputs.role }}
           RELATION: ${{ inputs.relation }}
           MOVE: ${{ inputs.move && 'yes' || 'no' }}
-          CODE: ${{ inputs.code }}
-          LABEL: ${{ inputs.label }}
           OFF: ${{ inputs.switch_off && 'yes' || 'no' }}
           ALL: ${{ inputs.all_circles && 'yes' || 'no' }}
-          DOSE_USE: ${{ inputs.dose_use }}
+        # (v435) the typed-in name, household name, code, label and medicine are read by the script from the run's event file,
+        # not passed as env, so the public log's env block never shows them
         run: node tools/household_admin.mjs

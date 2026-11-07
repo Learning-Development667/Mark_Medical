@@ -30,10 +30,17 @@
    every Actions run's log. Nothing printed here may name a person, a medicine, a Beta code, a label or a time
    anything was taken or eaten: ids, counts and states only. A circle is found by HOUSEHOLD_ID (from list), never
    by a person's name. */
+import fsNode from 'node:fs';
 import { loadServiceAccount, connect, str, ts, fieldString, newId, newKey, sha256Hex } from './lib/firestore_rest.mjs';
 
 const action = (process.env.ACTION || '').trim();
-const env = (k) => (process.env[k] || '').trim();
+/* (v435) the words typed into the workflow's boxes (a name, a code, a label, a medicine) come from the run's event file, never from
+   env, so the public log's env block cannot show them; and they are masked in case anything prints them */
+const TYPED = { NAME: 'name', OWNER_NAME: 'name', HOUSEHOLD_NAME: 'household_name', CODE: 'code', LABEL: 'label', DOSE_USE: 'dose_use' };
+let typedIn = {};
+try { typedIn = JSON.parse(fsNode.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8')).inputs || {}; } catch (e) { typedIn = {}; }
+for (const v of Object.values(typedIn)) if (typeof v === 'string' && v.trim().length > 1) console.log('::add-mask::' + v.trim());
+const env = (k) => String(process.env[k] || (TYPED[k] && typedIn[TYPED[k]]) || '').trim();
 const uidOk = (u) => /^[A-Za-z0-9]{20,40}$/.test(u);
 const relation = (r) => (['patient', 'carer'].includes(r) ? r : '');
 const hidden = (s) => (s ? String(s).slice(0, 2) + '***' : '');
