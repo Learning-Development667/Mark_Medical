@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '433';
+const APP_VERSION = '434';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -11326,7 +11326,7 @@ async function saveCheckin(slot, day, answers, existing, opts = {}) {
   }
   const mirror = {};
   if (slot !== 'carer' && !isCarerDaySlot(slot) && data.mood != null) mirror.mood = Math.max(1, Math.min(5, Math.ceil(data.mood / 2)));
-  if (slot === 'evening' && data.goodThing) mirror.good = data.goodThing;
+  /* (v434, Mark) the one good thing stays on the check-in: the calendar day's record is readable by a medicines-and-treatment-only member, the words are not theirs to see */
   const label = (slot === 'weekcarer' ? 'Your week' : checkinTitle(slot)) + (existing && !inProgress ? ' updated' : ' saved');
 
   if (state.demo) {
@@ -16836,12 +16836,20 @@ function daySideEffects(key) {
   })();
   return box;
 }
+/* The evening's one good thing for a calendar day (v434): from the evening check-in itself (which a viewer cannot read), or
+   the words a day saved before v434 still carries, never for a viewer */
+function dayGoodWords(key, info) {
+  if (state.viewer) return '';
+  const c = findCheckin(key, 'evening');
+  return (c && c.goodThing) || (info && info.good) || '';
+}
 function openDaySheet(key) {
   const info = state.days[key] || {};
 
   if (state.readOnly) {
     const chemoStatus = info.chemo ? treatmentOf(info).label + (info.chemoDone ? ' session, done' : ' session planned') : 'No treatment session this day';
-    const moodInfo = info.mood ? 'Mood that day: ' + MOODS[info.mood - 1].label.toLowerCase() + (info.good ? '. ' + info.good + (/[.!?]$/.test(info.good.trim()) ? '' : '.') : '.') : '';
+    const good = dayGoodWords(key, info);
+    const moodInfo = info.mood ? 'Mood that day: ' + MOODS[info.mood - 1].label.toLowerCase() + (good ? '. ' + good + (/[.!?]$/.test(good.trim()) ? '' : '.') : '.') : '';
     openSheet(fmtDayLong(key), h('div', null,
       h('p', { text: chemoStatus }),
       moodInfo ? h('p', { class: 'hint', text: moodInfo }) : null,
@@ -16908,7 +16916,8 @@ function openDaySheet(key) {
     h('button', { class: 'btn btn-secondary', type: 'button', onclick: () => { moveBox.hidden = true; moveBtn.hidden = false; } }, 'Cancel')));
   const moveBtn = h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => { moveBtn.hidden = true; moveBox.hidden = false; moveDate.focus(); } }, 'Move to another day');
 
-  const moodInfo = info.mood ? 'Mood that day: ' + MOODS[info.mood - 1].label.toLowerCase() + (info.good ? '. ' + info.good + (/[.!?]$/.test(info.good.trim()) ? '' : '.') : '.') : '';
+  const good = dayGoodWords(key, info);
+  const moodInfo = info.mood ? 'Mood that day: ' + MOODS[info.mood - 1].label.toLowerCase() + (good ? '. ' + good + (/[.!?]$/.test(good.trim()) ? '' : '.') : '.') : '';
   const cbFlare = h('input', { type: 'checkbox', checked: !!info.flare });
   /* v382 (review item 22): flare days for Something else too (lupus, RA, MS flare); the flare sheet itself stays Crohn's own */
   const flareRow = packOn('ibd') || packOn('general') || info.flare ? h('label', { class: 'check' }, cbFlare, h('span', { text: 'A flare day' })) : null;
