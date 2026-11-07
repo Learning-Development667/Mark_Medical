@@ -12,6 +12,9 @@ on:
         default: check
         options: [check, apply, test]
 
+permissions:
+  contents: read
+
 jobs:
   run:
     runs-on: ubuntu-latest

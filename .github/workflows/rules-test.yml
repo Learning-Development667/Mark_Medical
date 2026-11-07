@@ -10,6 +10,9 @@ on:
     paths: ['firestore.rules', 'firebase.json', 'tests/rules/**']
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   rules:
     runs-on: ubuntu-latest

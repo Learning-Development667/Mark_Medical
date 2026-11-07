@@ -5,6 +5,9 @@ name: Xcode versions on GitHub's Macs
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   list:
     strategy:

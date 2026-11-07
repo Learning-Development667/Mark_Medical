@@ -99,9 +99,17 @@ service cloud.firestore {
         allow delete: if isFamily(hid) && notSomeoneElsesCheckin();
       }
 
+      // (v432) sizes capped: one medicine's words and times go into the bridge's one reminder plan for every circle
+      function medicineOk() {
+        let d = request.resource.data;
+        return d.name is string && d.name.size() <= 120
+          && (!('dose' in d) || d.dose == null || (d.dose is string && d.dose.size() <= 80))
+          && (!('times' in d) || d.times == null || (d.times is list && d.times.size() <= 12));
+      }
       match /medicines/{medId} {
         allow read: if canRead(hid) || isViewer(hid);
-        allow write: if isFamily(hid);
+        allow delete: if isFamily(hid);
+        allow create, update: if isFamily(hid) && medicineOk();
       }
 
       match /documents/{docId} {
@@ -156,11 +164,30 @@ service cloud.firestore {
 
       // Medicine reminders: one document per phone with reminders on, and one-off requests;
       // both read by the bridge's service account
-      match /pushSubs/{subId} {
-        allow read, write: if isFamily(hid);
+      // (v432) a phone's record is its owner's: made with their uid, changed or removed by them alone (one saved before the
+      // stamp, with no uid, may still be tidied by any family member); the address must be a browser's own push service
+      function pushSubOk() {
+        let d = request.resource.data;
+        return (d.get('kind', '') == 'fcm'
+            ? (d.token is string && d.token.size() <= 400)
+            : (d.endpoint is string && d.endpoint.size() <= 600
+               && d.endpoint.matches('https://(fcm[.]googleapis[.]com|android[.]googleapis[.]com|web[.]push[.]apple[.]com|[a-z0-9.-]+[.]push[.]apple[.]com|updates[.]push[.]services[.]mozilla[.]com|[a-z0-9.-]+[.]push[.]services[.]mozilla[.]com|[a-z0-9.-]+[.]notify[.]windows[.]com|[a-z0-9.-]+[.]push[.]samsungosp[.]com)/.*')));
       }
+      function ownPhone() { return !('uid' in resource.data) || resource.data.uid == request.auth.uid; }
+      match /pushSubs/{subId} {
+        allow read: if isFamily(hid);
+        allow create: if isFamily(hid) && request.resource.data.uid == request.auth.uid && pushSubOk();
+        allow update: if isFamily(hid) && ownPhone() && pushSubOk()
+          && (request.resource.data.get('uid', null) == resource.data.get('uid', null)
+              || (!('uid' in resource.data) && request.resource.data.uid == request.auth.uid));
+        allow delete: if isFamily(hid) && ownPhone();
+      }
+      // (v432) a one-off reminder's words go to every phone in the circle: kept short
       match /reminders/{reminderId} {
-        allow read, write: if isFamily(hid);
+        allow read, delete: if isFamily(hid);
+        allow create, update: if isFamily(hid)
+          && (!('medName' in request.resource.data) || (request.resource.data.medName is string && request.resource.data.medName.size() <= 120))
+          && (!('dose' in request.resource.data) || request.resource.data.dose == null || (request.resource.data.dose is string && request.resource.data.dose.size() <= 80));
       }
 
       // The household's own secrets, written by the workflows: the Apple Health inbox key, so the

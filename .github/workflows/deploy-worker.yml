@@ -11,11 +11,16 @@ on:
     paths: ['worker/**', '.github/workflows/deploy-worker.yml']
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Check the secrets are in place
         id: check
@@ -41,12 +46,12 @@ jobs:
 
       - name: Deploy to Cloudflare
         if: steps.check.outputs.ready == 'true'
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@da0e0dfe58b7a431659754fdf3f186c529afbe65 # v3.14.1
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: worker
-          wranglerVersion: '4'
+          wranglerVersion: '4.158.0'
           command: deploy
           secrets: |
             BRIDGE_KEY
@@ -59,7 +64,7 @@ jobs:
       # reminders until this secret exists (tools/vapid_keys.mjs makes the pair).
       - name: Set the push key
         if: steps.check.outputs.ready == 'true' && env.VAPID != ''
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@da0e0dfe58b7a431659754fdf3f186c529afbe65 # v3.14.1
         env:
           VAPID: ${{ secrets.VAPID_PRIVATE_KEY }}
           VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
@@ -67,7 +72,7 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: worker
-          wranglerVersion: '4'
+          wranglerVersion: '4.158.0'
           command: deploy
           secrets: |
             VAPID_PRIVATE_KEY
@@ -76,7 +81,7 @@ jobs:
       # once this free api.data.gov key exists; until then the bridge skips it.
       - name: Set the US food key
         if: steps.check.outputs.ready == 'true' && env.FDC != ''
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@da0e0dfe58b7a431659754fdf3f186c529afbe65 # v3.14.1
         env:
           FDC: ${{ secrets.FDC_API_KEY }}
           FDC_API_KEY: ${{ secrets.FDC_API_KEY }}
@@ -84,7 +89,7 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: worker
-          wranglerVersion: '4'
+          wranglerVersion: '4.158.0'
           command: deploy
           secrets: |
             FDC_API_KEY
@@ -92,7 +97,7 @@ jobs:
       # The Beta feedback sheet shows Mark's phone number when this optional secret exists (v153).
       - name: Set the Beta phone number
         if: steps.check.outputs.ready == 'true' && env.PHONE != ''
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@da0e0dfe58b7a431659754fdf3f186c529afbe65 # v3.14.1
         env:
           PHONE: ${{ secrets.BETA_PHONE }}
           BETA_PHONE: ${{ secrets.BETA_PHONE }}
@@ -100,7 +105,7 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: worker
-          wranglerVersion: '4'
+          wranglerVersion: '4.158.0'
           command: deploy
           secrets: |
             BETA_PHONE
@@ -108,7 +113,7 @@ jobs:
       # Send to the team by email needs the Resend key (v159); the bridge answers "not switched on yet" until it exists.
       - name: Set the email sending key
         if: steps.check.outputs.ready == 'true' && env.RESEND != ''
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@da0e0dfe58b7a431659754fdf3f186c529afbe65 # v3.14.1
         env:
           RESEND: ${{ secrets.RESEND_API_KEY }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
@@ -116,7 +121,7 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: worker
-          wranglerVersion: '4'
+          wranglerVersion: '4.158.0'
           command: deploy
           secrets: |
             RESEND_API_KEY
@@ -124,7 +129,7 @@ jobs:
       # Explain in Daybook needs the Claude API key; the bridge answers "not switched on yet" until it exists.
       - name: Set the AI key
         if: steps.check.outputs.ready == 'true' && env.AIKEY != ''
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@da0e0dfe58b7a431659754fdf3f186c529afbe65 # v3.14.1
         env:
           AIKEY: ${{ secrets.ANTHROPIC_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -132,7 +137,7 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: worker
-          wranglerVersion: '4'
+          wranglerVersion: '4.158.0'
           command: deploy
           secrets: |
             ANTHROPIC_API_KEY

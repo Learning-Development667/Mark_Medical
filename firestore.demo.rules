@@ -11,11 +11,20 @@ service cloud.firestore {
       return request.resource.data.data is string
         && request.resource.data.data.size() < 950000;
     }
-    match /documents/{docId}/pages/{pageNo} {
+    // (v432, the security review) the demo's one circle and the guest's own pointer, and nothing else: until then any
+    // path at all could be written, and the nightly wipe only reaches the demo circle
+    match /users/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+    match /households/demo/documents/{docId}/pages/{pageNo} {
       allow read, delete: if request.auth != null;
       allow create, update: if request.auth != null && pageSizeOk();
     }
-    match /{document=**} {
+    match /households/demo/recordings/{recId}/parts/{partNo} {
+      allow read, delete: if request.auth != null;
+      allow create, update: if request.auth != null && pageSizeOk();
+    }
+    match /households/demo/{document=**} {
       allow read, write: if request.auth != null;
     }
   }

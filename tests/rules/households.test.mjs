@@ -46,7 +46,8 @@ beforeEach(async () => {
     await put(`households/${A}/nutrition/2026-09-29`, { kcal: 1800 });
     await put(`households/${A}/recordings/r1`, { questionId: 'q1', seconds: 12 });
     await put(`households/${A}/recordings/r1/parts/0`, { n: 0, data: 'abc' });
-    await put(`households/${A}/pushSubs/p1`, { endpoint: 'https://push.example/1', private: true });
+    await put(`households/${A}/pushSubs/p1`, { endpoint: 'https://fcm.googleapis.com/fcm/send/abc', private: true, uid: MARK });
+    await put(`households/${A}/pushSubs/p-old`, { endpoint: 'https://fcm.googleapis.com/fcm/send/old', private: true });
     await put(`households/${A}/bridge/explainLog`, { day: '2026-09-29', calls: 3 });
     await put(`households/${A}/private/health`, { key: 'secret-key-A' });
     await put(`households/${A}/invites/code1`, { role: 'family', used: false });
@@ -77,7 +78,7 @@ test('family reads and writes everything in their own household', async () => {
   await assertSucceeds(write(SHELLEY, `households/${A}/medicines/m2`, { name: 'Paracetamol', kind: 'prn', active: true }));
   await assertSucceeds(updateDoc(doc(as(MARK), `households/${A}/profile/main`), { proteinTarget: 100 }));
   await assertSucceeds(deleteDoc(doc(as(MARK), `households/${A}/meals/meal1`)));
-  await assertSucceeds(write(MARK, `households/${A}/pushSubs/p2`, { endpoint: 'https://push.example/2' }));
+  await assertSucceeds(write(MARK, `households/${A}/pushSubs/p2`, { endpoint: 'https://web.push.apple.com/abc', uid: MARK }));
   await assertSucceeds(write(MARK, `households/${A}/documents/d1/pages/2`, { data: 'x'.repeat(1000), width: 1, height: 1 }));
   await assertSucceeds(read(MARK, `households/${A}`));
   await assertSucceeds(read(MARK, `households/${A}/members/${SHELLEY}`));
@@ -257,4 +258,28 @@ test('a check-in belongs to whoever filled it in (v331)', async () => {
   // read only and other circles still cannot write at all
   await assertFails(updateDoc(doc(as(HAYLEY), p('2026-09-29_morning')), { pain: 1 }));
   await assertFails(updateDoc(doc(as(JANE), p('2026-09-29_morning')), { pain: 1 }));
+});
+
+test('a phone belongs to whoever switched its reminders on, and only a push service is a phone (v432)', async () => {
+  const p = (id) => `households/${A}/pushSubs/${id}`;
+  await assertFails(write(SHELLEY, p('p-shelley'), { endpoint: 'https://fcm.googleapis.com/fcm/send/s', uid: MARK })); // not in someone else's name
+  await assertFails(write(SHELLEY, p('p-shelley'), { endpoint: 'https://fcm.googleapis.com/fcm/send/s' })); // nor with no name
+  await assertFails(write(SHELLEY, p('p-shelley'), { endpoint: 'https://evil.example/collect', uid: SHELLEY })); // nor to any address
+  await assertSucceeds(write(SHELLEY, p('p-shelley'), { endpoint: 'https://updates.push.services.mozilla.com/wpush/v2/x', uid: SHELLEY }));
+  await assertSucceeds(write(SHELLEY, p('p-fcm'), { kind: 'fcm', token: 'a'.repeat(150), uid: SHELLEY }));
+  await assertFails(write(SHELLEY, p('p-fcm2'), { kind: 'fcm', token: 'a'.repeat(500), uid: SHELLEY }));
+  await assertFails(updateDoc(doc(as(SHELLEY), p('p1')), { private: false })); // Mark's phone is Mark's
+  await assertFails(deleteDoc(doc(as(SHELLEY), p('p1'))));
+  await assertSucceeds(updateDoc(doc(as(MARK), p('p1')), { private: false }));
+  await assertFails(updateDoc(doc(as(MARK), p('p1')), { uid: SHELLEY })); // and stays his
+  await assertSucceeds(deleteDoc(doc(as(SHELLEY), p('p-old')))); // one from before the stamp may be tidied
+});
+
+test('medicines and one-off reminders stay a sensible size (v432)', async () => {
+  await assertFails(write(MARK, `households/${A}/medicines/big`, { name: 'x'.repeat(5000), kind: 'scheduled', active: true }));
+  await assertFails(write(MARK, `households/${A}/medicines/many`, { name: 'Paracetamol', times: Array.from({ length: 40 }, (_, i) => '0' + (i % 10) + ':00'), kind: 'scheduled', active: true }));
+  await assertSucceeds(write(MARK, `households/${A}/medicines/ok`, { name: 'Paracetamol', dose: '2 tablets', times: ['08:00', '20:00'], kind: 'scheduled', active: true }));
+  await assertSucceeds(updateDoc(doc(as(MARK), `households/${A}/medicines/m1`), { active: false }));
+  await assertFails(write(MARK, `households/${A}/reminders/r1`, { medName: 'x'.repeat(2000), dose: '', sent: false }));
+  await assertSucceeds(write(MARK, `households/${A}/reminders/r2`, { medName: 'Paracetamol', dose: '2 tablets', sent: false }));
 });

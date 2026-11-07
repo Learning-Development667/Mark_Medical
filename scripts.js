@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '431';
+const APP_VERSION = '432';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -1174,8 +1174,14 @@ async function enterApp(user) {
     /* Signed in, but in no household: join the one an invite link is for, or make one (since v78) */
     if (state.pendingInvite && BRIDGE) {
       const code = state.pendingInvite; state.pendingInvite = null;
-      try { await bridgeCall('/join', { code }); state.setupPending = 'phone'; return enterApp(user); }
-      catch (e) { toast(e.message); }
+      /* (v432) asked first: an invite link opened by someone with no circle joined them to it with no question, so a link sent
+         to the wrong person could have put their records in a stranger's circle */
+      let words = 'Join the care circle this link is for?';
+      try { const r = await fetch(BRIDGE.url.replace(/\/$/, '') + '/invite-info?code=' + encodeURIComponent(code)); const info = await r.json(); if (info.valid) words = inviteWords(info) + ' Join it?'; } catch (e) { /* the plain question */ }
+      if (await confirmSheet('Join this care circle?', words + ' Everything you log goes to its records, which its members can see.', 'Join')) {
+        try { await bridgeCall('/join', { code }); state.setupPending = 'phone'; return enterApp(user); }
+        catch (e) { toast(e.message); }
+      }
     }
     showNoHousehold(user);
     return;
@@ -1427,7 +1433,23 @@ function forgetPhoneData() {
     for (const k of Object.keys(localStorage)) if (FORGET_ON_SIGNOUT.some((p) => k === p || (p.endsWith('.') && k.startsWith(p)))) localStorage.removeItem(k);
   } catch (e) { /* storage blocked: nothing kept */ }
 }
+/* (v432, the security review) signing out takes this phone off the circle's reminders first: until then a shared tablet kept
+   getting them, with the medicine names on its lock screen where private notifications were off */
+async function forgetThisPhonesReminders() {
+  if (!state.household || state.demo || state.demoLive || state.readOnly || state.viewer) return;
+  try {
+    if (nativeApp()) {
+      const old = storedFcmToken();
+      if (old) { await deleteDoc(hdoc('pushSubs', pushSubId('fcm:' + old))).catch(() => {}); await fcm().deleteToken().catch(() => {}); rememberFcmToken(''); }
+    } else if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+      const reg = await navigator.serviceWorker.getRegistration();
+      const existing = reg && await reg.pushManager.getSubscription();
+      if (existing) { await deleteDoc(hdoc('pushSubs', pushSubId(existing.endpoint))).catch(() => {}); await existing.unsubscribe().catch(() => {}); }
+    }
+  } catch (e) { console.warn('Could not take this phone off the reminders', e); }
+}
 async function signOutAndForget(waitMs = 0) {
+  await Promise.race([forgetThisPhonesReminders(), new Promise((r) => setTimeout(r, 4000))]);
   try { await signOut(auth); } catch (e) { /* the sign-in is already gone */ }
   forgetPhoneData();
   try { await terminate(mainDb); await clearIndexedDbPersistence(mainDb); } catch (e) { console.warn('Could not clear the offline copy', e); }

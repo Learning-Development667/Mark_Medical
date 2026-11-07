@@ -10,6 +10,7 @@ name: Android app for Google Play
 on:
   workflow_dispatch:
 
+# contents: write only for the first run's commit of the encrypted upload key; the token is not kept in the checkout (v432)
 permissions:
   contents: write
 
@@ -21,6 +22,8 @@ jobs:
       HAS_PLAY_KEY: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON != '' }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -36,6 +39,7 @@ jobs:
       - name: Make the upload key (first run only)
         env:
           PW: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if [ -f native/android/upload-key.p12.enc ]; then echo "Upload key already made"; exit 0; fi
           keytool -genkeypair -alias upload -keyalg RSA -keysize 4096 -validity 10000 -storetype PKCS12 \
@@ -48,7 +52,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add native/android/upload-key.p12.enc
           git commit -m "Android upload key, encrypted with the ANDROID_KEYSTORE_PASSWORD secret"
-          git push
+          git push "https://x-access-token:${TOKEN}@github.com/${{ github.repository }}.git" HEAD:main
       - name: Copy the web app into the Android project
         working-directory: native
         run: npm ci && node scripts/copy-web.mjs && npx cap sync android
@@ -84,7 +88,7 @@ jobs:
         run: node tools/release_notes.mjs "$RUNNER_TEMP/notes"
       - name: Upload to Google Play internal testing
         if: env.HAS_PLAY_KEY == 'true'
-        uses: r0adkll/upload-google-play@v1.1.3
+        uses: r0adkll/upload-google-play@935ef9c68bb393a8e6116b1575626a7f5be3a7fb # v1.1.3
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           packageName: uk.co.mark1apps.daybook

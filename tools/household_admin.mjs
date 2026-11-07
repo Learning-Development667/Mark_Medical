@@ -155,8 +155,7 @@ if (action === 'create') {
   for (const d of Object.keys(byDay).sort()) console.log(`  ${d}: ${Object.entries(byDay[d]).map(([t, n]) => t + ' ' + n).join(', ')}`);
   console.log(`Saved meals: ${(await fs.list(`households/${hid}/meals`)).length}.`);
 } else if (action === 'dose-use-check' || action === 'dose-use') {
-  /* (v267) Mark, 22 October 2026: one medicine taken in the late evening was always for sleep, the rest
-     has been pain." Marks each logged dose of one medicine with what it was for (forUse, v263) by the London time it
+  /* (v267) Mark, 22 October 2026: one medicine taken in the late evening was always for sleep, the rest for pain. Marks each logged dose of one medicine with what it was for (forUse, v263) by the London time it
      was taken. DOSE_USE is "Medicine | 21:00-01:00 | use inside | use outside". dose-use-check lists and changes
      nothing; dose-use saves it, and gives the medicine the second use only when it has none (never over what the person set). NAME (a member's first name) must find one circle, or give HOUSEHOLD_ID. */
   const apply = action === 'dose-use';

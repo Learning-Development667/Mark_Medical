@@ -63,11 +63,13 @@ const t = { circles: households.length, new7: 0, new30: 0, active7: 0, logging7:
 const kinds = Object.fromEntries(AI_KINDS.map((k) => [k, 0]));
 const codes = {};
 const circles = {};
+let failed = 0;
 for (let i = 0; i < households.length; i += AT_ONCE) {
   const part = households.slice(i, i + AT_ONCE);
-  const counted = await Promise.all(part.map((hh) => countCircle(hh, day)));
+  const counted = await Promise.all(part.map((hh) => countCircle(hh, day).catch((e) => { failed++; console.error('one circle could not be counted: ' + String(e && e.message || e).replace(/households\/[^/ ]+/g, 'households/***').slice(0, 160)); return null; })));
   part.forEach((hh, j) => {
     const c = counted[j];
+    if (!c) return;
     const pid = sha256Hex(hh.id + ':' + salt).slice(0, 8);
     circles[pid] = { created: c.created, code: c.code, packs: c.packs, members: c.members, phones: c.phones, entries7: c.entries7, checkins7: c.checkins7, last: c.last, ai: c.ai, sent: c.sent, setup: c.setup ? 1 : 0 };
     if (c.created && c.created >= dayMinus(day, 6)) t.new7++;
@@ -85,4 +87,4 @@ for (let i = 0; i < households.length; i += AT_ONCE) {
 const history = Object.fromEntries(Object.entries(beforeHistory).filter(([d]) => d >= dayMinus(day, USAGE_HISTORY_DAYS - 1)));
 history[day] = { circles: t.circles, active7: t.active7, logging7: t.logging7, checkins7: t.checkins7, aiCalls: t.aiCalls, sent: t.sent };
 await fs.set(USAGE_PATH, { day: strVal(day), built: { timestampValue: new Date().toISOString() }, totals: usageVal({ ...t, kinds, codes }), history: usageVal(history), circles: usageVal(circles) });
-console.log(`Counted ${t.circles} circles for the week to ${day}: ${t.active7} logged something, ${t.members} people, ${Object.keys(codes).length} Beta codes in use.`);
+console.log(`Counted ${t.circles} circles${failed ? ' (' + failed + ' could not be counted)' : ''} for the week to ${day}: ${t.active7} logged something, ${t.members} people, ${Object.keys(codes).length} Beta codes in use.`);
