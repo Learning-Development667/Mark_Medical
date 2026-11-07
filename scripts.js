@@ -14,7 +14,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '429';
+const APP_VERSION = '430';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -433,8 +433,18 @@ document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && docume
     const p = panel(); if (!p) return;
     $('sheet').classList.add('is-typing');
     const anchor = (el.previousElementSibling && el.previousElementSibling.classList.contains('draftnote') ? null : el.closest('.field')) || el;
-    p.scrollTop += anchor.getBoundingClientRect().top - p.getBoundingClientRect().top - 16;
+    /* v430 (a tester with large text: "it's not on the screen, you have to scroll for it"): the top is the top of what can
+       be SEEN, the visual viewport, not the panel's own top. When iPhone also scrolls the page for the keyboard, measuring
+       from the panel moved the box twice, up past the top, leaving only the buttons under it in view. A tall label (large
+       text) never pushes the box itself below the middle of what is left */
+    const seenTop = Math.max(p.getBoundingClientRect().top, vv.offsetTop) + 16;
+    p.scrollTop += anchor.getBoundingClientRect().top - seenTop;
+    const r = el.getBoundingClientRect(), seenMid = vv.offsetTop + vv.height / 2;
+    if (r.top > seenMid) p.scrollTop += r.top - seenMid;
+    if (r.top < vv.offsetTop + 8) p.scrollTop -= vv.offsetTop + 8 - r.top;
   };
+  /* the keyboard finishing its rise (or the text size changing it) moves what can be seen: put the box back in view */
+  vv.addEventListener('resize', () => { const a = document.activeElement; if (coarse && coarse.matches && typing() && a) setTimeout(() => { if (document.activeElement === a) raise(a); }, 60); });
   $('sheet').addEventListener('focusin', (ev) => {
     const el = ev.target;
     if (!coarse || !coarse.matches || !el.matches(TEXTISH)) return;
@@ -3709,6 +3719,9 @@ $('feedback-row').addEventListener('click', () => openFeedbackSheet());
 const WHATS_NEW = [
   /* tag (v411, Mark): new, improved or fixed, shown as a label and grouped in that order; the newest batch is also the
      release notes for TestFlight and Google Play (tools/release_notes.mjs) */
+  { id: '2026-11-07', items: [
+    { tag: 'new', text: 'Tap Sleep to see your last 7 nights, with your average.' }
+  ] },
   { id: '2026-11-05', items: [
     { tag: 'new', text: 'Choose light or dark under More, or let Daybook match your phone.' },
     { tag: 'new', text: 'Add treatment dates from a photo of the plan or letter: Add sessions, Read the dates from a photo. You check them before they go on the calendar.' },
