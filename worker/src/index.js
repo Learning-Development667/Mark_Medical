@@ -50,10 +50,10 @@ export default {
         if (!hid) return json({ error: 'Unauthorised' }, 401);
         const doc = await fs.get(hp(hid, 'bridge/last'));
         if (!doc) return json({ note: 'Nothing received yet' });
-        const f = doc.fields || {};
+        const fl = doc.fields || {};
         let sample = null;
-        try { sample = JSON.parse(f.sample && f.sample.stringValue || 'null'); } catch (e) { sample = f.sample && f.sample.stringValue; }
-        return json({ receivedAt: f.receivedAt && f.receivedAt.timestampValue, result: f.result && f.result.stringValue, sample });
+        try { sample = JSON.parse(fl.sample && fl.sample.stringValue || 'null'); } catch (e) { sample = fl.sample && fl.sample.stringValue; }
+        return json({ receivedAt: fl.receivedAt && fl.receivedAt.timestampValue, result: fl.result && fl.result.stringValue, sample });
       }
       /* Sends a test notification to every phone with reminders on in that key's household (the inbox key in the header) */
       if (url.pathname === '/push-test' && request.method === 'GET') {
@@ -352,6 +352,12 @@ async function firestore(env) {
       const r = await fetch(base + path + '?' + mask, { method: 'PATCH', headers, body: JSON.stringify({ fields }) });
       if (!r.ok) throw new Error('Firestore write ' + path + ': ' + r.status + ' ' + await r.text());
     },
+    /* (v431) merge only the given field paths, which may reach inside a map (households.`abc`): other paths stay; a path with no field is deleted */
+    async mergePaths(path, fields, paths) {
+      const mask = paths.map((k) => 'updateMask.fieldPaths=' + encodeURIComponent(k)).join('&');
+      const r = await fetch(base + path + '?' + mask, { method: 'PATCH', headers, body: JSON.stringify({ fields }) });
+      if (!r.ok) throw new Error('Firestore write ' + path + ': ' + r.status + ' ' + await r.text());
+    },
     async set(path, fields) {
       const r = await fetch(base + path, { method: 'PATCH', headers, body: JSON.stringify({ fields }) });
       if (!r.ok) throw new Error('Firestore set ' + path + ': ' + r.status + ' ' + await r.text());
@@ -523,6 +529,15 @@ function payloadFor(sub, payload, privateBody) { return privateBody && isPrivate
    POST /plan { what: 'oneoff' } (after "Remind me in 15 minutes"). The log is written only when something
    was sent. A phone on an older app still works: its changes are picked up at the daily rebuild. */
 const PLAN_PATH = 'bridge/reminderPlan';
+/* (v431, the security review of 6 November) the plan is rebuilt a few circles a run after midnight, never all at once: a run has
+   about 50 database calls on the free plan and each circle with phones needs four or more, so from about a dozen circles one
+   rebuild failed whole and nobody got reminders. Until a circle's turn its entry from the day before stands. One circle's
+   phones, medicines and times are capped so it cannot stop the others. */
+const PLAN_BUILD_BATCH = 6;
+const PHONES_A_CIRCLE = 10;
+const TIMES_A_MEDICINE = 12;
+const TIMES_A_CIRCLE = 60;
+const NAME_MAX = 80, DOSE_MAX = 60;
 /* a day N days before or after a "YYYY-MM-DD" day, by the calendar */
 function shiftDay(day, n) { const d = new Date(day + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
 /* Around treatment days (v358): a medicine with treatmentDays follows the Treatment calendar, the session day (unless
@@ -548,8 +563,9 @@ function planEntryFromDocs(subs, profile, medicines, oneOffs, day, sessions) {
   const courseOk = (fl) => f(fl, 'treatmentDays') === true || ((!f(fl, 'courseEnd') || f(fl, 'courseEnd') >= day) && !(f(fl, 'courseStart') && f(fl, 'courseStart') > day));
   const active = medicines.filter((m) => f(m.fields, 'active') !== false && f(m.fields, 'kind') !== 'prn' && f(m.fields, 'hospital') !== true && courseOk(m.fields) && inTreatWindow(m.fields, day, sessions) && inInterval(m.fields, day));
   const times = [];
-  active.forEach((m) => (f(m.fields, 'times') || []).map(toMinutes).filter((t) => t != null).forEach((t) => times.push({ medId: m.id, t, name: f(m.fields, 'name') || 'Medicine', dose: f(m.fields, 'dose') || '' })));
-  return { phones: subs.length, nudge: !!(profile && f(profile.fields, 'stretchNudge') === true), oneOff: oneOffs.some((r) => f(r.fields, 'sent') !== true), times };
+  /* (v431) sizes capped here as well as in the rules, so one circle's medicine cannot swell the one plan document past Firestore's limit */
+  active.forEach((m) => (f(m.fields, 'times') || []).slice(0, TIMES_A_MEDICINE).map(toMinutes).filter((t) => t != null).forEach((t) => { if (times.length < TIMES_A_CIRCLE) times.push({ medId: m.id, t, name: String(f(m.fields, 'name') || 'Medicine').slice(0, NAME_MAX), dose: String(f(m.fields, 'dose') || '').slice(0, DOSE_MAX) }); }));
+  return { phones: Math.min(subs.length, PHONES_A_CIRCLE), nudge: !!(profile && f(profile.fields, 'stretchNudge') === true), oneOff: oneOffs.some((r) => f(r.fields, 'sent') !== true), times };
 }
 async function buildPlanEntry(fs, hid, day) {
   const subs = await fs.list(hp(hid, 'pushSubs'));
@@ -578,18 +594,28 @@ function readPlanDoc(doc) {
     households[hid] = { phones: Number(f(e, 'phones') || 0), nudge: f(e, 'nudge') === true, oneOff: f(e, 'oneOff') === true,
       times: times.map((v) => { const t = (v.mapValue || {}).fields || {}; return { medId: f(t, 'medId'), t: Number(f(t, 't')), name: f(t, 'name') || 'Medicine', dose: f(t, 'dose') || '' }; }) };
   });
-  return { day: f(doc.fields, 'day'), built: f(doc.fields, 'built'), households };
+  return { day: f(doc.fields, 'day'), built: f(doc.fields, 'built'), cursor: f(doc.fields, 'cursor') || '', rebuilding: f(doc.fields, 'rebuilding') === true, households };
 }
 async function writePlan(fs, plan) {
-  await fs.set(PLAN_PATH, { day: strVal(plan.day), built: { timestampValue: new Date().toISOString() }, households: { mapValue: { fields: Object.fromEntries(Object.entries(plan.households).map(([hid, e]) => [hid, planEntryFields(e)])) } } });
+  await fs.set(PLAN_PATH, { day: strVal(plan.day), built: { timestampValue: new Date().toISOString() }, cursor: strVal(plan.cursor || ''), rebuilding: { booleanValue: !!plan.rebuilding },
+    households: { mapValue: { fields: Object.fromEntries(Object.entries(plan.households).map(([hid, e]) => [hid, planEntryFields(e)])) } } });
 }
-async function buildPlan(fs, day) {
-  const households = await fs.list('households');
-  const plan = { day, households: {} };
-  for (const hh of households) { const e = await buildPlanEntry(fs, hh.id, day); if (e) plan.households[hh.id] = e; }
-  await writePlan(fs, plan);
-  return plan;
+/* One step of the day's rebuild: the next PLAN_BUILD_BATCH circles after the cursor, each in its own try so one bad circle
+   cannot stop the rest; the last step drops circles that no longer exist and ends the rebuild */
+async function buildPlanStep(fs, plan) {
+  const ids = (await fs.list('households')).map((hh) => hh.id).sort();
+  const todo = ids.filter((id) => id > (plan.cursor || '')).slice(0, PLAN_BUILD_BATCH);
+  for (const hid of todo) {
+    try { const e = await buildPlanEntry(fs, hid, plan.day); if (e) plan.households[hid] = e; else delete plan.households[hid]; }
+    catch (e) { console.error('plan', hidden(hid), e && e.message); }
+    plan.cursor = hid;
+  }
+  if (todo.length < PLAN_BUILD_BATCH) {
+    for (const hid of Object.keys(plan.households)) if (!ids.includes(hid)) delete plan.households[hid];
+    plan.rebuilding = false; plan.cursor = '';
+  }
 }
+const hidden = (id) => String(id || '').slice(0, 2) + '***';
 /* Whether a household needs looking at this run: the due window and the nudge window of any medicine time, the 10:00 window, or a flagged one-off */
 function planEntryDue(e, now) {
   if (e.oneOff) return true;
@@ -599,11 +625,16 @@ function planEntryDue(e, now) {
 /* Rebuilds one household's entry in the plan (after a change in the app), or flags its one-off */
 async function touchPlan(fs, hid, what) {
   const now = londonNow();
-  let plan = readPlanDoc(await fs.get(PLAN_PATH)) || { day: now.day, households: {} };
-  if (what === 'oneoff') { if (plan.households[hid]) plan.households[hid].oneOff = true; else { const e = await buildPlanEntry(fs, hid, now.day); if (e) { e.oneOff = true; plan.households[hid] = e; } } }
-  else { const e = await buildPlanEntry(fs, hid, now.day); if (e) plan.households[hid] = e; else delete plan.households[hid]; }
-  await writePlan(fs, plan);
-  return plan.households[hid] || null;
+  /* (v431) only this circle's entry is written, by its own field path, so two circles saving at once no longer overwrite each other */
+  const path = 'households.`' + hid + '`';
+  let e = null;
+  if (what === 'oneoff') {
+    const plan = readPlanDoc(await fs.get(PLAN_PATH));
+    e = plan && plan.households[hid] ? plan.households[hid] : await buildPlanEntry(fs, hid, now.day);
+    if (e) e.oneOff = true;
+  } else e = await buildPlanEntry(fs, hid, now.day);
+  await fs.mergePaths(PLAN_PATH, e ? { households: { mapValue: { fields: { [hid]: planEntryFields(e) } } } } : {}, [path]);
+  return e;
 }
 async function handlePlan(request, env) {
   const a = await whoIs(request, env); if (a.error) return a.error;
@@ -623,18 +654,21 @@ async function runReminders(env, opts = {}) {
   const fs = await firestore(env);
   const now = londonNow();
   let plan = opts.rebuild ? null : readPlanDoc(await fs.get(PLAN_PATH));
+  if (!plan || plan.day !== now.day) plan = { day: now.day, cursor: '', rebuilding: true, households: plan ? plan.households : {} };
   let rebuilt = false;
-  if (!plan || plan.day !== now.day) { plan = await buildPlan(fs, now.day); rebuilt = true; }
+  if (plan.rebuilding) { await buildPlanStep(fs, plan); rebuilt = true; }
   const out = {};
   let changed = false;
   for (const [hid, e] of Object.entries(plan.households)) {
     if (!planEntryDue(e, now)) continue;
-    const r = await runHouseholdReminders(env, fs, hid, e, now);
-    out[hid] = r;
-    if (e.oneOff && r && r.oneOffsPending === false) { e.oneOff = false; changed = true; }
+    try {
+      const r = await runHouseholdReminders(env, fs, hid, e, now);
+      out[hid] = r;
+      if (e.oneOff && r && r.oneOffsPending === false) { e.oneOff = false; changed = true; }
+    } catch (err) { out[hid] = { error: String(err && err.message || err).slice(0, 120) }; console.error('reminders', hidden(hid), err && err.message); }
   }
-  if (changed) await writePlan(fs, plan);
-  return { households: Object.keys(plan.households).length, rebuilt, due: Object.keys(out).length, ...out };
+  if (changed || rebuilt) await writePlan(fs, plan);
+  return { households: Object.keys(plan.households).length, rebuilt, rebuilding: !!plan.rebuilding, due: Object.keys(out).length, ...out };
 }
 async function runHouseholdReminders(env, fs, hid, entry, nowIn) {
   const now = nowIn || londonNow();
@@ -644,7 +678,7 @@ async function runHouseholdReminders(env, fs, hid, entry, nowIn) {
   const sentSet = new Set(sent);
   const sentBefore = sentSet.size;
   let subs = null;
-  const phones = async () => { if (!subs) subs = await fs.list(hp(hid, 'pushSubs')); return subs; };
+  const phones = async () => { if (!subs) subs = (await fs.list(hp(hid, 'pushSubs'))).slice(0, PHONES_A_CIRCLE); return subs; };
   /* the medicines and their times come from the plan; a household with no entry (the operator's /remind-now before any plan) is read in full */
   const plan = entry || await buildPlanEntry(fs, hid, now.day);
   if (!plan) return { skipped: 'no phones have reminders on' };
@@ -733,6 +767,7 @@ async function encryptPayload(sub, text) {
   const header = concat(salt, new Uint8Array([0, 0, 16, 0]), new Uint8Array([localPub.length]), localPub);
   return concat(header, ct);
 }
+const PUSH_HOST_RE = /^https:\/\/(fcm\.googleapis\.com|android\.googleapis\.com|web\.push\.apple\.com|[a-z0-9.-]+\.push\.apple\.com|updates\.push\.services\.mozilla\.com|[a-z0-9.-]+\.push\.services\.mozilla\.com|[a-z0-9.-]+\.notify\.windows\.com|[a-z0-9.-]+\.push\.samsungosp\.com)\//i;
 /* Sends one notification; a dead subscription (404, 410) is removed so it is not tried again */
 async function sendPush(env, fs, subDoc, payload) {
   if (f(subDoc.fields, 'kind') === 'fcm') return sendFcm(env, fs, subDoc, payload);
@@ -740,6 +775,7 @@ async function sendPush(env, fs, subDoc, payload) {
   const keys = subDoc.fields.keys && subDoc.fields.keys.mapValue ? subDoc.fields.keys.mapValue.fields : {};
   const sub = { endpoint, p256dh: f(keys, 'p256dh'), auth: f(keys, 'auth') };
   if (!endpoint || !sub.p256dh || !sub.auth) return 'incomplete subscription';
+  if (!PUSH_HOST_RE.test(endpoint)) return 'endpoint is not a known push service'; // (v431) the bridge posts only to the browsers' own push services
   try {
     const body = await encryptPayload(sub, JSON.stringify(payload));
     const r = await fetch(endpoint, { method: 'POST', headers: { Authorization: await vapidHeader(env, endpoint), 'Content-Encoding': 'aes128gcm', 'Content-Type': 'application/octet-stream', TTL: '3600', Urgency: 'high' }, body });
@@ -817,6 +853,7 @@ const nowTs = () => ({ timestampValue: new Date().toISOString() });
 const EXPLAIN_MODEL = 'claude-opus-5-5';
 const EXPLAIN_MAX_TOKENS = 4000;             // a letter's explanation or a question list; also the cost cap per call
 const EXPLAIN_LIMIT_REAL = 40;               // calls a day per household on the real project
+const EXPLAIN_LIMIT_ALL = 600;               // calls a day across every circle (v431): about 15 circles' worth, raised as the Beta grows
 const EXPLAIN_LIMIT_MONTH = 60;              // calls a month per household on the real project (v209): a budget, not just a brake
 /* Never counted against the month (v210, Mark: a circle must always be able to summarise a report it is sending to a clinician):
    the report kinds. Only the day's 40 brakes them. Letters, photos, plans and suggested questions use the month's allowance. */
@@ -907,6 +944,7 @@ const clean = (v, max) => String(v || '').replace(/\s+/g, ' ').trim().slice(0, m
 const ROLES = ['family', 'readonly', 'viewer'];
 const relationOf = (r) => (['patient', 'carer'].includes(r) ? r : '');
 const INVITE_DAYS = 7;
+const BETA_TRIES_A_DAY = 8;  // wrong Beta codes a sign-in may try in a day (v431)
 const HOUSEHOLDS_A_DAY = 20; // new households a day across everyone, so a bored stranger cannot fill the free tier
 function randomCode() { const b = new Uint8Array(18); crypto.getRandomValues(b); return b64url(b); }
 async function memberOf(fs, uid) {
@@ -1012,7 +1050,9 @@ async function handleFeedback(request, env) {
 /* POST /feedback-info: how else to reach Mark during the Beta; the phone number is a Worker secret, shown to signed-in members only */
 async function handleFeedbackInfo(request, env) {
   const a = await whoIs(request, env); if (a.error) return a.error;
-  return json({ email: 'support@mymedicaldaybook.co.uk', phone: a.demo ? null : (env.BETA_PHONE || null) });
+  /* (v431) members of a circle only: any email sign-up could ask before */
+  const me = a.demo ? null : await memberOf(a.fs, a.who.uid);
+  return json({ email: 'support@mymedicaldaybook.co.uk', phone: me && me.hid && me.role ? (env.BETA_PHONE || null) : null });
 }
 
 /* Barcode lookup (v172). POST /food { barcode }: any signed-in member (the demo included, it is only a public
@@ -1187,6 +1227,15 @@ async function handleSendReport(request, env) {
   const ends = pdf == null ? ['', ''] : typeof pdf === 'string' ? [pdf.slice(0, 4096), pdf.slice(-4096)] : [await pdf.slice(0, 4096).text(), await pdf.slice(Math.max(0, pdf.size - 4096)).text()];
   if (!pdfLen || pdfLen % 4 !== 0 || !B64.test(ends[0]) || !B64.test(ends[1]) || !ends[0].startsWith('JVBERi0')) return json({ error: 'bad-request', message: 'The PDF did not arrive. Try again.' }, 400);
   if (pdfLen > SEND_PDF_CHARS) return json({ error: 'too-large', message: 'That PDF is too large to email. Use a shorter range.' }, 413);
+  /* (v431, the security review of 6 November) the base64 goes into Resend's JSON unescaped, so a quote or a backslash anywhere in
+     it could close the string and add fields (extra recipients, other words). A native scan of the whole thing, not JavaScript
+     walking it: a few milliseconds at this size */
+  if (typeof pdf === 'string' && (pdf.indexOf('"') >= 0 || pdf.indexOf('\\') >= 0)) return json({ error: 'bad-request', message: 'The PDF did not arrive. Try again.' }, 400);
+  if (typeof pdf !== 'string') {
+    const bytes = new Uint8Array(await pdf.arrayBuffer());
+    if (bytes.indexOf(0x22) >= 0 || bytes.indexOf(0x5c) >= 0) return json({ error: 'bad-request', message: 'The PDF did not arrive. Try again.' }, 400);
+    pdf = bytes;
+  }
   const toName = clean(body.toName, 80);
   const subject = clean(body.subject, 150) || 'Notes from My Medical Daybook';
   const text = String(body.text || '').replace(/\r/g, '').trim().slice(0, 6000);
@@ -1308,6 +1357,7 @@ async function handleAccountDelete(request, env) {
    link is made by Identity Toolkit (accounts:sendOobCode with returnOobLink, so Google sends nothing itself) and pointed at the
    app as ?verify=CODE, where applyActionCode() confirms it. Without the Resend key the app falls back to Firebase's own email. */
 const VERIFY_A_DAY = 5;
+const VERIFY_ALL_A_DAY = 150; // confirmation emails a day across everyone (v431)
 /* (v296) the app icon at 144px, carried in the email itself (an inline image, cid:daybook-logo) so a mail app that blocks
    pictures from the internet, as Apple Mail does for a new sender or the junk folder, still shows it. icons/email-logo.jpg. */
 const EMAIL_LOGO_JPG = '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';
@@ -1323,7 +1373,17 @@ async function handleVerifyEmail(request, env) {
   const logDoc = await fs.get(logPath);
   const count = logDoc && f(logDoc.fields, 'day') === day ? Number(f(logDoc.fields, 'count') || 0) : 0;
   if (count >= VERIFY_A_DAY) return json({ error: 'limit', message: 'That is enough links for one day. Use the newest one, or try again tomorrow.' }, 429);
+  /* (v431) the same limit per address (a fresh sign-in is free, an inbox is not), and one across everyone */
+  const addrPath = 'bridge/verify-addr-' + (await sha256Hex(who.email.toLowerCase())).slice(0, 24);
+  const addrDoc = await fs.get(addrPath);
+  const addrCount = addrDoc && f(addrDoc.fields, 'day') === day ? Number(f(addrDoc.fields, 'count') || 0) : 0;
+  if (addrCount >= VERIFY_A_DAY) return json({ error: 'limit', message: 'That is enough links for one day. Use the newest one, or try again tomorrow.' }, 429);
+  const g = await fs.get('bridge/global');
+  const allVerify = g && f(g.fields, 'verifyDay') === day ? Number(f(g.fields, 'verify') || 0) : 0;
+  if (allVerify >= VERIFY_ALL_A_DAY) return json({ error: 'limit', message: 'Daybook has sent all the confirmation emails it can today. Try again tomorrow.' }, 429);
   await fs.set(logPath, { day: strVal(day), count: intVal(count + 1), updatedAt: nowTs() });
+  await fs.set(addrPath, { day: strVal(day), count: intVal(addrCount + 1), updatedAt: nowTs() });
+  await fs.merge('bridge/global', { verifyDay: strVal(day), verify: intVal(allVerify + 1) });
   let code = '';
   try {
     const token = await accessToken(sa, 'https://www.googleapis.com/auth/cloud-platform');
@@ -1406,8 +1466,12 @@ async function handleCreateHousehold(request, env) {
   const betaCode = normaliseBetaCode(body.betaCode);
   let beta = null;
   if (env.BETA_CODES_REQUIRED) {
+    /* (v431) a sign-in gets BETA_TRIES_A_DAY wrong codes a day, counted on its own users record, so codes cannot be guessed at speed */
+    const urec = await fs.get('users/' + who.uid);
+    const tries = urec && f(urec.fields, 'betaDay') === londonNow().day ? Number(f(urec.fields, 'betaTries') || 0) : 0;
+    if (tries >= BETA_TRIES_A_DAY) return json({ error: 'beta', message: 'Too many tries today. Check the code with whoever gave it to you, or email support@mymedicaldaybook.co.uk.' }, 429);
     beta = await betaCodeRecord(fs, betaCode);
-    if (!beta) return json({ error: 'beta', message: BETA_CODE_MESSAGE }, 400);
+    if (!beta) { await fs.merge('users/' + who.uid, { betaDay: strVal(londonNow().day), betaTries: intVal(tries + 1) }); return json({ error: 'beta', message: BETA_CODE_MESSAGE }, 400); }
   }
   const heardFrom = clean(body.heardFrom, 80);
   const day = londonNow().day;
@@ -1723,6 +1787,11 @@ async function handleExplain(request, env) {
   const logFields = (logDoc && logDoc.fields && logDoc.fields.day && logDoc.fields.day.stringValue === day) ? logDoc.fields : {};
   const n = (k) => Number(logFields[k] && logFields[k].integerValue || 0);
   const used = demo ? n('demo') : n('real');
+  /* (v431) a ceiling for the whole of Daybook in a day, whatever the number of circles: the Anthropic credit is one pot */
+  const g = await fs.get('bridge/global');
+  const allToday = g && f(g.fields, 'explainDay') === day ? Number(f(g.fields, 'explain') || 0) : 0;
+  if (allToday >= EXPLAIN_LIMIT_ALL) return json({ error: 'limit', message: 'Daybook Assistant has done all it can for today across every circle. Use Send to my AI app, or try again tomorrow.' }, 429);
+  await fs.merge('bridge/global', { explainDay: strVal(day), explain: intVal(allToday + 1) });
   if (used >= (demo ? EXPLAIN_LIMIT_DEMO : EXPLAIN_LIMIT_REAL)) return json({ error: 'limit', message: demo ? 'The demo has used Daybook Assistant for today. Try again tomorrow, or use Send to my AI app.' : 'Your care circle has used Daybook Assistant\'s requests for today (' + EXPLAIN_LIMIT_REAL + ' a day). Use Send to my AI app, or try again tomorrow.' }, 429);
   /* The month's count (v209): kept on the same document across days, reset when the month changes */
   const month = day.slice(0, 7);

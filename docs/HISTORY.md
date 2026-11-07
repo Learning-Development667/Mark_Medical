@@ -6,6 +6,17 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v431 (7 November 2026): the bridge after the security review of 6 November
+Mark: "lets do all the security fixes". The bridge first:
+- **Send to the team:** the PDF's base64 was pasted into Resend's JSON unchecked in the middle, so a quote or backslash hidden in it could have closed the string and added recipients or words (the review's one high finding). The whole payload is now scanned natively for `"` and `\` (`Uint8Array.indexOf`) and refused if either is there.
+- **/feedback-info** gives the Beta phone number to members of a circle only (`memberOf`), not to any email sign-up.
+- **Daybook Assistant** has a ceiling across every circle, `EXPLAIN_LIMIT_ALL` 600 a day, counted on `bridge/global` (`explainDay`, `explain`), beside the per-circle limits; the Anthropic credit is one pot however many circles join.
+- **Beta code guesses:** a sign-in may try `BETA_TRIES_A_DAY` (8) wrong codes a day on `/household`, counted on its `users/{uid}` record (`betaDay`, `betaTries`).
+- **Confirmation emails:** the 5-a-day limit also applies per address (`bridge/verify-addr-{hash}`), and `VERIFY_ALL_A_DAY` 150 across everyone (`bridge/global.verify`), so a stranger's inbox cannot be flooded from fresh sign-ins.
+- **Web Push** is sent only to the browsers' own push services (`PUSH_HOST_RE`: Google, Apple, Mozilla, Microsoft, Samsung), never to an address a member chose.
+- **Medicine reminders:** the plan is rebuilt `PLAN_BUILD_BATCH` (6) circles a run after midnight (`buildPlanStep`, `cursor` and `rebuilding` on `bridge/reminderPlan`), never all at once, because a run has about 50 database calls on the free plan and a whole rebuild failed from about a dozen circles, the fault v426 met on Usage. A circle's entry from the day before stands until its turn. Each circle's reminders run in their own try; one circle's phones (`PHONES_A_CIRCLE` 10), times (`TIMES_A_MEDICINE` 12, `TIMES_A_CIRCLE` 60) and medicine words (`NAME_MAX`, `DOSE_MAX`) are capped; `/plan` writes only that circle's entry by its field path (`fs.mergePaths`), so two circles saving at once no longer overwrite each other. The local `f` in the Apple Health last-received route became `fl` (the code rule).
+Not done, and why: a monthly cap on report kinds (the product rule says a clinician's summary is never refused by the month); the Cache API limit on `/beta-info` may not count on workers.dev (not checkable from here; the `/household` limit above covers the guess attack).
+
 ### v430 (7 November 2026): the box being typed in stays in view with large text
 A tester with large text, writing feedback: "it's not on the screen, you have to scroll for it" (her screenshot: the buttons under the box in view, the box itself above the screen). `raise()` in `keepSheetAboveKeyboard()` (v316) measured the top from the sheet panel; when iPhone also scrolls the page for the keyboard, the box moved twice, past the top. It now measures from the visual viewport's top (`max(panel top, vv.offsetTop)`), keeps the box itself above the middle of what is left when a large label pushes it down, and raises it again when the keyboard finishes rising (visual viewport resize). Chromium cannot show an iPhone keyboard: checked only that the box sits at the top with large text and nothing errors; Mark to check on an iPhone. What's new: a 7 November batch with Mark's sleep line ("Tap Sleep to see your last 7 nights, with your average.").
 
