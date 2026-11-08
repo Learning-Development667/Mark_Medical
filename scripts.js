@@ -16,7 +16,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '436';
+const APP_VERSION = '437';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -3920,7 +3920,7 @@ function openFeedbackSheet() {
         picture = pg.data; showPicture();
       } catch (e) { toast(e.message || 'Could not read that picture'); }
     });
-    input.click();
+    openPicker(input);
   });
   const sentList = h('ul', { class: 'fb-sent', 'aria-label': 'Sent so far' });
   const drawSent = () => { const sent = fbRead('sent', []); sentList.replaceChildren(...sent.slice(0, 20).map((x) => h('li', null, h('b', { text: new Date(x.at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ' ' + new Date(x.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) + (x.screen ? ', ' + x.screen.replace(/^Daybook: /, '') : '') }), ' ' + (x.text || 'A picture') + (x.picture ? ' (with a picture)' : '')))); sentList.hidden = !sent.length; };
@@ -4301,7 +4301,7 @@ function labelPhotoControl(opts) {
       } catch (e) { console.warn(e); status.textContent = e.message || 'Could not read the photo. Try again.'; }
       finally { busy = false; btn.disabled = false; }
     });
-    input.click();
+    openPicker(input);
   });
   return h('div', { class: 'labelwrap' }, btn, status, panel);
 }
@@ -4341,6 +4341,29 @@ let speechLive = null;
    from the Android app). There it listens one sentence a session, and a result that only grows the one before it
    replaces it instead of being added. */
 const IS_ANDROID_SPEECH = /Android/i.test(navigator.userAgent);
+
+/* Taking or choosing a picture (v437, a tester on Android: the label photo button "just opens up the camera roll and not the
+   camera"). Android 13 and later send a plain picture input to the photo picker, which has no camera; the iPhone's own menu
+   offers Take Photo, Photo Library and a file. So on Android every photo button first asks, Take a photo or Choose from your
+   pictures (and files), each going straight to the right place; everywhere else the input opens as before. */
+const IS_ANDROID = /Android/i.test(navigator.userAgent);
+function openPicker(input) {
+  if (!IS_ANDROID) { input.click(); return; }
+  const old = document.querySelector('.pickchoice'); if (old) old.remove();
+  const wantsFiles = /pdf|docx|txt/.test(input.accept || '');
+  const go = (camera) => { wrap.remove(); if (camera) { input.setAttribute('capture', 'environment'); input.removeAttribute('multiple'); } else { input.removeAttribute('capture'); if (wasMultiple) input.setAttribute('multiple', ''); } input.click(); };
+  const wasMultiple = input.hasAttribute('multiple');
+  const wrap = h('div', { class: 'pickchoice', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Take a photo or choose one' },
+    h('div', { class: 'pickchoice-panel' },
+      h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => go(true) }, icon('camera'), ' Take a photo'),
+      h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => go(false) }, wantsFiles ? 'Choose a picture or file' : 'Choose from your pictures'),
+      h('button', { class: 'btn-link pickchoice-cancel', type: 'button', onclick: () => wrap.remove() }, 'Cancel')));
+  wrap.addEventListener('click', (ev) => { if (ev.target === wrap) wrap.remove(); });
+  wrap.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') { ev.stopPropagation(); wrap.remove(); } });
+  document.body.append(wrap);
+  wrap.querySelector('button').focus();
+}
+
 function speechParts(results) {
   const parts = [];
   for (let i = 0; i < results.length; i++) {
@@ -11665,7 +11688,7 @@ function readFlarePlanPhoto(onRead, onCancel) {
       onRead(out);
     } catch (e) { console.warn(e); toast(e.message || 'Could not read the plan'); onCancel(); }
   });
-  input.click();
+  openPicker(input);
 }
 function openCallLogSheet(day, back) {
   const date = h('input', { type: 'date', value: day > todayStr() ? todayStr() : day, max: todayStr() });
@@ -11958,7 +11981,7 @@ function readResultsPhoto(onRead, onCancel) {
       onRead({ day: /^\d{4}-\d{2}-\d{2}$/.test(str(d.day, 10)) && str(d.day, 10) <= todayStr() ? str(d.day, 10) : '', source: str(d.source, 60), rows });
     } catch (e) { console.warn(e); toast(e.message || 'Could not read the results'); onCancel(); }
   });
-  input.click();
+  openPicker(input);
 }
 function renderWeekRow() {
   const row = $('week-check'), sub = $('week-check-sub'), title = $('week-check-title');
@@ -14346,7 +14369,7 @@ function readMedicinePhoto(onRead, onCancel) {
       onRead(data);
     } catch (e) { console.warn(e); toast(e.message || 'Could not read the photo'); onCancel(); }
   });
-  input.click();
+  openPicker(input);
 }
 function parseMedReply(text) {
   let t = String(text || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
@@ -15577,7 +15600,7 @@ function openAddDocument(category) {
   let staged = null; // { kind: 'images', pages: [{data,width,height}] } once files are processed
 
   const fileInput = h('input', { type: 'file', accept: 'image/*,application/pdf,.pdf', multiple: true, style: 'display:none' });
-  const chooseBtn = h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => fileInput.click() }, 'Choose photos or PDF');
+  const chooseBtn = h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => openPicker(fileInput) }, 'Choose photos or PDF');
   const fileProgress = h('div', { class: 'progress' }, h('span', { text: '' }), h('div', { class: 'progress-bar' }, h('div')));
   fileProgress.hidden = true;
   const setFileProgress = (text, frac) => { fileProgress.hidden = false; fileProgress.firstChild.textContent = text; fileProgress.querySelector('.progress-bar > div').style.width = Math.round((frac || 0) * 100) + '%'; };
@@ -17135,7 +17158,7 @@ function readSessionsPhoto(onRead, onCancel) {
       onRead({ days, kind: TREATMENTS.some((x) => x.key === d.kind) ? d.kind : null, name: d.name == null ? '' : String(d.name).trim().slice(0, 60), from: d.from == null ? '' : String(d.from).trim().slice(0, 80) });
     } catch (e) { console.warn(e); toast(e.message || 'Could not read the dates'); onCancel(); }
   });
-  input.click();
+  openPicker(input);
 }
 function openSessionsFromPhoto(found) {
   const offered = treatmentsFor().filter((t) => t.cycle !== 'never' || t.key === 'appt');
@@ -18047,7 +18070,7 @@ function importPlanPhotos() {
       openPlanReviewSheet(parsed);
     } catch (e) { console.warn(e); toast(e.message || 'Could not read the plan'); openProgrammeSheet(); }
   });
-  input.click();
+  openPicker(input);
 }
 function parsePlanReply(text) {
   let t = String(text || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');

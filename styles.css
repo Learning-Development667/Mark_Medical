@@ -2632,3 +2632,9 @@ html.text-huge .entry .entry-main { grid-column: 1; }
 html.text-huge .btnrow.meds-top { flex-direction: column; }
 html.text-big .meds-top .btn { overflow-wrap: anywhere; padding-left: var(--s-2); padding-right: var(--s-2); }
 html.text-huge .medrow, html.text-huge .med-head { gap: 8px; }
+
+/* v437: on Android, Take a photo or Choose from your pictures before a photo input opens (openPicker) */
+.pickchoice { position: fixed; inset: 0; z-index: 60; display: flex; align-items: flex-end; justify-content: center; background: rgba(15, 27, 36, 0.45); padding: var(--s-4); padding-bottom: max(var(--s-4), env(safe-area-inset-bottom, 0px)); }
+.pickchoice-panel { width: min(100%, 480px); background: var(--surface); border-radius: var(--r-lg); padding: var(--s-4); display: grid; gap: var(--s-3); box-shadow: var(--elev-raised); }
+.pickchoice-panel .btn { margin: 0; }
+.pickchoice-cancel { justify-self: center; min-height: 44px; }
