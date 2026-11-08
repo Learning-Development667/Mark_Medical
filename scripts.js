@@ -16,7 +16,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '437';
+const APP_VERSION = '438';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -6221,10 +6221,23 @@ function applyTextSize() {
       scale = Math.min(2, Math.max(1, px / 17));
     }
   } catch (e) { scale = 1; }
-  root.style.setProperty('--ts', String(Math.round(scale * 100) / 100));
   root.style.webkitTextSizeAdjust = scale > 1.04 ? Math.round(scale * 100) + '%' : '100%';
-  root.classList.toggle('text-big', scale >= 1.25);
-  root.classList.toggle('text-huge', scale >= 1.6);
+  /* (v438) then measure the text as it is really drawn, not as asked for. A tester's iPhone 14 (iOS 26) enlarged the app's text
+     by itself on top of Daybook's own scaling, past double, and the layout rules below never knew: the top bar stayed at full
+     size and rows that should stack did not. A line of 17px text with line-height 1 is 17px tall at the standard size; whatever
+     it measures now is the real scale, and the layout follows that. If the phone scales on its own, Daybook stops adding its
+     own share so the total stays nearer double. */
+  let real = scale;
+  try {
+    const measure = () => { const t = document.createElement('span'); t.style.cssText = 'position: absolute; visibility: hidden; pointer-events: none; font: 17px/1 Inter, sans-serif; white-space: nowrap'; t.textContent = 'Hg'; document.body.append(t); const hgt = t.getBoundingClientRect().height; t.remove(); return hgt > 0 ? hgt / 17 : 1; };
+    real = measure();
+    if (real > scale * 1.15) { root.style.webkitTextSizeAdjust = '100%'; real = measure(); }
+    if (real < 1) real = 1;
+  } catch (e) { real = scale; }
+  const eff = Math.round(real * 100) / 100;
+  root.style.setProperty('--ts', String(eff));
+  root.classList.toggle('text-big', eff >= 1.25);
+  root.classList.toggle('text-huge', eff >= 1.6);
 }
 applyTextSize();
 document.addEventListener('visibilitychange', () => { if (!document.hidden) applyTextSize(); });
