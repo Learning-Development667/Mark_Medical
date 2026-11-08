@@ -2618,3 +2618,17 @@ html.text-big .cal-dow { font-size: calc(11px / var(--ts, 1) * 1.15); letter-spa
 .n7-bar.is-short { background: var(--warning-fill); }
 .n7-d { width: 100%; text-align: center; border-top: 1px solid var(--line); padding-top: 7px; margin-top: 0; font: 500 12px/1.2 Inter, sans-serif; color: var(--muted); }
 .n7-col.is-on .n7-d { color: var(--ink); font-weight: 600; }
+
+/* v436 (8 November 2026): the largest accessibility text sizes, from a tester's iPhone 14 at its biggest setting. Rows that held
+   two or three things side by side stack instead, so nothing runs off the edge or over its neighbour. */
+html.text-big .today-tools { flex-wrap: wrap; }
+html.text-big .today-tools .hint { flex: 1 1 100%; }
+html.text-huge .pain-key { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+html.text-huge .pain-key-cell { overflow-wrap: anywhere; }
+html.text-huge .med-head .med-log { flex: 1 1 100%; }
+html.text-huge .entry { grid-template-columns: minmax(0, 1fr) auto; }
+html.text-huge .entry .entry-time { grid-column: 1 / -1; }
+html.text-huge .entry .entry-main { grid-column: 1; }
+html.text-huge .btnrow.meds-top { flex-direction: column; }
+html.text-big .meds-top .btn { overflow-wrap: anywhere; padding-left: var(--s-2); padding-right: var(--s-2); }
+html.text-huge .medrow, html.text-huge .med-head { gap: 8px; }

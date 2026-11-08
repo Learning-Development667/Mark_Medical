@@ -6,6 +6,9 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v436 (8 November 2026): the largest text sizes
+A tester's iPhone 14 at its largest accessibility text size (Mark's six screenshots): the Today tools hint wrapped a letter or two a line beside Add and Choose tiles; the pain bands' words ran over each other; the Meds page scrolled sideways because Log now stood beside the medicine's name; the timeline's time sat over the words; Manage medicines touched its edges. In the `html.text-big` / `.text-huge` block: the tools row wraps with the hint full width; the pain key goes two across; Log now takes its own full-width line under the name; a timeline entry puts the time on its own line; the two Meds top buttons stack; their words may break anywhere. The simulator screenshots now also run at accessibility-extra-extra-extra-large (`tools/sim_shots.sh`), the setting Robby's phone is near. Not tried on an iPhone from here: the simulator run follows.
+
 ### v435 (7 November 2026): the five low findings of the security review
 Mark: "all security risks should be done as soon as possible".
 - **Counts bumped on the server** (`fs.bump`, a Firestore field transform): the Assistant's day and month counts and the ceiling across circles, the report, feedback and confirmation email counts. Within a day the number is incremented where it lives, so taps at the same moment all count; a new day or month still writes the record afresh.

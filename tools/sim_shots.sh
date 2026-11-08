@@ -45,7 +45,7 @@ echo "$DEVICES" | while IFS='|' read -r UDID NAME; do
   done
   # Larger Text (v417): the phone's Text Size at the largest standard step and at an accessibility size, light only
   xcrun simctl ui "$UDID" appearance light
-  for SIZE in extra-extra-extra-large accessibility-large; do
+  for SIZE in extra-extra-extra-large accessibility-large accessibility-extra-extra-extra-large; do
     xcrun simctl ui "$UDID" content_size "$SIZE"
     xcrun simctl openurl "$UDID" "${URL}?preview=cancer"; sleep 15
     for TAB in $TABS; do
