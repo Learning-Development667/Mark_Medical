@@ -47,6 +47,10 @@ echo "$DEVICES" | while IFS='|' read -r UDID NAME; do
   xcrun simctl ui "$UDID" appearance light
   for SIZE in extra-extra-extra-large accessibility-large accessibility-extra-extra-extra-large; do
     xcrun simctl ui "$UDID" content_size "$SIZE"
+    # (v438) the real app's opening screen at this size too: does the app enlarge the text once, or twice (its own Dynamic Type and Daybook's)?
+    xcrun simctl launch "$UDID" "$BUNDLE" >/dev/null; sleep 12
+    shot "$UDID" "$OUT/$SLUG-text-$SIZE-app.png"
+    xcrun simctl terminate "$UDID" "$BUNDLE" 2>/dev/null
     xcrun simctl openurl "$UDID" "${URL}?preview=cancer"; sleep 15
     for TAB in $TABS; do
       xcrun simctl openurl "$UDID" "${URL}?preview=cancer&tab=$TAB"; sleep 10
