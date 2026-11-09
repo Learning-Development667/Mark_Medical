@@ -21,7 +21,7 @@ const groups = ['new', 'improved', 'fixed', undefined].map((t) => ({ t, items: r
 let tf = fallback;
 if (groups.length) {
   tf = 'Thank you for testing Daybook. In this version:\n\n' + groups.map((g) => (LABEL[g.t] || 'Also') + '\n' + g.items.map((i) => '- ' + i.text).join('\n')).join('\n\n')
-    + '\n\nUse made-up details, never real health information. Anything confusing or broken, tell us through Provide feedback under More, Help and what\'s new.';
+    + '\n\nYou are welcome to use Daybook for real. It is still in Beta, so keep your own copy of anything vital. Anything confusing or broken, tell us through Provide feedback under More, Help and what\'s new.';
 }
 const tail = '\nMore under More, Help and what\'s new.';
 let play = groups.length ? '' : 'Improvements and fixes. See More, Help and what\'s new in Daybook.';

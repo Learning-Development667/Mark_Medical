@@ -6,6 +6,9 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v439 (9 November 2026): testers may use Daybook for real
+Mark: "Why are we telling people to use made up details?" He had decided on 6 November that testers could keep real diaries once backups, the security fixes, the notes and the terms were done; the last two are done here. The TestFlight and Play notes (`tools/release_notes.mjs`, `native/ios/what-to-test.txt`) now say "You are welcome to use Daybook for real. It is still in Beta, so keep your own copy of anything vital." The terms gained **8. The Beta** (later sections renumbered), dated 9 November 2026, and the website's terms page was copied to match. Both wordings Mark's yes.
+
 ### v438 (8 November 2026): the layout follows the text as really drawn
 Robby's iPhone 14 (iOS 26, TestFlight build 18, Display Zoom off): the title and name button in the top bar were huge and the rows that stack at large text did not, while the iOS 27 simulator at the same setting kept the top bar compact. So on his phone the system enlarged the text itself, past double, on top of Daybook's own scaling, and `applyTextSize()` never knew. It now measures a line of 17px text with line-height 1 after setting its scale: whatever it really is sets `--ts` and the `text-big` and `text-huge` classes, and if the phone is scaling on its own Daybook drops its own `-webkit-text-size-adjust` so the total stays nearer double. Chromium: a no-op (scale 1). Not seen on an iOS 26 phone from here: Robby's next look is the check.
 
