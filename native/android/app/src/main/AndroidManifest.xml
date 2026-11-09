@@ -46,14 +46,16 @@
 
     <!-- Permissions -->
 
-    <!-- Health Connect (v440): Daybook reads six kinds and writes nothing. The health plugin declares every kind it can read or
+    <!-- Health Connect is OFF until Google approves the permissions (v442): the six READ lines below are removed too; put them back
+         (drop tools:node="remove" from the six READ lines) with HEALTH_ANDROID in scripts.js and the plugin in capacitor.config.json.
+         Health Connect (v440): Daybook reads six kinds and writes nothing. The health plugin declares every kind it can read or
          write; all but these six are removed here, so the app asks for, and Play's declaration lists, only what it uses. -->
-    <uses-permission android:name="android.permission.health.READ_EXERCISE" />
-    <uses-permission android:name="android.permission.health.READ_NUTRITION" />
-    <uses-permission android:name="android.permission.health.READ_RESTING_HEART_RATE" />
-    <uses-permission android:name="android.permission.health.READ_SLEEP" />
-    <uses-permission android:name="android.permission.health.READ_STEPS" />
-    <uses-permission android:name="android.permission.health.READ_WEIGHT" />
+    <uses-permission android:name="android.permission.health.READ_EXERCISE" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.READ_NUTRITION" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.READ_RESTING_HEART_RATE" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.READ_SLEEP" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.READ_STEPS" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.READ_WEIGHT" tools:node="remove" />
     <uses-permission android:name="android.permission.health.WRITE_STEPS" tools:node="remove" />
     <uses-permission android:name="android.permission.health.READ_DISTANCE" tools:node="remove" />
     <uses-permission android:name="android.permission.health.WRITE_DISTANCE" tools:node="remove" />

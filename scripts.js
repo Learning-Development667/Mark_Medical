@@ -16,7 +16,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '441';
+const APP_VERSION = '442';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -2570,7 +2570,7 @@ function runsCircle(owner) {
 async function syncHouseholdCard() {
   const card = $('settings-household');
   if (!card) return;
-  const show = !!BRIDGE && !!state.household && !state.demo && !state.demoLive && !state.readOnly && !state.viewer;
+  const show = !!BRIDGE && !!state.household && !state.demo && !state.demoLive && !state.readOnly && !state.viewer && !(IS_ANDROID_APP && !HEALTH_ANDROID);
   card.hidden = !show;
   $('more-circle-section').hidden = !show;
   if (!show) return;
@@ -2848,6 +2848,10 @@ const HEALTH_READ = ['steps', 'sleep', 'workouts', 'weight', 'dietaryEnergyConsu
    same bridge route serve both phones; only the name differs, and the bridge stamps what came in with it. */
 const IS_ANDROID_APP = nativeApp() && window.Capacitor.getPlatform() === 'android';
 const IS_IOS_APP = nativeApp() && window.Capacitor.getPlatform() === 'ios';
+/* Health Connect stays off in the Android app until Google approves its Health Connect permissions (v442): Play refuses any
+   build that asks for them before the app's health declaration is approved. Set true, put the plugin back in the Android
+   includePlugins and the six READ permissions back in the manifest, all three together. */
+const HEALTH_ANDROID = false;
 function healthName() { return IS_ANDROID_APP ? 'Health Connect' : 'Apple Health'; }
 const HEALTH_ADDED_BY = ['Apple Health', 'Health Connect'];
 function fromHealth(e) { return Boolean(e && (HEALTH_ADDED_BY.includes(e.addedBy) || e.source === 'health-auto-export' || e.source === 'apple-health' || e.source === 'apple-health-app' || e.source === 'health-connect')); }
@@ -2855,7 +2859,7 @@ function healthSourceName(src) { return src === 'health-connect' ? 'Health Conne
 const HEALTH_ON_KEY = 'daybook.health.on', HEALTH_LAST_KEY = 'daybook.health.last', HEALTH_NOTE_KEY = 'daybook.health.note';
 let healthPluginObj = null;
 function healthPlugin() {
-  if (healthPluginObj || !nativeApp()) return healthPluginObj;
+  if (healthPluginObj || !nativeApp() || (IS_ANDROID_APP && !HEALTH_ANDROID)) return healthPluginObj;
   const C = window.Capacitor;
   if (C.registerPlugin) { healthPluginObj = C.registerPlugin('Health'); return healthPluginObj; }
   if (!C.nativePromise) return null;
