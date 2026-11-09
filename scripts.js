@@ -16,7 +16,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '439';
+const APP_VERSION = '440';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -2456,7 +2456,7 @@ function openSetup(kind, opts = {}) {
         const box = h('div');
         const words = {
           apple: 'Sleep, steps, workouts, weight and food totals can come in by themselves through the Health Auto Export app. It can be set up any time under More, then Settings, Apple Health. Until a night arrives, the morning check-in asks a few simple questions about it.',
-          android: 'Daybook cannot read Health Connect yet; that comes with the app store version. Until then the morning check-in asks when you went to bed, when you woke and how the night was, and works out the hours.',
+          android: 'In the Android app, Connect Health Connect under More, then Settings: sleep, steps, workouts, weight and food totals then come in by themselves. Until a night arrives, the morning check-in asks a few simple questions about it.',
           none: 'No problem. Each morning the check-in asks when you went to bed, when you woke and how the night was, and works out the hours.'
         };
         const redraw = () => box.replaceChildren(
@@ -2793,10 +2793,11 @@ function syncHealthCard() {
   const show = !!BRIDGE && !!state.household && !state.demo && !state.demoLive && !state.readOnly && !state.viewer;
   card.hidden = !show;
   if (!show) return;
-  const ios = nativeApp() && window.Capacitor.getPlatform() === 'ios';
-  $('settings-health-native').hidden = !ios;
-  $('settings-health-hae').hidden = ios;
-  if (ios) { syncHealthStatus(); return; }
+  const native = IS_IOS_APP || IS_ANDROID_APP;
+  $('settings-health-native').hidden = !native;
+  $('settings-health-hae').hidden = native;
+  $('settings-health-blurb').textContent = `Steps, sleep, workouts, weight, the day's food energy and resting heart rate come straight from ${healthName()} into this circle. Daybook only reads; it never writes anything back.`;
+  if (native) { syncHealthStatus(); return; }
   $('settings-health-url').textContent = BRIDGE.url.replace(/\/$/, '') + '/health';
   $('settings-health-keytext').hidden = true;
   $('settings-health-hint').hidden = true;
@@ -2824,6 +2825,14 @@ $('settings-health-key').addEventListener('click', async () => {
    the app opens or comes back, at most every 20 minutes, over the days since the last send (7 at least, 30 the
    first time). Read only: nothing is written to Apple Health. */
 const HEALTH_READ = ['steps', 'sleep', 'workouts', 'weight', 'dietaryEnergyConsumed', 'restingHeartRate'];
+/* Health Connect on Android (v440): the same plugin reads Google's Health Connect, so the same card, the same readings and the
+   same bridge route serve both phones; only the name differs, and the bridge stamps what came in with it. */
+const IS_ANDROID_APP = nativeApp() && window.Capacitor.getPlatform() === 'android';
+const IS_IOS_APP = nativeApp() && window.Capacitor.getPlatform() === 'ios';
+function healthName() { return IS_ANDROID_APP ? 'Health Connect' : 'Apple Health'; }
+const HEALTH_ADDED_BY = ['Apple Health', 'Health Connect'];
+function fromHealth(e) { return Boolean(e && (HEALTH_ADDED_BY.includes(e.addedBy) || e.source === 'health-auto-export' || e.source === 'apple-health' || e.source === 'apple-health-app' || e.source === 'health-connect')); }
+function healthSourceName(src) { return src === 'health-connect' ? 'Health Connect' : (src && String(src).startsWith('apple-health')) || src === 'health-auto-export' ? 'Apple Health' : null; }
 const HEALTH_ON_KEY = 'daybook.health.on', HEALTH_LAST_KEY = 'daybook.health.last', HEALTH_NOTE_KEY = 'daybook.health.note';
 let healthPluginObj = null;
 function healthPlugin() {
@@ -2936,39 +2945,43 @@ async function syncHealth(manual) {
         metrics: payload.data.metrics.map((m) => ({ ...m, data: m.data.filter((row) => batch.has(dayKey(row.date || row.sleepEnd))) })).filter((m) => m.data.length),
         workouts: payload.data.workouts.filter((w) => batch.has(dayKey(w.start))),
       } };
-      const got = await bridgeCall('/health-app', part, 'Apple Health could not be brought in just now.');
+      const got = await bridgeCall('/health-app', { ...part, source: IS_ANDROID_APP ? 'health-connect' : 'apple-health-app' }, healthName() + ' could not be brought in just now.');
       for (const k of Object.keys(r)) r[k] += Number(got[k]) || 0;
     }
     lsSet(HEALTH_LAST_KEY, String(Date.now()));
     const bits = [r.steps && plural(r.steps, 'day') + ' of steps', r.sleep && plural(r.sleep, 'night') + ' of sleep', r.weight && plural(r.weight, 'weight'), r.workouts && plural(r.workouts, 'day') + ' of workouts', r.nutrition && plural(r.nutrition, 'day') + ' of food energy', r.pulse && plural(r.pulse, 'day') + ' of resting heart rate'].filter(Boolean);
     lsSet(HEALTH_NOTE_KEY, bits.length ? bits.join(', ') : 'nothing new');
-    if (manual) toast(bits.length ? 'Brought in from Apple Health' : 'Nothing new in Apple Health');
-  } catch (e) { console.warn(e); if (manual) toast(e.message || 'Apple Health could not be brought in just now.'); }
+    if (manual) toast(bits.length ? 'Brought in from ' + healthName() : 'Nothing new in ' + healthName());
+  } catch (e) { console.warn(e); if (manual) toast(e.message || healthName() + ' could not be brought in just now.'); }
   finally { healthBusy = false; syncHealthStatus(); }
 }
 function syncHealthStatus() {
   const el = $('settings-health-status'), btn = $('settings-health-connect');
   if (!el || !btn) return;
   const last = Number(lsGet(HEALTH_LAST_KEY)) || 0;
-  if (!healthOn()) { btn.textContent = 'Connect Apple Health'; el.textContent = 'Your iPhone asks which of these Daybook may read. You can change it later in the Health app.'; return; }
-  btn.textContent = 'Bring in from Apple Health now';
+  if (!healthOn()) { btn.textContent = 'Connect ' + healthName(); el.textContent = IS_ANDROID_APP ? 'Health Connect asks which of these Daybook may read. You can change it later in Health Connect, under Settings. On a phone older than Android 14, Health Connect is a free app from the Play Store.' : 'Your iPhone asks which of these Daybook may read. You can change it later in the Health app.'; return; }
+  btn.textContent = 'Bring in from ' + healthName() + ' now';
   el.textContent = last ? `Connected. Last brought in ${new Date(last).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}: ${lsGet(HEALTH_NOTE_KEY) || 'nothing new'}. It updates each time Daybook opens.` : 'Connected. It updates each time Daybook opens.';
   if (typeof renderMoreRows === 'function' && state.profile) renderMoreRows();
 }
 $('settings-health-connect').addEventListener('click', async (ev) => {
   const H = healthPlugin();
-  if (!H) { toast('Apple Health is not available on this phone'); return; }
+  if (!H) { toast(healthName() + ' is not available on this phone'); return; }
   const btn = ev.currentTarget; btn.disabled = true;
   try {
     if (!healthOn()) {
       const av = await H.isAvailable().catch(() => ({ available: true }));
-      if (av && av.available === false) { toast('Apple Health is not available on this phone'); return; }
+      if (av && av.available === false) {
+        if (IS_ANDROID_APP && await confirmSheet('Health Connect is not on this phone', 'Health Connect is a free app from Google that keeps your steps, sleep and other readings in one place. Install it from the Play Store, then come back and tap Connect.', 'Open the Play Store')) window.open('https://play.google.com/store/apps/details?id=com.google.android.apps.healthdata', '_blank');
+        else toast(healthName() + ' is not available on this phone');
+        return;
+      }
       await H.requestAuthorization({ read: HEALTH_READ, write: [] });
       lsSet(HEALTH_ON_KEY, state.household); lsSet('daybook.health.kinds', HEALTH_READ.join(','));
       lsSet(HEALTH_LAST_KEY, '');
     }
     await syncHealth(true);
-  } catch (e) { console.warn(e); toast('Apple Health could not be connected'); }
+  } catch (e) { console.warn(e); toast(healthName() + ' could not be connected'); }
   finally { btn.disabled = false; syncHealthStatus(); }
 });
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') syncHealth(false); });
@@ -5411,8 +5424,8 @@ function openAdd(type, editEntry, preset) {
     details.open = tracked;
     if (!editEntry) body.append(sleepKindSwitch('night'), sleepWeekCard());
     body.append(
-      h('p', { class: 'hint', text: existing && existing.addedBy === 'Apple Health'
-        ? 'This night came in from Apple Health. Change anything that is wrong and save.'
+      h('p', { class: 'hint', text: existing && HEALTH_ADDED_BY.includes(existing.addedBy)
+        ? 'This night came in from ' + existing.addedBy + '. Change anything that is wrong and save.'
         : existing ? 'Editing the sleep already logged for this morning.' : 'Last night, logged against this morning.' }),
       block.el, sleepWarn, details, field('Note', note));
     /* Save that cannot save says why inside the sheet, beside the times, not only in the message at the top (v279, Mark:
@@ -5790,7 +5803,7 @@ function minutesInBed(bed, woke) {
   const m = ((wh * 60 + wm) - (bh * 60 + bm) + 1440) % 1440;
   return m > 0 ? m : null;
 }
-function isTrackerNight(e) { return Boolean(e && (e.addedBy === 'Apple Health' || e.source === 'health-auto-export' || e.deep || e.rem || e.core)); }
+function isTrackerNight(e) { return Boolean(e && (fromHealth(e) || e.deep || e.rem || e.core)); }
 function nightAwakeMin(n) { const a = n && NIGHT_AWAKE.find((x) => x[0] === n.awakeFor); return a ? a[2] : null; }
 /* the night's answers held on a sleep entry or a check-in, or null when there are none */
 function nightFrom(e) {
@@ -5867,7 +5880,7 @@ function nightBlock(init, opts = {}) {
   if (tracker) {
     const w = tracker.watchShort && tracker.watch ? tracker.watch : tracker;
     const asleep = Number(w.value) > 0 ? fmtHm(Number(w.value)) + ' asleep' : '';
-    const from = tracker.addedBy === 'Apple Health' ? 'From Apple Health' : 'From the night logged';
+    const from = HEALTH_ADDED_BY.includes(tracker.addedBy) ? 'From ' + tracker.addedBy : 'From the night logged';
     const line = h('p', { class: 'wiz-hint night-tracker' }, icon('check'), from + ': ' + [w.bedAt && w.wokeAt ? 'in bed ' + w.bedAt + ' to ' + w.wokeAt : '', asleep].filter(Boolean).join(', ') + '.');
     const shortBtn = h('button', { class: 'preset night-short', type: 'button', 'aria-pressed': 'false' }, "My watch didn't record the whole night");
     const shortHint = h('p', { class: 'wiz-hint', text: 'Battery died or taken off? Put in when you really went to bed and woke up. Your times replace the watch\'s.' });
@@ -6090,7 +6103,7 @@ function foodDayPanel(day, excludeId) {
     const stats = foodStats();
     let totals = null, source = '';
     if (estimates()) { totals = zeroMacros(); foods().forEach((e) => addMacros(totals, entryMacros(foodIndex, e).totals)); }
-    else { const t = loggedTotals(day); if (t) { totals = { ...zeroMacros(), ...t }; source = t.source === 'apple-health' ? 'From Apple Health' : 'From your food app'; } }
+    else { const t = loggedTotals(day); if (t) { totals = { ...zeroMacros(), ...t }; source = healthSourceName(t.source) ? 'From ' + healthSourceName(t.source) : 'From your food app'; } }
     const shown = totals ? stats.filter((k) => source ? ['kcal', 'prot', 'carb', 'fat'].includes(k) : true) : [];
     bar.hidden = !shown.length;
     if (bar.hidden) return;
@@ -6283,8 +6296,10 @@ function renderMoreRows() {
   $('more-look-sub').textContent = { light: 'Always light', dark: 'Always dark' }[lookChoice()] || 'Matches your phone';
   $('more-records').hidden = $('settings-records').hidden;
   $('more-circle-section').hidden = $('settings-household').hidden;
-  const ios = nativeApp() && window.Capacitor.getPlatform() === 'ios';
-  const healthShown = !$('settings-health').hidden && (ios || !nativeApp());
+  const ios = IS_IOS_APP || IS_ANDROID_APP; // either phone's own health store (v440)
+  const healthShown = !$('settings-health').hidden;
+  $('more-health-title').textContent = healthName();
+  $('ex-health-heading').textContent = 'From ' + healthName();
   $('more-health').hidden = !healthShown;
   const last = Number(lsGet(HEALTH_LAST_KEY)) || 0;
   const when = last ? new Date(last).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '';
@@ -7949,7 +7964,7 @@ async function renderFoodDiary() {
       const macros = macrosOn ? foods.map((e) => entryMacros(index, e)) : [];
       const dayLogged = loggedTotals(day);
       const dayTotal = dayLogged ? { totals: dayLogged, excluded: 0, logged: true } : (macrosOn ? dayMacros(foods) : null);
-      const macroLine = dayTotal ? (dayTotal.logged ? (dayLogged.source === 'apple-health' ? 'From Apple Health ' : 'From your food app ') : 'Estimate ') + fmtMacroLine(dayTotal.totals) + (proteinTargetText(dayTotal.totals.prot) ? ' · ' + proteinTargetText(dayTotal.totals.prot) : '') + (dayTotal.excluded ? ` (${plural(dayTotal.excluded, 'item')} not counted)` : '') : '';
+      const macroLine = dayTotal ? (dayTotal.logged ? (healthSourceName(dayLogged.source) ? 'From ' + healthSourceName(dayLogged.source) + ' ' : 'From your food app ') : 'Estimate ') + fmtMacroLine(dayTotal.totals) + (proteinTargetText(dayTotal.totals.prot) ? ' · ' + proteinTargetText(dayTotal.totals.prot) : '') + (dayTotal.excluded ? ` (${plural(dayTotal.excluded, 'item')} not counted)` : '') : '';
       const entryMacroText = (i) => (macros[i] && macros[i].any ? 'About ' + fmtMacroLine(macros[i].totals) : '');
       dayCount++;
       Object.keys(counts).forEach((t) => { daysWith[t] = (daysWith[t] || 0) + 1; });
@@ -8487,7 +8502,7 @@ function twoPageCharts(entries, days) {
   charts.push({ key: 'heart', title: 'Heart rate (bpm)', stat: capFirst(hStat), tone: hPeak == null ? '' : toneOf(hPeak >= 120, hPeak >= 100 || Math.min(...hv) <= 50),
     min: Math.min(40, ...hAll.map((v) => Math.floor(v / 10) * 10 - 10)), max: Math.max(140, ...hAll.map((v) => Math.ceil(v / 10) * 10 + 10)), ticks: [60, 100, 120],
     bands: [{ from: 100, to: 120, c: amber }, { from: 120, to: 300, c: red }], series: [{ d: hr, c: ink }, ...(rv.length ? [{ d: rest, c: teal, dash: true }] : [])],
-    legend: [{ c: 'amber', t: '100 to 119' }, { c: 'red', t: '120 or over' }, ...(rv.length ? [{ c: teal, t: 'Resting, from Apple Health' }] : [])] });
+    legend: [{ c: 'amber', t: '100 to 119' }, { c: 'red', t: '120 or over' }, ...(rv.length ? [{ c: teal, t: 'Resting, from ' + healthName() }] : [])] });
 
   /* Blood pressure: each day's reading with the highest systolic, so the pair stays together */
   const bpDay = by((e) => e.type === 'vitals' && Number(e.systolic) > 0 && Number(e.diastolic) > 0).map((l) => (l.length ? l.reduce((a, b) => (Number(b.systolic) > Number(a.systolic) ? b : a)) : null));
@@ -9188,8 +9203,8 @@ function foodDaysFor(entries, from, to, index) {
     let t = null, leftOut = null, source = '';
     if (lt) {
       if (est && foods.length >= 3 && lt.kcal < FOOD_LEFT_OUT_SHARE * est.totals.kcal) {
-        leftOut = `The ${rDay(d)} totals came from ${lt.source === 'apple-health' ? 'Apple Health' : 'a food app'} (${Math.round(lt.kcal).toLocaleString('en-GB')} kcal, ${Math.round(lt.prot)} g protein) and do not match the ${foods.length} entries logged (about ${Math.round(est.totals.kcal).toLocaleString('en-GB')} kcal), so they are left out.`;
-      } else { t = lt; source = lt.source === 'apple-health' ? 'Apple Health' : 'food app'; }
+        leftOut = `The ${rDay(d)} totals came from ${healthSourceName(lt.source) || 'a food app'} (${Math.round(lt.kcal).toLocaleString('en-GB')} kcal, ${Math.round(lt.prot)} g protein) and do not match the ${foods.length} entries logged (about ${Math.round(est.totals.kcal).toLocaleString('en-GB')} kcal), so they are left out.`;
+      } else { t = lt; source = healthSourceName(lt.source) || 'food app'; }
     } else if (est) { t = est.totals; source = 'estimate'; }
     const tags = new Set();
     if (index) foods.forEach((e) => { const n = entryNutrition(index, e); if (n) n.tags.forEach((x) => tags.add(x)); });
@@ -17302,7 +17317,7 @@ function itemHealth(item, rec) {
   let met = true, short = '';
   if (item.kind === 'minutes') { met = minutes >= Number(item.amount); short = minutes + ' of ' + Number(item.amount) + ' min'; }
   else if (item.kind === 'lengths' || item.kind === 'distance') { const want = itemMetres(item); met = withKm.length > 0 && metres >= want; short = withKm.length ? fmtMetres(metres) + ' of ' + fmtMetres(want) : 'no distance recorded'; }
-  return { met, text: met ? 'Apple Health: ' + bits.join(' \u00b7 ') : 'Apple Health so far: ' + short };
+  return { met, text: met ? healthName() + ': ' + bits.join(' \u00b7 ') : healthName() + ' so far: ' + short };
 }
 /* Ticked by hand, or reached through Apple Health and not unticked by hand */
 function isItemDone(item, rec) {
@@ -17975,8 +17990,8 @@ function openItemSheet(item, isNew, after) {
   const poolField = field('Pool length in metres', pool);
   const timeField = field('Time to aim for, in minutes (optional)', time);
   const unitRow = h('div', { class: 'chips', role: 'group', 'aria-label': 'Distance in' });
-  const matchRow = h('div', { class: 'chips', role: 'group', 'aria-label': 'Tick it from Apple Health' });
-  const matchHint = h('p', { class: 'hint', text: 'Tick it from Apple Health' });
+  const matchRow = h('div', { class: 'chips', role: 'group', 'aria-label': 'Tick it from ' + healthName() });
+  const matchHint = h('p', { class: 'hint', text: 'Tick it from ' + healthName() });
   const note = h('textarea', { rows: '2', placeholder: 'e.g. hold for 10 seconds each side', maxlength: '200' });
   note.value = it.note || '';
   const setsField = field('Sets', sets);
@@ -18036,7 +18051,7 @@ function openItemSheet(item, isNew, after) {
     field('Name', name), h('p', { class: 'hint', text: 'Where it belongs' }), sectionRow,
     h('p', { class: 'hint', text: 'How it is counted' }), kindRow, amountField, unitRow, setsField, poolField, timeField,
     h('p', { class: 'hint', text: 'Which days' }), dayRow,
-    matchHint, matchRow, h('p', { class: 'hint hint-small', text: 'Ticks itself when Apple Health records a matching workout that reaches the target.' }),
+    matchHint, matchRow, h('p', { class: 'hint hint-small', text: 'Ticks itself when ' + healthName() + ' records a matching workout that reaches the target.' }),
     field('Note (optional)', note),
     saveBtn,
     h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => { if (after) after(); else closeSheet(); } }, 'Cancel'));

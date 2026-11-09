@@ -148,10 +148,11 @@ async function handleHealthApp(request, env) {
   if (a.demo) return json({ ok: true, demo: true });
   const { who, fs } = a;
   const me = await memberOf(fs, who.uid);
-  if (!me.hid || me.role !== 'family') return json({ error: 'unauthorised', message: 'Only family members can bring in Apple Health.' }, 403);
+  if (!me.hid || me.role !== 'family') return json({ error: 'unauthorised', message: 'Only family members can bring in health readings.' }, 403);
   const body = await readJson(request);
   if (!body || !body.data) return json({ error: 'Expected JSON' }, 400);
-  return json(await ingestHealth(fs, me.hid, body, 'apple-health-app'));
+  /* (v440) the Android app sends the same shape from Health Connect; what came in is stamped with its real source */
+  return json(await ingestHealth(fs, me.hid, body, body.source === 'health-connect' ? 'health-connect' : 'apple-health-app'));
 }
 
 /* What both routes share: writes steps, sleep, weight and BMI, food totals and workouts into the circle */
@@ -181,7 +182,7 @@ async function ingestHealth(fs, hid, body, sourceTag) {
       for (const [day, qty] of Object.entries(perDay)) {
         const steps = Math.round(qty);
         if (steps <= 0) continue;
-        await fs.merge(hp(hid, 'exercise/' + day), { day: strVal(day), steps: intVal(steps), addedBy: strVal('Apple Health'), updatedAt: nowTs() });
+        await fs.merge(hp(hid, 'exercise/' + day), { day: strVal(day), steps: intVal(steps), addedBy: strVal(sourceTag === 'health-connect' ? 'Health Connect' : 'Apple Health'), updatedAt: nowTs() });
         result.steps++;
       }
     } else if (name === 'resting_heart_rate' || name === 'resting_heart_rate_bpm') {
@@ -208,7 +209,7 @@ async function ingestHealth(fs, hid, body, sourceTag) {
         const mins = (h) => Math.round(h * 60);
         const fields = {
           day: strVal(day), type: strVal('sleep'), value: intVal(mins(asleep)),
-          addedBy: strVal('Apple Health'), source: strVal(sourceTag),
+          addedBy: strVal(sourceTag === 'health-connect' ? 'Health Connect' : 'Apple Health'), source: strVal(sourceTag),
           at: tsVal(toIso(end) || day + 'T07:00:00Z'), updatedAt: nowTs()
         };
         if (core > 0) fields.core = intVal(mins(core));
@@ -285,11 +286,11 @@ async function ingestHealth(fs, hid, body, sourceTag) {
     (workoutDays[day] = workoutDays[day] || []).push({ mapValue: { fields: item } });
   }
   for (const [day, list] of Object.entries(workoutDays)) {
-    await fs.merge(hp(hid, 'exercise/' + day), { day: strVal(day), workouts: { arrayValue: { values: list } }, addedBy: strVal('Apple Health'), updatedAt: nowTs() });
+    await fs.merge(hp(hid, 'exercise/' + day), { day: strVal(day), workouts: { arrayValue: { values: list } }, addedBy: strVal(sourceTag === 'health-connect' ? 'Health Connect' : 'Apple Health'), updatedAt: nowTs() });
     result.workouts++;
   }
   for (const [day, totals] of Object.entries(foodDays)) {
-    const fields = { day: strVal(day), source: strVal('apple-health'), addedBy: strVal('Apple Health'), updatedAt: nowTs() };
+    const fields = { day: strVal(day), source: strVal(sourceTag === 'health-connect' ? 'health-connect' : 'apple-health'), addedBy: strVal(sourceTag === 'health-connect' ? 'Health Connect' : 'Apple Health'), updatedAt: nowTs() };
     for (const k of ['kcal', 'prot', 'carb', 'fat']) if (totals[k] > 0) fields[k] = doubleVal(Math.round(totals[k] * 10) / 10);
     await fs.merge(hp(hid, 'nutrition/' + day), fields);
     result.nutrition++;
@@ -305,7 +306,7 @@ async function ingestHealth(fs, hid, body, sourceTag) {
     const ef = (existing && existing.fields) || {};
     const byHand = existing && ((ef.byHand && ef.byHand.booleanValue === true) || (ef.addedBy && ef.addedBy.stringValue !== 'Apple Health'));
     if (byHand) { result.skipped.push('weight ' + day + ' (changed by hand)'); continue; }
-    const fields = { day: strVal(day), type: strVal('weight'), addedBy: strVal('Apple Health'), source: strVal(sourceTag), updatedAt: nowTs() };
+    const fields = { day: strVal(day), type: strVal('weight'), addedBy: strVal(sourceTag === 'health-connect' ? 'Health Connect' : 'Apple Health'), source: strVal(sourceTag), updatedAt: nowTs() };
     if (b.kg) { fields.value = doubleVal(Math.round(b.kg.v * 10) / 10); fields.at = tsVal(b.kg.at); }
     if (b.bmi) fields.bmi = doubleVal(Math.round(b.bmi.v * 10) / 10);
     if (!existing) fields.createdAt = nowTs();

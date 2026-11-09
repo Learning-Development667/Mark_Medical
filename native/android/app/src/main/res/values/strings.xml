@@ -4,4 +4,6 @@
     <string name="title_activity_main">Daybook</string>
     <string name="package_name">uk.co.mark1apps.daybook</string>
     <string name="custom_url_scheme">uk.co.mark1apps.daybook</string>
+    <!-- Health Connect shows this when someone taps Privacy policy on its permission screen (v440) -->
+    <string name="health_connect_privacy_policy_url">https://mymedicaldaybook.co.uk/privacy.html</string>
 </resources>
