@@ -16,7 +16,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '440';
+const APP_VERSION = '441';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -381,6 +381,25 @@ function closeSheet(opts) {
   panel.addEventListener('touchend', end);
   panel.addEventListener('touchcancel', end);
 })();
+/* The Android Back button (v441, a tester: "if I want to go back to the main screen would it be possible to do that using the
+   'back' function on the phone. At the moment it just closes/minimises the app"). Through Capacitor's App plugin: Back closes
+   whatever is on top first (the take-a-photo choice, the words check, the full-screen editor, a sheet, which keeps its own
+   "Don't save?" question), then leaves a page that has a Back button of its own (a setting, a report, the Guide), then goes from
+   any other tab to Today, and only on Today puts the app away, as Android apps do. */
+function androidBack() {
+  const pick = document.querySelector('.pickchoice'); if (pick) { pick.remove(); return; }
+  if (document.querySelector('.scheck')) { closeSpeakCheck(); return; }
+  if (document.querySelector('.bigedit')) { closeBigEdit(); return; }
+  if (!$('sheet').hidden) { closeSheet(); return; }
+  const view = document.querySelector('.view:not([hidden])');
+  const back = view && [...view.querySelectorAll('[id$="-back"]')].find((b) => b.offsetParent !== null);
+  if (back) { back.click(); return; }
+  if (view && view.id !== 'view-today') { showTab('today'); return; }
+  try { window.Capacitor.registerPlugin('App').minimizeApp(); } catch (e) { /* nothing to do */ }
+}
+if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform() && window.Capacitor.getPlatform() === 'android' && window.Capacitor.registerPlugin) {
+  try { window.Capacitor.registerPlugin('App').addListener('backButton', () => androidBack()); } catch (e) { console.warn('Back button', e); }
+}
 document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && document.querySelector('.bigedit')) { ev.preventDefault(); closeBigEdit(); return; } if (ev.key === 'Escape' && !$('sheet').hidden) { ev.preventDefault(); closeSheet(); } });
 /* The on-screen keyboard. iPhone Safari lays the keyboard over the page rather than shrinking it, so a
    sheet anchored to the bottom ended up behind it and a check-in answer was typed blind (Mark, 5 October).

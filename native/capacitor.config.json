@@ -33,7 +33,8 @@
   "android": {
     "includePlugins": [
       "@capacitor-firebase/messaging",
-      "@capgo/capacitor-health"
+      "@capgo/capacitor-health",
+      "@capacitor/app"
     ]
   }
 }
