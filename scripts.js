@@ -16,7 +16,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '442';
+const APP_VERSION = '443';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -1227,6 +1227,7 @@ async function enterApp(user) {
     $('signin').hidden = true; $('signup').hidden = true; $('nohousehold').hidden = true; // (v295) never left over the app
     $('app').hidden = false;
     requestAnimationFrame(moveTabIndicator);
+    setTimeout(checkNewerBuild, 1500);
     $('user-chip').textContent = state.name;
     $('more-user').textContent = `${state.name}${account.relation ? ', ' + account.relation : ''} (${user.email})`;
     $('guest-pill').hidden = true;
@@ -2857,6 +2858,58 @@ const HEALTH_ADDED_BY = ['Apple Health', 'Health Connect'];
 function fromHealth(e) { return Boolean(e && (HEALTH_ADDED_BY.includes(e.addedBy) || e.source === 'health-auto-export' || e.source === 'apple-health' || e.source === 'apple-health-app' || e.source === 'health-connect')); }
 function healthSourceName(src) { return src === 'health-connect' ? 'Health Connect' : (src && String(src).startsWith('apple-health')) || src === 'health-auto-export' ? 'Apple Health' : null; }
 const HEALTH_ON_KEY = 'daybook.health.on', HEALTH_LAST_KEY = 'daybook.health.last', HEALTH_NOTE_KEY = 'daybook.health.note';
+/* A newer build (v443, Mark): each phone app carries its own copy of Daybook, so someone on an old build never sees a newer
+   What's new. latest.json on the app's own site names the APP_VERSION of the newest build for each phone (set it when a build
+   has gone through: Android once Play has it, iPhone once TestFlight has processed it). When it is newer than this copy, a
+   banner slides down over Today for 4 seconds every time the app opens, until they update. Tap opens TestFlight or the Play
+   Store; swipe up puts it away. One small file read when the app opens or comes back (at most every 30 minutes). At the App
+   Store, the iPhone link becomes the App Store page. */
+const LATEST_URL = 'https://app.mymedicaldaybook.co.uk/latest.json';
+const UPDATE_LINK = { ios: 'itms-beta://', android: 'https://play.google.com/store/apps/details?id=uk.co.mark1apps.daybook' };
+let updateCheckedAt = 0;
+async function checkNewerBuild() {
+  if (!nativeApp() || state.demo || state.demoLive || !state.household || $('app').hidden) return;
+  const op = $('opener');
+  if (op && !op.hidden) { setTimeout(checkNewerBuild, 800); return; } // after the opening film, never behind it
+  if (Date.now() - updateCheckedAt < 30 * 60000) return;
+  updateCheckedAt = Date.now();
+  let latest = null;
+  try { const r = await fetch(LATEST_URL + '?t=' + Date.now(), { cache: 'no-store' }); if (r.ok) latest = await r.json(); } catch (e) { return; }
+  const want = Number(latest && latest[IS_ANDROID_APP ? 'android' : 'ios']) || 0;
+  if (want > Number(APP_VERSION)) showUpdateBar();
+}
+function showUpdateBar() {
+  if ($('update-bar')) return;
+  const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  icon.setAttribute('viewBox', '0 0 24 24'); icon.setAttribute('aria-hidden', 'true');
+  icon.innerHTML = '<path d="M12 3v12M7 10l5 5 5-5M5 21h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>';
+  const where = IS_ANDROID_APP ? 'the Play Store' : 'TestFlight';
+  const bar = h('button', { type: 'button', id: 'update-bar', class: 'update-bar', 'aria-label': 'A newer Daybook is ready. Update in ' + where + '.' },
+    icon, h('span', { class: 'update-bar-words' }, h('b', { text: 'A newer Daybook is ready' }), h('span', { text: 'Tap to update in ' + where })), h('i', { class: 'update-bar-grip' }));
+  let timer = null, startY = null, dy = 0, moved = false;
+  const go = () => { clearTimeout(timer); bar.style.transition = ''; bar.style.transform = ''; bar.classList.remove('in'); setTimeout(() => bar.remove(), 320); };
+  const wait = () => { clearTimeout(timer); timer = setTimeout(go, 4000); };
+  bar.addEventListener('pointerdown', (e) => { startY = e.clientY; dy = 0; moved = false; clearTimeout(timer); try { bar.setPointerCapture(e.pointerId); } catch (err) { /* fine */ } });
+  bar.addEventListener('pointermove', (e) => {
+    if (startY == null) return;
+    dy = Math.min(0, e.clientY - startY);
+    if (dy < -6) { moved = true; bar.style.transition = 'none'; bar.style.transform = 'translateY(' + dy + 'px)'; }
+  });
+  const up = () => {
+    if (startY == null) return;
+    startY = null;
+    if (dy < -30) { go(); return; }
+    bar.style.transition = ''; bar.style.transform = '';
+    wait();
+  };
+  bar.addEventListener('pointerup', up);
+  bar.addEventListener('pointercancel', up);
+  bar.addEventListener('click', () => { if (moved) { moved = false; return; } go(); window.open(UPDATE_LINK[IS_ANDROID_APP ? 'android' : 'ios'], '_blank'); });
+  document.body.append(bar);
+  requestAnimationFrame(() => requestAnimationFrame(() => bar.classList.add('in')));
+  wait();
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkNewerBuild(); });
 let healthPluginObj = null;
 function healthPlugin() {
   if (healthPluginObj || !nativeApp() || (IS_ANDROID_APP && !HEALTH_ANDROID)) return healthPluginObj;

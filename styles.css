@@ -2638,3 +2638,24 @@ html.text-huge .medrow, html.text-huge .med-head { gap: 8px; }
 .pickchoice-panel { width: min(100%, 480px); background: var(--surface); border-radius: var(--r-lg); padding: var(--s-4); display: grid; gap: var(--s-3); box-shadow: var(--elev-raised); }
 .pickchoice-panel .btn { margin: 0; }
 .pickchoice-cancel { justify-self: center; min-height: 44px; }
+
+/* A newer build (v443, Mark, 9 November 2026): the due check-in's teal and gold, at the top like the toasts, for 4 seconds;
+   swipe up puts it away, a tap opens TestFlight or the Play Store */
+.update-bar {
+  position: fixed; left: var(--s-4); right: var(--s-4); top: calc(8px + var(--safe-t)); z-index: 31;
+  display: flex; align-items: center; gap: 14px; min-height: 64px; padding: 14px 16px 22px; text-align: left;
+  border: 2px solid transparent; border-radius: var(--r-lg);
+  background: linear-gradient(180deg, #18727A 0%, #0F5257 55%, #0B4247 100%) padding-box, var(--gold-rim) border-box;
+  color: #FFF3D6; font: inherit; cursor: pointer; touch-action: none;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.18), 0 8px 20px var(--gold-glow), 0 2px 4px rgba(10, 30, 35, 0.3);
+  transform: translateY(calc(-100% - 24px - var(--safe-t))); transition: transform 300ms var(--ease-out);
+}
+.update-bar.in { transform: none; }
+.update-bar svg { flex: none; width: 28px; height: 28px; }
+.update-bar-words { display: block; min-width: 0; }
+.update-bar-words b { display: block; font-family: var(--font-head); font-weight: 600; font-size: 19px; line-height: 1.25; }
+.update-bar-words span { display: block; margin-top: 2px; font-size: 17px; line-height: 1.35; }
+.update-bar-grip { position: absolute; left: 50%; bottom: 7px; width: 40px; height: 4px; margin-left: -20px; border-radius: 2px; background: rgba(255, 243, 214, 0.55); }
+.update-bar:focus-visible { outline: 3px solid #FFF3D6; outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .update-bar { transition: none; } }
+@media (forced-colors: active) { .update-bar { border-color: ButtonText; } }
