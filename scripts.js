@@ -16,7 +16,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '446';
+const APP_VERSION = '447';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -8964,20 +8964,52 @@ function plainWeek(w, report, entries) {
   return { theme, why, entries: entriesOut.map((e) => ({ when: rDay(e.day), logged: e.logged, words: e.words, from: e.from || '', who: e.who || '', text: e.text, alert: e.alert })) };
 }
 
-/* The banner: the most recent note, if it is a new or worsening symptom, from the last two days of the period */
+/* Words in a note that make it count as a new or worse symptom in the week cards (plainWeek) */
 const WORSE_WORDS = /\b(new|worse|worsening|worst|severe|stabb\w*|sharp|admitted|a&e|ambulance|bleed\w*|fever|shiver\w*|vomit\w*|can'?t|cannot|unbearable)\b/i;
-function plainLatest(report, to) {
-  const notes = report.days.filter((d) => d.day >= addDays(to, -1)).flatMap((d) => d.notes.map((n) => ({ ...n, day: d.day }))).filter((n) => !isRoutineNote(n));
-  const last = notes.sort((a, b) => (a.day + a.time).localeCompare(b.day + b.time)).pop();
-  if (!last) return null;
-  const isSymptom = /^New or worse symptoms: /.test(last.text) || /symptom|with pain [5-9]|with pain 10/.test(last.context || '') || WORSE_WORDS.test(last.text);
-  if (!isSymptom) return null;
-  const body = fixMedWords(last.text.replace(/^(New or worse symptoms|Settled since yesterday|What the carer noticed): /, '').trim());
-  const first = (body.match(/^[^.!?]+[.!?]?/) || [body])[0].trim();
-  /* the whole note is printed (v236): a long first sentence is not cut to make a title, the title is plain words */
-  const title = first.length <= 70 ? first.replace(/[.!?]$/, '') : 'New or worse symptoms noted';
-  const text = first.length <= 70 ? body.slice(first.length).trim() : body;
-  return { day: last.day, time: last.time, title: capFirst(title), text };
+/* The top line of Notes for the team (v447, Mark: "a red shivering with no context ... makes a mockery of the app's function").
+   The latest symptom from the last two days of the period, whatever its words: a Symptom tile entry (its name, its score, who,
+   when, the note in full) or a check-in's "New or worse symptoms" answer. Its colour follows the score by the same NHS bands
+   as everywhere else (red 7 to 10, amber 4 to 6, unflagged under 4 or with no score), so the top never says more than the body.
+   Readings within an hour either side are a line of their own: facts beside the words, never mixed in, never interpreted.
+   Until v446 it was the latest note of any kind, picked by a list of alarming words, always red, words only. */
+function latestSymptom(entries, report, to) {
+  const since = addDays(to, -1);
+  const tile = entries.filter((e) => e.type === 'symptom' && !e.fromCheckin && e.value != null && e.day >= since && e.day <= to);
+  const fromCi = report.days.filter((d) => d.day >= since && d.day <= to)
+    .flatMap((d) => d.notes.filter((n) => /^New or worse symptoms: /.test(n.text)).map((n) => ({ ...n, day: d.day })));
+  const at = (day, time) => day + ' ' + (time || '00:00');
+  const cands = tile.map((e) => ({ k: at(e.day, fmtTime(entryDate(e))), e })).concat(fromCi.map((n) => ({ k: at(n.day, n.time), n })));
+  if (!cands.length) return null;
+  const last = cands.sort((a, b) => a.k.localeCompare(b.k)).pop();
+  const near = (day, time) => {
+    const t = new Date(day + 'T' + (time || '12:00') + ':00').getTime();
+    const out = [];
+    entries.filter((x) => x.day === day && (x.type === 'temp' || x.type === 'vitals') && Math.abs(entryDate(x).getTime() - t) <= 3600000)
+      .sort((a, b) => entryDate(a) - entryDate(b)).forEach((x) => {
+        const when = ' at ' + fmtTime(entryDate(x));
+        if (x.type === 'temp' && x.value != null) out.push('Temperature ' + Number(x.value).toFixed(1) + ' °C' + when);
+        if (x.type === 'vitals') {
+          const bits = [];
+          if (x.heartRate) bits.push('heart rate ' + Math.round(x.heartRate));
+          if (x.systolic && x.diastolic) bits.push('blood pressure ' + Math.round(x.systolic) + '/' + Math.round(x.diastolic));
+          if (x.oxygen) bits.push('oxygen ' + Math.round(x.oxygen) + '%');
+          if (bits.length) out.push(capFirst(bits.join(', ')) + when);
+        }
+      });
+    return out;
+  };
+  if (last.e) {
+    const e = last.e, name = String(e.what || 'Symptom').trim(), v = Number(e.value), time = fmtTime(entryDate(e));
+    const others = tile.filter((x) => x !== e && String(x.what || '').toLowerCase() === name.toLowerCase())
+      .sort((a, b) => entryDate(a) - entryDate(b)).map((x) => (x.day === e.day ? '' : rDay(x.day) + ' ') + fmtTime(entryDate(x)) + ' (' + x.value + '/10)');
+    const cause = e.causeName ? 'Side effect of ' + e.causeName + '. ' : '';
+    return { day: e.day, time, level: v >= 7 ? 'red' : v >= 4 ? 'amber' : '', title: 'Latest symptom: ' + capFirst(name) + ', ' + v + '/10',
+      who: cause + 'Logged by ' + (e.addedBy || 'unknown') + (others.length ? '. Also logged at ' + joinAnd(others) : '') + '.',
+      text: String(e.note || '').trim(), readings: near(e.day, time) };
+  }
+  const n = last.n;
+  return { day: n.day, time: n.time, level: '', title: 'New or worse symptoms', who: 'From the ' + (n.context || 'check-in') + ', ' + (n.who || 'unknown') + '.',
+    text: n.text.replace(/^New or worse symptoms: /, '').trim(), readings: near(n.day, n.time) };
 }
 function whenWords(day, today) {
   if (day === today) return 'Today';
@@ -9162,8 +9194,10 @@ function buildTwoPage(n) {
   const fine = (report.glance.fine || []).filter((t) => !/^(temperature|heart rate|blood pressure|oxygen|pain|sleep|eating|mood)$/i.test(t));
   const steady = fine.length ? capFirst(joinAnd(fine)) + (fine.length === 1 ? ' showed' : ' showed') + ' no flags in the app\'s checks.' : null;
   const qs = report.questions.map((q) => ({ team: q.teamLabel, text: capFirst(fixMedWords((ai && ai.questions[q.id]) || q.text).trim()), by: `Asked by ${q.who}, ${rDay(q.day)}` }));
-  const latestRaw = ai ? ai.latest : plainLatest(report, to);
-  const latest = latestRaw && latestRaw.day >= from && latestRaw.day <= to ? { when1: whenWords(latestRaw.day, today), when2: rDay(latestRaw.day) + (latestRaw.time ? ', ' + latestRaw.time : ''), title: fixMedWords(latestRaw.title), text: fixMedWords(latestRaw.text) } : null;
+  /* the latest symptom comes from the records themselves, with or without the Assistant's tidy-up (v447): the words as written */
+  const latestRaw = latestSymptom(entries, report, to);
+  const latest = latestRaw && latestRaw.day >= from && latestRaw.day <= to ? { when1: whenWords(latestRaw.day, today), when2: rDay(latestRaw.day) + (latestRaw.time ? ', ' + latestRaw.time : ''),
+    title: fixMedWords(latestRaw.title), who: latestRaw.who, text: fixMedWords(latestRaw.text), readings: latestRaw.readings, level: latestRaw.level } : null;
   const allWeeks = reportWeeks(from, to);
   const shown = allWeeks.slice(-2);
   const weeks = shown.map((w) => {

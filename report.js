@@ -45,9 +45,17 @@ html.capture .page{margin:0;box-shadow:none}
 .runner span{color:var(--slate);font-size:7.6pt}
 h2.sec{font-size:12.5pt;display:flex;align-items:baseline;gap:3mm}
 h2.sec small{font-family:Inter,sans-serif;font-weight:400;font-size:7.6pt;color:var(--slate);letter-spacing:0}
-.latest{display:flex;gap:4mm;align-items:center;background:var(--red-soft);border-left:1.6mm solid var(--red);border-radius:0 2mm 2mm 0;padding:2.4mm 4mm}
+.latest{display:flex;gap:4mm;align-items:flex-start;background:var(--mist);border-left:1.6mm solid var(--slate);border-radius:0 2mm 2mm 0;padding:2.4mm 4mm}
+.latest.lvl-red{background:var(--red-soft);border-left-color:var(--red)}
+.latest.lvl-amber{background:var(--amber-soft);border-left-color:var(--amber)}
+.latest .who,.latest .words,.latest .near{text-align:left}
+.latest .who{color:var(--slate);font-size:7.8pt;margin-bottom:.8mm}
+.latest .words{margin:0}
+.latest .near{margin-top:.8mm;color:var(--slate);font-size:7.8pt}
 .latest b{font-family:Fraunces,Georgia,serif;font-size:10.5pt;display:block;margin-bottom:.4mm}
-.latest .when{flex:none;font-weight:600;color:var(--red);font-size:8pt;width:19mm;line-height:1.25}
+.latest .when{flex:none;font-weight:600;color:var(--ink);font-size:8pt;width:19mm;line-height:1.25}
+.latest.lvl-red .when{color:#B0372E}
+.latest.lvl-amber .when{color:#8A5E10}
 .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:2.6mm}
 .tile{border-radius:2mm;padding:2.4mm 3.2mm 2.2mm;background:var(--mist);border-top:1.1mm solid var(--line);min-height:17.5mm;display:flex;flex-direction:column;justify-content:space-between}
 .tile.red{background:var(--red-soft);border-top-color:var(--red)}
@@ -153,6 +161,13 @@ h2.sec small{font-family:Inter,sans-serif;font-weight:400;font-size:7.6pt;color:
 
 export function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+/* The latest symptom (v447): its name and score, who logged it and when, the words in full, and readings nearby on a line of
+   their own; coloured by the score's band only */
+function latestHtml(L, attrs) {
+  return `<div class="latest${L.level ? ' lvl-' + L.level : ''}"${attrs}><div class="when">${esc(L.when1)}<br>${esc(L.when2)}</div><div><b>${esc(L.title)}</b>`
+    + (L.who ? `<p class="who">${esc(L.who)}</p>` : '') + (L.text ? `<p class="words">${esc(L.text)}</p>` : '')
+    + ((L.readings || []).length ? `<p class="near">Readings near then: ${esc(L.readings.join('. '))}.</p>` : '') + '</div></div>';
 }
 const num = (v) => (Math.round(v * 10) / 10).toString();
 
@@ -333,7 +348,7 @@ function tailPageHtml(R, items, p, total) {
     }
     if (it.k === 'l') {
       const L = R.latest;
-      body += `<div class="latest" data-ti="${ti}" data-sec="Latest"><div class="when">${esc(L.when1)}<br>${esc(L.when2)}</div><div><b>${esc(L.title)}</b>${esc(L.text)}</div></div>`;
+      body += latestHtml(L, ` data-ti="${ti}" data-sec="Latest"`);
       return;
     }
     if (!seenW) body += `<h2 class="sec tailh" style="margin-bottom:2.4mm">Week by week <small>${esc(R.weeksNote || 'Each week summarised from the daily notes.')}</small></h2>`;
@@ -415,7 +430,7 @@ ${bar}
     <div><div class="titlerow"><h1>${esc(R.title)}</h1><span class="madeby">Created with <b>My Medical Daybook</b></span></div><div class="sub">${esc(R.subtitle)}</div></div>
     <div class="who"><strong>${esc(R.patient)}</strong>Period: ${esc(R.period)}<br>Prepared: ${esc(R.prepared)}</div>
   </div>
-  ${R.latest && !R.latestMoved ? `<div class="latest" data-sec="Latest"><div class="when">${esc(R.latest.when1)}<br>${esc(R.latest.when2)}</div><div><b>${esc(R.latest.title)}</b>${esc(R.latest.text)}</div></div>` : ''}
+  ${R.latest && !R.latestMoved ? latestHtml(R.latest, ' data-sec="Latest"') : ''}
   <div data-sec="At a glance">
     <h2 class="sec" style="margin-bottom:2.4mm">At a glance <small>Averages for the period. Every reading is on the charts on page 2. Not medical advice.</small></h2>
     <div class="tiles">${R.tiles.map(tileHtml).join('')}</div>
@@ -425,7 +440,7 @@ ${bar}
     <h2 class="sec" style="margin-bottom:2.4mm">Questions for the team</h2>
     ${noneLine}<div class="qgrid nat">${qs.join('')}</div>
     ${extraN ? `<p class="more">${esc(extraN === 1 ? 'One more question' : extraN + ' more questions')} on page 3.</p>` : ''}
-    ${R.latestMoved ? '<p class="more">The latest note is in full on page 3.</p>' : ''}
+    ${R.latestMoved ? '<p class="more">The latest symptom is in full on page 3.</p>' : ''}
     ${olderLine}
   </div>
   ${R.fx && R.fxPage1 ? fxHtml(R.fx) : ''}
