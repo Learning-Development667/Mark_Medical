@@ -19,7 +19,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=447">
+  <link rel="stylesheet" href="styles.css?v=448">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -238,6 +238,12 @@
 
       <!-- TODAY -->
       <section id="view-today" class="view" data-view="today">
+        <!-- Consent (v448): shown while the patient has not agreed yet; nothing can be recorded until they do -->
+        <div id="consent-hold" class="card consent-hold" role="status" hidden>
+          <p class="consent-hold-title" id="consent-hold-title"></p>
+          <p class="hint" id="consent-hold-text"></p>
+          <button id="consent-hold-btn" class="btn btn-primary btn-block" type="button" hidden></button>
+        </div>
         <!-- Tell Mark what you think (v153): only while the app is in Beta, for signed-in members, never in the preview or the demo -->
         <button class="checkin-row feedback-row" id="feedback-row" type="button" hidden>
           <svg class="icon checkin-icon" aria-hidden="true"><use href="#i-send"/></svg>
@@ -1117,6 +1123,10 @@
               <p class="hint" id="settings-export-said" role="status"></p>
               <div id="settings-export-save"></div>
             </div>
+            <div id="settings-consent" class="card settings-group" hidden>
+              <h3 class="consent-h">Agreement to keep health information</h3>
+              <p id="settings-consent-text"></p>
+            </div>
             <div id="settings-delete" class="card settings-group records-danger"></div>
           </div>
         </div>
@@ -1189,7 +1199,7 @@
   <!-- Privacy, terms and About (since v90): plain English, opened in the sheet from the Settings App card,
        the sign-in and sign-up screens, or ?page=privacy|terms|about in the address (openLegal()). -->
   <template id="tpl-privacy">
-    <p class="legal-date mono">Last updated 9 November 2026</p>
+    <p class="legal-date mono">Last updated 10 November 2026</p>
     <p>My Medical Daybook (Daybook for short) is made and run by Mark 1 Apps Ltd, a company registered in England and Wales (company number 17510025), which is responsible for the information the app holds (the "data controller" in UK law). Mark 1 Apps Ltd is registered with the Information Commissioner's Office, registration number ZC275185. <span data-contact></span></p>
     <h3>The short version</h3>
     <ul>
@@ -1202,7 +1212,7 @@
       <li>No cookies, no tracking, no analytics.</li>
     </ul>
     <h3>Your care circle</h3>
-    <p>A care circle is one patient's records and the people they have let in. It is set up by the patient, or by a carer for someone they look after. A carer setting it up names the patient and confirms that the patient has agreed, or cannot decide this for themselves and the carer is acting for them; that confirmation is kept with the circle, with the date. The records are the patient's, whoever typed them in: the patient's rights below come first, and the patient can take charge of the circle at any time. Only the patient, and the person who set the circle up until they hand it over, can invite someone in or remove them. Everyone else in the circle has exactly the access they were given and nothing more.</p>
+    <p>A care circle is one patient's records and the people they have let in. It is set up by the patient, or by a carer for someone they look after. A carer setting it up names the patient and says either that the patient can decide for themselves, in which case nothing can be recorded until the patient joins and agrees in their own right, or that the carer holds legal authority to act for them (a Lasting Power of Attorney for health and welfare, a Court of Protection deputyship, or parental responsibility for a child). The authority is recorded with its type, the date it was registered and, if given, its access code, and Mark 1 Apps Ltd checks it. The records are the patient's, whoever typed them in: the patient's rights below come first, and the patient can take charge of the circle at any time. Only the patient, and the person who set the circle up until they hand it over, can invite someone in or remove them. Everyone else in the circle has exactly the access they were given and nothing more.</p>
     <h3>What Daybook stores</h3>
     <p><b>Your sign-in:</b> your email address and password (held by Google's Firebase Authentication; Daybook never sees the password), your first name, your role in the circle (family, read only, or medicines and treatment only), whether you are the patient or a carer, and which circle you belong to.</p>
     <p><b>What your circle records:</b> check-ins (pain, mood, sleep, sickness, appetite, energy, how much you felt low, worried or enjoyed something each evening, a weekly check whose questions follow the conditions Daybook is set up for, a carer's own weekly check, and their own mood score and notes at the patient's morning and evening times, all on how the patient seemed, with Crohn's or colitis tummy pain, whether your gut stopped you doing anything, nights up for the toilet, whether you are fasting that day and which kind, and a weekly question about joints, eyes, skin and mouth, and what you write), readings (temperature, heart rate, blood pressure, oxygen, weight and BMI), food and drink, notes, questions for the care team and their answers, including any voice recordings you choose to make, medicines, doses and reminder times, letters and documents you photograph or paste in and the explanations saved with them, bowel movements (the type, any blood, urgency and accidents, and with Crohn's or colitis your usual number a day and whether you have a stoma), blood test and calprotectin results you type in or read from a photo, as the team gave them, with Crohn's or colitis the flare plan your team gave you, which days you mark as flare days and the calls you log to the advice line, symptoms between check-ins, each night's sleep (when you went to bed and woke, whether you felt rested, whether it was broken, what broke it and roughly for how long), whether you use a watch or health app, which conditions Daybook is set up for, treatment sessions and the calendar, exercise ticks, steps, sleep, workouts and food totals if you connect Apple Health, saved meals, who to contact (names, roles, phone numbers, any extension or menu option, and email addresses), and your settings.</p>
@@ -1233,14 +1243,23 @@
       <li><b>Fonts and database code.</b> The app loads its fonts from Google Fonts and the database's code from Google. Those servers see your phone's internet address when the app loads, as with any website. None of your entries go to them. Every other code library is kept inside Daybook itself.</li>
       <li><b>Daybook's bridge.</b> A small service on Cloudflare that handles sign-up, invites, the Apple Health feed, reminders, the emailed reports and Daybook Assistant's requests. It checks your sign-in, or for the Apple Health feed your circle's inbox key, and writes only your circle's records and your own sign-up record. Cloudflare keeps standard request logs for a short time.</li>
     </ul>
-    <h3>Why the data is held</h3>
-    <p>To provide the service you have asked for, with your explicit consent for the health information you choose to record. UK data protection law calls health information "special category data", which is why it is handled with the care above. You can withdraw consent at any time by deleting what you recorded or asking for it to be erased.</p>
+    <h3>Why the data is held (the lawful basis)</h3>
+    <p>UK data protection law asks for a reason, the "lawful basis", for each use of personal information, and a further condition for health information, which it calls "special category data". Daybook's are:</p>
+    <ul>
+      <li><b>Your sign-in, your circle and running the service</b> (the account, who is in the circle, invites, reminders, the bridge, backups and keeping it secure): <b>contract</b>, because they are needed to provide the service you have asked for.</li>
+      <li><b>The health information your circle records</b>: your <b>explicit consent</b>, given with its own tick box that names health information and what it is used for, separate from these terms. Daybook keeps a record of the consent: who gave it, when, how (when the circle was set up, when the patient joined, or when asked in the app) and the exact words shown. You can see it under More, Your records.</li>
+      <li><b>Someone who cannot decide for themselves</b>: consent is given on their behalf by a carer with legal authority (a Lasting Power of Attorney for health and welfare, a Court of Protection deputyship, or parental responsibility for a child). A carer's word alone is not treated as consent. Mark 1 Apps Ltd keeps the details of the authority and checks it, using the access code on GOV.UK's lasting power of attorney service where one is given, or a copy.</li>
+      <li><b>Features you start yourself</b> (sending a report, Daybook Assistant, scanning a barcode, Apple Health or Health Connect): part of the service, under the same consent, and only when you tap.</li>
+      <li><b>Usage counts and Beta feedback</b>: Mark 1 Apps Ltd's <b>legitimate interests</b> in keeping Daybook working well. The counts hold no names, addresses or anything you wrote, and feedback is only what you choose to send.</li>
+      <li><b>Where the law requires it</b>: our <b>legal obligations</b>.</li>
+    </ul>
+    <p>You can withdraw your consent at any time by deleting your records (More, Your records), or by asking us to erase them. Withdrawing does not undo what was done before it.</p>
     <h3>How long</h3>
     <p>Until you delete it. Deleting an entry, document or recording removes it from the database straight away. Removing a member removes their access and their reminders. The last Apple Health message held by the bridge is overwritten by the next one. Under More, Settings, Your records, the patient (or whoever set the circle up) can download every record and delete the whole circle, which erases everything in it and their sign-in at once; anyone else can leave and delete their own sign-in, and what they logged stays in the patient's records. You can also ask using the contact details at the top and it will be done within 30 days. Google keeps standard server logs for a limited period.</p>
     <h3>Your rights</h3>
     <p>Under UK data protection law you can ask to see the information held about you, have it corrected, have it erased, have a copy to take elsewhere, and object to how it is used. The copy and the erasing you can do yourself under More, Settings, Your records; for anything else, ask using the contact details at the top. You can also complain to the Information Commissioner's Office at ico.org.uk.</p>
     <h3>Children</h3>
-    <p>A sign-in holder must be 18 or over. A parent or carer may set up a circle and record on behalf of someone they look after, including a child, with that person's agreement where they are able to give it, and otherwise acting in their interests.</p>
+    <p>A sign-in holder must be 18 or over. A parent with parental responsibility may set up a circle for a child and record on their behalf; this is recorded as the parent's authority when the circle is set up.</p>
     <h3>The demo</h3>
     <p>The Guest button opens a shared demo. Everything in it is made up, anyone can see what is added, and it is wiped every night. Put no real details in it.</p>
     <h3>Changes</h3>
@@ -1248,12 +1267,12 @@
   </template>
 
   <template id="tpl-terms">
-    <p class="legal-date mono">Last updated 9 November 2026</p>
+    <p class="legal-date mono">Last updated 10 November 2026</p>
     <h3>1. What Daybook is</h3>
     <p>My Medical Daybook (Daybook for short) is a personal record-keeping tool for a patient and the people looking after them, made and run by Mark 1 Apps Ltd, a company registered in England and Wales (company number 17510025). <span data-contact></span></p>
     <p>It is not a medical device, it gives no medical advice, and it does not replace your doctors, nurses or pharmacist. Everything it shows, including the summary lines, the flags, the food estimates and the AI explanations, is there to help you talk to your care team, not to decide anything for you. If you are worried about a symptom, contact your care team or NHS 111. In an emergency call 999.</p>
     <h3>2. Your account</h3>
-    <p>One sign-in per person. Keep your password private; you are responsible for what is done with your sign-in. A care circle is the patient's. The patient, and whoever set the circle up until they hand it over, decide who is invited and with what access, and can remove them. By inviting someone you confirm that the patient agrees to them seeing the records. Setting up a circle for someone else means you have their agreement, or they cannot decide for themselves and you are acting in their interests.</p>
+    <p>One sign-in per person. Keep your password private; you are responsible for what is done with your sign-in. A care circle is the patient's. The patient, and whoever set the circle up until they hand it over, decide who is invited and with what access, and can remove them. By inviting someone you confirm that the patient agrees to them seeing the records. If you set up a circle for someone else, either they agree for themselves when they join (nothing can be recorded until they do), or you hold legal authority to act for them and give its details truthfully; Mark 1 Apps Ltd checks it and may close a circle whose authority cannot be confirmed.</p>
     <h3>3. Your records</h3>
     <p>They remain yours. You give Mark 1 Apps Ltd permission only to store them and show them to your care circle, as the privacy policy describes. You are responsible for what you enter and for checking it is right, especially medicine doses and times.</p>
     <h3>4. Using it fairly</h3>
@@ -1331,6 +1350,6 @@
   </div>
 
   <script src="config.js?v=405"></script>
-  <script type="module" src="scripts.js?v=447"></script>
+  <script type="module" src="scripts.js?v=448"></script>
 </body>
 </html>

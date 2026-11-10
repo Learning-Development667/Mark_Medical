@@ -2671,3 +2671,19 @@ html.text-huge .medrow, html.text-huge .med-head { gap: 8px; }
 /* A food row taken out of the meal (v446): kept as one quiet line with Put it back */
 .macro-row.is-removed .macro-row-label { color: var(--text-muted); text-decoration: line-through; }
 .macro-row.is-removed .macro-row-label small { text-decoration: none; display: block; }
+
+/* Consent to keep health information (v448, the ICO's advice): its own card at sign-up, the carer's two ways, and the hold */
+.consent-box { margin: var(--s-4) 0 var(--s-2); padding: var(--s-4); border-radius: var(--r-md); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line), 0 2px 8px rgba(23, 38, 58, 0.06); }
+.consent-h { margin: 0 0 var(--s-2); font-family: var(--font-head); font-weight: 600; font-size: 20px; line-height: 1.25; color: var(--text-primary); }
+.consent-check span { line-height: 1.45; }
+.consent-opts { display: grid; gap: 10px; }
+.consent-opt { display: flex; gap: 12px; align-items: flex-start; padding: 14px; border-radius: var(--r-md); background: var(--bg); box-shadow: inset 0 0 0 1.5px var(--line); cursor: pointer; }
+.consent-opt.is-on { background: var(--teal-light); box-shadow: inset 0 0 0 2px var(--teal); }
+.consent-opt input { flex: none; width: 24px; height: 24px; margin: 2px 0 0; accent-color: var(--teal); }
+.consent-opt b { display: block; color: var(--text-primary); }
+.consent-opt small { display: block; margin-top: 3px; font-size: 16px; line-height: 1.4; color: var(--text-secondary); }
+.consent-sub { margin-top: var(--s-3); padding-top: var(--s-3); border-top: 1px solid var(--line); }
+.consent-hold { margin-bottom: var(--s-3); box-shadow: inset 4px 0 0 var(--amber, #E0A030), 0 0 0 1px var(--line); }
+.consent-hold-title { margin: 0 0 4px; font-family: var(--font-head); font-weight: 600; font-size: 20px; color: var(--text-primary); }
+.consent-check { align-items: flex-start; }
+.consent-check input[type="checkbox"] { flex: none; width: 24px; height: 24px; min-width: 24px; margin: 2px 12px 0 0; accent-color: var(--teal); }

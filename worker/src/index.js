@@ -36,6 +36,7 @@ export default {
       if (url.pathname === '/invite' && request.method === 'POST') return withCors(request, await handleInvite(request, env));
       if (url.pathname === '/invite-info' && request.method === 'GET') return withCors(request, await handleInviteInfo(url, env));
       if (url.pathname === '/join' && request.method === 'POST') return withCors(request, await handleJoin(request, env));
+      if (url.pathname === '/consent' && request.method === 'POST') return withCors(request, await handleConsent(request, env));
       if (url.pathname === '/member-remove' && request.method === 'POST') return withCors(request, await handleRemoveMember(request, env));
       if (url.pathname === '/owner-transfer' && request.method === 'POST') return withCors(request, await handleOwnerTransfer(request, env));
       if (url.pathname === '/plan' && request.method === 'POST') return withCors(request, await handlePlan(request, env));
@@ -1466,6 +1467,47 @@ function verifyEmailHtml(name, link) {
     '</td></tr></table></body></html>';
 }
 
+/* Consent to keep health information (v448, the ICO's advice of 10 November 2026). The lawful basis is contract (the service
+   asked for) with explicit consent as the condition for the health information people record. The consent is a separate,
+   clear opt-in, and Daybook keeps the evidence: who, when, how (sign-up, an invite, or the once-only question for circles made
+   before this) and the exact words shown, with their version. households/{hid}.consent is the current state; consentLog
+   keeps every change. Only the bridge writes them (the rules let members read the household record and nobody write it).
+   status: 'given' (the patient agreed), 'waiting' (a carer set it up and the patient has not agreed yet: nothing can be
+   recorded), 'authority' (a carer holds legal authority to act for someone who cannot decide: LPA or deputy, recorded with
+   the type, date and the optional access code, and checked by Mark 1 Apps, authorityChecked). */
+const CONSENT_MODES = ['patient', 'patient-will-agree', 'authority'];
+const AUTHORITY_TYPES = { lpa: 'Lasting Power of Attorney for health and welfare', deputy: 'Court of Protection deputy for personal welfare', parent: 'Parent with parental responsibility for a child under 18' };
+function consentWords(c) { return clean(c && c.words, 900); }
+async function recordConsent(fs, hid, rec) {
+  const house = await fs.get('households/' + hid);
+  const old = (house && house.fields && house.fields.consentLog && house.fields.consentLog.arrayValue && house.fields.consentLog.arrayValue.values) || [];
+  const entry = { mapValue: { fields: Object.fromEntries(Object.entries(rec).filter(([, v]) => v != null && v !== '').map(([k, v]) => [k, v && v.mapValue ? v : k === 'at' ? v : typeof v === 'boolean' ? { booleanValue: v } : strVal(String(v))])) } };
+  await fs.merge('households/' + hid, { consent: entry, consentLog: { arrayValue: { values: old.slice(-19).concat([entry]) } } });
+}
+function consentRecord(who, name, status, method, c, extra) {
+  return Object.assign({ status, by: who.uid, byName: name, at: nowTs(), method, words: consentWords(c), wordsVersion: clean(c && c.wordsVersion, 20), appVersion: clean(c && c.appVersion, 12) }, extra || {});
+}
+function authorityOf(c) {
+  const a = (c && c.authority) || {};
+  const type = AUTHORITY_TYPES[a.type] ? a.type : '';
+  const registered = /^\d{4}-\d{2}-\d{2}$/.test(String(a.registered || '')) ? a.registered : '';
+  const accessCode = clean(a.accessCode, 20).toUpperCase().replace(/[^A-Z0-9-]/g, '');
+  if (!type || (type !== 'parent' && !registered) || a.declared !== true) return null; // a parent has no registration date
+  return { type, registered, accessCode };
+}
+/* Mark 1 Apps checks a carer's legal authority (the ICO: record and verify): an email to support with the circle and what was
+   given; the LPA's access code can be checked on GOV.UK's "View a lasting power of attorney" service */
+async function tellSupportAuthority(env, hid, name, au) {
+  if (!env.RESEND_API_KEY) return;
+  const text = 'A care circle was set up by a carer who says they hold legal authority for the person.\n\nCircle: ' + hid + '\nCarer: ' + name +
+    '\nAuthority: ' + AUTHORITY_TYPES[au.type] + '\nRegistered on: ' + (au.registered || 'not applicable') + '\nAccess code: ' + (au.accessCode || 'not given') +
+    '\n\nCheck it on GOV.UK (View a lasting power of attorney), or ask the carer for a copy. When it is checked, mark it with the Household admin workflow (authority-checked).';
+  try {
+    await fetch('https://api.resend.com/emails', { method: 'POST', headers: { Authorization: 'Bearer ' + env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: 'My Medical Daybook <' + (env.SEND_FROM || SEND_FROM) + '>', to: ['support@mymedicaldaybook.co.uk'], subject: 'Daybook: a carer\'s legal authority to check', text }) });
+  } catch (e) { console.error('authority email', e && e.message); }
+}
+
 /* POST /household { name, relation, forName?, carerAgreed?, betaCode?, heardFrom? }: a sign-in with no circle makes its own and becomes its
    owner. Since v199 a carer setting one up for someone else names them (forName) and confirms they have that person's agreement, or
    are acting for someone who cannot decide for themselves; the confirmation is kept on the circle (consent) with the time. */
@@ -1480,7 +1522,16 @@ async function handleCreateHousehold(request, env) {
   if (current.hid) return json({ error: 'already', message: 'This sign-in is already in a care circle.', household: current.hid }, 409);
   const relation = relationOf(body.relation) === 'carer' ? 'carer' : 'patient';
   const forName = clean(body.forName, 40);
-  if (relation === 'carer' && body.carerAgreed !== true) return json({ error: 'bad-request', message: 'Please confirm that the person you care for has agreed, or cannot decide this for themselves and you are acting for them.' }, 400);
+  /* an app built before v448 sends no consent: it is let through as before (the carer's tick), with nothing recorded, and the
+     app asks the once-only question when it is updated; a v448 app always sends it */
+  const legacy = !body.consent;
+  if (legacy && relation === 'carer' && body.carerAgreed !== true) return json({ error: 'bad-request', message: 'Please confirm that the person you care for has agreed, or cannot decide this for themselves and you are acting for them.' }, 400);
+  const cons = body.consent || {};
+  const mode = CONSENT_MODES.includes(cons.mode) ? cons.mode : '';
+  const authority = mode === 'authority' ? authorityOf(cons) : null;
+  if (!legacy && relation === 'patient' && (mode !== 'patient' || cons.agreed !== true || !consentWords(cons))) return json({ error: 'consent', message: 'Please tick the box to agree to Daybook keeping your health information.' }, 400);
+  if (!legacy && relation === 'carer' && mode !== 'patient-will-agree' && mode !== 'authority') return json({ error: 'consent', message: 'Please say whether they can agree to this themselves.' }, 400);
+  if (!legacy && relation === 'carer' && mode === 'authority' && !authority) return json({ error: 'consent', message: 'Please give your authority, the date it was registered, and tick to confirm it.' }, 400);
   const betaCode = normaliseBetaCode(body.betaCode);
   let beta = null;
   if (env.BETA_CODES_REQUIRED) {
@@ -1499,17 +1550,21 @@ async function handleCreateHousehold(request, env) {
   await fs.set('bridge/global', { day: strVal(day), households: intVal(made + 1), updatedAt: nowTs() });
   const hid = randomCode().slice(0, 20);
   const house = { name: strVal(relation === 'carer' && forName ? forName : name), owner: strVal(who.uid), createdAt: nowTs() };
-  if (relation === 'carer') {
-    if (forName) house.patientName = strVal(forName);
-    house.consent = { mapValue: { fields: { by: strVal(who.uid), byName: strVal(name), at: nowTs(), kind: strVal('carer') } } };
-  }
+  if (relation === 'carer' && forName) house.patientName = strVal(forName);
   if (beta) house.betaCode = strVal(beta.code);
   if (heardFrom) house.heardFrom = strVal(heardFrom);
   await fs.set('households/' + hid, house);
   await fs.set(hp(hid, 'members/' + who.uid), { name: strVal(name), role: strVal('family'), relation: strVal(relation), addedBy: strVal('sign-up'), addedAt: nowTs() });
   await fs.merge('users/' + who.uid, { household: strVal(hid), name: strVal(name) });
   if (beta) await fs.merge('betaCodes/' + beta.code, { uses: intVal(beta.uses + 1), lastUsedAt: nowTs() });
-  return json({ ok: true, household: hid });
+  if (legacy) { /* nothing recorded: asked once in the app */ }
+  else if (relation === 'patient') await recordConsent(fs, hid, consentRecord(who, name, 'given', 'sign-up', cons));
+  else if (mode === 'patient-will-agree') await recordConsent(fs, hid, consentRecord(who, name, 'waiting', 'sign-up', cons, { forName }));
+  else {
+    await recordConsent(fs, hid, consentRecord(who, name, 'authority', 'sign-up', cons, { forName, authorityType: authority.type, authorityRegistered: authority.registered, authorityAccessCode: authority.accessCode, authorityChecked: false }));
+    await tellSupportAuthority(env, hid, name, authority);
+  }
+  return json({ ok: true, household: hid, consent: legacy ? '' : relation === 'patient' ? 'given' : mode === 'authority' ? 'authority' : 'waiting' });
 }
 
 /* POST /invite { name, role, relation }: the patient, or the owner, makes a one-use link that expires in a week (v199: family members who are neither cannot) */
@@ -1555,6 +1610,39 @@ async function loadInvite(fs, code) {
   return { ok: true, hid, fields: inv.fields, updateTime: inv.updateTime, householdName: circle.patientName, patientUid: circle.patientUid };
 }
 
+/* POST /consent { mode, agreed?, words, wordsVersion, appVersion, authority? } (v448): the once-only question for a circle made before
+   consent was recorded, and a carer choosing how. The patient (a family member marked patient) agrees for themselves; whoever runs
+   a circle with no patient in it says the patient will agree (waiting) or records their legal authority. A circle already agreed
+   is not changed by a carer. */
+async function handleConsent(request, env) {
+  const a = await whoIs(request, env); if (a.error) return a.error;
+  if (a.demo) return json({ error: 'demo', message: 'Not in the demo.' }, 403);
+  const { who, fs } = a;
+  const body = await readJson(request); if (!body) return json({ error: 'bad-request', message: 'Could not read what was sent.' }, 400);
+  const me = await memberOf(fs, who.uid);
+  if (!me.hid) return json({ error: 'unauthorised', message: 'This sign-in is not in a care circle.' }, 403);
+  const circle = await circleOf(fs, me.hid);
+  const now = circle.house && circle.house.fields && circle.house.fields.consent && circle.house.fields.consent.mapValue ? f(circle.house.fields.consent.mapValue.fields, 'status') : '';
+  const name = clean(me.name, 40);
+  if (me.relation === 'patient' && me.role === 'family') {
+    if (body.agreed !== true || !consentWords(body)) return json({ error: 'consent', message: 'Please tick the box to agree.' }, 400);
+    await recordConsent(fs, me.hid, consentRecord(who, name, 'given', now ? 'confirmed in the app' : 'asked once in the app', body));
+    return json({ ok: true, status: 'given' });
+  }
+  if (!runsCircle(circle, who.uid, me)) return json({ error: 'unauthorised', message: 'Only the patient, or whoever set the circle up, can answer this.' }, 403);
+  if (now === 'given') return json({ ok: true, status: 'given' });
+  if (circle.patientUid) return json({ error: 'consent', message: 'The patient answers this for themselves.' }, 400);
+  if (body.mode === 'patient-will-agree') {
+    await recordConsent(fs, me.hid, consentRecord(who, name, 'waiting', 'asked once in the app', body, { forName: circle.patientName }));
+    return json({ ok: true, status: 'waiting' });
+  }
+  const au = body.mode === 'authority' ? authorityOf(body) : null;
+  if (!au) return json({ error: 'consent', message: 'Please give your authority, the date it was registered, and tick to confirm it.' }, 400);
+  await recordConsent(fs, me.hid, consentRecord(who, name, 'authority', 'asked once in the app', body, { forName: circle.patientName, authorityType: au.type, authorityRegistered: au.registered, authorityAccessCode: au.accessCode, authorityChecked: false }));
+  await tellSupportAuthority(env, me.hid, name, au);
+  return json({ ok: true, status: 'authority' });
+}
+
 /* POST /join { code, name? }: a sign-in with no household joins the one the invite is for */
 async function handleJoin(request, env) {
   const a = await whoIs(request, env); if (a.error) return a.error;
@@ -1570,11 +1658,15 @@ async function handleJoin(request, env) {
   /* (v435) one patient a circle, checked at the join as well as when the invite was made; and the invite is marked used first, only
      if nobody else has, so two sign-ins accepting the same link at the same moment cannot both get in */
   if (f(inv.fields, 'relation') === 'patient' && inv.patientUid) return json({ error: 'invite', message: 'This care circle already has its patient. Ask for a new invite as a carer or family member.' }, 409);
+  /* (v448) the patient agrees in their own right when they join: the ICO, a carer's word alone is not consent */
+  const joinCons = body.consent || {};
+  if (body.consent && f(inv.fields, 'relation') === 'patient' && (joinCons.agreed !== true || !consentWords(joinCons))) return json({ error: 'consent', message: 'Please tick the box to agree to Daybook keeping your health information.' }, 400);
   const got = await fs.mergeIf(hp(inv.hid, 'invites/' + code), { used: { booleanValue: true }, usedBy: strVal(who.uid), usedAt: nowTs() }, inv.updateTime);
   if (!got) return json({ error: 'invite', message: 'That invite link has already been used.' }, 400);
   await fs.set(hp(inv.hid, 'members/' + who.uid), { name: strVal(name), role: strVal(f(inv.fields, 'role') || 'readonly'), relation: strVal(f(inv.fields, 'relation') || ''), addedBy: strVal(f(inv.fields, 'createdBy') || 'invite'), addedAt: nowTs() });
   await fs.merge('users/' + who.uid, { household: strVal(inv.hid), name: strVal(name) });
   await fs.remove('inviteCodes/' + code);
+  if (body.consent && f(inv.fields, 'relation') === 'patient') await recordConsent(fs, inv.hid, consentRecord(who, name, 'given', 'invite', joinCons));
   return json({ ok: true, household: inv.hid, householdName: inv.householdName, patientName: inv.householdName, name, role: f(inv.fields, 'role') });
 }
 

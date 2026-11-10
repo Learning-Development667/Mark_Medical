@@ -28,6 +28,7 @@ on:
           - food-check
           - dose-use-check
           - dose-use
+          - authority-checked
       code:
         description: "Beta code to make or switch off (beta-code): letters and digits, e.g. WARD1"
         required: false
@@ -42,7 +43,7 @@ on:
         type: boolean
         default: false
       household_id:
-        description: "Household id, from list (add-member, remove-member, new-key, food-check, dose-use)"
+        description: "Household id, from list (add-member, remove-member, new-key, food-check, dose-use, authority-checked)"
         required: false
         type: string
       household_name:

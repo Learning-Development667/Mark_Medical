@@ -200,16 +200,25 @@ if (action === 'create') {
     for (const x of unset) await fs.merge(`households/${hid}/medicines/${x.id}`, { purpose: str(fieldString(x.fields, 'purpose') || useIn), alsoFor: str(useOut) });
     console.log(`Saved ${writes.length} doses.` + (unset.length ? ` Gave ${unset.length} medicine${unset.length === 1 ? '' : 's'} a second use.` : ' The medicine\'s own uses were left as they are.'));
   } else console.log('Nothing changed. Run dose-use to save it.');
+} else if (action === 'authority-checked') {
+  /* (v448) Mark 1 Apps has checked a carer's legal authority (the LPA on GOV.UK, or a copy): marked on the circle's consent record */
+  const hid = env('HOUSEHOLD_ID');
+  const h = await household(hid);
+  const c = h && h.consent && h.consent.mapValue ? h.consent.mapValue.fields : null;
+  if (!c || fieldString(c, 'status') !== 'authority') { console.error('That circle has no legal authority recorded.'); process.exit(1); }
+  await fs.merge('households/' + hid, { consent: { mapValue: { fields: { ...c, authorityChecked: { booleanValue: true }, authorityCheckedAt: ts() } } } });
+  console.log(`Authority marked as checked for household ${hid}`);
 } else if (action === 'list') {
   const hs = await fs.list('households');
   for (const h of hs) {
     const via = [fieldString(h.fields, 'betaCode'), fieldString(h.fields, 'heardFrom')].filter(Boolean);
     const ms = await fs.list(`households/${h.id}/members`);
-    console.log(`${h.id}  ${ms.length} member${ms.length === 1 ? '' : 's'}${via.length ? '  (Beta code ' + hidden(via[0]) + ')' : ''}`);
+    const cs = h.fields && h.fields.consent && h.fields.consent.mapValue ? fieldString(h.fields.consent.mapValue.fields, 'status') : '';
+    console.log(`${h.id}  ${ms.length} member${ms.length === 1 ? '' : 's'}${via.length ? '  (Beta code ' + hidden(via[0]) + ')' : ''}  consent: ${cs || 'not yet asked'}`);
     for (const m of ms) console.log(`   ${hidden(m.id)}  ${fieldString(m.fields, 'role')}${fieldString(m.fields, 'relation') ? ', ' + fieldString(m.fields, 'relation') : ''}`);
   }
   if (!hs.length) console.log('No households yet.');
 } else {
-  console.error('ACTION must be create, add-member, remove-member, new-key, beta-code, beta-codes, beta-rotate, unseed-check, unseed, food-check, dose-use-check, dose-use or list');
+  console.error('ACTION must be create, add-member, remove-member, new-key, beta-code, beta-codes, beta-rotate, unseed-check, unseed, food-check, dose-use-check, dose-use, authority-checked or list');
   process.exit(1);
 }

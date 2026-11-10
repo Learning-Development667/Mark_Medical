@@ -16,7 +16,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '447';
+const APP_VERSION = '448';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -958,32 +958,144 @@ $('signin-form').addEventListener('submit', async (ev) => {
 /* Who Daybook is for (v199): a new care circle is set up by the patient ("Me") or by a carer for someone else, who names
    them and confirms they have their agreement, or are acting for someone who cannot decide for themselves. Family and
    friends come in by invite only. The getter returns what the bridge's /household needs. */
+/* Consent to keep health information (v448, the ICO's advice of 10 November 2026): a separate, clear opt-in that names health
+   information and its purposes, never the terms' small print. The bridge keeps who agreed, when, how and these exact words with
+   their version (households/{hid}.consent). Change the words, change the version. A carer setting a circle up says whether the
+   person can agree for themselves (then nothing is recorded until they join and agree) or records their legal authority. */
+const CONSENT_VERSION = '2026-11-10';
+const CONSENT_WORDS = 'I agree to Daybook keeping the health information I choose to record (symptoms, medicines, readings, notes, letters and recordings), so I can see it, share it with the people I invite, and make reports for my care team.';
+const CONSENT_NOTE = 'UK law asks for your clear agreement before health information is kept. You can withdraw it at any time by deleting your records, under More, Your records.';
+const consentBase = () => ({ words: CONSENT_WORDS, wordsVersion: CONSENT_VERSION, appVersion: APP_VERSION });
+let consentBoxSeq = 0;
+/* The patient's tick: returns { el, box, value() } */
+function patientConsent(noTitle) {
+  const id = 'consent-tick-' + (++consentBoxSeq);
+  const box = h('input', { type: 'checkbox', id });
+  const el = h('div', { class: 'consent-box' },
+    noTitle ? null : h('h3', { class: 'consent-h', text: 'Your health information' }),
+    h('label', { class: 'check consent-check', for: id }, box, h('span', { text: CONSENT_WORDS })),
+    h('p', { class: 'hint' }, CONSENT_NOTE + ' ', h('button', { class: 'btn-inline', type: 'button', 'data-page': 'privacy', text: 'What is kept and why' })));
+  return { el, box, value: () => ({ mode: 'patient', agreed: box.checked, ...consentBase() }) };
+}
+/* The carer's choice: returns { el, setName(n), value(), check() } where check() marks what is missing and returns false */
+function carerConsent() {
+  const n = ++consentBoxSeq;
+  let name = 'they', mode = '';
+  const title = h('h3', { class: 'consent-h' });
+  const opt = (value, head, text) => {
+    const radio = h('input', { type: 'radio', name: 'consent-mode-' + n, value });
+    const small = h('small');
+    const lab = h('label', { class: 'consent-opt' }, radio, h('span', null, h('b', { text: head }), small));
+    radio.addEventListener('change', () => { mode = value; draw(); });
+    return { lab, radio, small, text };
+  };
+  const yes = opt('patient-will-agree', '', ''), no = opt('authority', '', '');
+  const typeSel = h('select', { class: 'input' }, h('option', { value: '', text: 'Choose' }), h('option', { value: 'lpa', text: 'Lasting Power of Attorney for health and welfare' }), h('option', { value: 'deputy', text: 'Court of Protection deputy for personal welfare' }), h('option', { value: 'parent', text: 'Parent with parental responsibility (a child under 18)' }));
+  const dateIn = h('input', { type: 'date', class: 'input', max: todayStr() });
+  const codeIn = h('input', { type: 'text', class: 'input', autocomplete: 'off', autocapitalize: 'characters', spellcheck: 'false', maxlength: '20' });
+  let dateField = null;
+  const declId = 'consent-decl-' + n;
+  const decl = h('input', { type: 'checkbox', id: declId });
+  const declText = h('span');
+  const sub = h('div', { class: 'consent-sub', hidden: true },
+    field('Your authority', typeSel), dateField = field('Registered on', dateIn),
+    h('label', { class: 'field' }, h('span', { text: 'Access code (optional)' }), codeIn),
+    h('p', { class: 'hint', text: 'From GOV.UK\'s Use a lasting power of attorney service. It lets Mark 1 Apps check the LPA.' }),
+    h('label', { class: 'check consent-check', for: declId }, decl, declText),
+    h('p', { class: 'hint', text: 'Daybook keeps what you enter here, with the date and time, as the record of your authority.' }));
+  const waitHint = h('p', { class: 'hint', hidden: true });
+  typeSel.addEventListener('change', () => { if (dateField) dateField.hidden = typeSel.value === 'parent'; });
+  const draw = () => {
+    title.textContent = 'Can ' + name + ' agree to this themselves?';
+    yes.lab.querySelector('b').textContent = 'Yes, ' + name + ' can decide';
+    yes.lab.querySelector('small').textContent = 'You set up ' + name + "'s circle and Daybook gives you an invite for " + name + '. ' + name + ' joins, reads what is kept, and agrees for themselves. Nothing is recorded until ' + name + ' has agreed.';
+    no.lab.querySelector('b').textContent = 'No, I act for ' + name + ' legally';
+    no.lab.querySelector('small').textContent = name + ' cannot decide this for themselves, and I hold legal authority to make health decisions for them.';
+    declText.textContent = 'I hold this authority, it covers health decisions for ' + name + ', and I will use Daybook in ' + name + "'s best interests.";
+    waitHint.textContent = 'Until ' + name + ' agrees, the circle shows "Waiting for ' + name + ' to agree" on every screen.';
+    yes.lab.classList.toggle('is-on', mode === 'patient-will-agree'); no.lab.classList.toggle('is-on', mode === 'authority');
+    sub.hidden = mode !== 'authority'; waitHint.hidden = mode !== 'patient-will-agree';
+  };
+  const group = h('div', { class: 'consent-opts', role: 'radiogroup', 'aria-label': 'Can they agree to this themselves?' }, yes.lab, no.lab);
+  const el = h('div', { class: 'consent-box' }, title, group, waitHint, sub);
+  draw();
+  return {
+    el,
+    setName(v) { name = String(v || '').trim() || 'they'; draw(); },
+    value: () => mode === 'authority'
+      ? { mode, ...consentBase(), authority: { type: typeSel.value, registered: dateIn.value, accessCode: codeIn.value.trim(), declared: decl.checked } }
+      : { mode, ...consentBase() },
+    check() {
+      if (!mode) { missing(group, 'Choose one of these'); return false; }
+      if (mode === 'authority') {
+        if (!typeSel.value) { missing(typeSel, 'Choose your authority'); return false; }
+        if (typeSel.value !== 'parent' && !dateIn.value) { missing(dateIn, 'The date it was registered'); return false; }
+        if (!decl.checked) { missing(decl.closest('label'), 'Tick to confirm'); return false; }
+      }
+      return true;
+    }
+  };
+}
 const relationChips = (holder, prefix) => {
   let value = 'patient';
   const forField = $(prefix + '-for-field'), agreeField = $(prefix + '-agree-field');
+  if (agreeField) agreeField.remove(); // (v448) the carer's single tick is replaced by carerConsent()
+  const mine = patientConsent(), theirs = carerConsent();
+  const forIn = $(prefix + '-for');
+  if (forIn) forIn.addEventListener('input', () => theirs.setName(forIn.value));
+  (forField || holder).after(mine.el, theirs.el);
   const draw = () => {
     holder.replaceChildren(...[['patient', 'Me'], ['carer', 'Someone I care for']].map(([v, label]) =>
       h('button', { class: 'preset' + (value === v ? ' is-active' : ''), type: 'button', 'aria-pressed': value === v ? 'true' : 'false', onclick: () => { value = v; draw(); } }, label)));
     if (forField) forField.hidden = value !== 'carer';
-    if (agreeField) agreeField.hidden = value !== 'carer';
+    mine.el.hidden = value !== 'patient'; theirs.el.hidden = value !== 'carer';
   };
   draw();
-  return () => ({ relation: value, forName: value === 'carer' ? $(prefix + '-for').value.trim() : '', carerAgreed: value === 'carer' ? $(prefix + '-agree').checked : true });
+  const get = () => ({ relation: value, forName: value === 'carer' ? forIn.value.trim() : '', consent: value === 'carer' ? theirs.value() : mine.value() });
+  /* hidden when joining with an invite code: then the invite says who they are */
+  get.showBoxes = (on) => { mine.el.hidden = !on || value !== 'patient'; theirs.el.hidden = !on || value !== 'carer'; };
+  get.check = () => {
+    if (value === 'patient') { if (!mine.box.checked) { missing(mine.box.closest('label'), 'Tick to agree'); return false; } return true; }
+    if (!forIn.value.trim()) { missing(forIn, 'Their first name, please'); return false; }
+    return theirs.check();
+  };
+  return get;
 };
 const signupRelation = relationChips($('signup-relation'), 'signup');
 const nohouseholdRelation = relationChips($('nohousehold-relation'), 'nohousehold');
 /* Refuses a carer's set-up without the agreement tick or a name, in the app's own words before the bridge is asked */
-function circleSetupError(r) {
-  if (r.relation !== 'carer') return '';
-  if (!r.forName) return 'Their first name, please: the circle is theirs.';
-  if (!r.carerAgreed) return 'Please tick the box: they have agreed, or cannot decide this for themselves and you are acting for them.';
-  return '';
+/* (v448) the boxes say what is missing themselves; this only stops the request */
+function circleSetupError(r, get) { return get && get.check && !get.check() ? 'Please check the boxes marked in red.' : ''; }
+/* Joining with an invite: the patient agrees for themselves first (v448). Resolves to the bridge's answer, or throws. */
+async function joinCircle(code, name) {
+  let info = null;
+  try { const r = await fetch(BRIDGE.url.replace(/\/$/, '') + '/invite-info?code=' + encodeURIComponent(code)); info = await r.json(); } catch (e) { /* the join itself says what is wrong */ }
+  let consent = null;
+  if (info && info.valid && info.relation === 'patient') {
+    consent = await askConsent('Before you join', 'This is your care circle. ' + (info.from ? info.from + ' set it up for you. ' : '') + 'Nothing is kept until you agree.');
+    if (!consent) throw new Error('You need to agree before joining your care circle. Open the invite link again when you are ready.');
+  }
+  return bridgeCall('/join', { code, name, ...(consent ? { consent } : {}) });
+}
+/* The patient's agreement in a sheet: resolves to the payload, or null if they close it */
+function askConsent(title, intro) {
+  return new Promise((resolve) => {
+    let out = null;
+    const pc = patientConsent(true);
+    const ok = h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => {
+      if (!pc.box.checked) { missing(pc.box.closest('label'), 'Tick to agree'); return; }
+      out = pc.value(); closeSheet({ force: true });
+    } }, 'I agree');
+    openSheet(title, h('div', null, intro ? h('p', { text: intro }) : null, pc.el, ok,
+      h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => closeSheet({ force: true }) }, 'Not now')), () => resolve(out));
+  });
 }
 function showSignup() {
   $('signin').hidden = true; $('nohousehold').hidden = true;
   $('signup').hidden = false;
   $('signup-error').hidden = true;
   $('signup-code').value = state.pendingInvite || '';
+  signupRelation.showBoxes(!state.pendingInvite);
   $('signup-intro').textContent = state.pendingInvite ? 'Create a sign-in to join the care circle you were invited to.' : 'Your own Daybook, for you and the people you choose: your care circle.';
   /* The Beta code and "who told you" (v152): only while the app is in Beta, and not when joining a circle with an invite */
   if (state.pendingBeta && !$('signup-beta').value) $('signup-beta').value = state.pendingBeta;
@@ -993,20 +1105,23 @@ function showSignup() {
 }
 const betaPayload = (beta, heard) => (APP_STAGE ? { betaCode: $(beta).value.trim(), heardFrom: $(heard).value.trim() } : {});
 $('signup-button').addEventListener('click', showSignup);
+$('signup-code').addEventListener('input', () => signupRelation.showBoxes(!$('signup-code').value.trim()));
+$('nohousehold-code').addEventListener('input', () => nohouseholdRelation.showBoxes(!$('nohousehold-code').value.trim()));
 $('signup-cancel').addEventListener('click', () => { $('signup').hidden = true; $('signin').hidden = false; });
 $('signup-form').addEventListener('submit', async (ev) => {
   ev.preventDefault();
   const btn = $('signup-submit'), err = $('signup-error');
   err.hidden = true; btn.disabled = true; btn.textContent = 'Creating';
   const name = $('signup-name').value.trim(), code = $('signup-code').value.trim();
+  /* (v448) the consent boxes are checked before any sign-in is made */
+  if (!code && circleSetupError(null, signupRelation)) { btn.disabled = false; btn.textContent = 'Create my account'; return; }
   try {
     await setPersistence(auth, browserLocalPersistence);
     state.creatingCircle = true;
     const cred = await createUserWithEmailAndPassword(auth, $('signup-email').value.trim(), $('signup-password').value);
     /* the sign-in exists now; the household is made by the bridge, and a failure there lands on the no-household screen, not in limbo */
     const who = signupRelation();
-    if (!code && circleSetupError(who)) throw Object.assign(new Error(circleSetupError(who)), { code: 'auth/circle' });
-    if (code) await bridgeCall('/join', { code, name });
+    if (code) await joinCircle(code, name);
     else await bridgeCall('/household', { name, ...who, ...betaPayload('signup-beta', 'signup-heard') });
     state.pendingInvite = null; state.pendingBeta = null;
     state.setupPending = code ? 'phone' : 'full';
@@ -1049,8 +1164,8 @@ $('nohousehold-form').addEventListener('submit', async (ev) => {
   const name = $('nohousehold-name').value.trim(), code = $('nohousehold-code').value.trim();
   try {
     const who = nohouseholdRelation();
-    if (!code && circleSetupError(who)) throw new Error(circleSetupError(who));
-    if (code) await bridgeCall('/join', { code, name });
+    if (!code && circleSetupError(who, nohouseholdRelation)) { btn.disabled = false; return; }
+    if (code) await joinCircle(code, name);
     else await bridgeCall('/household', { name, ...who, ...betaPayload('nohousehold-beta', 'nohousehold-heard') });
     state.pendingInvite = null; state.pendingBeta = null;
     state.setupPending = code ? 'phone' : 'full';
@@ -1215,7 +1330,7 @@ async function enterApp(user) {
       let words = 'Join the care circle this link is for?';
       try { const r = await fetch(BRIDGE.url.replace(/\/$/, '') + '/invite-info?code=' + encodeURIComponent(code)); const info = await r.json(); if (info.valid) words = inviteWords(info) + ' Join it?'; } catch (e) { /* the plain question */ }
       if (await confirmSheet('Join this care circle?', words + ' Everything you log goes to its records, which its members can see.', 'Join')) {
-        try { await bridgeCall('/join', { code }); state.setupPending = 'phone'; return enterApp(user); }
+        try { await joinCircle(code, ''); state.setupPending = 'phone'; return enterApp(user); }
         catch (e) { toast(e.message); }
       }
     }
@@ -1255,6 +1370,7 @@ async function enterApp(user) {
     const wanted = new URLSearchParams(location.search).get('tab');
     if (wanted && PAGE_TITLES[wanted] && !state.viewer) { showTab(wanted); history.replaceState(null, '', location.pathname + location.hash); }
     await startData();
+    setTimeout(checkConsent, 1200); // (v448) the agreement to keep health information
     syncReminders();
     setTimeout(() => syncHealth(false), 4000); // Apple Health in the iPhone app (v403)
     setTimeout(() => offerDraft(), 1500);
@@ -2643,6 +2759,77 @@ async function syncHouseholdCard() {
 /* Your records (v295, ROADMAP action 8): Download all the records (any member who can read them all: family and read only), and
    Delete. The patient, or whoever set the circle up, can delete the whole circle; anyone else can leave and delete their own
    sign-in, their entries staying in the patient's records. Both ask for DELETE to be typed. Not in the preview or the demos. */
+/* ---- The agreement to keep health information, for circles made before v448 and while a carer's circle waits ---- */
+function consentDone(c) { return Boolean(c && (c.status === 'given' || c.status === 'authority')); }
+function holdForConsent(on, title, text, btnLabel, onClick) {
+  state.consentHold = on;
+  state.readOnly = on || (state.account && state.account.role === 'readonly');
+  setReadOnlyMode(state.readOnly);
+  const box = $('consent-hold'), btn = $('consent-hold-btn');
+  box.hidden = !on;
+  if (on) {
+    $('consent-hold-title').textContent = title; $('consent-hold-text').textContent = text;
+    btn.hidden = !btnLabel; btn.textContent = btnLabel || ''; btn.onclick = onClick || null;
+  }
+  try { renderToday(); } catch (e) { /* drawn on the next change */ }
+}
+async function checkConsent() {
+  if (state.demo || state.demoLive || !BRIDGE || !state.household || !state.account) return;
+  let house = null;
+  try { const d = await getDoc(doc(db, 'households', state.household)); house = d.exists() ? d.data() : null; } catch (e) { return; }
+  if (!house) return;
+  const c = house.consent || {};
+  state.consent = c;
+  if (consentDone(c)) { if (state.consentHold) holdForConsent(false); return; }
+  const me = state.account;
+  const isPatient = me.relation === 'patient' && me.role === 'family';
+  let patientName = house.patientName || house.name || 'the patient', hasPatient = isPatient;
+  if (!isPatient) {
+    try { const ms = (await getDocs(hcol('members'))).docs.map((d) => d.data()); const pt = ms.find((m) => m.relation === 'patient'); if (pt) { hasPatient = true; patientName = pt.name || patientName; } } catch (e) { /* a read-only member sees only themselves */ }
+  }
+  const askMine = async () => {
+    const got = await askConsent('Your health information', 'Daybook now asks for your clear agreement before keeping health information, as UK data protection law asks. One tick, once.');
+    if (!got) return;
+    try { await bridgeCall('/consent', got); toast('Thank you. Your agreement is saved.'); holdForConsent(false); state.consent = { status: 'given' }; } catch (e) { toast(e.message); }
+  };
+  if (isPatient) {
+    holdForConsent(true, 'Daybook needs your agreement', 'Nothing new can be recorded until you agree to Daybook keeping your health information.', 'Read and agree', askMine);
+    if (c.status !== 'waiting') askMine();
+    return;
+  }
+  const runs = runsCircle(house.owner || '') && me.role === 'family';
+  if (runs && !hasPatient && c.status !== 'waiting') {
+    const chooser = async () => {
+      const cc = carerConsent(); cc.setName(patientName);
+      const save = h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
+        if (!cc.check()) return;
+        try {
+          const r = await bridgeCall('/consent', cc.value()); closeSheet({ force: true }); state.consent = { status: r.status, forName: patientName };
+          if (r.status === 'waiting') holdForConsent(true, 'Waiting for ' + patientName + ' to agree', 'Nothing can be recorded until ' + patientName + ' joins and agrees. Invite them under More, Care circle, as the patient.', 'Invite ' + patientName, () => openInviteSheet());
+          else { holdForConsent(false); toast('Saved. Mark 1 Apps will check the authority.'); }
+        } catch (e) { toast(e.message); }
+      } }, 'Save');
+      openSheet('Agreement to keep ' + patientName + "'s records", h('div', null,
+        h('p', { text: 'Daybook now records how ' + patientName + ' agreed to their health information being kept, as UK data protection law asks.' }), cc.el, save,
+        h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => closeSheet({ force: true }) }, 'Not now')));
+    };
+    holdForConsent(true, 'Daybook needs ' + patientName + "'s agreement", 'Say how ' + patientName + ' agrees to their records being kept. Nothing new can be recorded until then.', 'Answer now', chooser);
+    chooser();
+    return;
+  }
+  const words = runs && !hasPatient
+    ? 'Nothing can be recorded until ' + patientName + ' joins and agrees. Invite them under More, Care circle, as the patient.'
+    : 'Nothing can be recorded until ' + patientName + ' agrees to Daybook keeping their health information.';
+  holdForConsent(true, 'Waiting for ' + patientName + ' to agree', words, runs && !hasPatient ? 'Invite ' + patientName : '', runs && !hasPatient ? () => openInviteSheet() : null);
+}
+function consentWordsFor(c) {
+  if (!c || !c.status) return 'Not recorded yet.';
+  const when = (t) => { try { const d = t && t.toDate ? t.toDate() : null; return d ? d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) + ' at ' + d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : ''; } catch (e) { return ''; } };
+  const how = { 'sign-up': 'when the circle was set up', invite: 'when they joined', 'asked once in the app': 'in the app', 'confirmed in the app': 'in the app' }[c.method] || 'in the app';
+  if (c.status === 'given') return 'Agreed by ' + (c.byName || 'the patient') + ' on ' + when(c.at) + ', ' + how + ' (wording of ' + (c.wordsVersion || 'unknown') + '). To withdraw it, delete the records below.';
+  if (c.status === 'waiting') return 'Waiting for ' + (c.forName || 'the patient') + ' to agree. Set up by ' + (c.byName || 'a carer') + ' on ' + when(c.at) + '.';
+  return (c.byName || 'A carer') + ' recorded legal authority to act for ' + (c.forName || 'the patient') + ' (' + ({ lpa: 'Lasting Power of Attorney for health and welfare', deputy: 'Court of Protection deputy', parent: 'parental responsibility' }[c.authorityType] || 'legal authority') + ', registered ' + (c.authorityRegistered || '') + ') on ' + when(c.at) + '. ' + (c.authorityChecked ? 'Checked by Mark 1 Apps.' : 'Not yet checked by Mark 1 Apps.');
+}
 async function syncRecordsCard() {
   const card = $('settings-records');
   if (!card) return;
@@ -2652,6 +2839,8 @@ async function syncRecordsCard() {
   if (!show) return;
   const del = $('settings-delete');
   del.replaceChildren();
+  $('settings-consent').hidden = !state.consent;
+  if (state.consent) $('settings-consent-text').textContent = consentWordsFor(state.consent);
   if (!BRIDGE) return;
   let owner = '';
   try { const house = await getDoc(doc(db, 'households', state.household)); owner = house.exists() ? house.data().owner : ''; } catch (e) { /* the leave button needs no owner */ }
