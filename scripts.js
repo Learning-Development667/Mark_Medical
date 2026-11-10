@@ -16,7 +16,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '444';
+const APP_VERSION = '445';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -17046,19 +17046,10 @@ function openDaySheet(key) {
   cbChemo.addEventListener('change', syncDone);
   typeRow.addEventListener('click', () => setTimeout(syncDone));
   syncDone();
-  /* Move a session to another day (v189), for when the hospital changes the date: it keeps its type, its done tick and its cycle start */
-  const moveBox = h('div', { class: 'cyc-move', hidden: true });
-  const moveDate = h('input', { type: 'date', class: 'input', value: key });
-  moveBox.append(field('Move it to', moveDate), h('div', { class: 'btnrow' },
-    h('button', { class: 'btn btn-primary', type: 'button', onclick: async () => {
-      const to = moveDate.value;
-      if (!to || to === key) { missing(moveDate, 'Choose a different day', CHECK); return; }
-      if (state.days[to] && state.days[to].chemo) { missing(moveDate, fmtDayShort(to) + ' already has a session', CHECK); return; }
-      closeSheet();
-      await moveSession(key, to);
-    } }, 'Move the session'),
-    h('button', { class: 'btn btn-secondary', type: 'button', onclick: () => { moveBox.hidden = true; moveBtn.hidden = false; } }, 'Cancel')));
-  const moveBtn = h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => { moveBtn.hidden = true; moveBox.hidden = false; moveDate.focus(); } }, 'Move to another day');
+  /* Move a session to another day (v189), for when the hospital changes the date: it keeps its type, its done tick and its
+     cycle start. Since v445 (Mark): its own sheet with Daybook's calendar, a tap on the new day and one button naming it; the
+     phone's date picker (the iPhone's blue tick) and the day sheet's Save beside it were two steps too many. */
+  const moveBtn = h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => openMoveSheet(key) }, 'Move to another day');
 
   const good = dayGoodWords(key, info);
   const moodInfo = info.mood ? 'Mood that day: ' + MOODS[info.mood - 1].label.toLowerCase() + (good ? '. ' + good + (/[.!?]$/.test(good.trim()) ? '' : '.') : '.') : '';
@@ -17098,7 +17089,6 @@ function openDaySheet(key) {
       } catch (e) { console.error(e); toast('Could not save'); }
     } }, 'Save'),
     info.chemo ? moveBtn : null,
-    info.chemo ? moveBox : null,
     info.chemo ? h('button', { class: 'btn btn-danger btn-block', type: 'button', onclick: async () => {
       closeSheet();
       const data = { chemo: false, chemoDone: false, updatedBy: state.name, updatedAt: serverTimestamp() };
@@ -17139,6 +17129,55 @@ function logRepeatDose(day, treatName) {
   logMed(med, at).catch((e) => console.error(e));
 }
 /* Move a session (v189): the new day takes its type, done tick and cycle start; the old day keeps any mood but loses the session */
+function openMoveSheet(key) {
+  let month = key.slice(0, 7), chosen = '';
+  const grid = h('div', { class: 'cal-grid' });
+  const title = h('span', { class: 'cal-title mv-title', 'aria-live': 'polite' });
+  const go = h('button', { class: 'btn btn-primary btn-block', type: 'button', disabled: true, onclick: async () => {
+    if (!chosen) return;
+    closeSheet({ force: true });
+    await moveSession(key, chosen);
+  } }, 'Choose a day first');
+  const shift = (n) => { const [y, m] = month.split('-').map(Number); const d = new Date(y, m - 1 + n, 1); month = d.getFullYear() + '-' + pad2(d.getMonth() + 1); draw(); };
+  const draw = () => {
+    const [y, m] = month.split('-').map(Number);
+    title.textContent = new Date(y, m - 1, 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+    const startDow = (new Date(y, m - 1, 1).getDay() + 6) % 7;
+    const n = new Date(y, m, 0).getDate(), today = todayStr();
+    const cells = [];
+    for (let i = 0; i < startDow; i++) cells.push(h('div', { class: 'cal-cell is-empty' }));
+    for (let d = 1; d <= n; d++) {
+      const k = `${y}-${pad2(m)}-${pad2(d)}`;
+      const info = state.days[k] || {};
+      const busy = !!info.chemo;
+      const cls = ['cal-cell'];
+      if (k === today) cls.push('is-today');
+      if (busy) cls.push('is-chemo');
+      if (k === chosen) cls.push('is-selected');
+      const label = fmtDayLong(k) + (k === key ? ', this session' : busy ? ', already has a session' : '') + (k === chosen ? ', chosen' : '');
+      cells.push(h('button', { class: cls.join(' '), type: 'button', disabled: busy, 'aria-label': label, 'aria-pressed': k === chosen ? 'true' : 'false', onclick: () => {
+        chosen = k; go.disabled = false; go.textContent = 'Move to ' + fmtDayLong(k); draw();
+      } },
+        busy ? h('span', { class: 'cal-type', 'aria-hidden': 'true', text: treatmentOf(info).letter }) : null,
+        h('span', { class: 'cal-num', text: String(d) })));
+    }
+    grid.replaceChildren(...cells);
+  };
+  draw();
+  const body = h('div', null,
+    h('p', { class: 'mv-from' }, 'Moving the session on ', h('b', { text: fmtDayLong(key) }), '. Tap the new day.'),
+    h('div', { class: 'mv-cal' },
+      h('div', { class: 'cal-head' },
+        h('button', { class: 'iconbtn', id: 'mv-prev', type: 'button', 'aria-label': 'Previous month', onclick: () => shift(-1) }, '\u2039'),
+        title,
+        h('button', { class: 'iconbtn', id: 'mv-next', type: 'button', 'aria-label': 'Next month', onclick: () => shift(1) }, '\u203A')),
+      h('div', { class: 'cal-dow', 'aria-hidden': 'true' }, ...['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((x) => h('span', { text: x }))),
+      grid),
+    h('p', { class: 'hint mv-key', text: 'Days that already have a session are faded.' }),
+    h('div', { class: 'mv-actions' }, go,
+      h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => openDaySheet(key) }, 'Cancel')));
+  openSheet('Move this session', body);
+}
 async function moveSession(from, to) {
   const info = state.days[from] || {};
   const data = { chemo: true, chemoDone: !!info.chemoDone, treatment: treatmentOf(info).key, updatedBy: state.name };

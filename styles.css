@@ -2659,3 +2659,11 @@ html.text-huge .medrow, html.text-huge .med-head { gap: 8px; }
 .update-bar:focus-visible { outline: 3px solid #FFF3D6; outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { .update-bar { transition: none; } }
 @media (forced-colors: active) { .update-bar { border-color: ButtonText; } }
+
+/* Move this session (v445, Mark, 10 November 2026): Daybook's own calendar in its own sheet, one button naming the new day */
+.mv-from { margin: 0 0 var(--s-3); color: var(--text-secondary); }
+.mv-from b { color: var(--text-primary); }
+.mv-cal { padding: var(--s-2) 6px 10px; border-radius: var(--r-md); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+.mv-title { text-align: center; cursor: default; }
+.mv-key { margin: 10px 2px var(--s-4); }
+.mv-actions { display: grid; gap: var(--s-3); }
