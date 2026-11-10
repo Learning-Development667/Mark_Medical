@@ -2667,3 +2667,7 @@ html.text-huge .medrow, html.text-huge .med-head { gap: 8px; }
 .mv-title { text-align: center; cursor: default; }
 .mv-key { margin: 10px 2px var(--s-4); }
 .mv-actions { display: grid; gap: var(--s-3); }
+
+/* A food row taken out of the meal (v446): kept as one quiet line with Put it back */
+.macro-row.is-removed .macro-row-label { color: var(--text-muted); text-decoration: line-through; }
+.macro-row.is-removed .macro-row-label small { text-decoration: none; display: block; }

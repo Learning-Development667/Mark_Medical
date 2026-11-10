@@ -16,7 +16,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '445';
+const APP_VERSION = '446';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -4978,8 +4978,13 @@ function openAdd(type, editEntry, preset) {
       const product = c.food && String(c.food.c || '').startsWith('custom:') ? c.food.n : null; // scanned or saved in My foods (v301)
       const sub = product ? (portion.qty && portion.qty.pack ? `From My foods, ${portion.qty.each} g a ${portion.qty.name}` : 'From My foods, weighed')
         : portion.qty ? (portion.qty.unit === 'piece' ? `about ${portion.qty.each} g each, estimate` : 'weighed') : custom ? 'From My foods' : c.food ? 'Typical portion, estimate' : 'Not in the food table';
-      const row = h('div', { class: 'macro-row' }, h('p', { class: 'macro-row-label' }, label, h('small', { text: sub })));
-      if (portion.override) { row.append(overridePanel(c, portion, rebuild)); return row; }
+      /* what was typed, when the table calls it something else ("Ham, gammon joint, boiled" for "gammon", v446) */
+      const typedWord = c.food && !String(c.food.n || '').toLowerCase().startsWith(String(c.phrase || '').toLowerCase()) ? ` · for "${c.phrase}"` : '';
+      const row = h('div', { class: 'macro-row' + (portion.removed ? ' is-removed' : '') }, h('p', { class: 'macro-row-label' }, label, h('small', { text: portion.removed ? 'Taken out of this meal' : sub + typedWord })));
+      /* any row can be taken out (v446): a wrong match, or something not in this dish */
+      const outBtn = h('button', { class: 'btn btn-link btn-small macro-out', type: 'button', onclick: () => { portion.removed = !portion.removed; rebuild(); } }, portion.removed ? 'Put it back' : 'Take it out');
+      if (portion.removed) { row.append(outBtn); return row; }
+      if (portion.override) { row.append(overridePanel(c, portion, rebuild), outBtn); return row; }
       if (portion.qty && portion.qty.unit === 'piece') {
         const q = portion.qty;
         const st = stepper(q.n, 0.5, 1, 'How many ' + q.many, (v) => { q.n = v; st.unitEl.textContent = v === 1 ? q.name : q.many; refreshTotals(); }, q.n === 1 ? q.name : q.many);
@@ -5026,6 +5031,7 @@ function openAdd(type, editEntry, preset) {
         portion.override = { kcal: null, prot: null, carb: null, fat: null, per: 'portion', grams: portionGrams(c.food, portion.size, scale, portion.qty) };
         rebuild();
       } }, 'Enter from the packet'));
+      if (macroOn || row.childElementCount > 1) row.append(outBtn); // never a row of its own when estimates are off
       return row;
     };
     const rebuildRows = () => {
@@ -5252,7 +5258,7 @@ function openAdd(type, editEntry, preset) {
       /* Only the components still on screen are kept. Pieces and grams are stored whatever the setting;
          sizes and overrides only mean something with it on, so with it off only rows with a quantity are kept. */
       const kept = lastComponents.map((c) => [c.key, portionsState[c.key]]).filter(([, p]) => p && (macroOn || (p.qty && p.qty.n > 0)));
-      const portions = kept.length ? Object.fromEntries(kept.map(([k, p]) => [k, { size: p.size || 'M', override: p.override || null, qty: p.qty || null }])) : null;
+      const portions = kept.length ? Object.fromEntries(kept.map(([k, p]) => [k, { size: p.size || 'M', override: p.override || null, qty: p.qty || null, ...(p.removed ? { removed: true } : {}) }])) : null;
       if (amountBlock.hidden) amount.value = 'All of it';
       /* Every meal is remembered, with when it is usually eaten; a meal chosen under an old
          name with a number in it ("2 x kiwi") is renamed to the clean one. Remembered only once the
@@ -7224,6 +7230,8 @@ const FOOD_ALIASES = {
   'oatcakes': [[/^oatcakes, plain, retail/i]],
   'oatcake': [[/^oatcakes, plain, retail/i]],
   'crackers': [[/^cream crackers/i]],
+  'water biscuits': [[/^cream crackers/i]], // the nearest in the UK table; not water and a digestive (v446)
+  'water biscuit': [[/^cream crackers/i]],
   'cracker': [[/^cream crackers/i]],
   'rice cakes': [[/^rice cakes|^rice cake/i, /^cream crackers/i]],
   'popcorn': [[/^popcorn, plain|^popcorn, candied/i]],
@@ -7623,11 +7631,23 @@ function foodTags(f) {
 }
 
 /* Per entry: union of its components' tags, in a fixed order */
+/* The words a food entry is matched from (v446). A dish name the food table does not know as a whole ("Campfire stew") is
+   only a title once "What is in it" says what went in: Shelley's stew with gammon came out as a beef stew and the gammon,
+   from "stew" in the name. A name the table knows ("Homity pie", "Porridge") still counts beside what is listed with it. */
+function entryFoodText(index, entry) {
+  const note = String(entry.note || '').trim(), detail = String(entry.detail || '').trim();
+  if (note && detail && index) {
+    const m = matchFoodText(index, note);
+    if (!m.matches.length || m.unmatched.length || unmatchedChunks(index, note, m.matches).length) return detail;
+  }
+  return [note, detail].filter(Boolean).join(', ');
+}
 function entryNutrition(index, entry) {
-  const text = [entry.note, entry.detail].filter(Boolean).join(', ');
+  const text = entryFoodText(index, entry);
   const { matches, unmatched } = matchFoodText(index, text);
   const set = new Set();
-  matches.forEach((m) => foodTags(m.food).forEach((t) => set.add(t)));
+  const out = (entry && entry.portions) || {};
+  matches.filter((m) => !(out[macroComponentKey(m.food, m.phrase)] || {}).removed).forEach((m) => foodTags(m.food).forEach((t) => set.add(t)));
   return { tags: FOOD_TAG_ORDER.filter((t) => set.has(t)), matches, unmatched };
 }
 
@@ -7961,7 +7981,7 @@ function entryMacros(index, entry) {
   };
   nutrition.matches.forEach((m) => add(m.food, m.phrase));
   nutrition.unmatched.forEach((phrase) => add(null, phrase));
-  unmatchedChunks(index, [entry.note, entry.detail].filter(Boolean).join(', '), nutrition.matches).forEach((phrase) => add(null, phrase));
+  unmatchedChunks(index, entryFoodText(index, entry), nutrition.matches).forEach((phrase) => add(null, phrase));
   /* The same countable thing named twice ("scrambled egg on toast" plus "two eggs, wholemeal toast")
      is one component, not two: keep the first of each piece key, so nothing is counted double */
   const pieceSeen = new Set();
@@ -7969,6 +7989,7 @@ function entryMacros(index, entry) {
   components.length = 0; components.push(...deduped);
   let counted = 0;
   components.forEach((c) => {
+    if (portions[c.key] && portions[c.key].removed) return; // taken out of this meal by hand (v446)
     const macros = componentMacros(c.phrase, c.food, portions[c.key], scale);
     if (!macros) { excluded.push(c.phrase); return; }
     counted++;
