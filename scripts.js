@@ -16,7 +16,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '443';
+const APP_VERSION = '444';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -395,10 +395,25 @@ function androidBack() {
   const back = view && [...view.querySelectorAll('[id$="-back"]')].find((b) => b.offsetParent !== null);
   if (back) { back.click(); return; }
   if (view && view.id !== 'view-today') { showTab('today'); return; }
-  try { window.Capacitor.registerPlugin('App').minimizeApp(); } catch (e) { /* nothing to do */ }
+  appPluginCall('minimizeApp');
 }
-if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform() && window.Capacitor.getPlatform() === 'android' && window.Capacitor.registerPlugin) {
-  try { window.Capacitor.registerPlugin('App').addListener('backButton', () => androidBack()); } catch (e) { console.warn('Back button', e); }
+/* The App plugin through Capacitor's own bridge (v444): Daybook loads no @capacitor/core, so registerPlugin is missing in the
+   phone apps and in v441 the Back listener was never added; with the plugin in and no listener, Back did nothing at all (a
+   tester, 10 November). The same route as the reminders' FirebaseMessaging (v399). */
+function appPluginCall(method) {
+  const C = window.Capacitor;
+  try {
+    if (C.registerPlugin) return Promise.resolve(C.registerPlugin('App')[method]()).catch(() => {});
+    if (C.nativePromise) return C.nativePromise('App', method, {}).catch(() => {});
+  } catch (e) { /* nothing to do */ }
+  return Promise.resolve();
+}
+if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform() && window.Capacitor.getPlatform() === 'android') {
+  const C = window.Capacitor;
+  try {
+    if (C.addListener) C.addListener('App', 'backButton', () => androidBack());
+    else if (C.registerPlugin) C.registerPlugin('App').addListener('backButton', () => androidBack());
+  } catch (e) { console.warn('Back button', e); }
 }
 document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && document.querySelector('.bigedit')) { ev.preventDefault(); closeBigEdit(); return; } if (ev.key === 'Escape' && !$('sheet').hidden) { ev.preventDefault(); closeSheet(); } });
 /* The on-screen keyboard. iPhone Safari lays the keyboard over the page rather than shrinking it, so a
