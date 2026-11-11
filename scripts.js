@@ -16,7 +16,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '450';
+const APP_VERSION = '451';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -1090,6 +1090,18 @@ function askConsent(title, intro) {
       h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => closeSheet({ force: true }) }, 'Not now')), () => resolve(out));
   });
 }
+/* A stronger password at sign-up (v451, the DPIA's action 2, NCSC's advice): 10 characters or more, not the email,
+   not one character repeated and not one of the passwords people try first. Two-step sign-in comes at the app stores. */
+const COMMON_PASSWORDS = ['password', 'passw0rd', 'qwerty', 'letmein', 'welcome', 'iloveyou', 'abc123', 'football', 'monkey', 'dragon', 'sunshine', 'princess', 'daybook', 'mymedicaldaybook', 'trustno1', 'admin'];
+function passwordProblem(pw, email) {
+  const p = String(pw || ''), low = p.toLowerCase(), user = String(email || '').toLowerCase().split('@')[0];
+  if (p.length < 10) return 'Choose a password of at least 10 characters. Three random words work well.';
+  if (/^(.)\1+$/.test(p) || /^(0123456789|1234567890|9876543210)+/.test(p)) return 'That password is too easy to guess. Three random words work well.';
+  if (user.length >= 4 && low.includes(user)) return 'Choose a password that is not your email. Three random words work well.';
+  const bare = low.replace(/[^a-z]/g, '');
+  if (COMMON_PASSWORDS.some((w) => bare === w || (bare.length <= w.length + 2 && bare.startsWith(w)))) return 'That password is one people try first. Three random words work well.';
+  return '';
+}
 function showSignup() {
   $('signin').hidden = true; $('nohousehold').hidden = true;
   $('signup').hidden = false;
@@ -1115,6 +1127,8 @@ $('signup-form').addEventListener('submit', async (ev) => {
   const name = $('signup-name').value.trim(), code = $('signup-code').value.trim();
   /* (v448) the consent boxes are checked before any sign-in is made */
   if (!code && circleSetupError(null, signupRelation)) { btn.disabled = false; btn.textContent = 'Create my account'; return; }
+  const pwProblem = passwordProblem($('signup-password').value, $('signup-email').value);
+  if (pwProblem) { missing($('signup-password'), pwProblem, CHECK); btn.disabled = false; btn.textContent = 'Create my account'; return; }
   try {
     await setPersistence(auth, browserLocalPersistence);
     state.creatingCircle = true;
@@ -1307,7 +1321,7 @@ function friendlyAuthError(e) {
   if (code.includes('too-many-requests')) return 'Too many attempts. Wait a few minutes and try again.';
   if (code.includes('network')) return 'No connection. Check the signal and try again.';
   if (code.includes('email-already-in-use')) return 'There is already a sign-in with that email. Sign in instead, or use Forgotten your password.';
-  if (code.includes('weak-password')) return 'Choose a longer password, at least 8 characters.';
+  if (code.includes('weak-password')) return 'Choose a longer password, at least 10 characters.';
   if (code.includes('invalid-email')) return 'That email address does not look right.';
   if (code.includes('operation-not-allowed')) return 'Creating accounts is switched off at the moment.';
   if (code === 'auth/circle') return e.message;

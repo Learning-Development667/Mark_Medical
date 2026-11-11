@@ -6,6 +6,9 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v451 (11 November 2026): a stronger password at sign-up
+The DPIA's action 2 (Mark: a strong password now, two-step sign-in at the app stores). `passwordProblem()` checks the sign-up password before any sign-in is made: 10 characters or more, not containing the email's name, not one character repeated or a run of digits, and not one of `COMMON_PASSWORDS` (letters only, so "Password123" and "Daybook2026" are caught). The box says "Check this" in red and the toast says why, each ending "Three random words work well" (NCSC's advice). The label and `minlength` say 10; `friendlyAuthError` says 10. Existing sign-ins are not asked to change. Password reset is Google's own page and keeps Firebase's own rule.
+
 ### v450 (11 November 2026): the Anthropic transfer named in the privacy page
 Mark checked the Data Privacy Framework List (dataprivacyframework.gov): Anthropic is not listed, so the UK Extension the ICO mentioned does not apply. The transfer to Anthropic (Daybook Assistant) relies instead on Anthropic's data processing addendum, which includes the ICO's International Data Transfer Addendum to the Standard Contractual Clauses (anthropic.com/legal/data-processing-addendum), with a transfer risk assessment in the DPIA (v1.2). The privacy page (11 November) says so under Daybook Assistant; copied to the website.
 
