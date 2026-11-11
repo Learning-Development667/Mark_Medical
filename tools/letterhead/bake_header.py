@@ -8,7 +8,7 @@ out = sys.argv[1]
 im = Image.open(os.path.join(here, 'header.jpg')).convert('RGB')
 font = ImageFont.truetype('/usr/share/fonts/opentype/inter/Inter-Regular.otf', 26)
 d = ImageDraw.Draw(im)
-lines = ['mark@mark1apps.co.uk'] + ([os.environ['LETTERHEAD_PHONE']] if os.environ.get('LETTERHEAD_PHONE') else [])
+lines = ['info@mark1apps.co.uk'] + ([os.environ['LETTERHEAD_PHONE']] if os.environ.get('LETTERHEAD_PHONE') else [])
 y = 96
 for t in lines:
     w = d.textlength(t, font=font)

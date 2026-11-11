@@ -86,7 +86,7 @@ Our own painting from Daybook's opening screen: misty trees at dawn through a wi
 
 ## Company details
 
-Every letter, email signature and invoice carries: Mark 1 Apps Ltd. Registered in England and Wales, company number 17510025. Registered office: 71-75 Shelton Street, London WC2H 9JQ. ICO registration ZC275185. Website: mymedicaldaybook.co.uk. Email: mark@mark1apps.co.uk. (The phone number is in the brand rules doc, kept out of this public repository.)
+Every letter, email signature and invoice carries: Mark 1 Apps Ltd. Registered in England and Wales, company number 17510025. Registered office: 71-75 Shelton Street, London WC2H 9JQ. ICO registration ZC275185. Website: mymedicaldaybook.co.uk. Email: info@mark1apps.co.uk (shared by both directors, since 11 November 2026). (The phone number is in the brand rules doc, kept out of this public repository.)
 
 ## Templates and files
 
