@@ -6,6 +6,9 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v452 (11 November 2026): the database holds a circle waiting for its patient's agreement
+The DPIA's action 7. `notWaiting(hid)` in `firestore.rules` reads `households/{hid}.consent.status` and refuses creating or changing entries, medicines, documents and pages, days, exercise, meals, nutrition, recordings and parts while it is `waiting`, so the app's read-only hold (`holdForConsent()`) is backed by the database itself. Reading and deleting still work, and profile (settings and contacts) still saves so set-up can finish. Only `waiting` holds: a circle from before v448 with no consent yet is asked once in the app, so older phone builds are not locked out. One extra document read per write. New break-in test in `tests/rules/households.test.mjs` (13 of 13 pass on the emulator). Published with the Publish database rules workflow.
+
 ### v451 (11 November 2026): a stronger password at sign-up
 The DPIA's action 2 (Mark: a strong password now, two-step sign-in at the app stores). `passwordProblem()` checks the sign-up password before any sign-in is made: 10 characters or more, not containing the email's name, not one character repeated or a run of digits, and not one of `COMMON_PASSWORDS` (letters only, so "Password123" and "Daybook2026" are caught). The box says "Check this" in red and the toast says why, each ending "Three random words work well" (NCSC's advice). The label and `minlength` say 10; `friendlyAuthError` says 10. Existing sign-ins are not asked to change. Password reset is Google's own page and keeps Firebase's own rule.
 

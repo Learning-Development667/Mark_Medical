@@ -33,6 +33,12 @@ service cloud.firestore {
     function isViewer(hid) { return hasRole(hid, ['viewer']); }
     // family and readonly see everything; viewer sees only the slice named below
     function canRead(hid) { return hasRole(hid, ['family', 'readonly']); }
+    // (v452, the DPIA's action 7, the ICO's advice) a circle waiting for its patient's agreement takes no new or changed health
+    // records: the app holds it read only, and this holds it here too. Reading and deleting still work. Only 'waiting' holds:
+    // a circle from before v448 (no consent yet) is asked once in the app, so older phone builds keep working.
+    function notWaiting(hid) {
+      return get(/databases/$(database)/documents/households/$(hid)).data.get('consent', {}).get('status', '') != 'waiting';
+    }
 
     // Each document page and recording part is kept well under the 1 MiB Firestore limit by the
     // app; this guard stops anything oversized being written by mistake.
@@ -103,11 +109,11 @@ service cloud.firestore {
                 && (!patientSlot(request.resource.data) || isPatient(hid)));
         }
         function oldPatientCheckinOk() { return !(patientSlot(resource.data) && !('uid' in resource.data)) || isPatient(hid); }
-        allow create: if isFamily(hid) && (!('uid' in request.resource.data) || request.resource.data.uid == request.auth.uid) && checkinCreateOk();
+        allow create: if isFamily(hid) && notWaiting(hid) && (!('uid' in request.resource.data) || request.resource.data.uid == request.auth.uid) && checkinCreateOk();
         function staysWhatItWas() { // nothing turns into a check-in, or stops being one, after it is written
           return (request.resource.data.get('type', null) == 'checkin') == (resource.data.get('type', null) == 'checkin');
         }
-        allow update: if isFamily(hid) && notSomeoneElsesCheckin() && stampOk() && staysWhatItWas() && oldPatientCheckinOk();
+        allow update: if isFamily(hid) && notWaiting(hid) && notSomeoneElsesCheckin() && stampOk() && staysWhatItWas() && oldPatientCheckinOk();
         allow delete: if isFamily(hid) && notSomeoneElsesCheckin() && oldPatientCheckinOk();
       }
 
@@ -121,16 +127,17 @@ service cloud.firestore {
       match /medicines/{medId} {
         allow read: if canRead(hid) || isViewer(hid);
         allow delete: if isFamily(hid);
-        allow create, update: if isFamily(hid) && medicineOk();
+        allow create, update: if isFamily(hid) && notWaiting(hid) && medicineOk();
       }
 
       match /documents/{docId} {
         allow read: if canRead(hid);
-        allow write: if isFamily(hid);
+        allow delete: if isFamily(hid);
+        allow create, update: if isFamily(hid) && notWaiting(hid);
         match /pages/{pageNo} {
           allow read: if canRead(hid);
           allow delete: if isFamily(hid);
-          allow create, update: if isFamily(hid) && pageSizeOk();
+          allow create, update: if isFamily(hid) && notWaiting(hid) && pageSizeOk();
         }
       }
 
@@ -142,35 +149,40 @@ service cloud.firestore {
       // Treatment plan: one document per calendar day (session, done, mood, one good thing)
       match /days/{dayId} {
         allow read: if canRead(hid) || isViewer(hid);
-        allow write: if isFamily(hid);
+        allow delete: if isFamily(hid);
+        allow create, update: if isFamily(hid) && notWaiting(hid);
       }
 
       // Exercise: one document per day (steps, which programme items were done, workouts)
       match /exercise/{dayId} {
         allow read: if canRead(hid);
-        allow write: if isFamily(hid);
+        allow delete: if isFamily(hid);
+        allow create, update: if isFamily(hid) && notWaiting(hid);
       }
 
       // Saved meals
       match /meals/{mealId} {
         allow read: if canRead(hid);
-        allow write: if isFamily(hid);
+        allow delete: if isFamily(hid);
+        allow create, update: if isFamily(hid) && notWaiting(hid);
       }
 
       // Day totals from a food app, written by the bridge or by hand
       match /nutrition/{dayId} {
         allow read: if canRead(hid);
-        allow write: if isFamily(hid);
+        allow delete: if isFamily(hid);
+        allow create, update: if isFamily(hid) && notWaiting(hid);
       }
 
       // Recorded answers to questions for the team, stored as base64 chunks in parts
       match /recordings/{recId} {
         allow read: if canRead(hid);
-        allow write: if isFamily(hid);
+        allow delete: if isFamily(hid);
+        allow create, update: if isFamily(hid) && notWaiting(hid);
         match /parts/{partNo} {
           allow read: if canRead(hid);
           allow delete: if isFamily(hid);
-          allow create, update: if isFamily(hid) && pageSizeOk();
+          allow create, update: if isFamily(hid) && notWaiting(hid) && pageSizeOk();
         }
       }
 

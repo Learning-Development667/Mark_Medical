@@ -297,3 +297,24 @@ test("the patient's own check-ins are the patient's alone; a carer fills in the 
   await assertFails(write(MARK, p(day + '_evening'), { type: 'checkin', slot: 'evening', day, pain: 3, addedBy: 'Mark' })); // the patient's own, but it must carry the stamp
   await assertSucceeds(write(MARK, p('e-note-2'), { type: 'note', day, note: 'Fine', addedBy: 'Mark' })); // other entries are as before
 });
+
+test("a circle waiting for its patient's agreement takes no new or changed records; reading and deleting still work (v452)", async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const db = ctx.firestore();
+    await setDoc(doc(db, `households/${A}/entries/e-old`), { type: 'note', day: '2026-11-01', note: 'Before', addedBy: 'Mark' });
+    await setDoc(doc(db, `households/${A}`), { consent: { status: 'waiting' } }, { merge: true });
+  });
+  const p = (rest) => `households/${A}/${rest}`;
+  await assertFails(write(MARK, p('entries/e-new'), { type: 'note', day: '2026-11-11', note: 'Held', addedBy: 'Mark' }));
+  await assertFails(updateDoc(doc(as(MARK), p('entries/e-old')), { note: 'Changed' }));
+  await assertFails(write(MARK, p('medicines/m-new'), { name: 'Paracetamol', kind: 'scheduled', active: true }));
+  for (const path of ['documents/d1', 'documents/d1/pages/1', 'days/2026-11-11', 'exercise/2026-11-11', 'meals/x', 'nutrition/2026-11-11', 'recordings/r1', 'recordings/r1/parts/0'])
+    await assertFails(write(MARK, p(path), { data: 'x' }));
+  await assertSucceeds(read(MARK, p('entries/e-old')));
+  await assertSucceeds(deleteDoc(doc(as(MARK), p('entries/e-old'))));
+  await assertSucceeds(write(MARK, p('profile/main'), { packs: { cancer: true } })); // settings still save
+  // agreed: records again; a circle from before consent was recorded is not held here
+  await env.withSecurityRulesDisabled(async (ctx) => { await setDoc(doc(ctx.firestore(), `households/${A}`), { consent: { status: 'given' } }, { merge: true }); });
+  await assertSucceeds(write(MARK, p('entries/e-new'), { type: 'note', day: '2026-11-11', note: 'Now fine', addedBy: 'Mark' }));
+  await assertSucceeds(write(MARK, `households/${A}/days/2026-11-11`, { done: true }));
+});
