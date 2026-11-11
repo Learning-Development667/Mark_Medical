@@ -16,7 +16,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '453';
+const APP_VERSION = '454';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -4050,6 +4050,14 @@ $('feedback-row').addEventListener('click', () => openFeedbackSheet());
 const WHATS_NEW = [
   /* tag (v411, Mark): new, improved or fixed, shown as a label and grouped in that order; the newest batch is also the
      release notes for TestFlight and Google Play (tools/release_notes.mjs) */
+  { id: '2026-11-11', items: [
+    { tag: 'new', text: 'Share my medicines: a one-page list of what you take, from the foot of Meds, to show, send or save.' },
+    { tag: 'new', text: 'Take before food: tick it on a medicine taken 30 to 60 minutes before eating. The card and the reminder say so, and Daybook asks if you log a meal without it.' },
+    { tag: 'new', text: 'Sort by in Manage medicines. Finished and stopped medicines always sit at the bottom.' },
+    { tag: 'improved', text: 'Every report and printout carries a faint Daybook watermark.' },
+    { tag: 'improved', text: 'Daybook asks once for your agreement to keep your health information, as the data protection rules require.' },
+    { tag: 'improved', text: 'New accounts need a stronger password: at least 10 characters. Three random words work well.' }
+  ] },
   { id: '2026-11-07', items: [
     { tag: 'new', text: 'Tap Sleep to see your last 7 nights, with your average.' }
   ] },
