@@ -114,7 +114,7 @@ const QUALITY = 0.8;
   await shot('The arrows at the foot of an open card, or holding the name for a second and sliding it, put the list in your own order.', '#meds-scheduled .med-order');
   await shot('Manage medicines adds one, changes a dose or the times it is taken. Reminders arrive as notifications once they are switched on under More, Reminders.', '#meds-manage');
   await page.click('#meds-manage'); await page.waitForSelector('#sheet:not([hidden])');
-  await shot('Add a medicine sits at the top. Under it, every medicine on the list, with what it is for and Edit. A finished course keeps its history under Medicine history.', '#sheet-body .medrow:has-text("Diazepam") button');
+  await shot('Add a medicine sits at the top, then Sort by: scheduled first, your own order, A to Z or what it is for. Finished courses and stopped medicines always go to the bottom.', '#sheet-body .medrow:has-text("Diazepam") button');
   await page.click('#sheet-body .medrow:has-text("Diazepam") button'); await settle(700);
   await shot('Edit says whether it is regular or when needed, then how it is taken (tablets, gel in pumps and the rest), how many each time and the strength, so Log now records the right amount.', '#sheet-body [aria-label="Regular or when needed?"]');
   await closeSheet();

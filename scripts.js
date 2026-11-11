@@ -16,7 +16,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '452';
+const APP_VERSION = '453';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -13775,6 +13775,16 @@ function buildMedsReport(doses, sideFx = []) {
     const changes = kind === 'now' && Array.isArray(m.doseChanges) ? m.doseChanges.map(doseChangeText) : [];
     const r = { name: m.name, purpose: m.purpose || '', dose: shown, lines, also: [...changes, ...otherDoses(shown, st.ds)], taken: '', takenSub: '', doses: '', dosesSub: [], last14: '', bar: null, tag: null };
     r.fx = fxLine(m);
+    /* (v453) before food: the words, and how many of the last week's doses had a meal logged in the 90 minutes after */
+    if (medBeforeFood(m)) {
+      if (!lines.some((l) => /before food/i.test(l))) lines.push(BEFORE_FOOD_WORDS);
+      if (kind === 'now') {
+        const from = addDays(today, -6);
+        const wk = st.ds.filter((e) => e.day >= from && e.day <= today);
+        const food = state.recentEntries.filter((e) => e.type === 'food');
+        if (wk.length) r.also.push(`Last 7 days: ${wk.filter((e) => doseBeforeFood(e, food)).length} of ${plural(wk.length, 'dose')} logged before a meal (a meal logged within 90 minutes after)`);
+      }
+    }
     if (kind === 'done') r.tag = { text: 'Finished course', cls: 'green' };
     if (kind === 'stopped') r.tag = { text: 'Stopped', cls: 'slate' };
     if (!st.ds.length) { r.taken = 'No doses logged'; r.doses = 'None'; }
@@ -13886,7 +13896,8 @@ async function buildMedList() {
     .sort((a, b) => String(a.name).localeCompare(String(b.name)));
   const row = (m) => {
     const often = medFrequency(m).replace(/^When needed(, )?/, '');
-    return { name: capFirst(medListName(m.name)), dose: shownDose(m) || '', often: m.kind === 'prn' ? capFirst(often) || 'As needed' : often, why: m.purpose || medClass(m) || '' };
+    const when = m.kind === 'prn' ? capFirst(often) || 'As needed' : often;
+    return { name: capFirst(medListName(m.name)), dose: shownDose(m) || '', often: medBeforeFood(m) ? (when ? when + ', ' : '') + 'before food (30 to 60 minutes)' : when, why: m.purpose || medClass(m) || '' };
   };
   const sections = [];
   const regular = now.filter((m) => m.kind !== 'prn'), prn = now.filter((m) => m.kind === 'prn');
@@ -14071,7 +14082,8 @@ function medCard(m, day, section) {
       h('div', { class: 'med-dose', text: [medDoseLabel(m), m.hospital && m.route ? ROUTE_WORDS[m.route] : ''].filter(Boolean).join(' · ') }),
       recentDoseChange(m) && !why ? h('div', { class: 'med-was', text: doseChangeText(recentDoseChange(m)) }) : null,
       m.how ? h('div', { class: 'med-how', text: m.how }) : null,
-      m.kind === 'scheduled' && !m.hospital && medWhenText(m) ? h('div', { class: 'med-how med-when', text: medWhenText(m) }) : null),
+      m.kind === 'scheduled' && !m.hospital && medWhenText(m) ? h('div', { class: 'med-how med-when', text: medWhenText(m) }) : null,
+      medBeforeFood(m) ? h('div', { class: 'med-how med-before', text: BEFORE_FOOD_WORDS }) : null),
     m.purpose ? h('span', { class: 'med-purpose', text: usesWords(medUses(m)) }) : null));
   const status = h('div', { class: 'med-status' });
   if (!m.hospital && m.kind === 'scheduled') {
@@ -14416,6 +14428,16 @@ function medWithMeals(m) {
   if (m.withMeals === true || m.withMeals === false) return m.withMeals;
   return /\bmeal/i.test(m.how || '');
 }
+/* Taken 30 to 60 minutes before food (v453, Mark's new medicine): its own tick, never with Ask after every meal */
+const BEFORE_FOOD_WORDS = 'Before food, 30 to 60 minutes';
+const BEFORE_FOOD_MS = 90 * 60 * 1000;
+function medBeforeFood(m) { return !!(m && m.beforeFood === true && !m.hospital); }
+/* The dose counts as before food when a meal or snack was logged in the 90 minutes after it, or it was logged from the question */
+function doseBeforeFood(dose, entries) {
+  if (dose.beforeFood === true) return true;
+  const t = entryDate(dose);
+  return entries.some((e) => e.type === 'food' && entryDate(e) > t && entryDate(e) - t <= BEFORE_FOOD_MS);
+}
 /* After a meal is saved: for each with-meals medicine not logged within 45 minutes of it, ask */
 const MEAL_MED_WINDOW_MS = 45 * 60 * 1000;
 function promptMealMeds(mealAt) {
@@ -14423,7 +14445,11 @@ function promptMealMeds(mealAt) {
   const day = dayStr(mealAt);
   const due = state.medicines.filter((m) => m.active !== false && !m.hospital && medWithMeals(m) && (!m.courseEnd || m.courseEnd >= day) && !notStarted(m, day))
     .filter((m) => !state.recentEntries.some((e) => e.type === 'med' && e.medId === m.id && Math.abs(entryDate(e) - mealAt) <= MEAL_MED_WINDOW_MS));
-  if (!due.length) return;
+  /* (v453) a before-food medicine not logged in the 90 minutes before this meal, and (if regular) not all of today's doses yet */
+  const before = state.medicines.filter((m) => m.active !== false && medBeforeFood(m) && !medWithMeals(m) && (!m.courseEnd || m.courseEnd >= day) && !notStarted(m, day))
+    .filter((m) => !state.recentEntries.some((e) => e.type === 'med' && e.medId === m.id && entryDate(e) <= mealAt && mealAt - entryDate(e) <= BEFORE_FOOD_MS))
+    .filter((m) => m.kind === 'prn' || state.recentEntries.filter((e) => e.type === 'med' && e.medId === m.id && e.day === day).length < Math.max(1, m.perDay || (m.takenAt || []).length || 1));
+  if (!due.length && !before.length) return;
   const blocks = h('div', null);
   const finish = () => { if (!blocks.childElementCount) closeSheet(); };
   due.forEach((m) => {
@@ -14462,7 +14488,22 @@ function promptMealMeds(mealAt) {
     );
     blocks.append(block);
   });
-  openSheet('With this food', blocks);
+  before.forEach((m) => {
+    const at = new Date(mealAt.getTime() - 30 * 60 * 1000);
+    const block = h('div', { class: 'mealmed' },
+      h('p', { class: 'wiz-q', text: `Did you take ${m.name} before eating?` }),
+      h('p', { class: 'hint', text: BEFORE_FOOD_WORDS + '.' }),
+      h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
+        block.remove(); finish();
+        const dose = m.dose || '';
+        const id = await addEntry({ type: 'med', medId: m.id, medName: m.name, dose, note: '', at, beforeFood: true });
+        const ml = addMedWater(id, m, dose, at);
+        toast(`${m.name}, ${dose || 'taken'}, logged at ${fmtTime(at)}, before food` + (ml ? `, and ${ml} ml added to drinks` : ''), { label: 'Undo', onClick: () => deleteEntry(id) });
+      } }, `Yes, about ${fmtTime(at)}`),
+      h('button', { class: 'btn btn-link btn-block', type: 'button', onclick: () => { block.remove(); finish(); } }, 'No, not this time'));
+    blocks.append(block);
+  });
+  openSheet(due.length ? 'With this food' : 'Before this food', blocks);
 }
 
 /* ------------------------------------------------------------------ */
@@ -14877,19 +14918,42 @@ async function removeMedicine(m, after) {
   } catch (e) { console.error(e); toast('Could not remove it. Try again.'); }
 }
 
+/* Sort in Manage medicines (v453, Mark: "we need to be able to sort"; the Show filter mocked up was not wanted). The default
+   is by kind: Scheduled, then When needed, then finished courses and stopped ones; whatever the sort, finished and stopped
+   always go to the bottom. Remembered on this phone. The Meds tab keeps its own order. */
+const MED_SORTS = [['kind', 'Scheduled first'], ['mine', 'My order'], ['az', 'A to Z'], ['for', 'What it is for']];
+function medSortChoice() { try { const v = localStorage.getItem('daybook.meds.sort'); return MED_SORTS.some(([k]) => k === v) ? v : 'kind'; } catch (e) { return 'kind'; } }
+function sortForManage(list, how) {
+  const done = (m) => (medStatus(m).text === 'Taking now' ? 0 : 1);
+  const kindRank = (m) => (m.hospital ? 2 : m.kind === 'prn' ? 1 : 0);
+  const mine = sortMedicines(list), pos = new Map(mine.map((m, i) => [m.id, i]));
+  const byName = (a, b) => String(a.name).localeCompare(String(b.name));
+  const forOf = (m) => usesWords(medUses(m)) || medClass(m) || 'Other';
+  return list.slice().sort((a, b) => done(a) - done(b)
+    || (how === 'az' ? byName(a, b)
+      : how === 'for' ? forOf(a).localeCompare(forOf(b)) || byName(a, b)
+      : how === 'mine' ? pos.get(a.id) - pos.get(b.id)
+      : kindRank(a) - kindRank(b) || pos.get(a.id) - pos.get(b.id)));
+}
 function openManageMeds() {
   const list = h('div', { class: 'medlist' });
-  sortMedicines(state.medicines).forEach((m) => {
-    const cls = medClass(m);
-    list.append(h('div', { class: 'medrow' + (m.active === false ? ' is-inactive' : ''), 'data-med': m.id },
-      h('span', { class: 'medrow-name' }, h('span', { class: 'medrow-title', text: m.name }), h('small', { class: 'medrow-sub medrow-class', text: cls || 'Other' })),
-      h('span', { class: 'pill ' + (medStatus(m).text === 'Course complete' ? 'pill-green' : m.kind === 'prn' ? 'pill-amber' : 'pill-teal'), text: medStatus(m).text === 'Course complete' ? 'Course complete' : m.kind === 'prn' ? 'When needed' : 'Scheduled' }),
-      h('button', { class: 'btn btn-secondary btn-small', type: 'button', onclick: () => openEditMed(m) }, 'Edit')
-    ));
-  });
+  const sortSel = h('select', { id: 'medlist-sort' }, ...MED_SORTS.map(([k, label]) => h('option', { value: k, text: label })));
+  sortSel.value = medSortChoice();
+  const draw = () => {
+    list.replaceChildren(...sortForManage(state.medicines, sortSel.value).map((m) => {
+      const cls = medClass(m);
+      return h('div', { class: 'medrow' + (m.active === false ? ' is-inactive' : ''), 'data-med': m.id },
+        h('span', { class: 'medrow-name' }, h('span', { class: 'medrow-title', text: m.name }), h('small', { class: 'medrow-sub medrow-class', text: cls || 'Other' })),
+        h('span', { class: 'pill ' + (medStatus(m).text === 'Course complete' ? 'pill-green' : m.active === false ? 'pill-muted' : m.kind === 'prn' ? 'pill-amber' : 'pill-teal'), text: medStatus(m).text === 'Course complete' ? 'Course complete' : m.active === false ? 'Stopped' : m.kind === 'prn' ? 'When needed' : 'Scheduled' }),
+        h('button', { class: 'btn btn-secondary btn-small', type: 'button', onclick: () => openEditMed(m) }, 'Edit'));
+    }));
+  };
+  sortSel.addEventListener('change', () => { try { localStorage.setItem('daybook.meds.sort', sortSel.value); } catch (e) { /* this time only */ } draw(); });
+  draw();
   /* Add a medicine at the top (v250, Mark): with a long list it was out of sight under every row */
   const body = h('div', null,
     h('button', { class: 'btn btn-primary btn-block medlist-add', type: 'button', onclick: () => openEditMed(null) }, 'Add a medicine'),
+    state.medicines.length > 1 ? h('label', { class: 'field medlist-sort' }, h('span', { text: 'Sort by' }), sortSel) : null,
     list,
     h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Close')
   );
@@ -15181,8 +15245,15 @@ function openEditMed(m, prefill) {
   withMeals.checked = medWithMeals(m);
   /* v311 (Mark, of Creon: "I take it after all meals and snacks ... link it to whenever food is logged"): the tick is
      offered for regular and when-needed medicines alike, and kept on a when-needed one */
+  const beforeFood = h('input', { type: 'checkbox', id: 'med-before-food' });
+  beforeFood.checked = medBeforeFood(m);
+  /* one or the other: with food, or 30 to 60 minutes before it */
+  withMeals.addEventListener('change', () => { if (withMeals.checked) beforeFood.checked = false; });
+  beforeFood.addEventListener('change', () => { if (beforeFood.checked) withMeals.checked = false; });
   const mealBits = [h('label', { class: 'check' }, withMeals, h('span', { text: 'Ask after every meal or snack' })),
-    h('p', { class: 'hint', text: 'Whenever food is logged, Daybook asks whether this was taken with it. With Ask how many each time ticked, it asks how many; without it, one tap logs the usual dose.' })];
+    h('p', { class: 'hint', text: 'Whenever food is logged, Daybook asks whether this was taken with it. With Ask how many each time ticked, it asks how many; without it, one tap logs the usual dose.' }),
+    h('label', { class: 'check' }, beforeFood, h('span', { text: 'Take before food (30 to 60 minutes)' })),
+    h('p', { class: 'hint', text: 'Said on the card and in the reminder. If a meal is logged with no dose in the time before it, Daybook asks whether it was taken.' })];
   const schedFields = h('div', null, courseBits, courseNote,
     /* v382 (review item 22): a steroid course for every condition (lupus, RA, MS have them too), not Crohn's alone */
     h('label', { class: 'check' }, steroid, h('span', { text: 'A steroid course (prednisolone, budesonide, dexamethasone)' })),
@@ -15262,6 +15333,7 @@ function openEditMed(m, prefill) {
         data.minGapHours = null; data.maxPerDay = null;
         data.times = hospital.checked || !remind.checked ? [] : times.slice();
         data.withMeals = hospital.checked ? false : withMeals.checked;
+        data.beforeFood = hospital.checked ? false : beforeFood.checked;
         data.everyDays = everyDays; data.everyFrom = everyDays ? nextIn.value : null;
       } else {
         data.everyDays = null; data.everyFrom = null;
@@ -15269,6 +15341,7 @@ function openEditMed(m, prefill) {
         data.maxPerDay = parseInt(maxPerDay.value, 10) || null;
         data.perDay = null; data.courseEnd = null; data.courseStart = null; data.steroid = false;
         data.times = []; data.takenAt = []; data.withMeals = hospital.checked ? false : withMeals.checked;
+        data.beforeFood = hospital.checked ? false : beforeFood.checked;
       }
       closeSheet();
       if (state.demo) {

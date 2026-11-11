@@ -583,7 +583,7 @@ function planEntryFromDocs(subs, profile, medicines, oneOffs, day, sessions) {
   const active = medicines.filter((m) => f(m.fields, 'active') !== false && f(m.fields, 'kind') !== 'prn' && f(m.fields, 'hospital') !== true && courseOk(m.fields) && inTreatWindow(m.fields, day, sessions) && inInterval(m.fields, day));
   const times = [];
   /* (v431) sizes capped here as well as in the rules, so one circle's medicine cannot swell the one plan document past Firestore's limit */
-  active.forEach((m) => (f(m.fields, 'times') || []).slice(0, TIMES_A_MEDICINE).map(toMinutes).filter((t) => t != null).forEach((t) => { if (times.length < TIMES_A_CIRCLE) times.push({ medId: m.id, t, name: String(f(m.fields, 'name') || 'Medicine').slice(0, NAME_MAX), dose: String(f(m.fields, 'dose') || '').slice(0, DOSE_MAX) }); }));
+  active.forEach((m) => (f(m.fields, 'times') || []).slice(0, TIMES_A_MEDICINE).map(toMinutes).filter((t) => t != null).forEach((t) => { if (times.length < TIMES_A_CIRCLE) times.push({ medId: m.id, t, name: String(f(m.fields, 'name') || 'Medicine').slice(0, NAME_MAX), dose: String(f(m.fields, 'dose') || '').slice(0, DOSE_MAX), ...(f(m.fields, 'beforeFood') === true ? { bf: true } : {}) }); }));
   return { phones: Math.min(subs.length, PHONES_A_CIRCLE), nudge: !!(profile && f(profile.fields, 'stretchNudge') === true), oneOff: oneOffs.some((r) => f(r.fields, 'sent') !== true), times };
 }
 async function buildPlanEntry(fs, hid, day) {
@@ -601,7 +601,7 @@ async function buildPlanEntry(fs, hid, day) {
 }
 const planEntryFields = (e) => ({ mapValue: { fields: {
   phones: { integerValue: String(e.phones) }, nudge: { booleanValue: !!e.nudge }, oneOff: { booleanValue: !!e.oneOff },
-  times: { arrayValue: { values: e.times.map((x) => ({ mapValue: { fields: { medId: strVal(x.medId), t: { integerValue: String(x.t) }, name: strVal(x.name), dose: strVal(x.dose) } } })) } }
+  times: { arrayValue: { values: e.times.map((x) => ({ mapValue: { fields: { medId: strVal(x.medId), t: { integerValue: String(x.t) }, name: strVal(x.name), dose: strVal(x.dose), ...(x.bf ? { bf: { booleanValue: true } } : {}) } } })) } }
 } } });
 function readPlanDoc(doc) {
   if (!doc || !doc.fields) return null;
@@ -611,7 +611,7 @@ function readPlanDoc(doc) {
     const e = (hh[hid].mapValue || {}).fields || {};
     const times = ((e.times || {}).arrayValue || {}).values || [];
     households[hid] = { phones: Number(f(e, 'phones') || 0), nudge: f(e, 'nudge') === true, oneOff: f(e, 'oneOff') === true,
-      times: times.map((v) => { const t = (v.mapValue || {}).fields || {}; return { medId: f(t, 'medId'), t: Number(f(t, 't')), name: f(t, 'name') || 'Medicine', dose: f(t, 'dose') || '' }; }) };
+      times: times.map((v) => { const t = (v.mapValue || {}).fields || {}; return { medId: f(t, 'medId'), t: Number(f(t, 't')), name: f(t, 'name') || 'Medicine', dose: f(t, 'dose') || '', bf: f(t, 'bf') === true }; }) };
   });
   return { day: f(doc.fields, 'day'), built: f(doc.fields, 'built'), cursor: f(doc.fields, 'cursor') || '', rebuilding: f(doc.fields, 'rebuilding') === true, households };
 }
@@ -712,16 +712,18 @@ async function runHouseholdReminders(env, fs, hid, entry, nowIn) {
   };
   for (const x of timesDue) {
     const { medId, t, name, dose } = x;
+    /* (v453) a medicine taken 30 to 60 minutes before food says so in its reminder */
+    const bf = x.bf ? ', before food' : '';
     const taken = doseMinutes(medId);
     {
       const key = `${medId}|${t}`;
       const takenSince = taken.some((x) => x >= t - LOGGED_BEFORE_MIN);
       if (!sentSet.has(key) && now.minutes >= t && now.minutes < t + REMINDER_WINDOW_MIN && !takenSince) {
-        await send(key, { title: 'Daybook', body: `${name} ${dose} is due`.trim(), tag: key, url: appUrl('meds') }, 'A medicine is due');
+        await send(key, { title: 'Daybook', body: `${name} ${dose}`.trim() + ' is due' + bf, tag: key, url: appUrl('meds') }, 'A medicine is due');
       }
       const nudgeKey = key + '|nudge';
       if (!sentSet.has(nudgeKey) && now.minutes >= t + NUDGE_AFTER_MIN && now.minutes < t + NUDGE_AFTER_MIN + REMINDER_WINDOW_MIN && !takenSince) {
-        await send(nudgeKey, { title: 'Daybook', body: `Still to take: ${name} ${dose}`.trim(), tag: nudgeKey, url: appUrl('meds') }, 'A medicine is still to take');
+        await send(nudgeKey, { title: 'Daybook', body: `Still to take: ${name} ${dose}`.trim() + bf, tag: nudgeKey, url: appUrl('meds') }, 'A medicine is still to take');
       }
     }
   }
