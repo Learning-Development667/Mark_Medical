@@ -61,7 +61,9 @@ function table(rows) {
   let head = true;
   if (body[0].every(c => !c)) { body.shift(); head = false; }
   const n = Math.max(...body.map(r => r.length));
-  const len = Array.from({ length: n }, (_, i) => Math.max(6, ...body.map(r => (r[i] || '').length)));
+  // at least room for the column's longest word and its heading, so a short column ("After", "Low") never breaks mid-word
+  const len = Array.from({ length: n }, (_, i) => Math.max(10, ...body.map(r => (r[i] || '').length),
+    ...body.map(r => Math.max(0, ...(r[i] || '').split(/\s+/).map(w => w.length + 5)))));
   const capped = len.map(l => Math.min(l, 60)), sum = capped.reduce((a, b) => a + b, 0);
   const widths = capped.map(l => Math.floor(TEXT_W * l / sum));
   widths[n - 1] += TEXT_W - widths.reduce((a, b) => a + b, 0);
