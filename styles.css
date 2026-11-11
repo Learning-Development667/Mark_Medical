@@ -2687,3 +2687,7 @@ html.text-huge .medrow, html.text-huge .med-head { gap: 8px; }
 .consent-hold-title { margin: 0 0 4px; font-family: var(--font-head); font-weight: 600; font-size: 20px; color: var(--text-primary); }
 .consent-check { align-items: flex-start; }
 .consent-check input[type="checkbox"] { flex: none; width: 24px; height: 24px; min-width: 24px; margin: 2px 12px 0 0; accent-color: var(--teal); }
+
+/* Share my medicines (v449): a one-page list from the Meds tab */
+#medlist-section { margin-top: var(--s-5, 24px); }
+.medlist-btns { display: grid; gap: var(--s-3); margin-top: var(--s-3); }

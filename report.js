@@ -27,6 +27,12 @@ body{font-family:Inter,"Segoe UI",Arial,sans-serif;color:var(--ink);font-size:8.
 h1,h2,h3{font-family:Fraunces,Georgia,serif;font-weight:600;letter-spacing:-.01em}
 @page{size:A4;margin:0}
 .page{width:210mm;height:297mm;margin:10mm auto;background:#fff;padding:9mm 11mm 7mm;display:flex;flex-direction:column;gap:3.4mm;overflow:hidden;position:relative;box-shadow:0 6px 30px rgba(0,0,0,.25)}
+/* The water stain (v449, Mark: "like a water stain ... only faint"): Daybook's watercolour behind the first page's top right and
+   along every page's foot, so a report is known as made with Daybook without the company's letterhead. In the page's own
+   background, in pixels (A4 is 794 px wide), so html2canvas draws it into the PDF as well. Baked so every text colour keeps
+   4.5:1 on its darkest spot (darkest luminance 0.817); remeasure if the pictures are ever remade. */
+.page{background:url(icons/report-stain-foot.jpg?s=1) left bottom/100% auto no-repeat,#fff}
+.page:not(.page ~ .page){background:url(icons/report-stain-top.jpg?s=1) right -53px top -38px/363px auto no-repeat,url(icons/report-stain-foot.jpg?s=1) left bottom/100% auto no-repeat,#fff}
 html.capture{background:#fff}
 html.capture .page{margin:0;box-shadow:none}
 .bar{position:sticky;top:0;z-index:2;display:flex;gap:12px;justify-content:center;align-items:center;padding:10px 16px;background:#17263A;color:#fff;font-size:15px}
@@ -985,6 +991,78 @@ ${pages}
 </body>
 </html>`;
 }
+/* ------------------------------------------------------------------ */
+/* My medicines (v449, Mark: "I was asked by my dentist today what     */
+/* medications I was on"): one page for a dentist, a pharmacist, a new */
+/* doctor or a hospital stay. What is taken now, Taken regularly and   */
+/* When needed (medicine, dose, how often, what for), then treatment   */
+/* given in hospital in the last four weeks with the next due. Built   */
+/* in buildMedList() (scripts.js); fitted like the Medicine history.   */
+/* L: { patient, asOn, sections[{ title, note, head[4], rows[{ name,  */
+/*   dose, often, why }] }], items[], pages[] }                          */
+/* ------------------------------------------------------------------ */
+const MEDLIST_CSS = `
+.lbody{flex:1;display:flex;flex-direction:column;gap:4.5mm;min-height:0}
+.lead{font-size:9pt;color:var(--slate)}
+.ltable{width:100%;border-collapse:collapse;table-layout:fixed}
+.ltable th{font-size:6.6pt;text-transform:uppercase;letter-spacing:.08em;color:var(--slate);text-align:left;font-weight:600;padding:1.4mm 2mm;border-bottom:1.3px solid var(--ink)}
+.ltable td{padding:2.2mm 2mm;border-bottom:1px solid var(--line);vertical-align:top;font-size:9pt;line-height:1.35;overflow-wrap:anywhere}
+.ltable td:first-child,.ltable th:first-child{padding-left:0}
+.ltable td b{font-weight:600}
+.ltable td.why{color:var(--slate)}
+.ltable col.c1{width:31%}.ltable col.c2{width:23%}.ltable col.c3{width:25%}.ltable col.c4{width:21%}
+.ltable.hosp td{background:rgba(238,243,246,.7)}
+.lsec h2{margin-bottom:1.6mm}
+.lsec h2 small{font-family:Inter,sans-serif;font-weight:400;font-size:8pt;color:var(--slate);margin-left:2mm}
+.lnote{background:var(--amber-soft);border-radius:2.4mm;padding:2.6mm 3.4mm;font-size:8.6pt}
+.lnone{color:var(--slate)}
+`;
+export function medListHtml(L) {
+  const total = L.pages.length;
+  const pages = L.pages.map((idx, p) => {
+    let html = '', open = null;
+    const close = () => { if (open !== null) { html += '</tbody></table></div>'; open = null; } };
+    idx.forEach((i) => {
+      const it = L.items[i];
+      if (it.t === 'note') { close(); html += `<p class="lnote" data-i="${i}">${esc(L.note)}</p>`; return; }
+      const sec = L.sections[it.s];
+      if (it.t === 'sec' || open !== it.s) {
+        close();
+        const cont = it.t !== 'sec';
+        html += `<div class="lsec"><h2${cont ? '' : ` data-i="${i}"`}>${esc(sec.title)}${cont ? ', continued' : sec.note ? ` <small>${esc(sec.note)}</small>` : ''}</h2>`
+          + `<table class="ltable${sec.hosp ? ' hosp' : ''}"><colgroup><col class="c1"><col class="c2"><col class="c3"><col class="c4"></colgroup><thead><tr>${sec.head.map((x) => `<th>${esc(x)}</th>`).join('')}</tr></thead><tbody>`;
+        open = it.s;
+      }
+      if (it.t === 'row') {
+        const r = sec.rows[it.r];
+        html += `<tr data-i="${i}"><td><b>${esc(r.name)}</b></td><td>${esc(r.dose || '')}</td><td>${esc(r.often || '')}</td><td class="why">${esc(r.why || '')}</td></tr>`;
+      }
+    });
+    close();
+    if (!L.sections.length) html = '<p class="lnone">No medicines on the list are being taken now.</p>' + html;
+    const top = p === 0
+      ? `<div class="masthead"><div><div class="titlerow"><h1>My medicines</h1><span class="madeby">Created with <b>My Medical Daybook</b></span></div><div class="sub">What I take now, from my own record in Daybook. Please check anything important with me or my pharmacist.</div></div><div class="who"><strong>${esc(L.patient)}</strong>As on ${esc(L.asOn)}</div></div>`
+      : `<div class="runner"><h2>My medicines</h2><span>${esc(L.patient)} · as on ${esc(L.asOn)}</span></div>`;
+    return `<section class="page" id="page${p + 1}">${top}<div class="lbody">${html}</div><div class="foot"><span>My own record, kept in Daybook. Not medical advice.</span>${madeBy(p + 1, total)}</div></section>`;
+  }).join('\n');
+  return `<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="script-src 'none'; object-src 'none'; base-uri 'none'">
+<title>My medicines, ${esc(L.patient)}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>${CSS}${MEDLIST_CSS}</style>
+</head>
+<body class="medlist">
+${pages}
+</body>
+</html>`;
+}
+export function fitMedListReport(frame, L, opts = {}) { return paginate(frame, L, medListHtml, opts); }
+
 /* Lays the rows out page by page: renders, finds the first heading or row whose bottom passes its
    page's foot, moves it (and the section and group headings above it, never left alone at a page's
    foot) and everything after it to the next page, and renders again, until every page fits */

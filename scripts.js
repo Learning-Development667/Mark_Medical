@@ -16,7 +16,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '448';
+const APP_VERSION = '449';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -8478,6 +8478,16 @@ const SEND_KINDS = {
     attached: (range) => `Attached: Crohn's and colitis, ${range}.`,
     check: " Use Preview on the Crohn's and colitis screen to look at it first."
   },
+  medlist: {
+    data: () => state.medListPdf,
+    file: (n) => n.filename,
+    blob: () => medListReportBlob(),
+    subject: () => `My medicines, as on ${fmtDayNum(todayStr())}`,
+    named: (who) => `My medicines: ${who}, as on ${fmtDayNum(todayStr())}`,
+    words: () => 'Here is the list of medicines I take now, from my own record in Daybook, with any treatment given in hospital in the last four weeks.',
+    attached: () => `Attached: My medicines, as on ${fmtDayNum(todayStr())}.`,
+    check: ' Use Preview under Share my medicines to look at it first.'
+  },
   meds: {
     data: () => state.medsPdf,
     file: (n) => n.filename,
@@ -9425,7 +9435,7 @@ function buildTwoPage(n) {
 
 /* The report fitted into a hidden frame (two A4 pages or nothing), ready to print or turn into a PDF */
 let reportModule = null;
-const REPORT_NAMES = { notes: 'Notes for the team', food: 'Food diary', meds: 'Medicine history', mood: 'Mood and wellbeing', pain: 'Pain and pain relief', ibd: "Crohn's and colitis" };
+const REPORT_NAMES = { notes: 'Notes for the team', food: 'Food diary', meds: 'Medicine history', medlist: 'My medicines', mood: 'Mood and wellbeing', pain: 'Pain and pain relief', ibd: "Crohn's and colitis" };
 /* One hidden frame per report (v121), so the fitted Notes for the team survives a Food diary fit */
 function reportFrame(kind) {
   const id = 'report-frame-' + (kind || 'notes');
@@ -9443,11 +9453,12 @@ function reportFrame(kind) {
    because every Preview, Print, Save and Send fitted the whole report again). The key is the report's
    own data object (replaced on every redraw), the Daybook Assistant summary and the settings the
    report reads; fits on one frame run one after another, never at once. */
-const fitMemo = { notes: null, food: null, meds: null, mood: null, pain: null, ibd: null };
-const fitQueue = { notes: Promise.resolve(), food: Promise.resolve(), meds: Promise.resolve(), mood: Promise.resolve(), pain: Promise.resolve(), ibd: Promise.resolve() };
+const fitMemo = { notes: null, food: null, meds: null, medlist: null, mood: null, pain: null, ibd: null };
+const fitQueue = { notes: Promise.resolve(), food: Promise.resolve(), meds: Promise.resolve(), medlist: Promise.resolve(), mood: Promise.resolve(), pain: Promise.resolve(), ibd: Promise.resolve() };
 function fitKey(kind) {
   const p = state.profile || {};
   if (kind === 'meds') return [state.medsPdf, p.reportName, state.patientName, state.medicines];
+  if (kind === 'medlist') return [state.medListPdf, p.reportName, state.patientName, state.medicines, state.days];
   if (kind === 'mood') return [state.moodPdf, state.moodAI, p.reportName, state.patientName, state.days];
   if (kind === 'pain') return [state.painPdf, state.painAI, p.reportName, state.patientName, state.days, state.medicines];
   if (kind === 'ibd') return [state.ibdPdf, p.reportName, state.patientName, state.days, state.medicines, p.ibd, p.flarePlan, p.calls];
@@ -9871,6 +9882,7 @@ const REPORT_KINDS = {
   notes: { data: () => state.notesPdf, fit: () => fittedReport(), blob: () => notesReportBlob(), html: (R) => reportModule.reportHtml(R) },
   food: { data: () => state.foodPdf, fit: () => fittedFoodReport(), blob: () => foodReportBlob(), html: (R) => reportModule.foodReportHtml(R) },
   meds: { data: () => state.medsPdf, fit: () => fittedMedsReport(), blob: () => medsReportBlob(), html: (R) => reportModule.medsReportHtml(R) },
+  medlist: { data: () => state.medListPdf, fit: () => fittedMedListReport(), blob: () => medListReportBlob(), html: (R) => reportModule.medListHtml(R) },
   mood: { data: () => state.moodPdf, fit: () => fittedMoodReport(), blob: () => moodReportBlob(), html: (R) => reportModule.moodReportHtml(R) },
   pain: { data: () => state.painPdf, fit: () => fittedPainReport(), blob: () => painReportBlob(), html: (R) => reportModule.painReportHtml(R) },
   ibd: { data: () => state.ibdPdf, fit: () => fittedIbdReport(), blob: () => ibdReportBlob(), html: (R) => reportModule.ibdReportHtml(R) }
@@ -13848,6 +13860,64 @@ async function medsReportBlob() {
   const res = await fittedMedsReport();
   return res ? reportPdfBlob(res) : null;
 }
+/* My medicines (v449, Mark: his dentist asked what he was taking): one page of what is taken now, for a dentist, a
+   pharmacist, a new doctor or a hospital stay. Taken regularly and When needed from the list (medStatus Taking now, not the
+   hospital's own), then treatment in hospital in the last four weeks (treatment sessions on the calendar and medicines
+   logged as given in hospital) with the next session due. report.js medListHtml() draws it. */
+async function buildMedList() {
+  const today = todayStr(), since = addDays(today, -28);
+  const patient = (state.profile && state.profile.reportName) || state.patientName || state.name || 'The patient';
+  const yr = (d) => rDay(d) + ' ' + parseDay(d).getFullYear();
+  const now = (state.medicines || []).filter((m) => !m.hospital && m.active !== false && medStatus(m).text === 'Taking now')
+    .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  const row = (m) => {
+    const often = medFrequency(m).replace(/^When needed(, )?/, '');
+    return { name: capFirst(medListName(m.name)), dose: shownDose(m) || '', often: m.kind === 'prn' ? capFirst(often) || 'As needed' : often, why: m.purpose || medClass(m) || '' };
+  };
+  const sections = [];
+  const regular = now.filter((m) => m.kind !== 'prn'), prn = now.filter((m) => m.kind === 'prn');
+  if (regular.length) sections.push({ title: 'Taken regularly', head: ['Medicine', 'Dose', 'How often', 'For'], rows: regular.map(row) });
+  if (prn.length) sections.push({ title: 'When needed', head: ['Medicine', 'Dose', 'How often at most', 'For'], rows: prn.map(row) });
+  /* treatment given in hospital: the calendar's sessions, by kind and name, with the last and the next */
+  const hosp = new Map();
+  chemoDays().forEach((d) => {
+    const info = state.days[d], label = capFirst(sessionLabel(info));
+    const g = hosp.get(label) || { name: label, last: '', next: '' };
+    if (d <= today && d >= since && (!g.last || d > g.last)) g.last = d;
+    if (d > today && (!g.next || d < g.next)) g.next = d;
+    hosp.set(label, g);
+  });
+  let doses = [];
+  try { doses = (await loadAllMedDoses()).filter((e) => e.hospital && e.day >= since && e.day <= today); } catch (e) { /* the list still has the sessions */ }
+  doses.forEach((e) => {
+    const label = capFirst(medListName(e.medName || 'Medicine'));
+    const g = hosp.get(label) || { name: label, last: '', next: '' };
+    if (!g.last || e.day > g.last) g.last = e.day;
+    hosp.set(label, g);
+  });
+  const hrows = [...hosp.values()].filter((g) => g.last).sort((a, b) => b.last.localeCompare(a.last))
+    .map((g) => ({ name: g.name, dose: rDay(g.last), often: g.next ? rDay(g.next) : '', why: '' }));
+  if (hrows.length) sections.push({ title: 'Treatment in hospital', note: 'the last 4 weeks', head: ['Treatment', 'Last given', 'Next due', ''], hosp: true, rows: hrows });
+  const items = [];
+  sections.forEach((sec, si) => { items.push({ t: 'sec', s: si }); sec.rows.forEach((_, ri) => items.push({ t: 'row', s: si, r: ri })); });
+  items.push({ t: 'note' });
+  return { patient, asOn: yr(today), sections, items, pages: [], note: 'Not medical advice. This is my own record, kept in Daybook. My hospital or GP holds the full prescription.' };
+}
+function fittedMedListReport() {
+  return memoFit('medlist', async () => {
+    if (!state.medListPdf) return null;
+    if (!reportModule) reportModule = await import('./report.js?v=' + APP_VERSION);
+    const L = await buildMedList();
+    const res = await reportModule.fitMedListReport(reportFrame('medlist'), L);
+    if (!res.ok) { toast('The list could not be fitted to the page.'); return null; }
+    return res;
+  });
+}
+async function medListReportBlob() {
+  const res = await fittedMedListReport();
+  return res ? reportPdfBlob(res) : null;
+}
+function medListReady() { state.medListPdf = { from: null, to: todayStr(), filename: `Daybook my medicines ${todayStr()}.pdf` }; }
 async function openMedHistory(m, fromList) {
   const st = medStatus(m);
   const out = h('div', { class: 'medhist', role: 'status' }, h('p', { class: 'hint', text: 'Loading every dose...' }));
@@ -15935,6 +16005,10 @@ function renderMedsDocs() {
   $('meds-docs').replaceChildren(...docs.map((d, i) => h('li', null, docItem(d, i))));
   $('meds-docs-empty').hidden = docs.length > 0;
   /* once one is saved there is nothing to add (v252, Mark): the button goes and the line says how to show it */
+/* Share my medicines (v449) */
+$('medlist-preview').addEventListener('click', () => { medListReady(); openReportViewer('medlist', false); });
+$('medlist-send').addEventListener('click', () => { medListReady(); openSendSheet('medlist'); });
+$('medlist-pdf').addEventListener('click', () => { medListReady(); savePdf(state.medListPdf.filename, 'My medicines', medListReportBlob); });
   $('meds-doc-add').hidden = docs.length > 0;
   $('meds-docs-hint').textContent = docs.length
     ? 'Tap it to show at the pharmacy. When it is renewed, delete the old one and add the new one.'
