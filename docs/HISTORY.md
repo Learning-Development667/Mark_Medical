@@ -6,6 +6,9 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v455 (13 November 2026): report emails that look less like spam
+Mark: report emails were landing in Junk, and an NHS contact could not open one. Checked on a real send to his Gmail: SPF, DKIM (mymedicaldaybook.co.uk, selector resend) and DMARC (p=none) all pass, and it reached the inbox; the risk is a new sending domain with a large PDF under a few lines. **Smaller PDFs:** `reportPdfBlob()` draws each page at scale 2.0 (was 2.2) and JPEG 0.8 (was 0.9), about 190 dots an inch, roughly 40% smaller. **A proper footer** on every report email (`reportEmailFoot()` in the bridge, in the text and the HTML): who sent it and how, the attachment's name, where a reply goes, why this address had it, "not medical advice", and the company line. The same day mark1apps.co.uk got its own DKIM key (Google Workspace, selector google) and a DMARC record (p=none, reports to info@), both in Cloudflare.
+
 ### v454 (11 November 2026): What's new for 11 November
 Mark approved the batch (`WHATS_NEW` id `2026-11-11`): Share my medicines, Take before food, Sort by (new); the report watermark, the consent question, the stronger password (improved). It is the release notes for the build Mark asked for at 22:00 the same day. The Guide retake in v453 stopped on an unrelated Crohn's step (closeSheet in the harness), so `guide/` was left as it was; the Manage medicines frame and its new caption are to be retaken.
 

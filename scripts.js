@@ -16,7 +16,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '454';
+const APP_VERSION = '455';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -9516,7 +9516,7 @@ function fittedReport() {
     return res;
   });
 }
-/* The PDF file: each fitted page drawn at about 240 dots an inch and placed on an A4 page */
+/* The PDF file: each fitted page drawn at about 190 dots an inch (v455) and placed on an A4 page */
 async function reportPdfBlob(res) {
   await Promise.all([loadScript(CDN.jspdf), loadScript(CDN.html2canvas)]);
   const { jsPDF } = window.jspdf;
@@ -9526,7 +9526,9 @@ async function reportPdfBlob(res) {
   for (let i = 0; i < pages.length; i++) {
     /* drawn on a canvas that belongs to the report's own frame, where Fraunces and Inter are loaded;
        a canvas in the app's page would draw the words in a fallback font at the report's spacing */
-    const scale = 2.2, r = pages[i].getBoundingClientRect();
+    /* (v455, Mark: report emails landing in Junk) 2.0 and JPEG 0.8, from 2.2 and 0.9: about 190 dots an inch, still above what
+       a printer needs, and a report about 40% smaller, so mail filters are less wary of it */
+    const scale = 2.0, r = pages[i].getBoundingClientRect();
     const canvas = res.doc.createElement('canvas');
     canvas.width = Math.floor(r.width * scale); canvas.height = Math.floor(r.height * scale);
     canvas.style.width = r.width + 'px'; canvas.style.height = r.height + 'px';
@@ -9535,7 +9537,7 @@ async function reportPdfBlob(res) {
       window.html2canvas(pages[i], { canvas, scale, width: r.width, height: r.height, backgroundColor: '#ffffff', logging: false, useCORS: true }),
       new Promise((_, no) => setTimeout(() => no(new Error('the phone took too long drawing page ' + (i + 1))), 45000))
     ]);
-    const data = canvas.toDataURL('image/jpeg', 0.9);
+    const data = canvas.toDataURL('image/jpeg', 0.8);
     if (!data || data.length < 2000) throw new Error('the phone ran out of memory drawing page ' + (i + 1));
     if (i) pdf.addPage();
     /* for the iPhone's print dialog the page is drawn a little inside the paper (v156): printed at 100% an edge-to-edge

@@ -1189,10 +1189,22 @@ async function usdaBarcode(code, env) {
 /* The same words as a plain HTML part (bridge, 20 October 2026, after v246): mail-tester scored a text-only email down ("There is no html version of your
    message"), and filters trust a message with both. Paragraphs at blank lines, line breaks kept, everything escaped; no
    images, links, tracking or styling beyond a readable font, so it reads exactly as the person typed it. */
-function reportEmailHtml(text) {
+function reportEmailHtml(text, foot) {
   const esc = (t) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const paras = String(text || '').split(/\n{2,}/).map((p) => p.trim()).filter(Boolean).map((p) => '<p style="margin:0 0 14px">' + esc(p).replace(/\n/g, '<br>') + '</p>');
-  return '<!doctype html><html lang="en-GB"><head><meta charset="utf-8"></head><body style="margin:0;padding:16px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.5;color:#17263A">' + paras.join('') + '</body></html>';
+  const footer = foot ? '<div style="margin-top:24px;padding-top:12px;border-top:1px solid #D5DEE5;font-size:13px;line-height:1.5;color:#4B5B6B">' + foot.split(/\n/).map((l) => '<p style="margin:0 0 8px">' + esc(l) + '</p>').join('') + '</div>' : '';
+  return '<!doctype html><html lang="en-GB"><head><meta charset="utf-8"></head><body style="margin:0;padding:16px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.5;color:#17263A">' + paras.join('') + footer + '</body></html>';
+}
+/* (v455, Mark: report emails landing in Junk, and a team that did not know the sender) every report email ends with who sent it,
+   how, what is attached, where a reply goes and why this address had it: a short note with a large file and nothing else looks
+   like spam to mail filters and to people */
+function reportEmailFoot(fromName, replyTo, filename) {
+  return [
+    `${fromName} sent this from My Medical Daybook, a health diary they keep between appointments. The report is attached as a PDF, ${filename}.`,
+    `Replying to this email goes straight to ${fromName} at ${replyTo}.`,
+    `You have this email because ${fromName} saved your address as one of their care contacts. The report shows what was logged, as it was logged. It is not medical advice.`,
+    'My Medical Daybook is made by Mark 1 Apps Ltd, registered in England and Wales, company number 17510025. mymedicaldaybook.co.uk'
+  ].join('\n');
 }
 /* (v291, the security review) a uid from a request is only ever a Firebase uid: letters and digits. Without this, a crafted
    "../private/health" reached other documents through the REST path. */
@@ -1273,11 +1285,12 @@ async function handleSendReport(request, env) {
   if (count >= SEND_A_DAY) return json({ error: 'limit', message: 'That is the limit of emails for one day. Use Send from my own Mail app for the rest.' }, 429);
   if (f(logFields, 'day') === day) await fs.bump(hp(me.hid, 'bridge/sendLog'), { count: 1 }, { updatedAt: nowTs() }); else await fs.set(hp(me.hid, 'bridge/sendLog'), { day: strVal(day), count: intVal(1), updatedAt: nowTs() });
   const from = `${fromName.replace(/["<>]/g, '')} via My Medical Daybook <${env.SEND_FROM || SEND_FROM}>`;
+  const foot = reportEmailFoot(fromName.replace(/["<>]/g, ''), who.email, filename);
   let r, data = null;
   try {
     /* everything but the PDF through JSON.stringify, then the base64 (which needs no escaping) put in between as bytes, so the
        megabytes are never walked by JavaScript */
-    const shell = JSON.stringify({ from, to: [toName ? `${toName.replace(/["<>,]/g, '')} <${to}>` : to], cc: [who.email], reply_to: who.email, subject, text, html: reportEmailHtml(text), attachments: [{ filename, content: '__DAYBOOK_PDF__' }], headers: { 'X-Entity-Ref-ID': randomCode().slice(0, 16) } });
+    const shell = JSON.stringify({ from, to: [toName ? `${toName.replace(/["<>,]/g, '')} <${to}>` : to], cc: [who.email], reply_to: who.email, subject, text: text + '\n\n--\n' + foot, html: reportEmailHtml(text, foot), attachments: [{ filename, content: '__DAYBOOK_PDF__' }], headers: { 'X-Entity-Ref-ID': randomCode().slice(0, 16) } });
     const at = shell.indexOf('"__DAYBOOK_PDF__"');
     r = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { Authorization: 'Bearer ' + env.RESEND_API_KEY, 'Content-Type': 'application/json' },
       body: new Blob([shell.slice(0, at) + '"', pdf, '"' + shell.slice(at + '"__DAYBOOK_PDF__"'.length)]) });
