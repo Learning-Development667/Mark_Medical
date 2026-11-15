@@ -6,6 +6,9 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v456 (15 November 2026): the privacy page says what happens if Daybook closes
+Mark, preparing for a press interview: "What does happen to the data if the company stops?" A new section, **If Daybook closes**, in `tpl-privacy` and the website's `privacy.html` (both dated 15 November 2026): at least 60 days' notice by email and in the app, time to download (More, Settings, Your records), then everything deleted; never sold or passed on without telling people first and giving them the choice. It matches the closing plan in Shelley's private guide.
+
 ### v455 (13 November 2026): report emails that look less like spam
 Mark: report emails were landing in Junk, and an NHS contact could not open one. Checked on a real send to his Gmail: SPF, DKIM (mymedicaldaybook.co.uk, selector resend) and DMARC (p=none) all pass, and it reached the inbox; the risk is a new sending domain with a large PDF under a few lines. **Smaller PDFs:** `reportPdfBlob()` draws each page at scale 2.0 (was 2.2) and JPEG 0.8 (was 0.9), about 190 dots an inch, roughly 40% smaller. **A proper footer** on every report email (`reportEmailFoot()` in the bridge, in the text and the HTML): who sent it and how, the attachment's name, where a reply goes, why this address had it, "not medical advice", and the company line. The same day mark1apps.co.uk got its own DKIM key (Google Workspace, selector google) and a DMARC record (p=none, reports to info@), both in Cloudflare.
 
