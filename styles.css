@@ -2717,3 +2717,12 @@ html.text-huge .medrow, html.text-huge .med-head { gap: 8px; }
 .access-row:first-child { border-top: 0; }
 .access-add { display: flex; gap: var(--s-2); margin-top: var(--s-3); }
 .access-add .input { flex: 1; min-width: 0; }
+
+/* v462: an Add button on each meal's row in the Food sheet */
+.daymeal-wrap.has-add { display: flex; align-items: flex-start; gap: 6px; background: var(--surface-sunken); border-radius: var(--r-sm); padding-right: 6px; }
+.daymeal-wrap.has-add > .daymeal { flex: 1; min-width: 0; background: transparent; }
+.daymeal-wrap.has-add > .daymeal-add { align-self: center; }
+.daymeal-wrap.has-add:has(details[open]) > .daymeal-add { align-self: flex-start; margin-top: 10px; }
+.daymeal.is-empty.has-add { display: flex; align-items: center; gap: 6px; padding-right: 6px; }
+.daymeal.is-empty.has-add > .daymeal-sum { flex: 1; min-width: 0; }
+.daymeal-add { flex: none; min-height: 44px; min-width: 64px; align-self: center; }

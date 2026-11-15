@@ -16,7 +16,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '461';
+const APP_VERSION = '462';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -5127,7 +5127,8 @@ function openAdd(type, editEntry, preset) {
     const totalsEl = h('p', { class: 'macro-total' });
     totalsEl.hidden = true;
     const draft = () => ({ note: what.value, detail: parts.value, amount: amount.value, portions: portionsState });
-    const dayPanel = foodDayPanel(day, editId);
+    /* v462: Add on a meal's row picks that meal (as tapping its chip would) and goes to the food box */
+    const dayPanel = foodDayPanel(day, editId, (k) => { meal = k; mealPicked = true; markMeal(); toast('Adding to ' + MEALS.find(([m]) => m === k)[2].replace(/s$/, '').toLowerCase()); what.focus(); });
     const refreshTotals = () => {
       if (!macroOn || !foodIndex) return;
       const m = entryMacros(foodIndex, draft());
@@ -6415,7 +6416,9 @@ function foodsOnDay(day) {
 }
 /* The top of the Food sheet (v285): the day's running totals in the figures chosen, kept in view, and the day's food
    by meal, one line each, opened to see each item. update(draft) adds the food being logged to the totals. */
-function foodDayPanel(day, excludeId) {
+/* v462 (Mark: "can we have it so we can click on a meal time and add in something we have eaten"): onAdd(meal), when given,
+   puts an Add button on each meal's row; it picks that meal for the food being logged and goes to the food box. */
+function foodDayPanel(day, excludeId, onAdd) {
   const when = day === todayStr() ? 'Today' : fmtDayShort(day);
   const bar = h('div', { class: 'daybar', role: 'status', 'aria-live': 'polite' });
   const list = h('div', { class: 'daymeals' });
@@ -6449,12 +6452,13 @@ function foodDayPanel(day, excludeId) {
       const items = fs.filter((e) => mealOf(e) === k);
       const names = items.map((e) => e.note).join(', ');
       const kcal = estimates() && items.length ? Math.round(items.reduce((t, e) => t + entryMacros(foodIndex, e).totals.kcal, 0)) : 0;
+      const add = onAdd ? h('button', { class: 'btn btn-secondary btn-small daymeal-add', type: 'button', 'aria-label': 'Add to ' + heading, onclick: (ev) => { ev.preventDefault(); ev.stopPropagation(); onAdd(k); } }, 'Add') : null;
       const sum = h('summary', { class: 'daymeal-sum' },
         h('span', { class: 'daymeal-name', text: heading }),
         h('span', { class: 'daymeal-what' + (items.length ? '' : ' is-empty'), text: items.length ? names : 'Nothing yet' }),
         kcal ? h('span', { class: 'daymeal-kcal', text: kcal.toLocaleString('en-GB') + ' kcal' }) : null);
-      if (!items.length) return h('div', { class: 'daymeal is-empty' }, sum);
-      return h('details', { class: 'daymeal' }, sum, h('ul', { class: 'timeline' }, ...items.map((e) => renderEntry(e))));
+      if (!items.length) return h('div', { class: 'daymeal is-empty' + (add ? ' has-add' : '') }, h('div', { class: 'daymeal-sum' }, ...sum.childNodes), ...(add ? [add] : []));
+      return h('div', { class: 'daymeal-wrap' + (add ? ' has-add' : '') }, h('details', { class: 'daymeal' }, sum, h('ul', { class: 'timeline' }, ...items.map((e) => renderEntry(e)))), ...(add ? [add] : []));
     }));
   };
   const el = h('div', { class: 'foodday' }, bar, list);
