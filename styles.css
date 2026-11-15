@@ -2701,3 +2701,7 @@ html.text-huge .medrow, html.text-huge .med-head { gap: 8px; }
 .usage-fb > summary .pill { margin-left: auto; }
 #usage-feedback .usage-card { margin-top: var(--s-4); }
 @media (prefers-reduced-motion: reduce) { .usage-fb > summary::after { transition: none; } }
+
+/* v460: a bedtime that makes a night over 16 hours is marked to check, with a one-tap evening time */
+.night-block input.is-check { border-color: var(--amber); box-shadow: 0 0 0 1px var(--amber); }
+.night-pmfix { margin-top: var(--s-2); }

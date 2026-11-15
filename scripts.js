@@ -16,7 +16,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '459';
+const APP_VERSION = '460';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -6158,6 +6158,10 @@ function nightBlock(init, opts = {}) {
   const box = h('div', { class: 'night-block' });
   let bed = null, woke = null;
   const total = h('p', { class: 'wiz-hint night-total', 'aria-live': 'polite' });
+  /* v460 (Keith's feedback: bed 11:00, woke 05:30, "18 h 30 min in bed"): the boxes are the 24-hour clock, so a morning bedtime
+     that makes a night over 16 hours is most likely the evening. Never changed for them: the box is marked Check this and one
+     tap puts the evening time in. */
+  const pmFix = h('button', { class: 'btn btn-secondary btn-small night-pmfix', type: 'button', hidden: true });
   const awakeWrap = h('div', { class: 'night-sub' });
   const whyWrap = h('div', { class: 'night-sub' });
   const toiletWrap = h('div', { class: 'night-sub' });
@@ -6172,6 +6176,16 @@ function nightBlock(init, opts = {}) {
     const inBed = minutesInBed(bed.value, woke.value);
     const aw = (broken.get() && broken.get() !== 'no') ? nightAwakeMin({ awakeFor: awake.get() }) : null;
     total.textContent = inBed ? 'That is ' + fmtHm(inBed) + ' in bed' + (aw ? ', about ' + fmtHm(Math.max(1, inBed - aw)) + ' asleep.' : '.') : 'Daybook works out the hours.';
+    const bh = /^\d\d:\d\d$/.test(bed.value) ? Number(bed.value.slice(0, 2)) : -1;
+    const odd = inBed > 16 * 60 && bh >= 1 && bh <= 11;
+    pmFix.hidden = !odd;
+    bed.classList.toggle('is-check', odd);
+    if (odd) {
+      const pm = String(bh + 12).padStart(2, '0') + bed.value.slice(2);
+      total.textContent += ' Check this: did you mean ' + pm + '?';
+      pmFix.textContent = 'Change to ' + pm;
+      pmFix.onclick = () => { bed.value = pm; showTotal(); };
+    }
   };
   const showSubs = () => {
     const isBroken = broken.get() === 'some' || broken.get() === 'lots';
@@ -6184,7 +6198,7 @@ function nightBlock(init, opts = {}) {
   bed = h('input', { type: 'time', id: 'night-bed', value: n0.bedAt || (tracker && tracker.bedAt) || '' });
   woke = h('input', { type: 'time', id: 'night-woke', value: n0.wokeAt || (tracker && tracker.wokeAt) || '' });
   bed.addEventListener('input', showTotal); woke.addEventListener('input', showTotal);
-  const times = h('div', { class: 'night-times' }, h('div', { class: 'field-row' }, field('Went to bed', bed), field('Woke up', woke)), total);
+  const times = h('div', { class: 'night-times' }, h('div', { class: 'field-row' }, field('Went to bed', bed), field('Woke up', woke)), total, pmFix);
   if (tracker) {
     const w = tracker.watchShort && tracker.watch ? tracker.watch : tracker;
     const asleep = Number(w.value) > 0 ? fmtHm(Number(w.value)) + ' asleep' : '';
