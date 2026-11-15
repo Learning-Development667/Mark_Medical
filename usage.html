@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <!-- v461: the company's own usage page, apart from any care circle: counts only, for the people on the company access list -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://www.gstatic.com/firebasejs/; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data:; connect-src 'self' https://*.googleapis.com https://care-log-bridge.markbrown667.workers.dev https://www.gstatic.com; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex">
+  <title>Daybook usage</title>
+  <meta name="theme-color" content="#F6F4EF" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0F1B24" media="(prefers-color-scheme: dark)">
+  <link rel="icon" href="icons/icon-192.png?i=2">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css?v=461">
+</head>
+<body class="usage-page">
+  <main id="main" class="usage-main">
+    <h1 class="usage-brand">Daybook: <span>Usage</span></h1>
+    <p class="hint">For Mark 1 Apps Ltd. The counts only: no names, nothing anyone wrote, no health information.</p>
+
+    <form id="u-signin" class="card usage-card" hidden novalidate>
+      <h2 class="card-title">Sign in</h2>
+      <p class="hint">Use your own Daybook sign-in. Only email addresses on the company access list can see the counts.</p>
+      <div class="field"><label for="u-email">Email</label><input id="u-email" class="input" type="email" autocomplete="username" required></div>
+      <div class="field"><label for="u-password">Password</label><input id="u-password" class="input" type="password" autocomplete="current-password" required></div>
+      <p id="u-msg" class="hint" role="status" aria-live="polite"></p>
+      <button id="u-go" class="btn btn-primary btn-block" type="submit">Sign in</button>
+      <button id="u-create" class="btn btn-secondary btn-block" type="button">Make my sign-in</button>
+      <button id="u-forgot" class="btn btn-link" type="button">Forgotten your password?</button>
+    </form>
+
+    <section id="u-out" hidden>
+      <div id="u-body"></div>
+      <p id="u-who" class="muted"></p>
+      <button id="u-verify" class="btn btn-secondary btn-block" type="button" hidden>Send me a link to confirm my email</button>
+      <button id="u-signout" class="btn btn-secondary btn-block" type="button">Sign out</button>
+    </section>
+  </main>
+  <script src="config.js?v=461"></script>
+  <script type="module" src="usage.js?v=461"></script>
+</body>
+</html>

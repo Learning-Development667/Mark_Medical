@@ -2705,3 +2705,15 @@ html.text-huge .medrow, html.text-huge .med-head { gap: 8px; }
 /* v460: a bedtime that makes a night over 16 hours is marked to check, with a one-tap evening time */
 .night-block input.is-check { border-color: var(--amber); box-shadow: 0 0 0 1px var(--amber); }
 .night-pmfix { margin-top: var(--s-2); }
+
+/* v461: the company usage page (usage.html), and the access list on the app's Usage page */
+.usage-page { min-height: 100vh; }
+.usage-main { max-width: 640px; margin: 0 auto; padding: var(--s-5) var(--s-4) var(--s-6); }
+.usage-brand { font-family: var(--font-display, 'Fraunces', serif); font-weight: 600; color: var(--teal); font-size: 30px; margin: 0 0 var(--s-2); }
+.usage-brand span { color: var(--text); font-size: 24px; }
+.usage-main .btn-block { margin-top: var(--s-3); }
+.usage-main .field { margin-top: var(--s-3); }
+.access-row { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); padding: var(--s-2) 0; border-top: 1px solid var(--border-subtle); overflow-wrap: anywhere; }
+.access-row:first-child { border-top: 0; }
+.access-add { display: flex; gap: var(--s-2); margin-top: var(--s-3); }
+.access-add .input { flex: 1; min-width: 0; }

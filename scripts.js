@@ -16,7 +16,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '460';
+const APP_VERSION = '461';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -6994,9 +6994,30 @@ function renderUsage() {
         h('td', { class: 'mono', text: pid }), h('td', { text: c.created ? fmtDayShort(c.created) : '' }), h('td', { text: packWords(c.packs) }),
         h('td', { text: String(c.entries7) }), h('td', { text: c.checkins7 + ' of 14' }), h('td', { text: c.last ? fmtDayShort(c.last) : 'Never' }),
         h('td', { text: String(c.ai) }), h('td', { text: String(c.sent) }), h('td', { text: String(c.phones) })))))));
+  /* v461: company members see the counts on their own page (usage.html) by confirmed email, never by joining this circle */
+  const accessList = h('div', { class: 'access-list' }, h('p', { class: 'hint', text: 'Fetching the list' }));
+  const accessIn = h('input', { class: 'input', type: 'email', id: 'access-email', autocomplete: 'off', 'aria-label': 'Email address to add' });
+  let accessEmails = [];
+  const saveAccess = async (emails, btn) => withBusy(btn, 'Saving', async () => {
+    try { const d = await bridgeCall('/usage', { what: 'access-set', emails }); accessEmails = d.emails || []; drawAccess(); toast('Saved'); }
+    catch (e) { toast(e.message || 'Could not save the list.'); }
+  });
+  const drawAccess = () => accessList.replaceChildren(...(accessEmails.length ? accessEmails.map((em) => h('div', { class: 'access-row' }, h('span', { text: em }),
+    h('button', { class: 'btn btn-secondary btn-small', type: 'button', 'aria-label': 'Remove ' + em, onclick: (ev) => saveAccess(accessEmails.filter((x) => x !== em), ev.currentTarget) }, 'Remove')))
+    : [h('p', { class: 'muted', text: 'Nobody yet. Your own circle always sees this page.' })]));
+  bridgeCall('/usage', { what: 'access-list' }).then((d) => { accessEmails = d.emails || []; drawAccess(); }).catch(() => accessList.replaceChildren(h('p', { class: 'muted', text: 'Could not fetch the list.' })));
+  const access = h('div', { class: 'card usage-card' },
+    h('h3', { class: 'card-title', text: 'Company access' }),
+    h('p', { class: 'hint', text: 'People who can see these counts, not the feedback, at app.mymedicaldaybook.co.uk/usage.html with their own sign-in. They never join your circle or see anything in it.' }),
+    accessList,
+    h('div', { class: 'access-add' }, accessIn, h('button', { class: 'btn btn-primary btn-small', type: 'button', onclick: (ev) => {
+      const em = accessIn.value.trim().toLowerCase();
+      if (!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/.test(em)) { markMissing(accessIn, true, 'Check this'); return; }
+      accessIn.value = ''; saveAccess([...new Set([...accessEmails, em])], ev.currentTarget);
+    } }, 'Add')));
   body.replaceChildren(
     h('p', { class: 'muted', text: built ? 'Counted ' + built.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ' at ' + built.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) + '. The counts are for the week to ' + fmtDayShort(u.day) + ', the Assistant for the month.' : ''}),
-    tiles, features, from, trend, table, countBtn);
+    tiles, features, from, trend, table, access, countBtn);
 }
 $('more-usage').addEventListener('click', openUsage);
 $('usage-back-foot').addEventListener('click', () => showTab('more'));

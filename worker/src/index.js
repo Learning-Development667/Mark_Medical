@@ -1819,15 +1819,35 @@ async function buildUsage(env, opts) {
   return { day, built: new Date().toISOString(), totals, history, circles };
 }
 /* POST /usage { what: 'check' | 'read' | 'rebuild' }: the operator's circle only (the household whose inbox key is BRIDGE_KEY) */
+const USAGE_ACCESS_PATH = 'bridge/usageAccess', USAGE_ACCESS_MAX = 10;
+async function usageAccessList(fs) {
+  const d = await fs.get(USAGE_ACCESS_PATH);
+  const v = d && d.fields ? f(d.fields, 'emails') : null;
+  return Array.isArray(v) ? v.map((e) => String(e).toLowerCase()) : [];
+}
 async function handleUsage(request, env) {
   const a = await whoIs(request, env); if (a.error) return a.error;
   if (a.demo) return json({ error: 'unauthorised', operator: false }, 403);
   const { who, fs } = a;
   const me = await memberOf(fs, who.uid);
   const opHid = env.BRIDGE_KEY ? await householdForKey(fs, env.BRIDGE_KEY) : null;
-  if (!me.hid || !opHid || me.hid !== opHid) return json({ error: 'unauthorised', operator: false, message: 'Only the operator\'s own circle can see the usage counts.' }, 403);
+  const isOp = Boolean(me.hid && opHid && me.hid === opHid);
+  /* v461 (Mark: "I don't want to have to add Len to my medical data just so he can see the app usage"): company members read the
+     counts on their own page (usage.html) from their own sign-in, by confirmed email on a list the operator keeps
+     (bridge/usageAccess), never by joining a circle. The counts only: the feedback and the list itself stay with the operator. */
+  const listed = !isOp && who.email && who.emailVerified ? (await usageAccessList(fs)).includes(who.email) : false;
   const body = (await readJson(request)) || {};
-  if (body.what === 'check') return json({ operator: true });
+  if (!isOp && !listed) return json({ error: 'unauthorised', operator: false, reader: false, unverified: Boolean(who.email && !who.emailVerified), message: who.email && !who.emailVerified ? 'Confirm your email address first, then try again.' : 'This sign-in is not on Daybook\'s company access list. Ask Mark to add your email address.' }, 403);
+  if (body.what === 'check') return json({ operator: isOp, reader: true });
+  if (!isOp && body.what !== 'read') return json({ error: 'unauthorised', operator: false, reader: true, message: 'Only the counts can be seen here.' }, 403);
+  if (body.what === 'access-list') return json({ operator: true, emails: await usageAccessList(fs) });
+  if (body.what === 'access-set') {
+    const list = Array.isArray(body.emails) ? body.emails : [];
+    const emails = [...new Set(list.map((e) => String(e || '').trim().toLowerCase()).filter((e) => /^[^@\s]{1,64}@[^@\s]{1,190}\.[a-z]{2,}$/.test(e)))].slice(0, USAGE_ACCESS_MAX);
+    if (emails.length !== list.length) return json({ error: 'bad-request', message: 'One of those is not an email address.' }, 400);
+    await fs.set(USAGE_ACCESS_PATH, { emails: { arrayValue: { values: emails.map((e) => strVal(e)) } }, updatedAt: nowTs() });
+    return json({ operator: true, emails });
+  }
   if (body.what === 'rebuild') return json({ error: 'moved', message: 'Usage is counted every night now. For a count now, run Count usage in GitHub, Actions.' }, 400);
   /* The feedback itself (v370, Mark: "how am I going to know what improvements to make"): the operator alone, newest first,
      the words whole, the circle as its Usage code; a picture is fetched one at a time on a tap, never in the list */
