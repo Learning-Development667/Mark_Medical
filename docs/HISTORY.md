@@ -6,6 +6,9 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v457 (15 November 2026): Health Connect back on, and open testing always the newest build
+Google approved the open-testing submission on 9 November (Published at 22:02; Google sent no email, Mark found it in Submission activity on 15 November). **Health Connect is on again** in the Android app, in the three places v442 took it out: `HEALTH_ANDROID = true` in `scripts.js`, `@capgo/capacitor-health` back in the Android `includePlugins` of `native/capacitor.config.json`, and the six READ permissions in the Android manifest without `tools:node="remove"` (the plugin's other permissions stay removed). Play may ask for the Health Connect permissions declaration before it takes the build. **Open testing always current:** the Android workflow now runs `tools/play_promote.mjs` after the internal upload: it reads the newest build on internal testing and, if open testing has an older one, sets the beta track to it with the same release notes and commits, so Google reviews it for open testing. Prints build numbers and states only.
+
 ### v456 (15 November 2026): the privacy page says what happens if Daybook closes
 Mark, preparing for a press interview: "What does happen to the data if the company stops?" A new section, **If Daybook closes**, in `tpl-privacy` and the website's `privacy.html` (both dated 15 November 2026): at least 60 days' notice by email and in the app, time to download (More, Settings, Your records), then everything deleted; never sold or passed on without telling people first and giving them the choice. It matches the closing plan in Shelley's private guide.
 

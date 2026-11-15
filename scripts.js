@@ -16,7 +16,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '456';
+const APP_VERSION = '457';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -3067,10 +3067,10 @@ const HEALTH_READ = ['steps', 'sleep', 'workouts', 'weight', 'dietaryEnergyConsu
    same bridge route serve both phones; only the name differs, and the bridge stamps what came in with it. */
 const IS_ANDROID_APP = nativeApp() && window.Capacitor.getPlatform() === 'android';
 const IS_IOS_APP = nativeApp() && window.Capacitor.getPlatform() === 'ios';
-/* Health Connect stays off in the Android app until Google approves its Health Connect permissions (v442): Play refuses any
-   build that asks for them before the app's health declaration is approved. Set true, put the plugin back in the Android
-   includePlugins and the six READ permissions back in the manifest, all three together. */
-const HEALTH_ANDROID = false;
+/* Health Connect in the Android app: off in v442 (Play refused a build asking for health permissions before the app's health
+   declaration was approved), on again in v457 once open testing was approved. Three places go together: this, the plugin in the
+   Android includePlugins of native/capacitor.config.json, and the six READ permissions in the Android manifest. */
+const HEALTH_ANDROID = true;
 function healthName() { return IS_ANDROID_APP ? 'Health Connect' : 'Apple Health'; }
 const HEALTH_ADDED_BY = ['Apple Health', 'Health Connect'];
 function fromHealth(e) { return Boolean(e && (HEALTH_ADDED_BY.includes(e.addedBy) || e.source === 'health-auto-export' || e.source === 'apple-health' || e.source === 'apple-health-app' || e.source === 'health-connect')); }
