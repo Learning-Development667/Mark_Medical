@@ -16,7 +16,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '458';
+const APP_VERSION = '459';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -6912,11 +6912,14 @@ function renderUsageFeedback() {
   if (!d) return;
   const isNew = (it) => !d.seen || (it.at && it.at > d.seen);
   const fresh = d.items.filter(isNew).length;
-  box.replaceChildren(h('div', { class: 'card usage-card' },
-    h('h3', { class: 'card-title', text: 'Feedback' }),
+  /* v459 (Mark: "I have to scroll down through all the feedback to get to the numbers"): the counts come first and the
+     feedback sits under them, folded, its heading saying how many are new; each piece is also emailed to the company inbox */
+  box.replaceChildren(h('details', { class: 'card usage-card usage-fb' },
+    h('summary', null, h('span', { class: 'card-title', text: 'Feedback' }),
+      h('span', { class: 'pill ' + (fresh ? 'pill-green' : 'pill-teal'), text: fresh ? fresh + ' new' : String(d.total) })),
     h('p', { class: 'hint', text: d.items.length
-      ? plural(d.total, 'piece') + ' of feedback in all' + (fresh ? ', ' + fresh + ' new since you last looked' : '') + '. Newest first. Only you can see this.'
-      : 'Nothing sent yet. What people send through Provide feedback shows here, newest first. Only you can see it.' }),
+      ? plural(d.total, 'piece') + ' of feedback in all' + (fresh ? ', ' + fresh + ' new since you last looked' : '') + '. Newest first. Each is also emailed to the company inbox with its picture.'
+      : 'Nothing sent yet. What people send through Provide feedback shows here, newest first, and is emailed to the company inbox.' }),
     ...d.items.map((it) => feedbackItem(it, isNew(it))),
     d.total > d.items.length ? h('p', { class: 'muted', text: 'The newest ' + d.items.length + ' are shown.' }) : null));
 }
@@ -6935,7 +6938,9 @@ function renderUsage() {
     usageTile('Care circles', t.circles, t.new30 + ' new in the last 30 days' + (t.new7 ? ', ' + t.new7 + ' this week' : ''), 'is-teal'),
     usageTile('Logged this week', t.active7, pct(t.active7, t.circles) + ' of circles logged something', t.circles && t.active7 / t.circles >= 0.5 ? 'is-green' : 'is-amber'),
     usageTile('Check-ins done', pct(t.checkins7, t.checkinSlots), t.checkins7 + ' of ' + t.checkinSlots + ' this week; ' + plural(t.logging7, 'circle') + ' did one every day', t.checkinSlots && t.checkins7 / t.checkinSlots >= 0.5 ? 'is-green' : 'is-amber'),
-    usageTile('Assistant this month', t.aiCalls, 'by ' + plural(t.aiCircles, 'circle') + '; ' + plural(t.sent, 'report') + ' sent by email so far', 'is-teal')));
+    usageTile('People', t.members, 'in ' + plural(t.circles, 'circle'), 'is-teal'),
+    usageTile('Assistant this month', t.aiCalls, 'by ' + plural(t.aiCircles, 'circle'), 'is-teal'),
+    usageTile('Reports sent', t.sent, 'by email, all time', 'is-teal')));
   const kinds = Object.entries(t.kinds || {}).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]);
   const features = h('div', { class: 'card usage-card' },
     h('h3', { class: 'card-title', text: 'Features used' }),
@@ -6969,7 +6974,7 @@ function renderUsage() {
   const table = h('div', { class: 'card usage-card' },
     h('h3', { class: 'card-title', text: 'Each circle' }),
     h('p', { class: 'hint', text: 'A code per circle, never a name. This week\'s entries and check-ins (of 14), when something was last logged, Assistant requests this month, reports sent.' }),
-    h('div', { class: 'usage-tablewrap' }, h('table', { class: 'usage-table' },
+    h('div', { class: 'usage-tablewrap', tabindex: '0', role: 'region', 'aria-label': 'Each circle, scrolls sideways' }, h('table', { class: 'usage-table' },
       h('thead', null, h('tr', null, ...['Circle', 'Since', 'For', 'Entries', 'Check-ins', 'Last logged', 'Assistant', 'Sent', 'Phones'].map((x) => h('th', { text: x })))),
       h('tbody', null, ...rows.map(([pid, c]) => h('tr', { class: c.entries7 > 0 ? '' : 'is-quiet' },
         h('td', { class: 'mono', text: pid }), h('td', { text: c.created ? fmtDayShort(c.created) : '' }), h('td', { text: packWords(c.packs) }),

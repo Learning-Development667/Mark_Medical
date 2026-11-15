@@ -2691,3 +2691,13 @@ html.text-huge .medrow, html.text-huge .med-head { gap: 8px; }
 /* Share my medicines (v449): a one-page list from the Meds tab */
 #medlist-section { margin-top: var(--s-5, 24px); }
 .medlist-btns { display: grid; gap: var(--s-3); margin-top: var(--s-3); }
+
+/* v459: the Usage page's feedback folds under the counts */
+.usage-fb > summary { list-style: none; cursor: pointer; min-height: 48px; display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); }
+.usage-fb > summary::-webkit-details-marker { display: none; }
+.usage-fb > summary .card-title { margin: 0; }
+.usage-fb > summary::after { content: '\203A'; color: var(--text-muted); font-size: 24px; transition: transform var(--t-base) ease; }
+.usage-fb[open] > summary::after { transform: rotate(90deg); }
+.usage-fb > summary .pill { margin-left: auto; }
+#usage-feedback .usage-card { margin-top: var(--s-4); }
+@media (prefers-reduced-motion: reduce) { .usage-fb > summary::after { transition: none; } }

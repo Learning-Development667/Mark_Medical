@@ -1057,6 +1057,7 @@ async function handleFeedback(request, env) {
   if (image) rec.image = strVal(image);
   if (answers) rec.answers = strVal(answers);
   await fs.set('feedback/' + id, rec);
+  await emailFeedback(env, { id, hid: me.hid, name: me.name || '', role: me.role, kind, text, answers, screen: clean(body.screen, 80), version: clean(body.version, 12), device: clean(body.device, 160) }, image);
   /* a push to Mark's phones (never the sender's own household, so his and Shelley's tests do not ping him) */
   let pushed = 0;
   if (env.VAPID_PRIVATE_KEY && env.BRIDGE_KEY) {
@@ -1067,6 +1068,26 @@ async function handleFeedback(request, env) {
     }
   }
   return json({ ok: true, id, pushed });
+}
+/* v459 (Mark: "add a function where I can send the feedback and screenshots direct to you"): a copy of each piece of feedback
+   to the company inbox (FEEDBACK_TO, a Worker var, else mark@mark1apps.co.uk), the picture attached, so it can be read and
+   acted on without scrolling the Usage page. The picture (up to 900 KB of base64) is spliced into the request body as a
+   string, never re-stringified (the free plan's 10 ms of CPU, v246). Never stops the feedback being saved. */
+async function emailFeedback(env, fb, image) {
+  if (!env.RESEND_API_KEY) return;
+  const lines = ['New ' + (fb.kind === 'survey' ? 'first-day answers' : 'feedback') + ' in Daybook.', '',
+    'From: ' + (fb.name || 'Someone') + ' (' + (fb.role || 'member') + '), circle ' + String(fb.hid || '').slice(0, 8),
+    'Screen: ' + (fb.screen || 'not given') + '. Version ' + (fb.version || '?') + '. ' + (fb.device || ''), ''];
+  if (fb.text) lines.push(fb.text, '');
+  if (fb.answers) lines.push('First-day answers: ' + fb.answers, '');
+  lines.push(image ? 'The picture they sent is attached.' : 'No picture was sent.', '', 'Also on the Usage page in the app (More, then Usage). Reference ' + fb.id + '.');
+  const head = JSON.stringify({ from: 'My Medical Daybook <' + (env.SEND_FROM || SEND_FROM) + '>', to: [env.FEEDBACK_TO || 'mark@mark1apps.co.uk'],
+    subject: 'Daybook feedback' + (fb.screen ? ': ' + fb.screen : ''), text: lines.join('\n') });
+  const body = image ? head.slice(0, -1) + ',"attachments":[{"filename":"daybook-feedback.jpg","content":"' + image + '"}]}' : head;
+  try {
+    const r = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { Authorization: 'Bearer ' + env.RESEND_API_KEY, 'Content-Type': 'application/json' }, body });
+    if (!r.ok) console.error('feedback email', r.status);
+  } catch (e) { console.error('feedback email', e && e.message); }
 }
 /* POST /feedback-info: how else to reach Mark during the Beta; the phone number is a Worker secret, shown to signed-in members only */
 async function handleFeedbackInfo(request, env) {
