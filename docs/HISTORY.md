@@ -6,6 +6,9 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v464: What's new for 16 November (16 November 2026)
+The batch `2026-11-16`, approved by Mark: New, an Add button on each meal in the Food sheet (v462); Improved, Health Connect on Android (v457, v458); Fixed, powder drinks costed by the powder (v463) and the 11:00 bedtime check (v460). Also the notes for that day's iPhone and Android builds.
+
 ### v463: a drink made up from a powder is costed by the powder, not the ml (16 November 2026)
 A Beta tester scanned Huel (powder, mixed with water), typed 500 ml, and the estimate read 2,222 kcal and 217 g protein: since v288 a drink of one thing is sized by its ml taken as grams, and Open Food Facts' figures for a powder are per 100 g of the powder. `powderDrink(name, quantity, serving, drink)` calls a product a powder when Open Food Facts lists it as a drink but the pack has no ml and is sold by weight, or the name says powder; `drinkInfo()` says the same of a saved My foods product (`drink`, no `ml`, a `packG` or "powder"). For a powder (`drinkPowder` in the Food sheet) the ml still counts towards the day's drinks, a line says "Made up from a powder: the ml counts as a drink only. Set how much powder below", and the estimate comes from the usual portion row, starting at the pack's serving (Huel: 1 serving, 90 g, 360 kcal), with "weigh it in grams" as before. Cartons and bottles are unchanged. An entry already saved with the old figures keeps them until edited. Tested in the scratchpad's `h/powder463.cjs` (Huel at 500 ml estimates 360 kcal with the line shown; a 330 ml chocolate milk still 231 kcal with no portion row; 390 light and 320 dark, no sideways scroll, no page errors).
 

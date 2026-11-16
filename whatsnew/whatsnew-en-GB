@@ -1,0 +1,5 @@
+New: An Add button on each meal in the Food sheet.
+Improved: Health Connect on Android brings in steps, sleep, weight and more.
+Fixed: Drinks made from a powder, like Huel, are now counted by the powder, not the ml.
+Fixed: A bedtime like 11:00 that makes an 18-hour night now asks "did you mean 23:00?".
+More under More, Help and what's new.

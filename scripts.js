@@ -16,7 +16,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '463';
+const APP_VERSION = '464';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -4058,6 +4058,12 @@ $('feedback-row').addEventListener('click', () => openFeedbackSheet());
 const WHATS_NEW = [
   /* tag (v411, Mark): new, improved or fixed, shown as a label and grouped in that order; the newest batch is also the
      release notes for TestFlight and Google Play (tools/release_notes.mjs) */
+  { id: '2026-11-16', items: [
+    { tag: 'new', text: 'An Add button on each meal in the Food sheet.' },
+    { tag: 'improved', text: 'Health Connect on Android brings in steps, sleep, weight and more.' },
+    { tag: 'fixed', text: 'Drinks made from a powder, like Huel, are now counted by the powder, not the ml.' },
+    { tag: 'fixed', text: 'A bedtime like 11:00 that makes an 18-hour night now asks "did you mean 23:00?".' }
+  ] },
   { id: '2026-11-11', items: [
     { tag: 'new', text: 'Share my medicines: a one-page list of what you take, from the foot of Meds, to show, send or save.' },
     { tag: 'new', text: 'Take before food: tick it on a medicine taken 30 to 60 minutes before eating. The card and the reminder say so, and Daybook asks if you log a meal without it.' },
