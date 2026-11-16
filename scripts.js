@@ -16,7 +16,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '462';
+const APP_VERSION = '463';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -3510,11 +3510,19 @@ function packMl(text) {
   const v = parseFloat(m[1]) * (m[2] === 'ml' ? 1 : m[2] === 'cl' ? 10 : 1000);
   return v >= 20 && v <= 3000 ? Math.round(v) : 0;
 }
+/* v463 (a Beta tester: Huel powder, 500 ml, was costed as 500 g of powder, 2,222 kcal): a drink made up from a powder is sold
+   by weight with no ml on the pack (or says powder). Its figures are per 100 g of powder, so the estimate is sized by the
+   powder (a portion row, starting at the pack's serving) and the ml only counts towards the day's drinks. */
+function powderDrink(name, quantity, serving, drink) {
+  if (!drink) return false;
+  if (packMl(quantity) || packMl(serving)) return false;
+  return /\bpowder\b/i.test(String(name || '')) || Boolean(packGrams(quantity) || packGrams(serving));
+}
 function drinkInfo(name) {
   const n = String(name || '').trim();
   if (!n) return null;
   const custom = customFoodByName(n);
-  if (custom && (custom.drink || custom.ml)) return { ml: custom.ml || (DRINK_ML.find(([re]) => re.test(n)) || [0, 250])[1], nutri: custom.noFigures ? NUTRI_DRINK_RE.test(n) : Boolean(custom.kcal || custom.prot) };
+  if (custom && (custom.drink || custom.ml)) return { ml: custom.ml || (DRINK_ML.find(([re]) => re.test(n)) || [0, 250])[1], nutri: custom.noFigures ? NUTRI_DRINK_RE.test(n) : Boolean(custom.kcal || custom.prot), powder: Boolean(custom.drink && !custom.ml && (custom.packG > 0 || /\bpowder\b/i.test(n))) };
   if (NOT_A_DRINK_RE.test(n) && !/hot chocolate/i.test(n)) return null;
   if (!NUTRI_DRINK_RE.test(n)) return null;
   return { ml: (DRINK_ML.find(([re]) => re.test(n)) || [0, 250])[1], nutri: true };
@@ -5123,6 +5131,10 @@ function openAdd(type, editEntry, preset) {
     let drinkTyped = false;
     const drinkWrap = h('div', { class: 'food-drink' }, field('How much did you drink? (ml)', drinkMlIn), h('p', { class: 'hint', text: 'Counted in the day\'s drinks as well. Type 0 if it was not a drink.' }));
     drinkWrap.hidden = true;
+    let drinkPowder = false; // v463: made up from a powder, so the powder (not the ml) sizes the estimate
+    const powderHint = h('p', { class: 'hint food-powder-hint', text: 'Made up from a powder: the ml counts as a drink only. Set how much powder below, for the calories and protein.' });
+    powderHint.hidden = true;
+    drinkWrap.append(powderHint);
     const drinkActive = () => !drinkWrap.hidden && parseInt(drinkMlIn.value, 10) > 0;
     const totalsEl = h('p', { class: 'macro-total' });
     totalsEl.hidden = true;
@@ -5251,7 +5263,7 @@ function openAdd(type, editEntry, preset) {
       let m = entryMacros(foodIndex, draft());
       lastComponents = m.components;
       /* a drink of one thing is sized by its ml (1 ml taken as 1 g), with no portion row to set */
-      if (drinkActive() && m.components.length === 1) {
+      if (drinkActive() && m.components.length === 1 && !drinkPowder) {
         const c = m.components[0];
         portionsState[c.key] = { size: 'M', override: (portionsState[c.key] && portionsState[c.key].override) || null, qty: { unit: 'g', n: parseInt(drinkMlIn.value, 10) } };
         rowsWrap.replaceChildren(); amountBlock.hidden = true; refreshTotals();
@@ -5309,8 +5321,12 @@ function openAdd(type, editEntry, preset) {
       pick.hidden = true;
       details.hidden = false;
       dayPanel.list.hidden = true;
-      const info = editEntry && Number(editEntry.drinkMl) > 0 ? { ml: Number(editEntry.drinkMl) } : drinkHint || drinkInfo(what.value);
+      const named = drinkInfo(what.value);
+      const info = editEntry && Number(editEntry.drinkMl) > 0 ? { ml: Number(editEntry.drinkMl), powder: Boolean(named && named.powder) } : drinkHint || named;
       drinkWrap.hidden = !info;
+      drinkPowder = Boolean(info && info.powder);
+      powderHint.hidden = !drinkPowder;
+      if (drinkPowder) amountBlock.hidden = false;
       if (info && !drinkTyped) drinkMlIn.value = String(info.ml || '');
       rebuildRows();
       syncFood();
@@ -5343,7 +5359,7 @@ function openAdd(type, editEntry, preset) {
     };
     const takePackaged = (p) => {
       saveCustomFood(p.name, p.hasFigures ? p.per100 : {}, { barcode: p.code, source: p.source, drink: p.drink, ml: packMl(p.quantity) || packMl(p.serving), ...labelSize(p), noFigures: !p.hasFigures });
-      drinkHint = p.drink ? { ml: packMl(p.quantity) || packMl(p.serving) || (DRINK_ML.find(([re]) => re.test(p.name)) || [0, 250])[1] } : null;
+      drinkHint = p.drink ? { ml: packMl(p.quantity) || packMl(p.serving) || (DRINK_ML.find(([re]) => re.test(p.name)) || [0, 250])[1], powder: powderDrink(p.name, p.quantity, p.serving, p.drink) } : null;
       choose(p.name, null);
       toast(p.hasFigures ? 'Found ' + p.name + ' (Open Food Facts), saved to My foods' : 'Found ' + p.name + ', but the database has no nutrition figures for it. Enter them from the packet to count it.');
     };
@@ -5406,7 +5422,7 @@ function openAdd(type, editEntry, preset) {
     const scanControl = explainAvailable() ? foodScanControl((r) => {
       const label = r.name + (r.hasFigures ? ': ' + (r.per100.kcal != null ? Math.round(r.per100.kcal) + ' kcal' : '') + (r.per100.prot != null ? ', ' + r.per100.prot + ' g protein' : '') + ' per 100 g' : '');
       if (!r.mine) saveCustomFood(r.name, r.hasFigures ? r.per100 : {}, { barcode: r.code, source: r.source, drink: r.drink, ml: packMl(r.quantity) || packMl(r.serving), ...labelSize(r), noFigures: !r.hasFigures });
-      drinkHint = r.drink ? { ml: packMl(r.quantity) || packMl(r.serving) || (DRINK_ML.find(([re]) => re.test(r.name)) || [0, 250])[1] } : null;
+      drinkHint = r.drink ? { ml: packMl(r.quantity) || packMl(r.serving) || (DRINK_ML.find(([re]) => re.test(r.name)) || [0, 250])[1], powder: powderDrink(r.name, r.quantity, r.serving, r.drink) } : null;
       choose(r.name, null);
       toast(r.hasFigures ? 'Found ' + label + (r.mine ? ' (My foods)' : r.source === 'USDA FoodData Central' ? ' (US food database)' : ' (Open Food Facts)') : 'Found ' + r.name + ', but the database has no nutrition figures for it. Enter them from the packet to count it.');
     }) : null;
