@@ -16,7 +16,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '464';
+const APP_VERSION = '465';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -4155,7 +4155,12 @@ function renderWhatsNew() {
   const s = wnRead();
   if (!s.since) { s.since = todayStr(); wnWrite(s); }
   const welcome = !!APP_STAGE && !s.welcome;
-  const items = unseenItems();
+  /* v465 (Mark: "is this list stacking? It's ridiculously long"): the card shows only the newest batch not yet seen. A phone
+     opened long ago and never dismissed had kept every batch since; Got it marks the older ones seen too, and every change
+     stays listed under More, What's new. */
+  const unseen = unseenItems();
+  const newest = unseen.reduce((m, it) => (it.key.split(':')[0] > m ? it.key.split(':')[0] : m), '');
+  const items = unseen.filter((it) => it.key.split(':')[0] === newest);
   if (!welcome && !items.length) { box.hidden = true; return; }
   $('whatsnew-title').textContent = welcome ? 'Welcome to the Daybook ' + APP_STAGE : 'New in Daybook';
   $('whatsnew-body').replaceChildren(...[

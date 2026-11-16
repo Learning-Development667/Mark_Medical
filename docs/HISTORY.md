@@ -6,6 +6,9 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v465: the What's new card shows only the newest batch (16 November 2026)
+Mark, on the Mac app: "is this list stacking? It's ridiculously long." A device whose card was never dismissed with Got it had kept every batch since it was first opened (51 items back to 21 October under "New this time"). `renderWhatsNew()` now shows only the newest unseen batch; Got it marks every unseen item seen, older ones included, and the full list stays under More, What's new. Checked in Node against `WHATS_NEW` (since 1 October: 51 items before, the four of 16 November now).
+
 ### v464: What's new for 16 November (16 November 2026)
 The batch `2026-11-16`, approved by Mark: New, an Add button on each meal in the Food sheet (v462); Improved, Health Connect on Android (v457, v458); Fixed, powder drinks costed by the powder (v463) and the 11:00 bedtime check (v460). Also the notes for that day's iPhone and Android builds.
 
