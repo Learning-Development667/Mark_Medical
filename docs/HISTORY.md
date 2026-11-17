@@ -6,6 +6,16 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v468: reducing courses, a dose that changes over a course (17 November 2026)
+Mark's steroid label (4 a day for 2 days, then 2 for 3 days, then 1 for 2 days, then stop) could not be put in. Mock-up approved the same day.
+- **Medicine field** `steps: [{ n, days, dose }]` from `courseStart`; `courseEnd` is saved as the last day, so the finish, Finished courses and the calendar all work unchanged. Each step keeps its own words (`dose`) for the bridge.
+- **`taperSteps()`, `taperTotal()`, `taperOn(m, day)`** (`{ n, dose, dayNo, total, last, next }`). **`syncTapers()`** runs on the medicines snapshot and in `renderMeds()`: when the day's step differs from `doseCount`, it sets `doseCount` and `dose` (written by any member who can change things; not in demos), so logging, the card and the reports use the day's amount.
+- **Edit medicine**: "Does the dose change over the course?" chips (`.med-taper-box`, regular medicines only, not around treatment days or given in hospital). Step rows of text boxes read by `readNum()` ("Take [4] a day for [2] days", "each time" when there are several times a day), + Add a step, Remove the last step, Starts (default today), and a line "Ends 23 Nov, then stops. 16 tablets in all." With it on, How many each time, How often and the course dates are hidden (daily, dates worked out). Every step is checked with `missing()`. A taper's daily change is not noted as a dose change.
+- **Card**: the folded card says "Day 3 of 7: 2 tablets (10 mg)"; opened, `taperBlock()` shows the course day, a strip of the days' counts (up to 28 days) and "From 21 Nov: 1 tablet. Last dose 23 Nov." The Course ends pill is left off for a taper.
+- **Bridge**: `taperDose(fields, day)` gives the reminder the day's dose. The medicine reader's prompt returns `steps: [{ count, days }]` for a reducing course; `parseMedReply()` keeps up to 12 checked steps and the editor opens with them filled in, starting today, for the person to check.
+- `.add-use` buttons lose the browser's grey button background (it failed contrast in dark).
+- What's new batch `2026-11-17` (also the build's notes).
+
 ### v467: care circles, one sign-in in several (17 November 2026)
 Mark: Shelley's mum may start using Daybook and would want Shelley in her circle; "different emails are not an option"; set up two circles and switch easily; an invite from the patient or a request from the carer. Mock-up agreed the same day.
 - **The data:** `users/{uid}.household` stays the circle in use; `users/{uid}.circles` (new) lists every circle the sign-in belongs to, at most `CIRCLES_MAX` (8). Each circle's `members/{uid}` still decides what the sign-in may do there, so the rules are unchanged. Bridge helpers `circleList()`, `setCircles()`, `dropCircle()`.

@@ -2248,7 +2248,7 @@ details.daymeal[open] .daymeal-sum::after { transform: rotate(90deg); }
 .more-use { display: flex; gap: var(--s-2); align-items: center; }
 .more-use input { flex: 1; min-width: 0; }
 .more-use-remove { color: var(--danger); min-height: var(--tap); padding: 0 var(--s-2); }
-.add-use { color: var(--teal); font-weight: 600; min-height: var(--tap); padding: 0; margin-bottom: var(--s-1); }
+.add-use { color: var(--teal); background: none; border: 0; font-weight: 600; min-height: var(--tap); padding: 0; margin-bottom: var(--s-1); }
 
 /* A photo of the nutrition label (v323) */
 .labelwrap { margin: var(--s-2) 0 var(--s-3); }
@@ -2743,3 +2743,19 @@ html.text-huge .medrow, html.text-huge .med-head { gap: 8px; }
 .circle-opt .circle-tick { margin-left: auto; color: var(--teal); font-weight: 700; }
 .circle-opt.is-add { border-style: dashed; color: var(--teal); }
 .circle-link { overflow-wrap: anywhere; font-size: 15px; background: var(--surface-sunken); border-radius: var(--r-sm); padding: var(--s-2) var(--s-3); }
+
+/* v468: reducing courses, the steps in Edit medicine and the strip on the card */
+.med-taper-box { margin: var(--s-3) 0; }
+.taper-more { margin-top: var(--s-2); }
+.taper-steps { display: grid; gap: var(--s-2); }
+.taper-step { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; background: var(--surface-sunken); border-radius: var(--r-sm); padding: var(--s-2) var(--s-3); font-size: 17px; }
+.taper-step input { width: 64px; min-height: var(--tap); text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; }
+.taper-lead { min-width: 42px; font-weight: 600; }
+.taper-btns { display: flex; flex-wrap: wrap; gap: 0 var(--s-4); }
+.taper-sum { background: var(--teal-light); color: var(--teal); border-radius: var(--r-sm); padding: var(--s-2) var(--s-3); font-weight: 600; }
+.taper-sum:empty { display: none; }
+.taper-strip { display: flex; gap: 3px; margin: 6px 0; }
+.taper-d { flex: 1 1 0; min-width: 0; height: 28px; border-radius: 6px; background: var(--surface-sunken); color: var(--text-secondary); display: grid; place-items: center; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; overflow: hidden; }
+.taper-d.is-done { background: var(--teal-light); color: var(--teal); }
+.taper-d.is-now { background: var(--teal-fill); color: var(--surface); }
+.med-line .med-taper-line { flex-basis: 100%; color: var(--text-primary); font-weight: 600; }

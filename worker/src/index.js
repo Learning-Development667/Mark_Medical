@@ -583,6 +583,22 @@ function inInterval(fields, day) {
   const gap = Math.round((Date.parse(day + 'T12:00:00Z') - Date.parse(from + 'T12:00:00Z')) / 864e5);
   return ((gap % n) + n) % n === 0;
 }
+/* v468: a reducing course says the day's dose in its reminder. The app saves each step with its own words
+   ({ n, days, dose }); the step for the day is counted from courseStart. */
+function taperDose(fl, day) {
+  const start = f(fl, 'courseStart');
+  const vals = ((fl.steps || {}).arrayValue || {}).values || [];
+  if (!start || !vals.length) return null;
+  let left = Math.round((Date.parse(day) - Date.parse(start)) / 86400000) + 1;
+  if (!(left >= 1)) return null;
+  for (const v of vals) {
+    const s = (v.mapValue || {}).fields || {};
+    const d = Number(f(s, 'days')) || 0;
+    if (left <= d) return f(s, 'dose') || null;
+    left -= d;
+  }
+  return null;
+}
 function planEntryFromDocs(subs, profile, medicines, oneOffs, day, sessions) {
   sessions = sessions || new Set();
   /* a medicine that follows the Treatment calendar has no course dates of its own (v367): the calendar decides */
@@ -590,7 +606,7 @@ function planEntryFromDocs(subs, profile, medicines, oneOffs, day, sessions) {
   const active = medicines.filter((m) => f(m.fields, 'active') !== false && f(m.fields, 'kind') !== 'prn' && f(m.fields, 'hospital') !== true && courseOk(m.fields) && inTreatWindow(m.fields, day, sessions) && inInterval(m.fields, day));
   const times = [];
   /* (v431) sizes capped here as well as in the rules, so one circle's medicine cannot swell the one plan document past Firestore's limit */
-  active.forEach((m) => (f(m.fields, 'times') || []).slice(0, TIMES_A_MEDICINE).map(toMinutes).filter((t) => t != null).forEach((t) => { if (times.length < TIMES_A_CIRCLE) times.push({ medId: m.id, t, name: String(f(m.fields, 'name') || 'Medicine').slice(0, NAME_MAX), dose: String(f(m.fields, 'dose') || '').slice(0, DOSE_MAX), ...(f(m.fields, 'beforeFood') === true ? { bf: true } : {}) }); }));
+  active.forEach((m) => (f(m.fields, 'times') || []).slice(0, TIMES_A_MEDICINE).map(toMinutes).filter((t) => t != null).forEach((t) => { if (times.length < TIMES_A_CIRCLE) times.push({ medId: m.id, t, name: String(f(m.fields, 'name') || 'Medicine').slice(0, NAME_MAX), dose: String(taperDose(m.fields, day) || f(m.fields, 'dose') || '').slice(0, DOSE_MAX), ...(f(m.fields, 'beforeFood') === true ? { bf: true } : {}) }); }));
   return { phones: Math.min(subs.length, PHONES_A_CIRCLE), nudge: !!(profile && f(profile.fields, 'stretchNudge') === true), oneOff: oneOffs.some((r) => f(r.fields, 'sent') !== true), times };
 }
 async function buildPlanEntry(fs, hid, day) {
@@ -920,9 +936,10 @@ const EXPLAIN_SYSTEM = {
     '"packG" or "packMl" is the pack size when it is printed ("500 g", "180 ml"), "servingG" the weight of one serving in grams when printed. Use a full stop for decimals. A figure printed as "<0.5" or "trace" is 0. ' +
     'Never guess a figure that is not printed or cannot be read clearly: use null. No em dashes.',
   medicine: 'You read a photo of a medicine for a patient recording it in an app: a hospital drip bag, a box, a bottle, a blister pack or a pharmacy dispensing label. ' +
-    'Reply with JSON only, no prose and no code fence, in exactly this shape: {"name": string, "amount": string or null, "route": "drip" or "injection" or "mouth" or "skin" or "inhaled" or "other" or null, "how": string or null, "purpose": string or null, "whenNeeded": true or false, "perDay": number or null, "maxPerDay": number or null, "minGapHours": number or null}. ' +
+    'Reply with JSON only, no prose and no code fence, in exactly this shape: {"name": string, "amount": string or null, "route": "drip" or "injection" or "mouth" or "skin" or "inhaled" or "other" or null, "how": string or null, "purpose": string or null, "whenNeeded": true or false, "perDay": number or null, "maxPerDay": number or null, "minGapHours": number or null, "steps": [{"count": number, "days": number}] or null}. ' +
     '"name" is the medicine as a patient would say it, with its strength when that is part of the name ("Sodium chloride 0.9%", "Paracetamol 500 mg"). "amount" is the amount in one dose or in the container ("1000 ml", "2 tablets"). "route" is how it is given: drip for an intravenous infusion bag. ' +
     '"how" is the directions on a dispensing label in plain UK English, or null when there are none (a hospital bag or a manufacturer\'s box has none). "purpose" only if it is printed. "whenNeeded" true only when the label says when needed or as required. perDay, maxPerDay and minGapHours only when the directions give them. ' +
+    '"steps" only for a reducing or changing course, where the directions give a different number for a set number of days ("take 4 tablets a day for 2 days, then 2 a day for 3 days"): one item per step in order, "count" how many of the unit in "amount" are taken each time in that step and "days" for how many days; then "amount" is one unit with its strength when printed ("1 tablet (5 mg)") and perDay the times a day. Otherwise null. ' +
     'Never guess anything that is not printed: use null. No em dashes.',
   weekly: 'You summarise a patient\'s own care notes, written day by day in a health app, so their consultant or specialist nurse can read them in a minute before an appointment, in plain UK English. ' +
     'The notes come grouped by week, each group headed "Week from YYYY-MM-DD". For each week give two to four short points of what stood out: symptoms and how bad they were, anything new or changing, anything the patient or carer was worried about. Keep their own words where they are clear. Leave out routine answers such as "nothing new". ' +

@@ -16,7 +16,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '467';
+const APP_VERSION = '468';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -2264,6 +2264,7 @@ function startDemoData(pack) {
 function watchMedicines() {
   state.unsub.meds = onSnapshot(hcol('medicines'), (snap) => {
     state.medicines = sortMedicines(tidyCalendarMeds(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
+    syncTapers(state.medicines);
     renderMeds();
     renderTiles();
   }, (e) => console.error(e));
@@ -4095,6 +4096,14 @@ $('feedback-row').addEventListener('click', () => openFeedbackSheet());
 const WHATS_NEW = [
   /* tag (v411, Mark): new, improved or fixed, shown as a label and grouped in that order; the newest batch is also the
      release notes for TestFlight and Google Play (tools/release_notes.mjs) */
+  { id: '2026-11-17', items: [
+    { tag: 'new', text: 'Reducing courses: for a dose that changes, like a steroid course, choose The dose changes and add each step. The card and reminders say the day\'s dose, and the course ends by itself.' },
+    { tag: 'new', text: 'Care circles: one sign-in can be in more than one circle. Tap your name at the top to switch, set one up for someone you look after, or ask to join.' },
+    { tag: 'improved', text: 'Health Connect says which kinds of data were not allowed, with a button to open its settings.' },
+    { tag: 'fixed', text: 'On Android, Save as PDF, Print, saving records and recordings now open the share sheet.' },
+    { tag: 'fixed', text: 'Take a photo works on Android.' },
+    { tag: 'fixed', text: 'Reminders keep coming if your phone changes its notification address.' }
+  ] },
   { id: '2026-11-16', items: [
     { tag: 'new', text: 'An Add button on each meal in the Food sheet.' },
     { tag: 'improved', text: 'Health Connect on Android brings in steps, sleep, weight and more.' },
@@ -12553,6 +12562,41 @@ $('question-now').addEventListener('click', () => (openQuestions().length ? open
    day he added it, since only the end date was ever read. Until its first day it is listed under Starting soon,
    is never owed, never asked about with a meal and sends no reminder (the bridge reads courseStart too). */
 function notStarted(m, day) { return !!(m.courseStart && m.courseStart > day); }
+/* Reducing courses (v468, Mark's steroid label: 4 a day for 2 days, then 2 for 3 days, then 1 for 2 days, then stop).
+   m.steps = [{ n, days, dose }] from courseStart; courseEnd is the last day, so the course finishes by itself. Each step
+   keeps its own words (dose) so the bridge's reminder can say the day's dose. */
+function taperSteps(m) { return Array.isArray(m && m.steps) ? m.steps.filter((x) => x && Number(x.n) > 0 && Number(x.days) > 0) : []; }
+function taperTotal(steps) { return steps.reduce((a, x) => a + Number(x.days), 0); }
+function taperOn(m, day) {
+  const steps = taperSteps(m);
+  if (!steps.length || !m.courseStart) return null;
+  const total = taperTotal(steps), dayNo = daysBetween(m.courseStart, day) + 1;
+  if (dayNo < 1 || dayNo > total) return null;
+  let left = dayNo;
+  for (let i = 0; i < steps.length; i++) {
+    const days = Number(steps[i].days);
+    if (left <= days) {
+      const nx = steps[i + 1];
+      return { n: Number(steps[i].n), dose: steps[i].dose || '', step: i, dayNo, total, last: addDays(m.courseStart, total - 1),
+        next: nx ? { n: Number(nx.n), dose: nx.dose || '', from: addDays(day, days - left + 1) } : null };
+    }
+    left -= days;
+  }
+  return null;
+}
+/* the stored dose follows the day's step, so logging, the card and the reports say today's amount */
+function syncTapers(list) {
+  const day = todayStr(), writes = [];
+  (list || []).forEach((m) => {
+    if (m.active === false) return;
+    const t = taperOn(m, day);
+    if (!t || Number(m.doseCount) === t.n) return;
+    const dose = t.dose || composeDose(t.n, m.doseForm, m.strength);
+    m.doseCount = t.n; m.dose = dose;
+    if (!state.demo && !state.readOnly && !state.viewer) writes.push(setDoc(hdoc('medicines', m.id), { doseCount: t.n, dose }, { merge: true }).catch((e) => console.warn(e)));
+  });
+  return writes;
+}
 /* Treatment-day medicines (v317). Mark's chemo drugs (and the steroid with them) are given by the nurse on chemo
    day only, and the day can move. A hospital medicine ticked Only on treatment days follows the Treatment calendar:
    on a day marked as a session it is under Scheduled, marked Treatment day; on any other day it waits, folded, under
@@ -12785,6 +12829,7 @@ function hospitalHidden() { return false; }
 function renderMeds() {
   const day = state.selectedDay;
   tidyCalendarMeds(state.medicines);
+  syncTapers(state.medicines); // a new day's step, if the app was left open over midnight
   const sched = activeScheduled(day).filter((m) => !hospitalHidden(m));
   const prn = activePrn().filter((m) => !hospitalHidden(m));
   /* No medicines at all yet (a new circle starts empty since v248): one clear way in, not two bare lines */
@@ -14170,6 +14215,21 @@ function medAutoOpenWhy(m, day) {
   if (m.hospital && isToday && countMedOnDay(m.id, day)) return 'Given in hospital today.';
   return '';
 }
+/* A reducing course on its card (v468): where it is, the days as a strip, and what comes next */
+function taperBlock(m, day) {
+  const t = taperOn(m, day);
+  if (!t) return null;
+  const strip = [];
+  if (t.total <= 28) {
+    let d = 0;
+    taperSteps(m).forEach((x) => { for (let i = 0; i < Number(x.days); i++) { d++; strip.push(h('span', { class: 'taper-d' + (d < t.dayNo ? ' is-done' : d === t.dayNo ? ' is-now' : ''), text: fmtDoseCount(Number(x.n)) })); } });
+  }
+  const next = t.next ? 'From ' + fmtDayShort(t.next.from) + ': ' + (t.next.dose || fmtDoseCount(t.next.n)) + '. ' : '';
+  return h('div', { class: 'med-taper' },
+    h('div', { class: 'med-how', text: 'Reducing course, day ' + t.dayNo + ' of ' + t.total + '.' }),
+    strip.length ? h('div', { class: 'taper-strip', 'aria-hidden': 'true' }, ...strip) : null,
+    h('div', { class: 'med-how', text: next + 'Last dose ' + fmtDayShort(t.last) + '.' }));
+}
 function medCard(m, day, section) {
   const isToday = day === todayStr();
   const count = countMedOnDay(m.id, day);
@@ -14189,6 +14249,8 @@ function medCard(m, day, section) {
   if (m.hospital) line.append(h('span', { text: count ? `${count} given ` + (isToday ? 'today' : 'this day') : (isToday ? 'Nothing given today' : 'Not given this day') }));
   else if (m.kind === 'scheduled') {
     line.append(h('span', { text: `${Math.min(count, perDay)} of ${perDay}` + (isToday ? ' today' : '') }));
+    const tp = taperOn(m, day); // a reducing course says the day's dose on the folded card (v468)
+    if (tp) line.append(h('span', { class: 'med-taper-line', text: 'Day ' + tp.dayNo + ' of ' + tp.total + ': ' + (tp.dose || fmtDoseCount(tp.n)) }));
     if (count >= perDay) { card.classList.add('is-complete'); line.append(h('span', { class: 'pill pill-green', text: isToday ? 'Done for today' : 'All doses given' })); }
     else if (!isToday && !count) line.append(h('span', { class: 'med-muted', text: 'Not logged this day' }));
   } else {
@@ -14223,7 +14285,8 @@ function medCard(m, day, section) {
   more.append(h('div', { class: 'med-head' },
     h('div', null,
       m.hospital ? h('span', { class: 'pill pill-hosp med-hosp', text: 'Given in hospital' }) : null,
-      h('div', { class: 'med-dose', text: [medDoseLabel(m), m.hospital && m.route ? ROUTE_WORDS[m.route] : ''].filter(Boolean).join(' · ') }),
+      h('div', { class: 'med-dose', text: [taperOn(m, day) ? taperOn(m, day).dose || medDoseLabel(m) : medDoseLabel(m), m.hospital && m.route ? ROUTE_WORDS[m.route] : ''].filter(Boolean).join(' · ') }),
+      taperBlock(m, day),
       recentDoseChange(m) && !why ? h('div', { class: 'med-was', text: doseChangeText(recentDoseChange(m)) }) : null,
       m.how ? h('div', { class: 'med-how', text: m.how }) : null,
       m.kind === 'scheduled' && !m.hospital && medWhenText(m) ? h('div', { class: 'med-how med-when', text: medWhenText(m) }) : null,
@@ -14234,7 +14297,7 @@ function medCard(m, day, section) {
     const dots = h('div', { class: 'dots' });
     for (let i = 0; i < perDay; i++) dots.append(h('span', { class: 'dot' + (i < count ? ' is-done' : '') }));
     status.append(dots);
-    if (m.courseEnd) status.append(h('span', { class: 'pill pill-teal', text: 'Course ends ' + fmtDayShort(m.courseEnd) }));
+    if (m.courseEnd && !taperOn(m, day)) status.append(h('span', { class: 'pill pill-teal', text: 'Course ends ' + fmtDayShort(m.courseEnd) }));
   }
   /* Every dose given that day, as tappable chips (tap one to see or delete it) */
   const dayEntriesSrc = day >= (state.recentFrom || '') ? state.recentEntries : state.dayEntries;
@@ -15176,7 +15239,10 @@ function parseMedReply(text) {
   return {
     name: str(d.name, 80), amount: str(d.amount, 40), how: str(d.how, 160), purpose: str(d.purpose, 80),
     route: ROUTE_WORDS[d.route] ? d.route : null, whenNeeded: d.whenNeeded === true,
-    perDay: num(d.perDay), maxPerDay: num(d.maxPerDay), minGapHours: num(d.minGapHours)
+    perDay: num(d.perDay), maxPerDay: num(d.maxPerDay), minGapHours: num(d.minGapHours),
+    /* a reducing course's steps (v468), for the person to check in the editor before saving */
+    steps: Array.isArray(d.steps) ? d.steps.slice(0, 12).map((x) => ({ n: num(x && x.count), days: num(x && x.days) }))
+      .filter((x) => x.n && x.n <= 100 && x.days && Number.isInteger(x.days) && x.days <= 366) : []
   };
 }
 
@@ -15335,7 +15401,8 @@ function openEditMed(m, prefill) {
   const pf = prefill || {};
   m = m || { name: pf.name || '', dose: pf.amount || pf.dose || '', how: pf.how || '', purpose: pf.purpose || '',
     kind: pf.whenNeeded ? 'prn' : 'scheduled', perDay: pf.perDay || 1, maxPerDay: pf.maxPerDay || null, minGapHours: pf.minGapHours || null, active: true,
-    hospital: pf.hospital === true || pf.route === 'drip', route: pf.route || null };
+    hospital: pf.hospital === true || pf.route === 'drip', route: pf.route || null,
+    ...(Array.isArray(pf.steps) && pf.steps.length > 1 && !pf.whenNeeded ? { steps: pf.steps, courseStart: todayStr() } : {}) };
   const name = h('input', { type: 'text', value: m.name, required: true, autocomplete: 'off' });
   /* the dose: how it is taken, how many each time, the strength of one (v191) */
   const { formIn, formChips, count, countField, dose, doseField, dosePreview, ivHint, askField, askBox } = doseControls(splitDose(m), { ask: m.askCount !== false });
@@ -15566,12 +15633,72 @@ function openEditMed(m, prefill) {
     h('p', { class: 'hint', text: 'Ticked, the course is shaded on the Treatment calendar and counted there as a course in the last 12 months.' }));
   const prnFields = h('div', null, field('Minimum hours between doses', minGap), field('Maximum doses per day', maxPerDay));
   /* when it is taken, the reminders and the after-meal prompt do not apply to a medicine the nurses give */
+  /* A dose that changes over a course (v468, Mark's steroid label): steps of how many for how many days, from a start day.
+     Daybook works out each day's dose and the last day, and the course finishes by itself. */
+  const taperIn = h('input', { type: 'hidden', value: taperSteps(m).length ? 'changes' : 'same' });
+  const taperChips = presets([{ value: 'same', label: 'The same each day' }, { value: 'changes', label: 'The dose changes' }], taperIn, taperIn.value);
+  taperChips.setAttribute('role', 'group'); taperChips.setAttribute('aria-label', 'Does the dose change over the course?');
+  const stepRows = h('div', { class: 'taper-steps' });
+  const taperStart = h('input', { type: 'date', id: 'med-taper-start', value: m.courseStart || todayStr() });
+  const taperSum = h('p', { class: 'taper-sum', role: 'status' });
+  const perWord = () => (chosen().length > 1 ? 'each time' : 'a day');
+  const readSteps = () => [...stepRows.children].map((row) => ({ row, nIn: row.querySelector('.taper-n'), dIn: row.querySelector('.taper-days') }));
+  const drawTaper = () => {
+    readSteps().forEach(({ row }, i) => {
+      row.querySelector('.taper-lead').textContent = i ? 'then' : 'Take';
+      row.querySelector('.taper-per').textContent = perWord() + ' for';
+    });
+    removeStep.hidden = stepRows.children.length < 2;
+    const fm = doseFormOf(formIn.value);
+    if (!fm) { taperSum.textContent = 'Choose how it is taken above, so each step can say how many.'; return; }
+    const rows = readSteps().map(({ nIn, dIn }) => ({ n: readNum(nIn).value, days: readNum(dIn).value }));
+    if (!rows.length || rows.some((r) => !(r.n > 0) || !(r.days >= 1) || !Number.isInteger(r.days)) || !taperStart.value) { taperSum.textContent = 'Fill in each step to see when the course ends.'; return; }
+    const total = rows.reduce((a, r) => a + r.days, 0);
+    const units = rows.reduce((a, r) => a + r.n * r.days, 0) * Math.max(1, chosen().length);
+    const unitText = fm.key === 'ml' ? fmtQtyNumber(units) + ' ml' : fmtDoseCount(units) + ' ' + (units === 1 ? fm.one : fm.many);
+    taperSum.textContent = 'Ends ' + fmtDayShort(addDays(taperStart.value, total - 1)) + ', then stops. ' + unitText + ' in all.';
+  };
+  const addStep = (n, days, focus) => {
+    const k = stepRows.children.length + 1;
+    const nIn = h('input', { type: 'text', inputmode: 'decimal', autocomplete: 'off', class: 'taper-n', value: n != null ? String(n) : '', 'aria-label': 'Step ' + k + ': how many' });
+    const dIn = h('input', { type: 'text', inputmode: 'numeric', autocomplete: 'off', class: 'taper-days', value: days != null ? String(days) : '', 'aria-label': 'Step ' + k + ': for how many days' });
+    [nIn, dIn].forEach((el) => el.addEventListener('input', drawTaper));
+    stepRows.append(h('div', { class: 'taper-step' }, h('span', { class: 'taper-lead' }), nIn, h('span', { class: 'taper-per' }), dIn, h('span', { text: 'days' })));
+    drawTaper();
+    if (focus) nIn.focus();
+  };
+  const addStepBtn = h('button', { class: 'btn-plain add-use', type: 'button', onclick: () => addStep(null, null, true) }, '+ Add a step');
+  const removeStep = h('button', { class: 'btn-plain add-use taper-remove', type: 'button', onclick: () => { if (stepRows.children.length > 1) stepRows.lastElementChild.remove(); drawTaper(); } }, 'Remove the last step');
+  taperStart.addEventListener('input', drawTaper); taperStart.addEventListener('change', drawTaper);
+  const taperMore = h('div', { class: 'taper-more' }, stepRows, h('div', { class: 'taper-btns' }, addStepBtn, removeStep),
+    field('Starts', taperStart), taperSum,
+    h('p', { class: 'hint', text: 'The card and the reminders say each day\'s dose, and the course finishes on its last day.' }));
+  const taperBox = h('div', { class: 'med-taper-box' }, h('p', { class: 'fieldlabel', text: 'Does the dose change over the course?' }), taperChips, taperMore);
+  const taperOnNow = () => kind.value === 'scheduled' && !treatDays.checked && !hospital.checked && taperIn.value === 'changes';
+  const syncTaper = () => {
+    const on = taperOnNow();
+    taperBox.hidden = kind.value !== 'scheduled' || treatDays.checked || hospital.checked;
+    taperMore.hidden = !on;
+    if (on && !stepRows.children.length) addStep(splitDose(m).count || null, null);
+    countField.hidden = on || !doseFormOf(formIn.value);
+    dosePreview.hidden = on;
+    everyBlock.hidden = on || treatDays.checked;
+    courseBits.hidden = on || treatDays.checked;
+    drawTaper();
+  };
+  taperSteps(m).forEach((x) => addStep(Number(x.n), Number(x.days)));
+  taperChips.addEventListener('click', () => setTimeout(syncTaper, 0));
+  formChips.addEventListener('click', () => setTimeout(syncTaper, 0));
+  treatDays.addEventListener('change', syncTaper);
+  whenBlock.addEventListener('change', () => drawTaper());
+  whenBlock.addEventListener('click', () => setTimeout(drawTaper, 0));
   const sync = () => {
     schedFields.hidden = kind.value !== 'scheduled'; prnFields.hidden = kind.value !== 'prn';
     hospFields.hidden = !hospital.checked;
     treatBox.hidden = kind.value !== 'scheduled';
     whenBlock.hidden = kind.value !== 'scheduled' || hospital.checked;
     mealBits.forEach((el) => { el.hidden = hospital.checked; });
+    syncTaper();
   };
   kindChips.addEventListener('click', () => setTimeout(sync, 0));
   hospital.addEventListener('change', sync);
@@ -15584,7 +15711,7 @@ function openEditMed(m, prefill) {
     h('p', { class: 'fieldlabel', text: 'Regular or when needed?' }), kindChips,
     h('p', { class: 'hint med-kind-hint', text: 'When needed is for one taken only some days, like a painkiller or a migraine tablet. It is never counted as missed.' }),
     h('p', { class: 'fieldlabel', text: 'How is it taken?' }), formChips,
-    countField, doseField, dosePreview, ivHint, askField, whenBlock, treatBox,
+    countField, doseField, dosePreview, ivHint, askField, taperBox, whenBlock, treatBox,
     isNew ? null : h('p', { class: 'hint med-dose-hint', text: medStatus(m).text === 'Taking now'
       ? 'Changing the dose? Change it here and save. It stays the same medicine: the doses already logged keep the amount they were taken at, and the change is noted in its history. There is no need to add it again or end this one.'
       : 'This medicine is no longer being taken. The dose typed here is what its card and the Medicine history show for it, so if it was put up before the course ended, type the dose it was really taken at. The doses already logged keep their own amounts.' }),
@@ -15600,8 +15727,25 @@ function openEditMed(m, prefill) {
     h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
       if (!name.value.trim()) { missing(name, 'Please enter a name'); return; }
       if (kind.value === 'scheduled' && treatDays.checked && !treatOn.checked && !(Number(afterIn.value) > 0)) { missing(afterChips, 'Choose the session day or some days after it'); return; }
+      /* a reducing course (v468): every step read and checked, the box itself marked if one cannot be read */
+      const taper = taperOnNow();
+      let steps = null;
+      if (taper) {
+        if (!doseFormOf(formIn.value)) { missing(formChips, 'Choose how it is taken, so each step can say how many'); return; }
+        steps = [];
+        for (const { nIn, dIn } of readSteps()) {
+          const rn = readNum(nIn), rd = readNum(dIn);
+          if (rn.empty) { missing(nIn, 'Say how many in this step'); return; }
+          if (!(rn.value > 0) || rn.value > 100) { missing(nIn, 'Type how many, such as 2 or 0.5', CHECK); return; }
+          if (rd.empty) { missing(dIn, 'Say for how many days'); return; }
+          if (!Number.isInteger(rd.value) || rd.value < 1 || rd.value > 366) { missing(dIn, 'Type a whole number of days', CHECK); return; }
+          steps.push({ n: rn.value, days: rd.value, dose: composeDose(rn.value, formIn.value, dose.value) });
+        }
+        if (!steps.length) { missing(stepRows, 'Add a step'); return; }
+        if (!taperStart.value) { missing(taperStart, 'Choose the day the course starts'); return; }
+      }
       let everyDays = null;
-      if (kind.value === 'scheduled' && !treatDays.checked && !hospital.checked && everyIn.value !== '1') {
+      if (!taper && kind.value === 'scheduled' && !treatDays.checked && !hospital.checked && everyIn.value !== '1') {
         if (everyIn.value === 'other') {
           const r = readNum(everyN);
           if (r.empty) { missing(everyN, 'Say every how many days'); return; }
@@ -15621,10 +15765,18 @@ function openEditMed(m, prefill) {
         treatAfter: kind.value === 'scheduled' && treatDays.checked ? Number(afterIn.value) || 0 : null,
         order: m.order || (Math.max(0, ...state.medicines.map((x) => x.order || 0)) + 1)
       };
-      /* a new dose on a medicine still being taken is noted, so its history says when it changed (v187) */
+      const taperEnd = taper ? addDays(taperStart.value, taperTotal(steps) - 1) : null;
+      if (taper) {
+        const t = taperOn({ steps, courseStart: taperStart.value }, todayStr());
+        const n = t ? t.n : todayStr() < taperStart.value ? steps[0].n : steps[steps.length - 1].n;
+        data.doseCount = n; data.dose = composeDose(n, formIn.value, dose.value);
+      }
+      /* a new dose on a medicine still being taken is noted, so its history says when it changed (v187); a reducing
+         course's daily change is its plan, not a change, so it is not noted */
       const oldDose = (m.dose || '').trim();
-      const stillTaken = active.checked && !(kind.value === 'scheduled' && !treatDays.checked && courseEnd.value && courseEnd.value < todayStr());
-      if (!isNew && oldDose && data.dose && data.dose !== oldDose && stillTaken) {
+      const endOn = taper ? taperEnd : courseEnd.value;
+      const stillTaken = active.checked && !(kind.value === 'scheduled' && !treatDays.checked && endOn && endOn < todayStr());
+      if (!isNew && oldDose && data.dose && data.dose !== oldDose && stillTaken && !taper && !taperSteps(m).length) {
         data.doseChanges = [...(Array.isArray(m.doseChanges) ? m.doseChanges : []), { from: oldDose, to: data.dose, day: todayStr(), by: state.name || '' }];
       }
       /* a dose typed on a medicine no longer taken is what the person wants shown for it (v216): shownDose() keeps it */
@@ -15633,8 +15785,9 @@ function openEditMed(m, prefill) {
         times = chosen();
         data.perDay = hospital.checked ? null : (times.length || Math.max(1, parseInt(perDay.value, 10) || 1));
         data.takenAt = hospital.checked ? [] : times.slice();
-        data.courseEnd = treatDays.checked ? null : courseEnd.value || null;
-        data.courseStart = treatDays.checked ? null : courseStart.value || null;
+        data.courseEnd = taper ? taperEnd : treatDays.checked ? null : courseEnd.value || null;
+        data.courseStart = taper ? taperStart.value : treatDays.checked ? null : courseStart.value || null;
+        data.steps = taper ? steps : null;
         data.steroid = steroid.checked;
         data.minGapHours = null; data.maxPerDay = null;
         data.times = hospital.checked || !remind.checked ? [] : times.slice();
@@ -15645,7 +15798,7 @@ function openEditMed(m, prefill) {
         data.everyDays = null; data.everyFrom = null;
         data.minGapHours = parseFloat(minGap.value) || null;
         data.maxPerDay = parseInt(maxPerDay.value, 10) || null;
-        data.perDay = null; data.courseEnd = null; data.courseStart = null; data.steroid = false;
+        data.perDay = null; data.courseEnd = null; data.courseStart = null; data.steroid = false; data.steps = null;
         data.times = []; data.takenAt = []; data.withMeals = hospital.checked ? false : withMeals.checked;
         data.beforeFood = hospital.checked ? false : beforeFood.checked;
       }
