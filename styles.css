@@ -2759,3 +2759,7 @@ html.text-huge .medrow, html.text-huge .med-head { gap: 8px; }
 .taper-d.is-done { background: var(--teal-light); color: var(--teal); }
 .taper-d.is-now { background: var(--teal-fill); color: var(--surface); }
 .med-line .med-taper-line { flex-basis: 100%; color: var(--text-primary); font-weight: 600; }
+
+/* v469: a session the hospital did not give stays on the calendar, plain with a dashed edge */
+.cal-cell.is-chemo.is-notgiven { background: var(--surface); color: var(--text-secondary); box-shadow: none; outline: 2px dashed var(--text-muted); outline-offset: -3px; font-weight: 600; }
+.key-notgiven { background: var(--surface); border: 2px dashed var(--text-muted); }

@@ -6,6 +6,12 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v469: a session not given (17 November 2026)
+Mark's chemo was not given because his white count was too low: not moved, just not done. The day sheet gains **Not given: the hospital did not do this session** (`#day-notgiven`, today or earlier, never with Session done) and **Why? (optional)** (`#day-notgiven-why`, the person's words, up to 200 characters). Saved as `days/{day}.notGiven` and `notGivenWhy`.
+- The session stays on the calendar (`.cal-cell.is-notgiven`, plain with a dashed edge; "Not given" in the key when there is one; the label says "session not given"). Cycle numbering is unchanged.
+- It is not counted in "N of M done", is never the next session, and `isTreatmentDay()`, `nextTreatmentDay()` and `nextTreatmentWindow()` skip it, so medicines taken around treatment days stand down; the bridge's treatment-day reminders skip it too.
+- Read-only members see "session, not given: {why}". The Crohn's report's session line says "not given". Move and Remove clear it.
+
 ### v468: reducing courses, a dose that changes over a course (17 November 2026)
 Mark's steroid label (4 a day for 2 days, then 2 for 3 days, then 1 for 2 days, then stop) could not be put in. Mock-up approved the same day.
 - **Medicine field** `steps: [{ n, days, dose }]` from `courseStart`; `courseEnd` is saved as the last day, so the finish, Finished courses and the calendar all work unchanged. Each step keeps its own words (`dose`) for the bridge.

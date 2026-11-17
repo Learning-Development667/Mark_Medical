@@ -16,7 +16,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '468';
+const APP_VERSION = '469';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -12611,7 +12611,7 @@ function tidyCalendarMeds(list) {
   (list || []).forEach((m) => { if (onTreatmentDays(m) && (m.courseEnd || m.courseStart)) { delete m.courseEnd; delete m.courseStart; } });
   return list;
 }
-function isTreatmentDay(day) { return !!(state.days[day] && state.days[day].chemo && state.days[day].treatment !== 'appt'); }
+function isTreatmentDay(day) { return !!(state.days[day] && state.days[day].chemo && !state.days[day].notGiven && state.days[day].treatment !== 'appt'); }
 function treatAfterOf(m) { return Math.max(0, Math.min(7, Number(m.treatAfter) || 0)); }
 function inTreatmentWindow(m, day) {
   if (m.treatOnDay !== false && isTreatmentDay(day)) return true;
@@ -12621,10 +12621,10 @@ function inTreatmentWindow(m, day) {
 function nextTreatmentWindow(m, day) {
   const after = treatAfterOf(m), on = m.treatOnDay !== false;
   const cands = [];
-  chemoDays().forEach((s) => { if (on) cands.push(s); for (let k = 1; k <= after; k++) cands.push(addDays(s, k)); });
+  chemoDays().filter((k) => !state.days[k].notGiven).forEach((s) => { if (on) cands.push(s); for (let k = 1; k <= after; k++) cands.push(addDays(s, k)); });
   return cands.filter((d) => d > day).sort()[0] || null;
 }
-function nextTreatmentDay(day) { return chemoDays().find((k) => k > day) || null; }
+function nextTreatmentDay(day) { return chemoDays().find((k) => k > day && !state.days[k].notGiven) || null; }
 /* How often (v379, review item 20): a regular medicine can be taken every N days from a day it is due (everyDays,
    everyFrom): 7 once a week (methotrexate), 14 every 2 weeks (adalimumab), 28, 56 or any number. On its days it is under
    Scheduled with its times, counted and reminded; on the others it waits under Not due today with the next date and is
@@ -13812,7 +13812,7 @@ function buildIbdReport(n) {
   const strip = [];
   const medLine = ibdMeds.map((m) => m.name + (m.dose ? ' ' + m.dose : '') + (m.kind === 'prn' ? ' (when needed)' : '')).join('; ');
   const lastSession = inRangeSessions.length ? inRangeSessions[inRangeSessions.length - 1] : sessions.filter((d) => d <= to).pop();
-  const sessLine = sessions.length ? `${inRangeSessions.length ? plural(inRangeSessions.length, sessionLabel(state.days[inRangeSessions[0]]).replace(/^.* /, '')) + ' in this period' + (inRangeSessions.length <= 4 ? ' (' + inRangeSessions.map(rDay).join(', ') + ')' : '') : 'None in this period'}${lastSession ? ', last ' + sessionLabel(state.days[lastSession]) + ' ' + rDay(lastSession) + (state.days[lastSession].chemoDone ? ', done' : ', not ticked done') : ''}${nextSession ? ', next ' + rDay(nextSession) : ''}.` : '';
+  const sessLine = sessions.length ? `${inRangeSessions.length ? plural(inRangeSessions.length, sessionLabel(state.days[inRangeSessions[0]]).replace(/^.* /, '')) + ' in this period' + (inRangeSessions.length <= 4 ? ' (' + inRangeSessions.map(rDay).join(', ') + ')' : '') : 'None in this period'}${lastSession ? ', last ' + sessionLabel(state.days[lastSession]) + ' ' + rDay(lastSession) + (state.days[lastSession].chemoDone ? ', done' : state.days[lastSession].notGiven ? ', not given' : ', not ticked done') : ''}${nextSession ? ', next ' + rDay(nextSession) : ''}.` : '';
   const sterLine = steroids12.length ? `Steroid courses in the last 12 months: ${steroids12.length} (${steroids12.map((m) => m.name + ', ' + rDay(m.courseStart) + (m.courseEnd ? ' to ' + rDay(m.courseEnd) + (m.courseEnd > todayStr() ? ' (planned)' : '') : ' onwards')).join('; ')}).` : 'No steroid course recorded in the last 12 months.';
   strip.push({ head: 'Treatment', text: [medLine ? 'Medicines: ' + medLine + '.' : 'No Crohn\'s or colitis medicine on the list.', sessLine, sterLine].filter(Boolean).join(' ') });
   const advice = flareContact();
@@ -17698,7 +17698,7 @@ async function cycleEntries() {
 
 
 function renderChemoProgress() {
-  const keys = Object.keys(state.days).filter((k) => state.days[k].chemo).sort();
+  const keys = Object.keys(state.days).filter((k) => state.days[k].chemo && !state.days[k].notGiven).sort(); // v469: not given is not counted
   const planned = keys.length;
   const done = keys.filter((k) => state.days[k].chemoDone).length;
   /* v381 (review item 21): only appointments (or only injections and infusions) is not a course to count through: no bar,
@@ -17744,7 +17744,7 @@ function renderCalendar() {
   const daysInMonth = new Date(y, m, 0).getDate();
   const today = todayStr();
   /* the next session not yet done (today counts) is the one that gets the travelling light */
-  const nextSession = Object.keys(state.days).filter((k) => state.days[k].chemo && !state.days[k].chemoDone && k >= today).sort()[0] || '';
+  const nextSession = Object.keys(state.days).filter((k) => state.days[k].chemo && !state.days[k].chemoDone && !state.days[k].notGiven && k >= today).sort()[0] || '';
   const cells = [];
   for (let i = 0; i < startDow; i++) cells.push(h('div', { class: 'cal-cell is-empty' }));
   for (let d = 1; d <= daysInMonth; d++) {
@@ -17754,6 +17754,7 @@ function renderCalendar() {
     if (key === today) cls.push('is-today');
     if (info.chemo) cls.push('is-chemo');
     if (info.chemoDone) cls.push('is-done');
+    if (info.chemo && info.notGiven) cls.push('is-notgiven');
     if (key === nextSession) cls.push('is-next');
     const type = treatmentOf(info);
     const ci0 = cycleInfo(key);
@@ -17762,7 +17763,7 @@ function renderCalendar() {
     const steroids = steroidOn(key);
     if (steroids.length) cls.push('is-steroid');
     if (info.flare) cls.push('is-flare');
-    const label = [fmtDayLong(key), info.chemo ? sessionLabel(info) + (info.chemoDone ? ' session done' : key === nextSession ? ' session, the next one' : ' session') : null,
+    const label = [fmtDayLong(key), info.chemo ? sessionLabel(info) + (info.chemoDone ? ' session done' : info.notGiven ? ' session not given' : key === nextSession ? ' session, the next one' : ' session') : null,
       info.chemo && ci && ci.session ? cycleWords(ci).toLowerCase() : null, !info.chemo && ci && ci.rest ? 'rest week of cycle ' + ci.index : null,
       steroids.length ? 'on a steroid course (' + steroids.map((m) => m.name).join(', ') + ')' : null,
       info.flare ? 'flare day' : null,
@@ -17783,6 +17784,8 @@ function renderCalKey() {
   if (el) el.textContent = treatmentsFor().map((t) => t.letter + ' ' + t.label.toLowerCase()).join(' \u00b7 ');
   const st = $('cal-key-steroid');
   if (st) st.hidden = !steroidCourses().length;
+  const ng = $('cal-key-notgiven');
+  if (ng) ng.hidden = !Object.keys(state.days || {}).some((k) => state.days[k] && state.days[k].chemo && state.days[k].notGiven);
   const fl = $('cal-key-flare');
   if (fl) fl.hidden = !Object.keys(state.days || {}).some((k) => state.days[k] && state.days[k].flare);
   /* v381: Rest week only where there are cycles with rest weeks (chemo and the like), not for injections or appointments */
@@ -17857,7 +17860,7 @@ function openDaySheet(key) {
   const info = state.days[key] || {};
 
   if (state.readOnly) {
-    const chemoStatus = info.chemo ? treatmentOf(info).label + (info.chemoDone ? ' session, done' : ' session planned') : 'No treatment session this day';
+    const chemoStatus = info.chemo ? treatmentOf(info).label + (info.chemoDone ? ' session, done' : info.notGiven ? ' session, not given' + (info.notGivenWhy ? ': ' + info.notGivenWhy : '') : ' session planned') : 'No treatment session this day';
     const good = dayGoodWords(key, info);
     const moodInfo = info.mood ? 'Mood that day: ' + MOODS[info.mood - 1].label.toLowerCase() + (good ? '. ' + good + (/[.!?]$/.test(good.trim()) ? '' : '.') : '.') : '';
     openSheet(fmtDayLong(key), h('div', null,
@@ -17876,6 +17879,17 @@ function openDaySheet(key) {
   if (key > todayStr() && !cbDone.checked) cbDone.disabled = true; // v380: ticked done on the day, not before
   const plainWords = packOn('general') && !packOn('cancer'); // v359: an appointment or treatment, not a chemo session
   const doneRow = h('label', { class: 'check' }, cbDone, h('span', { text: plainWords ? 'Done' : 'Session done' }));
+  /* Not given (v469, Mark: the hospital did not do a session because his white count was too low). The session stays on the
+     calendar, marked not given with the reason in the person's words; it is not counted, and treatment-day medicines stand down. */
+  const cbNot = h('input', { type: 'checkbox', id: 'day-notgiven' });
+  cbNot.checked = !!info.notGiven && !info.chemoDone;
+  const whyIn = h('input', { type: 'text', id: 'day-notgiven-why', autocomplete: 'off', maxlength: '200', value: info.notGivenWhy || '' });
+  const whyField = field('Why? (optional)', whyIn);
+  const notRow = h('div', null, h('label', { class: 'check' }, cbNot, h('span', { text: plainWords ? 'Did not happen' : 'Not given: the hospital did not do this session' })), whyField);
+  const syncNot = () => { whyField.hidden = !cbNot.checked; };
+  cbNot.addEventListener('change', () => { if (cbNot.checked) cbDone.checked = false; syncNot(); if (cbNot.checked) whyIn.focus(); });
+  cbDone.addEventListener('change', () => { if (cbDone.checked) { cbNot.checked = false; syncNot(); } });
+  syncNot();
   let treatment = info.chemo ? treatmentOf(info).key : (treatmentsFor()[0] || TREATMENTS[0]).key;
   const typeRow = h('div', { class: 'wiz-day treat-chips', role: 'group', 'aria-label': 'Kind of treatment' });
   /* an injection or infusion names its medicine (v204), offered from the medicines list */
@@ -17902,7 +17916,7 @@ function openDaySheet(key) {
   }
   const repeatNow = () => isRepeat(TREATMENTS.find((t) => t.key === treatment));
   const syncDone = () => {
-    doneRow.hidden = !cbChemo.checked; typeRow.hidden = !cbChemo.checked; if (!cbChemo.checked) cbDone.checked = false;
+    doneRow.hidden = !cbChemo.checked; notRow.hidden = !cbChemo.checked || key > todayStr(); typeRow.hidden = !cbChemo.checked; if (!cbChemo.checked) cbDone.checked = false;
     cycleRow.hidden = !cbChemo.checked || TREATMENTS.find((t) => t.key === treatment).cycle === 'never' || repeatNow();
     /* v381 (review item 21): an appointment is named too ("Rheumatology", "Physio") */
     nameRow.hidden = !cbChemo.checked || !(repeatNow() || treatment === 'appt');
@@ -17930,12 +17944,14 @@ function openDaySheet(key) {
     nameRow,
     cycleRow,
     doneRow,
+    notRow,
     flareRow,
     h('p', { class: 'hint', text: (moodInfo ? moodInfo + ' ' : '') + 'Mood and one good thing come from the daily check-ins on Today.' }),
     daySideEffects(key),
     h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
       const wasDone = !!info.chemoDone;
-      const data = { chemo: cbChemo.checked, chemoDone: cbChemo.checked && cbDone.checked, treatment, updatedBy: state.name, updatedAt: serverTimestamp() };
+      const notGiven = cbChemo.checked && cbNot.checked && !cbDone.checked;
+      const data = { chemo: cbChemo.checked, chemoDone: cbChemo.checked && cbDone.checked, notGiven, notGivenWhy: notGiven ? whyIn.value.trim().slice(0, 200) : '', treatment, updatedBy: state.name, updatedAt: serverTimestamp() };
       if (flareRow) data.flare = cbFlare.checked;
       if (cbChemo.checked && TREATMENTS.find((t) => t.key === treatment).cycle !== 'never' && !repeatNow()) data.cycleStart = cbCycle.checked;
       if (cbChemo.checked && repeatNow()) { data.cycleStart = true; data.treatName = nameIn.value.trim(); }
@@ -17957,8 +17973,8 @@ function openDaySheet(key) {
     info.chemo ? moveBtn : null,
     info.chemo ? h('button', { class: 'btn btn-danger btn-block', type: 'button', onclick: async () => {
       closeSheet();
-      const data = { chemo: false, chemoDone: false, updatedBy: state.name, updatedAt: serverTimestamp() };
-      if (state.demo) { state.days[key] = { ...state.days[key], chemo: false, chemoDone: false }; renderChemo(); toast('Session removed'); return; }
+      const data = { chemo: false, chemoDone: false, notGiven: false, notGivenWhy: '', updatedBy: state.name, updatedAt: serverTimestamp() };
+      if (state.demo) { state.days[key] = { ...state.days[key], chemo: false, chemoDone: false, notGiven: false, notGivenWhy: '' }; renderChemo(); toast('Session removed'); return; }
       try { await setDoc(hdoc('days', key), data, { merge: true }); touchTreatPlan(); toast('Session removed'); } catch (e) { console.error(e); toast('Could not clear'); }
     } }, 'Remove the session from this day') : null,
     h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Cancel')
@@ -18052,14 +18068,14 @@ async function moveSession(from, to) {
   const words = 'Moved to ' + fmtDayLong(to);
   if (state.demo) {
     state.days[to] = { ...(state.days[to] || {}), ...data };
-    const old = { ...(state.days[from] || {}), chemo: false, chemoDone: false }; delete old.cycleStart; delete old.treatment; delete old.treatName;
+    const old = { ...(state.days[from] || {}), chemo: false, chemoDone: false, notGiven: false, notGivenWhy: '' }; delete old.cycleStart; delete old.treatment; delete old.treatName;
     state.days[from] = old;
     renderChemo(); toast(words); return;
   }
   try {
     const batch = writeBatch(db);
     batch.set(hdoc('days', to), { ...data, updatedAt: serverTimestamp() }, { merge: true });
-    batch.set(hdoc('days', from), { chemo: false, chemoDone: false, cycleStart: deleteField(), treatment: deleteField(), treatName: deleteField(), updatedBy: state.name, updatedAt: serverTimestamp() }, { merge: true });
+    batch.set(hdoc('days', from), { chemo: false, chemoDone: false, notGiven: false, notGivenWhy: '', cycleStart: deleteField(), treatment: deleteField(), treatName: deleteField(), updatedBy: state.name, updatedAt: serverTimestamp() }, { merge: true });
     await batch.commit();
     touchTreatPlan();
     toast(words);

@@ -618,7 +618,7 @@ async function buildPlanEntry(fs, hid, day) {
   if (medicines.some((m) => f(m.fields, 'treatmentDays') === true && f(m.fields, 'active') !== false)) {
     const days = Array.from({ length: 8 }, (_, k) => shiftDay(day, -k));
     const docs = await Promise.all(days.map((d) => fs.get(hp(hid, 'days/' + d)).catch(() => null)));
-    docs.forEach((doc, k) => { if (doc && doc.fields && f(doc.fields, 'chemo') === true && f(doc.fields, 'treatment') !== 'appt') sessions.add(days[k]); });
+    docs.forEach((doc, k) => { if (doc && doc.fields && f(doc.fields, 'chemo') === true && f(doc.fields, 'notGiven') !== true && f(doc.fields, 'treatment') !== 'appt') sessions.add(days[k]); });
   }
   return planEntryFromDocs(subs, profile, medicines, oneOffs, day, sessions);
 }
