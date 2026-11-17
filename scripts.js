@@ -16,7 +16,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '469';
+const APP_VERSION = '470';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -4098,6 +4098,7 @@ const WHATS_NEW = [
      release notes for TestFlight and Google Play (tools/release_notes.mjs) */
   { id: '2026-11-17', items: [
     { tag: 'new', text: 'Reducing courses: for a dose that changes, like a steroid course, choose The dose changes and add each step. The card and reminders say the day\'s dose, and the course ends by itself.' },
+    { tag: 'new', text: 'Not given: when the hospital does not do a treatment session, mark it on the calendar day with the reason. It stays on the calendar, is not counted, and medicines for treatment days stand down.' },
     { tag: 'new', text: 'Care circles: one sign-in can be in more than one circle. Tap your name at the top to switch, set one up for someone you look after, or ask to join.' },
     { tag: 'improved', text: 'Health Connect says which kinds of data were not allowed, with a button to open its settings.' },
     { tag: 'fixed', text: 'On Android, Save as PDF, Print, saving records and recordings now open the share sheet.' },

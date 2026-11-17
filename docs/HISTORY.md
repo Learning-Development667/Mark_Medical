@@ -6,6 +6,9 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v470: What's new gains the Not given line (17 November 2026)
+The second phone build of the day, at Mark's request, so he can use Not given and reducing courses in the app straight away.
+
 ### v469: a session not given (17 November 2026)
 Mark's chemo was not given because his white count was too low: not moved, just not done. The day sheet gains **Not given: the hospital did not do this session** (`#day-notgiven`, today or earlier, never with Session done) and **Why? (optional)** (`#day-notgiven-why`, the person's words, up to 200 characters). Saved as `days/{day}.notGiven` and `notGivenWhy`.
 - The session stays on the calendar (`.cal-cell.is-notgiven`, plain with a dashed edge; "Not given" in the key when there is one; the label says "session not given"). Cycle numbering is unchanged.
