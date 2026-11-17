@@ -2726,3 +2726,20 @@ html.text-huge .medrow, html.text-huge .med-head { gap: 8px; }
 .daymeal.is-empty.has-add { display: flex; align-items: center; gap: 6px; padding-right: 6px; }
 .daymeal.is-empty.has-add > .daymeal-sum { flex: 1; min-width: 0; }
 .daymeal-add { flex: none; min-height: 44px; min-width: 64px; align-self: center; }
+
+/* v467: care circles. The name chip opens Your care circles; with more than one circle it shows whose circle is in use,
+   and a band under the header says so too, so nothing is logged in the wrong place. */
+.chip-btn { cursor: pointer; border: 0; font: inherit; min-height: 44px; display: inline-flex; align-items: center; gap: 6px; }
+.chip-btn .chip-caret { width: 14px; height: 14px; transform: rotate(90deg); }
+.circle-band { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); padding: 6px var(--s-4); background: var(--surface-sunken); border-bottom: 1px solid var(--border-subtle); font-size: 16px; color: var(--text-secondary); }
+.circle-band b { color: var(--text-primary); }
+.circle-band .btn { min-height: 44px; }
+.circle-opt { display: flex; align-items: center; gap: var(--s-3); width: 100%; text-align: left; border: 1px solid var(--border-subtle); border-radius: var(--r-md); padding: var(--s-3); margin-top: var(--s-2); min-height: 64px; background: var(--surface); color: var(--text-primary); font: inherit; cursor: pointer; }
+.circle-opt.is-current { border: 2px solid var(--teal); }
+.circle-opt .circle-av { flex: none; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; color: var(--teal); background: var(--surface-sunken); border: 2px solid var(--teal); }
+.circle-opt .circle-txt { display: flex; flex-direction: column; min-width: 0; }
+.circle-opt .circle-name { font-weight: 700; font-size: 17px; overflow-wrap: anywhere; }
+.circle-opt .circle-sub { font-size: 15px; color: var(--text-secondary); }
+.circle-opt .circle-tick { margin-left: auto; color: var(--teal); font-weight: 700; }
+.circle-opt.is-add { border-style: dashed; color: var(--teal); }
+.circle-link { overflow-wrap: anywhere; font-size: 15px; background: var(--surface-sunken); border-radius: var(--r-sm); padding: var(--s-2) var(--s-3); }

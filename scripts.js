@@ -16,7 +16,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '466';
+const APP_VERSION = '467';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -1299,6 +1299,15 @@ document.addEventListener('click', (ev) => {
     toast(used ? 'That confirm link has expired or was already used. If reports still will not send, ask for a new link from Send to the team.' : 'Could not confirm the email just now (' + errText(e) + '). Try the link again in a minute.', { label: 'OK', onClick() {} });
   }
 })();
+/* ?ask=CODE (v467): someone asks to join this person's care circle; answered once they are signed in */
+(function readAskLink() {
+  const code = new URLSearchParams(location.search).get('ask');
+  if (!code || !BRIDGE) return;
+  state.pendingAsk = code;
+  history.replaceState(null, '', location.pathname + location.hash);
+  const banner = $('invite-banner');
+  if (banner) { banner.textContent = 'Someone has asked to join your care circle. Sign in to answer.'; banner.hidden = false; }
+})();
 (async function readInviteLink() {
   const code = new URLSearchParams(location.search).get('invite');
   $('signup-button').hidden = !BRIDGE;
@@ -1377,6 +1386,7 @@ async function enterApp(user) {
     state.household = account.household;
     state.demo = false;
     setTimeout(() => { reassertFcm(); }, 4000);
+    setTimeout(() => { afterSignInCircles(); }, 600);
     state.viewer = account.role === 'viewer';
     state.readOnly = account.role === 'readonly';
     $('signin-error').hidden = true;
@@ -14695,6 +14705,141 @@ async function withBusy(btn, busyText, fn) {
    the Capacitor plugin asks the phone's permission and gives a token, stored as pushSubs/{id} { kind: 'fcm',
    token, platform, private, ... }; the bridge sends to it through FCM, which reaches an iPhone through Apple's
    service. Everything else (the times, the nudge, nothing sent once a dose is logged) is the bridge's, unchanged. */
+/* ------------------------------------------------------------------ */
+/* Care circles (v467, Mark: Shelley in his circle and her mum's, one email, switching easily). One sign-in can belong to  */
+/* several circles; the name chip opens Your care circles; with more than one, the chip and a band say whose circle is in  */
+/* use. Switching asks the bridge, then reloads, so every list and listener starts again in the new circle.              */
+/* ------------------------------------------------------------------ */
+state.circles = [];
+/* the person's name for reminders, only when this sign-in is in more than one circle (the bridge puts it before each reminder) */
+function circleForName() { const cur = state.circles.length > 1 && state.circles.find((c) => c.current); return cur ? cur.name : ''; }
+function circleSub(c) {
+  const role = c.role === 'readonly' ? 'can see, cannot change' : c.role === 'viewer' ? 'medicines and treatment only' : '';
+  const who = c.relation === 'patient' ? 'You' : c.relation === 'carer' ? 'Carer' : 'Family or friend';
+  return [who, role, c.owner ? 'you set it up' : ''].filter(Boolean).join(', ');
+}
+function drawCircleChip() {
+  const chip = $('user-chip'), band = $('circle-band');
+  if (!chip || !band) return;
+  const cur = state.circles.find((c) => c.current);
+  const many = state.circles.length > 1 && cur;
+  chip.replaceChildren(document.createTextNode(many ? cur.name : (state.name || '')), icon('chevron', 'chip-caret'));
+  band.hidden = !many;
+  if (many) $('circle-band-text').replaceChildren(document.createTextNode('You are in '), h('b', { text: cur.name + "'s" }), document.createTextNode(' care circle'));
+  document.body.classList.toggle('has-circle-band', Boolean(many));
+}
+async function loadCircles() {
+  if (!BRIDGE || state.demo || state.demoLive || !state.household) return;
+  try { const d = await bridgeCall('/circles', { what: 'list' }); state.circles = d.circles || []; } catch (e) { state.circles = []; }
+  drawCircleChip();
+}
+async function afterSignInCircles() {
+  await loadCircles();
+  if (state.pendingAsk) { const code = state.pendingAsk; state.pendingAsk = null; answerAsk(code); return; }
+  /* an invite opened by someone already in a circle: join it as well, after asking */
+  if (state.pendingInvite && state.household) {
+    const code = state.pendingInvite; state.pendingInvite = null;
+    if (await confirmSheet('Join another care circle?', 'You have been invited to another care circle. You keep the one you are in, and can switch between them from your name at the top.', 'Join it')) {
+      try { await joinCircle(code, state.name); toast('Joined. Switching to it now.'); setTimeout(() => location.reload(), 700); }
+      catch (e) { toast(e.message || 'Could not join that circle'); }
+    }
+  }
+}
+async function switchCircle(hid) {
+  try { await bridgeCall('/circles', { what: 'switch', hid }); closeSheet({ force: true }); toast('Switching care circle'); setTimeout(() => location.reload(), 300); }
+  catch (e) { toast(e.message || 'Could not switch'); }
+}
+function openCircles() {
+  if (state.demo || state.demoLive || !BRIDGE) { toast('Not available in the demo'); return; }
+  const list = h('div', { class: 'circle-list' }, h('p', { class: 'hint', text: 'Fetching your care circles' }));
+  const draw = () => list.replaceChildren(...state.circles.map((c) => h('button', { class: 'circle-opt' + (c.current ? ' is-current' : ''), type: 'button', 'aria-current': c.current ? 'true' : null,
+    onclick: () => (c.current ? closeSheet() : switchCircle(c.hid)) },
+    h('span', { class: 'circle-av', 'aria-hidden': 'true', text: (c.name || '?').slice(0, 1).toUpperCase() }),
+    h('span', { class: 'circle-txt' }, h('span', { class: 'circle-name', text: c.name }), h('span', { class: 'circle-sub', text: circleSub(c) })),
+    c.current ? h('span', { class: 'circle-tick', text: 'In use' }) : null)),
+    h('button', { class: 'circle-opt is-add', type: 'button', onclick: openAddCircle },
+      h('span', { class: 'circle-av', 'aria-hidden': 'true', text: '+' }),
+      h('span', { class: 'circle-txt' }, h('span', { class: 'circle-name', text: 'Add a care circle' }), h('span', { class: 'circle-sub', text: 'Someone else you look after' }))));
+  openSheet('Your care circles', h('div', null, h('p', { class: 'hint', text: 'One sign-in for all of them. Each circle keeps its own records.' }), list,
+    h('p', { class: 'hint', text: 'Medicine reminders: turn them on in Settings while in each circle. With more than one circle, each reminder starts with the person\'s name.' })));
+  loadCircles().then(draw);
+  if (state.circles.length) draw();
+}
+function openAddCircle() {
+  const opt = (title, sub, fn) => h('button', { class: 'circle-opt', type: 'button', onclick: fn }, h('span', { class: 'circle-txt' }, h('span', { class: 'circle-name', text: title }), h('span', { class: 'circle-sub', text: sub })));
+  openSheet('Add a care circle', h('div', null, h('p', { class: 'hint', text: 'How are you joining?' }),
+    opt('Set one up for someone I look after', 'You start it. They agree to Daybook keeping their health information, or you record your legal authority.', openSetUpCircle),
+    opt('Ask to join someone\'s circle', 'Daybook makes a link for you to send them. They open it and say yes or no.', askToJoin),
+    opt('I have an invite', 'Paste the link or code they sent you.', openHaveInvite)));
+}
+function openSetUpCircle() {
+  const forIn = h('input', { class: 'input', type: 'text', id: 'circle-for', maxlength: '40', autocomplete: 'off' });
+  const theirs = carerConsent();
+  forIn.addEventListener('input', () => theirs.setName(forIn.value));
+  const go = h('button', { class: 'btn btn-primary btn-block', type: 'button' }, 'Set up their care circle');
+  go.addEventListener('click', () => withBusy(go, 'Setting it up', async () => {
+    const forName = forIn.value.trim();
+    if (!forName) { missing(forIn, 'Their first name, please'); return; }
+    if (!theirs.check()) return;
+    try {
+      await bridgeCall('/household', { name: state.name, relation: 'carer', forName, consent: theirs.value(), another: true });
+      closeSheet({ force: true }); toast(forName + '\'s care circle is set up. Switching to it now.'); setTimeout(() => location.reload(), 700);
+    } catch (e) { toast(e.message || 'Could not set it up'); }
+  }));
+  openSheet('Set one up for someone you look after', h('div', null, field('Their first name (the circle is theirs)', forIn), theirs.el, go));
+}
+async function askToJoin(ev) {
+  const btn = ev && ev.currentTarget;
+  await withBusy(btn, 'Making the link', async () => {
+    try {
+      const d = await bridgeCall('/circles', { what: 'ask', name: state.name });
+      const base = !nativeApp() && /^https?:$/.test(location.protocol) && location.hostname !== 'localhost' ? location.origin + location.pathname : 'https://app.mymedicaldaybook.co.uk/';
+      const link = base + '?ask=' + d.code; // the public address in the phone apps, whose own address is the phone's
+      const msg = state.name + ' would like to join your care circle in Daybook, to help look after you. Open this to say yes or no: ' + link;
+      const share = h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
+        if (navigator.share) { try { await navigator.share({ text: msg }); return; } catch (e) { if (e && e.name === 'AbortError') return; } }
+        await copyText(msg); toast('Copied. Paste it into a message to them.');
+      } }, 'Send the request');
+      const copy = h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: async () => { await copyText(msg); toast('Copied'); } }, 'Copy it');
+      openSheet('Ask to join their circle', h('div', null,
+        h('p', { text: 'Send this to the person whose circle you want to join, by text, WhatsApp or email. When they open it and say yes, their circle appears under your name at the top.' }),
+        h('p', { class: 'circle-link', text: link }), share, copy,
+        h('p', { class: 'hint', text: 'The link works once, for ' + d.days + ' days.' })));
+    } catch (e) { toast(e.message || 'Could not make the link'); }
+  });
+}
+function openHaveInvite() {
+  const box = h('input', { class: 'input', type: 'text', id: 'circle-invite', maxlength: '600', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false' });
+  const go = h('button', { class: 'btn btn-primary btn-block', type: 'button' }, 'Join this care circle');
+  go.addEventListener('click', () => withBusy(go, 'Joining', async () => {
+    const code = inviteCodeFrom(box.value);
+    if (!code) { missing(box, 'Paste the link or code'); return; }
+    try { await joinCircle(code, state.name); closeSheet({ force: true }); toast('Joined. Switching to it now.'); setTimeout(() => location.reload(), 700); }
+    catch (e) { toast(e.message || 'Could not join'); }
+  }));
+  openSheet('I have an invite', h('div', null, field('The invite link or code', box), go));
+}
+async function answerAsk(code) {
+  let info = null;
+  try { info = await bridgeCall('/circles', { what: 'ask-info', code }); } catch (e) { toast(e.message || 'That request is not right'); return; }
+  if (info.self) { toast('That is your own request. Send it to the person whose circle you want to join.'); return; }
+  let role = 'family';
+  const opts = [['family', 'Carer, can add and change'], ['readonly', 'Can see, cannot change']];
+  const chips = h('div', { class: 'presets', role: 'group', 'aria-label': 'What they can do' });
+  const drawChips = () => chips.replaceChildren(...opts.map(([v, l]) => h('button', { class: 'preset' + (role === v ? ' is-active' : ''), type: 'button', 'aria-pressed': role === v ? 'true' : 'false', onclick: () => { role = v; drawChips(); } }, l)));
+  drawChips();
+  const yes = h('button', { class: 'btn btn-primary btn-block', type: 'button' }, 'Let ' + info.name + ' join');
+  yes.addEventListener('click', () => withBusy(yes, 'Letting them in', async () => {
+    try { await bridgeCall('/circles', { what: 'ask-accept', code, role }); closeSheet({ force: true }); toast(info.name + ' is now in your care circle'); }
+    catch (e) { toast(e.message || 'Could not let them in'); }
+  }));
+  const no = h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: async () => { try { await bridgeCall('/circles', { what: 'ask-decline', code }); } catch (e) { /* closing is enough */ } closeSheet({ force: true }); toast('Request declined'); } }, 'Say no');
+  openSheet(info.name + ' asks to join your care circle', h('div', null,
+    h('p', { text: info.name + ' would see your records, and add to them if you choose, as your carer. You can remove them at any time in Settings.' }),
+    h('p', { class: 'fieldlabel', text: 'What can they do?' }), chips, yes, no));
+}
+$('user-chip').addEventListener('click', openCircles);
+$('circle-band-switch').addEventListener('click', openCircles);
 function nativeApp() { return Boolean(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()); }
 /* The plugin is reached through Capacitor's own bridge (nativePromise and addListener), because Daybook has no
    build step and so does not load @capacitor/core, which is where registerPlugin lives (v399: in v398 the switch
@@ -14757,7 +14902,8 @@ async function reassertFcm() {
     const now = storedFcmToken();
     const ref = hdoc('pushSubs', pushSubId('fcm:' + now));
     const snap = await getDoc(ref);
-    if (!snap.exists()) { await setDoc(ref, { kind: 'fcm', token: now, platform: window.Capacitor.getPlatform(), private: true, addedBy: state.name, uid: state.user ? state.user.uid : null, agent: navigator.userAgent.slice(0, 120), addedAt: serverTimestamp() }, { merge: true }); touchReminderPlan(); }
+    if (!snap.exists()) { await setDoc(ref, { kind: 'fcm', token: now, platform: window.Capacitor.getPlatform(), private: true, addedBy: state.name, uid: state.user ? state.user.uid : null, agent: navigator.userAgent.slice(0, 120), addedAt: serverTimestamp(), forName: circleForName() }, { merge: true }); touchReminderPlan(); }
+    else if ((snap.data().forName || '') !== circleForName()) await setDoc(ref, { kind: 'fcm', token: now, forName: circleForName() }, { merge: true });
   } catch (e) { console.warn(e); }
 }
 async function currentPushSub() {
@@ -14797,7 +14943,7 @@ async function syncReminders() {
 }
 async function setReminders(on) {
   const box = $('settings-reminders');
-  const who = { private: $('settings-private').checked, addedBy: state.name, uid: state.user ? state.user.uid : null, agent: navigator.userAgent.slice(0, 120), addedAt: serverTimestamp() };
+  const who = { private: $('settings-private').checked, addedBy: state.name, uid: state.user ? state.user.uid : null, agent: navigator.userAgent.slice(0, 120), addedAt: serverTimestamp(), forName: circleForName() };
   try {
     if (nativeApp()) {
       const plugin = fcm();

@@ -36,6 +36,7 @@ export default {
       if (url.pathname === '/invite' && request.method === 'POST') return withCors(request, await handleInvite(request, env));
       if (url.pathname === '/invite-info' && request.method === 'GET') return withCors(request, await handleInviteInfo(url, env));
       if (url.pathname === '/join' && request.method === 'POST') return withCors(request, await handleJoin(request, env));
+      if (url.pathname === '/circles' && request.method === 'POST') return withCors(request, await handleCircles(request, env));
       if (url.pathname === '/consent' && request.method === 'POST') return withCors(request, await handleConsent(request, env));
       if (url.pathname === '/member-remove' && request.method === 'POST') return withCors(request, await handleRemoveMember(request, env));
       if (url.pathname === '/owner-transfer' && request.method === 'POST') return withCors(request, await handleOwnerTransfer(request, env));
@@ -535,7 +536,13 @@ const toMinutes = (hhmm) => { const m = String(hhmm || '').match(/^(\d{1,2}):(\d
 const f = (fields, k) => { const v = fields[k]; if (!v) return null; return v.stringValue ?? v.integerValue ?? v.doubleValue ?? v.booleanValue ?? v.timestampValue ?? (v.arrayValue ? (v.arrayValue.values || []).map((x) => x.stringValue ?? x.integerValue ?? x.doubleValue) : null); };
 
 function isPrivateSub(sub) { return f(sub.fields, 'private') !== false; }
-function payloadFor(sub, payload, privateBody) { return privateBody && isPrivateSub(sub) ? { ...payload, body: privateBody } : payload; }
+/* v467: a phone whose person is in more than one care circle carries forName on its record here, so each reminder starts
+   with whose it is ("Mumsy: paracetamol 500 mg is due") */
+function payloadFor(sub, payload, privateBody) {
+  const out = privateBody && isPrivateSub(sub) ? { ...payload, body: privateBody } : payload;
+  const who = sub && sub.fields ? clean(f(sub.fields, 'forName'), 40) : '';
+  return who ? { ...out, body: who + ': ' + out.body } : out;
+}
 
 /* The reminder plan (v209). Until v208 every five-minute run listed every household and read each one's
    phones, log, profile, medicines and doses (about 25 reads a household, 288 times a day: the free tier's
@@ -975,6 +982,32 @@ async function memberOf(fs, uid) {
   const mem = await fs.get(hp(hid, 'members/' + uid));
   return { hid, role: mem ? f(mem.fields, 'role') : null, name: mem ? f(mem.fields, 'name') : null, relation: mem ? (f(mem.fields, 'relation') || '') : '' };
 }
+/* Several care circles on one sign-in (v467, Mark: Shelley in his circle and her mum's, one email, switching easily).
+   users/{uid}.household stays the circle in use; users/{uid}.circles lists every circle the sign-in belongs to. Each circle's
+   own members record still decides what the sign-in may do there (the rules), so the list is only a convenience. */
+function circleList(rec) {
+  const v = rec && rec.fields ? f(rec.fields, 'circles') : null;
+  const cur = rec && rec.fields ? f(rec.fields, 'household') : null;
+  const list = Array.isArray(v) ? v.map(String).filter((x) => /^[A-Za-z0-9_-]{6,40}$/.test(x)) : [];
+  if (cur && !list.includes(cur)) list.unshift(cur);
+  return [...new Set(list)].slice(0, CIRCLES_MAX);
+}
+const CIRCLES_MAX = 8;
+async function setCircles(fs, uid, list, current, name) {
+  const fields = { circles: { arrayValue: { values: [...new Set(list)].slice(0, CIRCLES_MAX).map((x) => strVal(x)) } } };
+  if (current) fields.household = strVal(current);
+  if (name) fields.name = strVal(name);
+  await fs.merge('users/' + uid, fields);
+}
+/* take one circle off a sign-in's list; the sign-in moves to another of its circles, or loses its pointer if it has none */
+async function dropCircle(fs, uid, hid) {
+  const rec = await fs.get('users/' + uid);
+  if (!rec) return;
+  const list = circleList(rec).filter((x) => x !== hid);
+  if (!list.length) { await fs.remove('users/' + uid); return; }
+  const cur = f(rec.fields, 'household');
+  await setCircles(fs, uid, list, cur === hid ? list[0] : cur);
+}
 /* The care circle (v199): a household is the patient's circle. The patient (the member whose relation is patient) and
    the owner (whoever set it up, until they hand it over) are the only two who invite and remove; everyone else logs. */
 async function circleOf(fs, hid) {
@@ -1367,8 +1400,11 @@ async function handleCircleDelete(request, env) {
     for (const m of circle.members) {
       const uid = m.path.split('/').pop();
       if (!UID_RE.test(uid)) continue;
-      const ptr = uid === who.uid ? { fields: { household: strVal(hid) } } : await fs.get('users/' + uid);
-      if (ptr && f(ptr.fields, 'household') === hid) names.push(fs.docName('users/' + uid));
+      const ptr = await fs.get('users/' + uid);
+      if (!ptr) continue;
+      /* v467: someone with other circles keeps them, moved off this one */
+      if (circleList(ptr).filter((x) => x !== hid).length) { await dropCircle(fs, uid, hid); continue; }
+      if (f(ptr.fields, 'household') === hid) names.push(fs.docName('users/' + uid));
     }
     await fs.deleteMany(names);
   }
@@ -1400,6 +1436,18 @@ async function handleAccountDelete(request, env) {
     if (circle.house && runsCircle(circle, who.uid, me)) return json({ error: 'runs-circle', message: 'You run this care circle. Hand it to someone else in Settings first, or delete the whole circle.' }, 409);
     await fs.remove(hp(me.hid, 'members/' + who.uid));
     for (const sub of await fs.list(hp(me.hid, 'pushSubs'))) if (f(sub.fields, 'uid') === who.uid) await fs.remove(sub.path);
+  }
+  /* v467: a sign-in in several circles leaves the others too (the circle in use was checked above; one it runs elsewhere is
+     left to its other members, who can hand it over or delete it) */
+  const urecDel = await fs.get('users/' + who.uid);
+  for (const hid of circleList(urecDel)) {
+    if (hid === me.hid) continue;
+    const c = await circleOf(fs, hid);
+    const mem = await fs.get(hp(hid, 'members/' + who.uid));
+    if (!mem) continue;
+    if (c.house && c.owner === who.uid) continue;
+    await fs.remove(hp(hid, 'members/' + who.uid));
+    for (const sub of await fs.list(hp(hid, 'pushSubs'))) if (f(sub.fields, 'uid') === who.uid) await fs.remove(sub.path);
   }
   await fs.deleteMany([fs.docName('users/' + who.uid), fs.docName('bridge/verify-' + who.uid)]);
   try { await deleteSignIn(sa, who.uid); }
@@ -1555,7 +1603,11 @@ async function handleCreateHousehold(request, env) {
   const name = clean(body.name, 40);
   if (!name) return json({ error: 'bad-request', message: 'A first name is needed.' }, 400);
   const current = await memberOf(fs, who.uid);
-  if (current.hid) return json({ error: 'already', message: 'This sign-in is already in a care circle.', household: current.hid }, 409);
+  /* v467: a sign-in already in a circle may set up another (body.another), for someone else it looks after */
+  const another = Boolean(current.hid && body.another === true);
+  if (current.hid && !another) return json({ error: 'already', message: 'This sign-in is already in a care circle.', household: current.hid }, 409);
+  const urecNow = another ? await fs.get('users/' + who.uid) : null;
+  if (another && circleList(urecNow).length >= CIRCLES_MAX) return json({ error: 'limit', message: 'That is as many care circles as one sign-in can hold.' }, 400);
   const relation = relationOf(body.relation) === 'carer' ? 'carer' : 'patient';
   const forName = clean(body.forName, 40);
   /* an app built before v448 sends no consent: it is let through as before (the carer's tick), with nothing recorded, and the
@@ -1570,7 +1622,7 @@ async function handleCreateHousehold(request, env) {
   if (!legacy && relation === 'carer' && mode === 'authority' && !authority) return json({ error: 'consent', message: 'Please give your authority, the date it was registered, and tick to confirm it.' }, 400);
   const betaCode = normaliseBetaCode(body.betaCode);
   let beta = null;
-  if (env.BETA_CODES_REQUIRED) {
+  if (env.BETA_CODES_REQUIRED && !another) {
     /* (v431) a sign-in gets BETA_TRIES_A_DAY wrong codes a day, counted on its own users record, so codes cannot be guessed at speed */
     const urec = await fs.get('users/' + who.uid);
     const tries = urec && f(urec.fields, 'betaDay') === londonNow().day ? Number(f(urec.fields, 'betaTries') || 0) : 0;
@@ -1592,7 +1644,7 @@ async function handleCreateHousehold(request, env) {
   if (heardFrom) house.heardFrom = strVal(heardFrom);
   await fs.set('households/' + hid, house);
   await fs.set(hp(hid, 'members/' + who.uid), { name: strVal(name), role: strVal('family'), relation: strVal(relation), addedBy: strVal('sign-up'), addedAt: nowTs() });
-  await fs.merge('users/' + who.uid, { household: strVal(hid), name: strVal(name) });
+  await setCircles(fs, who.uid, [...circleList(urecNow), hid], hid, name);
   if (beta) await fs.merge('betaCodes/' + beta.code, { uses: intVal(beta.uses + 1), lastUsedAt: nowTs() });
   if (legacy) { /* nothing recorded: asked once in the app */ }
   else if (relation === 'patient') await recordConsent(fs, hid, consentRecord(who, name, 'given', 'sign-up', cons));
@@ -1688,9 +1740,12 @@ async function handleJoin(request, env) {
   const body = await readJson(request); if (!body) return json({ error: 'bad-request', message: 'Could not read what was sent.' }, 400);
   const code = clean(body.code, 40);
   const current = await memberOf(fs, who.uid);
-  if (current.hid) return json({ error: 'already', message: 'This sign-in is already in a care circle. Sign out and create a new sign-in to join another.' }, 409);
   const inv = await loadInvite(fs, code);
   if (!inv.ok) return json({ error: 'invite', message: inv.message }, 400);
+  /* v467: a sign-in already in a circle joins another as well, and moves to it */
+  if (current.hid === inv.hid) return json({ error: 'already', message: 'You are already in this care circle.' }, 409);
+  const urecJoin = current.hid ? await fs.get('users/' + who.uid) : null;
+  if (current.hid && circleList(urecJoin).length >= CIRCLES_MAX) return json({ error: 'limit', message: 'That is as many care circles as one sign-in can hold.' }, 400);
   const name = clean(body.name, 40) || f(inv.fields, 'name') || 'Member';
   /* (v435) one patient a circle, checked at the join as well as when the invite was made; and the invite is marked used first, only
      if nobody else has, so two sign-ins accepting the same link at the same moment cannot both get in */
@@ -1701,12 +1756,77 @@ async function handleJoin(request, env) {
   const got = await fs.mergeIf(hp(inv.hid, 'invites/' + code), { used: { booleanValue: true }, usedBy: strVal(who.uid), usedAt: nowTs() }, inv.updateTime);
   if (!got) return json({ error: 'invite', message: 'That invite link has already been used.' }, 400);
   await fs.set(hp(inv.hid, 'members/' + who.uid), { name: strVal(name), role: strVal(f(inv.fields, 'role') || 'readonly'), relation: strVal(f(inv.fields, 'relation') || ''), addedBy: strVal(f(inv.fields, 'createdBy') || 'invite'), addedAt: nowTs() });
-  await fs.merge('users/' + who.uid, { household: strVal(inv.hid), name: strVal(name) });
+  await setCircles(fs, who.uid, [...circleList(urecJoin), inv.hid], inv.hid, name);
   await fs.remove('inviteCodes/' + code);
   if (body.consent && f(inv.fields, 'relation') === 'patient') await recordConsent(fs, inv.hid, consentRecord(who, name, 'given', 'invite', joinCons));
   return json({ ok: true, household: inv.hid, householdName: inv.householdName, patientName: inv.householdName, name, role: f(inv.fields, 'role') });
 }
 
+/* POST /circles (v467) { what: 'list' | 'switch' | 'ask' | 'ask-info' | 'ask-accept' | 'ask-decline' }
+   list: every circle this sign-in belongs to, by the patient's name, with its role there and which is in use.
+   switch { hid }: use another of them (only one the sign-in is a member of).
+   ask: a carer asks to join someone's circle; makes a one-use request code (askCodes/{code}, a week) to send them.
+   ask-info { code }: who is asking, for the card the patient sees. ask-accept { code, role }: the patient, or whoever runs
+   the circle, lets them in with that role; ask-decline { code }: the request is thrown away. */
+const ASK_DAYS = 7;
+async function handleCircles(request, env) {
+  const a = await whoIs(request, env); if (a.error) return a.error;
+  if (a.demo) return json({ error: 'demo', message: 'Not available in the demo.' }, 403);
+  const { who, fs } = a;
+  const body = (await readJson(request)) || {};
+  const rec = await fs.get('users/' + who.uid);
+  const list = circleList(rec);
+  const cur = rec ? f(rec.fields, 'household') : null;
+  if (body.what === 'list') {
+    const out = [];
+    for (const hid of list) {
+      const mem = await fs.get(hp(hid, 'members/' + who.uid));
+      if (!mem) continue;
+      const house = await fs.get('households/' + hid);
+      if (!house) continue;
+      out.push({ hid, name: f(house.fields, 'patientName') || f(house.fields, 'name') || 'Care circle', role: f(mem.fields, 'role') || '', relation: f(mem.fields, 'relation') || '', owner: f(house.fields, 'owner') === who.uid, current: hid === cur });
+    }
+    if (out.length !== list.length) await setCircles(fs, who.uid, out.map((c) => c.hid), out.some((c) => c.current) ? cur : (out[0] && out[0].hid)).catch(() => {});
+    return json({ ok: true, circles: out });
+  }
+  if (body.what === 'switch') {
+    const hid = clean(body.hid, 40);
+    if (!list.includes(hid) || !(await fs.get(hp(hid, 'members/' + who.uid)))) return json({ error: 'unauthorised', message: 'You are not in that care circle.' }, 403);
+    await setCircles(fs, who.uid, list, hid);
+    return json({ ok: true, household: hid });
+  }
+  if (body.what === 'ask') {
+    const name = clean(body.name, 40) || (rec && f(rec.fields, 'name')) || '';
+    if (!name) return json({ error: 'bad-request', message: 'Your first name is needed.' }, 400);
+    if (list.length >= CIRCLES_MAX) return json({ error: 'limit', message: 'That is as many care circles as one sign-in can hold.' }, 400);
+    const code = randomCode().slice(0, 24);
+    await fs.set('askCodes/' + code, { uid: strVal(who.uid), name: strVal(name), createdAt: nowTs(), expires: { timestampValue: new Date(Date.now() + ASK_DAYS * 864e5).toISOString() } });
+    return json({ ok: true, code, days: ASK_DAYS });
+  }
+  const code = clean(body.code, 40);
+  if (!/^[A-Za-z0-9_-]{12,40}$/.test(code)) return json({ error: 'ask', message: 'That request link is not right.' }, 400);
+  const ask = await fs.get('askCodes/' + code);
+  const expired = ask && Date.parse(f(ask.fields, 'expires') || '') < Date.now();
+  if (!ask || expired) return json({ error: 'ask', message: 'That request has run out or been used. Ask them to send a new one.' }, 400);
+  const asker = f(ask.fields, 'uid'), askerName = f(ask.fields, 'name') || 'Someone';
+  if (body.what === 'ask-info') return json({ ok: true, name: askerName, self: asker === who.uid });
+  if (asker === who.uid) return json({ error: 'ask', message: 'That is your own request. Send the link to the person whose circle you want to join.' }, 400);
+  if (body.what === 'ask-decline') { await fs.remove('askCodes/' + code); return json({ ok: true }); }
+  if (body.what !== 'ask-accept') return json({ error: 'bad-request', message: 'Could not read what was sent.' }, 400);
+  const me = await memberOf(fs, who.uid);
+  if (!me.hid) return json({ error: 'unauthorised', message: 'Set up your own care circle first, then open the request again.' }, 403);
+  const circle = await circleOf(fs, me.hid);
+  if (!circle.house || !runsCircle(circle, who.uid, me)) return json({ error: 'unauthorised', message: 'Only the patient, or whoever set the circle up, can let someone in.' }, 403);
+  if (await fs.get(hp(me.hid, 'members/' + asker))) { await fs.remove('askCodes/' + code); return json({ ok: true, already: true, name: askerName }); }
+  const arec = await fs.get('users/' + asker);
+  if (circleList(arec).length >= CIRCLES_MAX) return json({ error: 'limit', message: askerName + ' is already in as many care circles as one sign-in can hold.' }, 400);
+  const role = ['family', 'readonly', 'viewer'].includes(body.role) ? body.role : 'family';
+  await fs.remove('askCodes/' + code);
+  await fs.set(hp(me.hid, 'members/' + asker), { name: strVal(askerName), role: strVal(role), relation: strVal('carer'), addedBy: strVal(who.uid), addedAt: nowTs() });
+  const alist = circleList(arec);
+  await setCircles(fs, asker, [...alist, me.hid], alist.length ? f(arec.fields, 'household') : me.hid, alist.length ? null : askerName);
+  return json({ ok: true, name: askerName, role });
+}
 /* POST /owner-transfer { uid } (v199): the owner hands the circle to another family member (the patient, in the app), or the
    patient takes charge of a circle a carer set up for them (uid is their own; refused while the owner is the patient). */
 /* Every circle's Daybook Assistant use this month, for the operator: calls, tokens in and out, and a rough cost in pence
@@ -1917,7 +2037,7 @@ async function handleRemoveMember(request, env) {
   const target = await fs.get(hp(me.hid, 'members/' + uid));
   if (!target) return json({ error: 'bad-request', message: 'That person is not in this circle.' }, 400);
   await fs.remove(hp(me.hid, 'members/' + uid));
-  await fs.remove('users/' + uid);
+  await dropCircle(fs, uid, me.hid); // v467: their other circles stay
   const subs = await fs.list(hp(me.hid, 'pushSubs'));
   for (const sub of subs) if (f(sub.fields, 'uid') === uid) await fs.remove(sub.path);
   return json({ ok: true });
