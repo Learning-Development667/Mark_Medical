@@ -11,7 +11,9 @@
     "@capacitor/android": "8.6.0",
     "@capacitor/app": "8.1.2",
     "@capacitor/core": "8.6.0",
+    "@capacitor/filesystem": "8.1.5",
     "@capacitor/ios": "8.6.0",
+    "@capacitor/share": "8.0.3",
     "@capgo/capacitor-health": "8.11.12",
     "firebase": "12.6.0"
   },

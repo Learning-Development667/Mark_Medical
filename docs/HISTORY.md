@@ -6,6 +6,17 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v466: fixes from the overnight Android and devices reviews (17 November 2026)
+The reviews of 17 November (Android A1 to A54, iPhone and devices D1 to D74) and the Fable review's limits. Fixed here:
+- **Reminders stopping silently (A6, D2):** the app's `tokenReceived` handler checked `state.hid`, which is never set, so a phone's new push token was always dropped and the bridge later deleted the old one while Settings still said On. Now `swapFcmToken()` moves the record using `state.household`; a token that arrives before sign-in waits in `pendingFcmToken`; and `reassertFcm()`, four seconds after each sign-in in the apps, fetches the current token and recreates the phone's `pushSubs` record if the bridge has removed it.
+- **Android saving and sharing (A1, A3):** the Android WebView ignores file downloads and has no file share, so Save as PDF, the records zip, recordings and Send from my own Mail app did nothing while saying "saved". The Android app now has `@capacitor/filesystem` 8.1.5 and `@capacitor/share` 8.0.3 (Android `includePlugins` only); `androidShareBlob()` writes the file to the app's cache and opens Android's share sheet. `savePdf()`, the zip, both recording buttons and the Mail app route use it; Print in the Android app goes the iPhone's way (`printThroughShare()`), with Android words.
+- **Take a photo opening the gallery (A2):** the Android manifest now has a `<queries>` entry for `IMAGE_CAPTURE`, which Android 11 and later need before an app can see the camera.
+- **Health Connect permissions refused (A4):** after `requestAuthorization()` on Android, none allowed means not connected, with "Open Health Connect" (`openHealthConnectSettings()`); some refused says how many.
+- **Apple Health shortening older nights (D1):** sleep is read from 18:00 the evening before the window, and `sleepNights(samples, notBefore)` leaves out a night that began before then, so a night is never saved over with only its after-midnight part.
+- **Invite links pasted into the invite box (D4):** `inviteCodeFrom()` takes the code from a pasted link or message; the two boxes take 600 characters.
+- **Daybook Assistant limits (Fable C1, H1, H2):** making a circle merges into `bridge/global` instead of replacing it (the Assistant's and the confirmation emails' counts survived nothing before); the all-circles count goes up only after the circle's own limit passes; a failed request gives back one (`bump -1`) instead of writing back the count read at the start. The first-request-of-the-day race and a separate demo pot are still to do.
+Not tried on a real phone; the Android share sheet, the camera, Health Connect refusals and the reminder token need a tester's Android phone after build 29.
+
 ### v465: the What's new card shows only the newest batch (16 November 2026)
 Mark, on the Mac app: "is this list stacking? It's ridiculously long." A device whose card was never dismissed with Got it had kept every batch since it was first opened (51 items back to 21 October under "New this time"). `renderWhatsNew()` now shows only the newest unseen batch; Got it marks every unseen item seen, older ones included, and the full list stays under More, What's new. Checked in Node against `WHATS_NEW` (since 1 October: 51 items before, the four of 16 November now).
 

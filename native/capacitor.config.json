@@ -34,7 +34,9 @@
     "includePlugins": [
       "@capacitor-firebase/messaging",
       "@capgo/capacitor-health",
-      "@capacitor/app"
+      "@capacitor/app",
+      "@capacitor/filesystem",
+      "@capacitor/share"
     ]
   }
 }

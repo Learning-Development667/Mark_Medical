@@ -16,7 +16,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '465';
+const APP_VERSION = '466';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -1117,6 +1117,17 @@ function showSignup() {
 }
 const betaPayload = (beta, heard) => (APP_STAGE ? { betaCode: $(beta).value.trim(), heardFrom: $(heard).value.trim() } : {});
 $('signup-button').addEventListener('click', showSignup);
+/* v466 (overnight review D4): people paste the whole invite link, or the whole message, into the invite box. Take the code
+   from ?invite= if there is one, else the longest run of letters and digits. */
+function inviteCodeFrom(raw) {
+  const t = String(raw || '').trim();
+  if (!t) return '';
+  const m = t.match(/[?&]invite=([A-Za-z0-9_-]+)/);
+  if (m) return m[1];
+  if (/^[A-Za-z0-9_-]+$/.test(t)) return t;
+  const runs = t.match(/[A-Za-z0-9_-]{12,}/g) || [];
+  return runs.sort((a, b) => b.length - a.length)[0] || t;
+}
 $('signup-code').addEventListener('input', () => signupRelation.showBoxes(!$('signup-code').value.trim()));
 $('nohousehold-code').addEventListener('input', () => nohouseholdRelation.showBoxes(!$('nohousehold-code').value.trim()));
 $('signup-cancel').addEventListener('click', () => { $('signup').hidden = true; $('signin').hidden = false; });
@@ -1124,7 +1135,7 @@ $('signup-form').addEventListener('submit', async (ev) => {
   ev.preventDefault();
   const btn = $('signup-submit'), err = $('signup-error');
   err.hidden = true; btn.disabled = true; btn.textContent = 'Creating';
-  const name = $('signup-name').value.trim(), code = $('signup-code').value.trim();
+  const name = $('signup-name').value.trim(), code = inviteCodeFrom($('signup-code').value);
   /* (v448) the consent boxes are checked before any sign-in is made */
   if (!code && circleSetupError(null, signupRelation)) { btn.disabled = false; btn.textContent = 'Create my account'; return; }
   const pwProblem = passwordProblem($('signup-password').value, $('signup-email').value);
@@ -1175,7 +1186,7 @@ $('nohousehold-form').addEventListener('submit', async (ev) => {
   ev.preventDefault();
   const btn = $('nohousehold-submit'), err = $('nohousehold-error');
   err.hidden = true; btn.disabled = true;
-  const name = $('nohousehold-name').value.trim(), code = $('nohousehold-code').value.trim();
+  const name = $('nohousehold-name').value.trim(), code = inviteCodeFrom($('nohousehold-code').value);
   try {
     const who = nohouseholdRelation();
     if (!code && circleSetupError(who, nohouseholdRelation)) { btn.disabled = false; return; }
@@ -1365,6 +1376,7 @@ async function enterApp(user) {
     state.name = account.name;
     state.household = account.household;
     state.demo = false;
+    setTimeout(() => { reassertFcm(); }, 4000);
     state.viewer = account.role === 'viewer';
     state.readOnly = account.role === 'readonly';
     $('signin-error').hidden = true;
@@ -2928,6 +2940,7 @@ async function exportRecords() {
     said.textContent = 'Ready: ' + counts.entries + ' entries, ' + counts.documents + ' letters, ' + counts.recordings + ' recordings, ' + (mb < 1 ? Math.max(1, Math.round(blob.size / 1024)) + ' KB' : mb.toFixed(1) + ' MB') + '.';
     const save = h('button', { class: 'btn btn-primary btn-block', type: 'button', id: 'settings-export-go' }, 'Save the zip file');
     save.addEventListener('click', async () => {
+      if (androidFiles()) { try { await androidShareBlob(blob, filename, filename); } catch (e) { console.error(e); toast('Could not open the share sheet'); } return; }
       const file = new File([blob], filename, { type: 'application/zip' });
       if (IS_IOS && navigator.canShare && navigator.canShare({ files: [file] })) {
         try { await navigator.share({ files: [file], title: filename }); return; } catch (e) { if (e && e.name === 'AbortError') return; }
@@ -3151,7 +3164,9 @@ const WORKOUT_WORDS = { traditionalStrengthTraining: 'Strength training', functi
 function workoutWords(t) { return WORKOUT_WORDS[t] || String(t || 'Workout').replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase()).replace(/ (\w)/g, (m, c) => ' ' + c.toLowerCase()); }
 /* Nights from sleep samples: each source's segments split where there is a gap of 3 hours or more, a night
    belongs to the day it ended, and where a watch and a phone both recorded it the one with more sleep is kept */
-function sleepNights(samples) {
+/* v466 (overnight review D1): sleep is read from 18:00 the evening before the window, and a night that began before that
+   (so would be cut short) is left out, so the oldest night is never saved over with only its after-midnight part. */
+function sleepNights(samples, notBefore) {
   const ASLEEP = { asleep: 1, rem: 1, deep: 1, light: 1 };
   const bySource = {};
   for (const s of samples || []) {
@@ -3169,6 +3184,7 @@ function sleepNights(samples) {
       for (const g of n.segs) mins[g.st] += (g.b - g.a) / 60000;
       const total = mins.asleep + mins.rem + mins.deep + mins.light;
       if (total < 60) continue;
+      if (notBefore && n.a <= notBefore + 60000) continue;
       const day = haeStamp(new Date(n.b)).slice(0, 10);
       if (!best[day] || best[day].total < total) best[day] = { total, n, mins };
     }
@@ -3190,7 +3206,8 @@ async function healthPayload(days) {
   const steps = await tryCall(() => H.queryAggregated({ dataType: 'steps', ...range, bucket: 'day', aggregation: 'sum' }));
   const kcal = await tryCall(() => H.queryAggregated({ dataType: 'dietaryEnergyConsumed', ...range, bucket: 'day', aggregation: 'sum' }));
   const weight = await tryCall(() => H.readSamples({ dataType: 'weight', ...range, limit: 500, ascending: true }));
-  const sleep = await tryCall(() => H.readSamples({ dataType: 'sleep', ...range, limit: 5000, ascending: true }));
+  const sleepFrom = new Date(start.getTime() - 6 * 3600e3);
+  const sleep = await tryCall(() => H.readSamples({ dataType: 'sleep', startDate: sleepFrom.toISOString(), endDate: end.toISOString(), limit: 5000, ascending: true }));
   const workouts = await tryCall(() => H.queryWorkouts({ ...range, limit: 200, ascending: true }));
   const resting = await tryCall(() => H.readSamples({ dataType: 'restingHeartRate', ...range, limit: 500, ascending: true })); // v418: one a day, the day's last kept
   const daily = (r) => ((r && r.samples) || []).filter((x) => Number(x.value) > 0).map((x) => ({ date: haeStamp(new Date(x.startDate)), qty: Number(x.value) }));
@@ -3198,7 +3215,7 @@ async function healthPayload(days) {
     { name: 'step_count', units: 'count', data: daily(steps) },
     { name: 'dietary_energy', units: 'kcal', data: daily(kcal) },
     { name: 'weight_body_mass', units: 'kg', data: ((weight && weight.samples) || []).filter((x) => Number(x.value) > 0).map((x) => ({ date: haeStamp(new Date(x.startDate)), qty: Number(x.value) })) },
-    { name: 'sleep_analysis', units: 'hr', data: sleepNights(sleep && sleep.samples) },
+    { name: 'sleep_analysis', units: 'hr', data: sleepNights(sleep && sleep.samples, sleepFrom.getTime()) },
     { name: 'resting_heart_rate', units: 'bpm', data: ((resting && resting.samples) || []).filter((x) => Number(x.value) > 0).map((x) => ({ date: haeStamp(new Date(x.startDate)), qty: Number(x.value) })) },
   ].filter((m) => m.data.length);
   const wk = ((workouts && workouts.workouts) || []).map((w) => {
@@ -3270,7 +3287,17 @@ $('settings-health-connect').addEventListener('click', async (ev) => {
         else toast(healthName() + ' is not available on this phone');
         return;
       }
-      await H.requestAuthorization({ read: HEALTH_READ, write: [] });
+      const auth = await H.requestAuthorization({ read: HEALTH_READ, write: [] });
+      /* v466 (overnight review A4): Health Connect says what was refused (Apple Health never does). None allowed: not
+         connected, with a way to Health Connect's own settings; some refused: say which, so it is not a silent gap. */
+      if (IS_ANDROID_APP && auth && Array.isArray(auth.readAuthorized)) {
+        if (!auth.readAuthorized.length) {
+          if (await confirmSheet('Health Connect was not allowed', 'Daybook can only bring in what you allow. Open Health Connect, choose Daybook, and allow steps, sleep, weight, exercise, food and resting heart rate. Then come back and tap Connect.', 'Open Health Connect')) await H.openHealthConnectSettings().catch(() => {});
+          return;
+        }
+        const denied = (auth.readDenied || []).length;
+        if (denied) toast(denied + ' of ' + HEALTH_READ.length + ' kinds were not allowed. You can allow them in Health Connect, under Daybook.');
+      }
       lsSet(HEALTH_ON_KEY, state.household); lsSet('daybook.health.kinds', HEALTH_READ.join(','));
       lsSet(HEALTH_LAST_KEY, '');
     }
@@ -7192,6 +7219,24 @@ function fmtMl(ml) {
    connection" on his iPhone, which hid the real reason) */
 function errText(e) { return String((e && e.message) || e || 'unknown').slice(0, 160); }
 function pdfErrorText(e) { const m = errText(e); return /Could not load/.test(m) ? 'Making a PDF needs a connection. Try again when you have signal.' : 'Could not make the PDF (' + m + '). Use Preview, then Print, instead.'; }
+/* v466 (overnight review A1, A3): Android's in-app browser has no file share and ignores downloads, so Save as PDF, the
+   records zip and recordings did nothing while saying "saved". In the Android app a file is written to the app's cache with
+   Capacitor's Filesystem and handed to Android's share sheet (Save to Files or Drive, Mail, Print, an AI app). Returns
+   true when the share sheet opened (or was closed by the person), false when it is not available here. */
+function androidFiles() {
+  const P = window.Capacitor && window.Capacitor.Plugins;
+  return IS_ANDROID_APP && P && P.Filesystem && P.Share ? P : null;
+}
+async function androidShareBlob(blob, filename, title, text) {
+  const P = androidFiles();
+  if (!P) return false;
+  const b64 = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1] || ''); r.onerror = () => rej(r.error); r.readAsDataURL(blob); });
+  const safe = String(filename || 'Daybook file').replace(/[\\/:*?"<>|]+/g, ' ').slice(0, 120);
+  const w = await P.Filesystem.writeFile({ path: safe, data: b64, directory: 'CACHE' });
+  try { await P.Share.share({ title: title || safe, text: text || undefined, files: [w.uri], dialogTitle: title || safe }); }
+  catch (e) { if (!/cancel/i.test(String(e && (e.message || e)))) throw e; }
+  return true;
+}
 async function savePdf(filename, title, makeBlob) {
   /* On desktop Chrome/Edge, ask where to save (Desktop and all) straight away,
      before anything else, so the browser still counts this as a direct
@@ -7209,6 +7254,7 @@ async function savePdf(filename, title, makeBlob) {
   let blob = null;
   try { blob = await makeBlob(); } catch (e) { console.error(e); toast(pdfErrorText(e)); return; }
   if (!blob) return;
+  if (androidFiles()) { try { await androidShareBlob(blob, filename, title); } catch (e) { console.error(e); toast('Could not open the share sheet'); } return; }
   if (saveHandle) {
     try {
       const writable = await saveHandle.createWritable();
@@ -8744,6 +8790,13 @@ function openSendSheet(kind) {
       }
       const file = new File([blob], fname, { type: 'application/pdf' });
       copyText(c.email); // copied inside the tap, before the share sheet, for pasting into To
+      if (androidFiles()) {
+        const subj = subject.value.trim();
+        androidShareBlob(blob, fname, subj, (subj ? subj + '\n\n' : '') + note.value.trim())
+          .then(() => { closeSheet(); toast(c.email + ' is copied. Paste it into To, then add a subject if it is empty.'); })
+          .catch((e) => { console.error(e); toast('Could not open the share sheet'); });
+        return;
+      }
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
         /* iPhone Mail drops the share's title, so the email would go with no subject: the subject
            goes in as the message's first line too (v144, Mark: "add our own subject header") */
@@ -9984,14 +10037,14 @@ const REPORT_KINDS = {
 };
 let PDF_INSET_MM = 0;
 async function printThroughShare(kind, makeBlob) {
-  toast('Making the PDF. Choose Print in the share sheet.');
+  toast(androidFiles() ? 'Making the PDF. Open it from the share sheet (Drive or Files), then print from there.' : 'Making the PDF. Choose Print in the share sheet.');
   PDF_INSET_MM = 5;
   try { return await savePdf(REPORT_KINDS[kind].data().filename, REPORT_NAMES[kind], async () => { PDF_INSET_MM = 5; try { return await makeBlob(); } finally { PDF_INSET_MM = 0; } }); }
   finally { PDF_INSET_MM = 0; }
 }
 async function openReportViewer(kind, printNow) {
   const K = REPORT_KINDS[kind];
-  if (printNow && IS_IOS) { printThroughShare(kind, K.blob); return; }
+  if (printNow && (IS_IOS || androidFiles())) { printThroughShare(kind, K.blob); return; }
   const name = REPORT_NAMES[kind];
   const body = h('div', { class: 'viewer' }, h('p', { class: 'hint', text: kind === 'meds' || kind === 'mood' || kind === 'pain' ? 'Making the pages, a few seconds.' : 'Making the pages, a few seconds.' }));
   openSheet(name, body);
@@ -10007,7 +10060,7 @@ async function openReportViewer(kind, printNow) {
   const print = h('button', { class: 'btn btn-tint tint-green', type: 'button', id: 'viewer-print' }, icon('print'), 'Print');
   const save = h('button', { class: 'btn btn-tint tint-warm', type: 'button', id: 'viewer-save' }, icon('download'), 'Save as PDF');
   const doPrint = () => {
-    if (IS_IOS) { printThroughShare(kind, () => reportPdfBlob(res)); return; }
+    if (IS_IOS || androidFiles()) { printThroughShare(kind, () => reportPdfBlob(res)); return; }
     try { frame.contentWindow.focus(); frame.contentWindow.print(); } catch (e) { console.error(e); toast('Could not open printing (' + errText(e) + ').'); }
   };
   print.addEventListener('click', doPrint);
@@ -14677,6 +14730,36 @@ function urlBase64ToUint8Array(s) {
   return Uint8Array.from(b, (c) => c.charCodeAt(0));
 }
 /* This phone's subscription, whichever kind: { id } or null */
+let pendingFcmToken = null;
+/* move this phone's reminder record from its old token to a new one, keeping its settings */
+async function swapFcmToken(token) {
+  const old = storedFcmToken();
+  if (!old || !token || old === token || !state.household) return;
+  try {
+    const snap = await getDoc(hdoc('pushSubs', pushSubId('fcm:' + old)));
+    const keep = snap.exists() ? snap.data() : {};
+    await setDoc(hdoc('pushSubs', pushSubId('fcm:' + token)), { ...keep, kind: 'fcm', token, platform: window.Capacitor.getPlatform(), addedAt: serverTimestamp() }, { merge: true });
+    await deleteDoc(hdoc('pushSubs', pushSubId('fcm:' + old))).catch(() => {});
+    rememberFcmToken(token); touchReminderPlan();
+  } catch (e) { console.warn(e); }
+}
+/* v466: after each sign-in in the apps, make sure this phone's reminder record exists under its current token, so Settings
+   never shows On for a phone the bridge has dropped (a dead token is deleted by the bridge after a failed send). */
+async function reassertFcm() {
+  if (!nativeApp() || !state.household || state.demo || state.demoLive || state.readOnly || state.viewer) return;
+  const plugin = fcm(); const old = storedFcmToken();
+  if (!plugin || !old) return;
+  try {
+    const p = await plugin.checkPermissions();
+    if (p.receive !== 'granted') return;
+    const { token } = await plugin.getToken();
+    if (pendingFcmToken || (token && token !== old)) { await swapFcmToken(pendingFcmToken || token); pendingFcmToken = null; }
+    const now = storedFcmToken();
+    const ref = hdoc('pushSubs', pushSubId('fcm:' + now));
+    const snap = await getDoc(ref);
+    if (!snap.exists()) { await setDoc(ref, { kind: 'fcm', token: now, platform: window.Capacitor.getPlatform(), private: true, addedBy: state.name, uid: state.user ? state.user.uid : null, agent: navigator.userAgent.slice(0, 120), addedAt: serverTimestamp() }, { merge: true }); touchReminderPlan(); }
+  } catch (e) { console.warn(e); }
+}
 async function currentPushSub() {
   if (nativeApp()) {
     const t = storedFcmToken();
@@ -14759,16 +14842,12 @@ $('settings-reminders').addEventListener('change', (ev) => setReminders(ev.targe
   if (nativeApp()) { setTimeout(() => noteOverflow(document.body.dataset.page || 'today'), 3000); setTimeout(() => noteOverflow(document.body.dataset.page || 'today'), 8000); }
   const plugin = fcm();
   if (!plugin) return;
-  plugin.addListener('tokenReceived', async ({ token }) => {
-    const old = storedFcmToken();
-    if (!old || !token || old === token || !state.hid) return;
-    try {
-      const snap = await getDoc(hdoc('pushSubs', pushSubId('fcm:' + old)));
-      const keep = snap.exists() ? snap.data() : {};
-      await setDoc(hdoc('pushSubs', pushSubId('fcm:' + token)), { ...keep, kind: 'fcm', token, platform: window.Capacitor.getPlatform(), addedAt: serverTimestamp() }, { merge: true });
-      await deleteDoc(hdoc('pushSubs', pushSubId('fcm:' + old))).catch(() => {});
-      rememberFcmToken(token); touchReminderPlan();
-    } catch (e) { console.warn(e); }
+  /* v466 (overnight review A6/D2): this checked state.hid, which is never set, so a new token was always thrown away and
+     reminders stopped while Settings still said On. A token that arrives before sign-in waits in pendingFcmToken. */
+  plugin.addListener('tokenReceived', ({ token }) => {
+    if (!token || !storedFcmToken() || storedFcmToken() === token) return;
+    if (!state.household || state.demo || state.demoLive) { pendingFcmToken = token; return; }
+    swapFcmToken(token);
   }).catch(() => {});
   plugin.addListener('notificationReceived', ({ notification }) => {
     const n = notification || {};
@@ -16749,6 +16828,7 @@ async function renderAppointmentList(from, to) {
         h('button', { class: 'btn btn-secondary btn-small', type: 'button', onclick: async () => {
           try {
             const blob = await recordingBlob(rec); const name = apptFilename(rec);
+            if (await androidShareBlob(blob, name, name)) return;
             const file = new File([blob], name, { type: rec.mime });
             if (navigator.canShare && navigator.canShare({ files: [file] })) { try { await navigator.share({ files: [file], title: name }); return; } catch (e) { if (e && e.name === 'AbortError') return; } }
             const url = URL.createObjectURL(blob); const a = h('a', { href: url, download: name }); document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
@@ -16776,6 +16856,7 @@ async function deleteRecording(rec) {
 async function shareRecording(q, rec) {
   const blob = await recordingBlob(rec);
   const filename = recordingFilename(q, rec);
+  if (await androidShareBlob(blob, filename, filename)) return;
   const file = new File([blob], filename, { type: rec.mime });
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
     try { await navigator.share({ files: [file], title: filename }); return; }

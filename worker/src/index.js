@@ -1583,7 +1583,8 @@ async function handleCreateHousehold(request, env) {
   const g = await fs.get('bridge/global');
   const made = g && f(g.fields, 'day') === day ? Number(f(g.fields, 'households') || 0) : 0;
   if (made >= HOUSEHOLDS_A_DAY) return json({ error: 'limit', message: 'Daybook cannot take more new care circles today. Try again tomorrow.' }, 429);
-  await fs.set('bridge/global', { day: strVal(day), households: intVal(made + 1), updatedAt: nowTs() });
+  /* v466 (review H1): merge, never set, so the Assistant's and the confirmation emails' counts on the same document survive */
+  await fs.merge('bridge/global', { day: strVal(day), households: intVal(made + 1), updatedAt: nowTs() });
   const hid = randomCode().slice(0, 20);
   const house = { name: strVal(relation === 'carer' && forName ? forName : name), owner: strVal(who.uid), createdAt: nowTs() };
   if (relation === 'carer' && forName) house.patientName = strVal(forName);
@@ -1961,8 +1962,9 @@ async function handleExplain(request, env) {
   const g = await fs.get('bridge/global');
   const allToday = g && f(g.fields, 'explainDay') === day ? Number(f(g.fields, 'explain') || 0) : 0;
   if (allToday >= EXPLAIN_LIMIT_ALL) return json({ error: 'limit', message: 'Daybook Assistant has done all it can for today across every circle. Use Send to my AI app, or try again tomorrow.' }, 429);
-  if (g && f(g.fields, 'explainDay') === day) await fs.bump('bridge/global', { explain: 1 }); else await fs.merge('bridge/global', { explainDay: strVal(day), explain: intVal(1) });
   if (used >= (demo ? EXPLAIN_LIMIT_DEMO : EXPLAIN_LIMIT_REAL)) return json({ error: 'limit', message: demo ? 'The demo has used Daybook Assistant for today. Try again tomorrow, or use Send to my AI app.' : 'Your care circle has used Daybook Assistant\'s requests for today (' + EXPLAIN_LIMIT_REAL + ' a day). Use Send to my AI app, or try again tomorrow.' }, 429);
+  /* v466 (review H2): the shared count goes up only once this circle's own limit has passed, so refusals cannot use it up */
+  if (g && f(g.fields, 'explainDay') === day) await fs.bump('bridge/global', { explain: 1 }); else await fs.merge('bridge/global', { explainDay: strVal(day), explain: intVal(1) });
   /* The month's count (v209): kept on the same document across days, reset when the month changes */
   const month = day.slice(0, 7);
   const allFields = (logDoc && logDoc.fields) || {};
@@ -1999,7 +2001,8 @@ async function handleExplain(request, env) {
   catch (e) {
     /* Say what actually went wrong, and give the day's count back, since nothing was explained */
     console.error('explain', e && e.message);
-    await fs.merge(hp(hid, 'bridge/explainLog'), demo ? { demo: { integerValue: String(used) } } : { real: { integerValue: String(used) } }).catch(() => {});
+    /* v466 (review C1): one less, not the count read at the start, so a failed request cannot reset the day */
+    await fs.bump(hp(hid, 'bridge/explainLog'), demo ? { demo: -1 } : { real: -1 }).catch(() => {});
     return json({ error: 'ai', status: e && e.status || 0, message: aiErrorMessage(e && e.status, e && (e.apiMessage || e.message)) }, 502);
   }
   if (reply.refused) return json({ error: 'refused', message: 'Daybook Assistant declined this one. Try Send to my AI app instead.' }, 422);
