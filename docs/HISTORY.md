@@ -6,6 +6,13 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v472: At a glance, Still to take, and resting heart rate on Trends (18 November 2026)
+Google rejected build 30 for open testing (Health Connect minimum scope): the reviewer could not find resting heart rate in use. Mark explained why he wanted it (his resting rate fell 8 bpm in a week: worth a question between appointments, never an alarm) and approved the mock-up the same day.
+- **At a glance**: the three tiles at the top of Today are chosen from seven (`GLANCE`: meds, drink, temp, rhr, steps, sleep, weight), up to three, kept on the phone (`daybook.today.glance`, default temp, drink, meds), in More, Settings, Your Today screen (`#settings-glance-list`, `renderGlanceCard()`). New tiles `#tile-rhr` (latest within 7 days, `restingOn()`), `#tile-steps`, `#tile-sleep`, `#tile-weight`, drawn by `renderGlanceExtras()`; never coloured. Resting heart rate opens its Trends card, steps open Exercise, sleep and weight open their day lists.
+- **Still to take**: the Meds taken list (`openTileList('meds')`, now titled Medicines) starts with `stillToTakeBox()`: each scheduled medicine with doses left, its remaining times (or "2 more") and the day's dose, with Log it (today only, not for read-only or viewers). The tile itself is unchanged (Mark).
+- **Resting heart rate on Trends** (`#rhr-card`, `renderRestingCard()`): a daily line over the range, "This week's average N bpm (n readings). The week before N bpm.", "Readings as given. Not medical advice.", and + Ask the team about this, which opens a question with the facts filled in. With no readings it says where they come from, so the feature is visible to a reviewer. Sam's preview has a fortnight of made-up readings.
+- What's new batch `2026-11-18` gains three items.
+
 ### v471: a session not given is never looked back on as treatment (18 November 2026)
 Mark: his chemo on Tuesday was marked not given, but Wednesday's morning check-in still asked "Since chemo on Tuesday (day 1 after it), any side effects?". New `givenSessionDays()` (sessionDays without `notGiven`) now feeds `sessionBefore()` (the check-in side-effect questions, the day sheet's How it went box) and `afterTreatmentLog()` (the three days after treatment on the reports). `latestTreatmentKey()`, `repeatInfo()`'s last and next, and Share my medicines' hospital treatment last and next skip it too. Cycle numbering, Add sessions and My week's treatment day still use the plan. What's new batch `2026-11-18`; built the same morning at Mark's request.
 

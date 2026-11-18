@@ -16,7 +16,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '471';
+const APP_VERSION = '472';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -1870,6 +1870,8 @@ function buildDemoFixture() {
   exercise[day(0)] = { day: day(0), steps: 1200, done: { pressups: true, situps: true, plank: false, squats: false, ankle: true }, workouts: [{ name: 'Outdoor Walk', minutes: 18, km: 1.1, kcal: 70, start: '08:40' }] };
   exercise[day(-4)] = { day: day(-4), steps: 1600, done: { pressups: true, situps: false, plank: false, squats: true } };
   exercise[day(-6)] = { day: day(-6), steps: 900, done: {} };
+  /* v472: Sam's resting heart rate from a watch, one a day, for the Trends card and the At a glance tile (made-up) */
+  [66, 67, 65, 66, 68, 66, 67, 64, 63, 62, 61, 60, 59, 58].forEach((v, i) => { const k = day(i - 13); exercise[k] = { day: k, ...(exercise[k] || {}), restingHr: v }; });
 
   const profile = {
     calls: [{ label: 'Oncology ward (example)', role: 'Ward 7, 24 hours', number: '01234 567890' }, { label: 'Sam (example)', role: 'Oncology nurse specialist', number: '01234 567892', email: 'nurses@example.org' }, { label: 'Hospice at home (example)', number: '01234 567891' }],
@@ -4023,6 +4025,64 @@ function renderTiles() {
   const tileM = $('tile-meds');
   tileM.classList.toggle('is-green', need > 0 && done >= need);
   $('tile-meds-sub').textContent = need > 0 && done >= need ? 'all done' : 'doses taken';
+  renderGlanceExtras();
+}
+
+/* At a glance (v472, Mark): the three tiles at the top of Today are chosen from seven, on this phone (daybook.today.glance).
+   Resting heart rate, steps, sleep and weight join temperature, drinks and doses. Facts only, never coloured. */
+const GLANCE = [['meds', 'Meds taken'], ['drink', 'Drinks'], ['temp', 'Latest temp'], ['rhr', 'Resting heart rate'], ['steps', 'Steps'], ['sleep', 'Sleep last night'], ['weight', 'Weight']];
+const GLANCE_KEY = 'daybook.today.glance', GLANCE_DEFAULT = ['temp', 'drink', 'meds'], GLANCE_MAX = 3;
+function glanceChosen() {
+  try { const v = JSON.parse(localStorage.getItem(GLANCE_KEY) || 'null'); if (Array.isArray(v)) { const ok = v.filter((k) => GLANCE.some(([g]) => g === k)).slice(0, GLANCE_MAX); if (ok.length) return ok; } } catch (e) { /* the default */ }
+  return GLANCE_DEFAULT.slice();
+}
+function applyGlance() {
+  const on = new Set(glanceChosen());
+  GLANCE.forEach(([k]) => { const b = $('tile-' + k); if (b) b.hidden = !on.has(k); });
+}
+/* the latest resting heart rate on or before a day, within a week */
+function restingOn(day) {
+  for (let i = 0; i < 7; i++) { const d = addDays(day, -i); const v = Number(((state.exercise || {})[d] || {}).restingHr); if (v > 0) return { v, day: d }; }
+  return null;
+}
+function renderGlanceExtras() {
+  applyGlance();
+  const day = state.selectedDay, isToday = day === todayStr();
+  const when = (d) => (d === day ? (isToday ? 'today' : 'this day') : fmtDayShort(d));
+  const r = restingOn(day);
+  if (r) { countTo($('tile-rhr-value'), r.v, { unit: 'bpm' }); $('tile-rhr-sub').textContent = when(r.day); }
+  else { clearCount($('tile-rhr-value'), '--'); $('tile-rhr-sub').textContent = 'none yet'; }
+  const st = Number(((state.exercise || {})[day] || {}).steps) || 0;
+  if (st) { countTo($('tile-steps-value'), st, { format: (n) => Math.round(n).toLocaleString('en-GB') }); $('tile-steps-sub').textContent = when(day); }
+  else { clearCount($('tile-steps-value'), '--'); $('tile-steps-sub').textContent = 'none ' + (isToday ? 'today' : 'this day'); }
+  const sl = state.dayEntries.filter((e) => e.type === 'sleep').reduce((a, e) => a + (Number(e.value) || 0), 0);
+  if (sl) { $('tile-sleep-value').textContent = fmtHm(sl); $('tile-sleep-sub').textContent = isToday ? 'last night' : 'the night before'; }
+  else { $('tile-sleep-value').textContent = '--'; $('tile-sleep-sub').textContent = 'none logged'; }
+  const ws = [...(state.recentEntries || []), ...(state.dayEntries || [])].filter((e) => e.type === 'weight' && e.day <= day).sort((a, b) => entryDate(b) - entryDate(a));
+  if (ws.length) { countTo($('tile-weight-value'), Number(ws[0].value), { decimals: 1, unit: 'kg' }); $('tile-weight-sub').textContent = when(ws[0].day); }
+  else { clearCount($('tile-weight-value'), '--'); $('tile-weight-sub').textContent = 'none recent'; }
+}
+function renderGlanceCard() {
+  const list = $('settings-glance-list');
+  if (!list) return;
+  const chosen = glanceChosen();
+  list.replaceChildren(...GLANCE.map(([key, name]) => {
+    const box = h('input', { type: 'checkbox', id: 'glancetick-' + key, checked: chosen.includes(key), onchange: (ev) => {
+      let now = glanceChosen();
+      if (ev.target.checked) {
+        if (now.length >= GLANCE_MAX) { ev.target.checked = false; toast('Three at a time. Untick one first.'); return; }
+        now.push(key);
+      } else {
+        if (now.length <= 1) { ev.target.checked = true; toast('Keep at least one at the top of Today'); return; }
+        now = now.filter((k) => k !== key);
+      }
+      now = GLANCE.map(([g]) => g).filter((g) => now.includes(g)); // shown in the list's order
+      try { localStorage.setItem(GLANCE_KEY, JSON.stringify(now)); } catch (e) { /* this time only */ }
+      renderGlanceExtras();
+      toast(name + (ev.target.checked ? ' shown at the top of Today' : ' taken off the top of Today'));
+    } });
+    return h('label', { class: 'check settings-toggle' }, box, h('span', { text: name }), key === 'rhr' ? h('small', { class: 'glance-note', text: ' from Apple Health or Health Connect' }) : null);
+  }));
 }
 
 /* The three tiles on Today open the day's list of that kind (v282, Mark: "click on the tile and see a list of the drinks taken,
@@ -4031,8 +4091,36 @@ function renderTiles() {
 const TILE_LISTS = {
   temp: { title: 'Temperatures', type: 'temp', none: 'No temperature logged', add: 'Log vitals', open: () => openAdd('vitals') },
   drink: { title: 'Drinks', type: 'drink', none: 'No drinks logged', add: 'Log a drink', open: () => openAdd('drink') },
-  meds: { title: 'Doses taken', type: 'med', none: 'No doses logged', add: 'Log a dose', open: () => openDoseSheet() }
+  meds: { title: 'Medicines', type: 'med', none: 'No doses logged', add: 'Log a dose', open: () => openDoseSheet() },
+  sleep: { title: 'Sleep', type: 'sleep', none: 'No sleep logged', add: 'Log sleep', open: () => openAdd('sleep') },
+  weight: { title: 'Weight', type: 'weight', none: 'No weight logged', add: 'Log weight', open: () => openAdd('weight') }
 };
+/* Still to take (v472, Mark: "it says 5 of 9 but doesn't give what's left"): the day's scheduled doses not yet logged, first,
+   each with its time and Log it; what has been taken follows */
+function stillToTake(day) {
+  const out = [];
+  activeScheduled(day).filter((m) => !m.hospital).forEach((m) => {
+    const need = m.perDay || 1, got = countMedOnDay(m.id, day);
+    if (got >= need) return;
+    const times = (Array.isArray(m.takenAt) && m.takenAt.length ? m.takenAt : Array.isArray(m.times) ? m.times : []).slice().sort();
+    const left = need - got;
+    const at = times.length ? times.slice(Math.max(0, times.length - left)) : [];
+    out.push({ m, left, at, first: at[0] || '99:99' });
+  });
+  return out.sort((a, b) => a.first.localeCompare(b.first) || String(a.m.name).localeCompare(String(b.m.name)));
+}
+function stillToTakeBox(day, anyTaken) {
+  const list = stillToTake(day);
+  if (!list.length) return null;
+  const canLog = !(state.readOnly || state.viewer) && day === todayStr();
+  return h('div', { class: 'still-box' },
+    h('p', { class: 'fieldlabel', text: 'Still to take' }),
+    ...list.map(({ m, left, at }) => h('div', { class: 'still-row' },
+      h('span', { class: 'still-main' }, h('span', { class: 'still-name', text: m.name }),
+        h('span', { class: 'still-sub', text: [at.length ? at.join(', ') : (left === 1 ? '1 more' : left + ' more'), (taperOn(m, day) || {}).dose || m.dose].filter(Boolean).join(' \u00b7 ') })),
+      canLog ? h('button', { class: 'btn btn-primary btn-small', type: 'button', 'aria-label': 'Log ' + m.name + ' now', onclick: async () => { closeSheet({ force: true }); await logMed(m); } }, 'Log it') : null)),
+    anyTaken ? h('p', { class: 'fieldlabel', text: 'Taken' }) : null);
+}
 function openTileList(kind) {
   const k = TILE_LISTS[kind];
   const day = state.selectedDay;
@@ -4042,14 +4130,19 @@ function openTileList(kind) {
   if (kind === 'drink') { const ml = list.reduce((t, e) => t + (Number(e.value) || 0), 0); sum = `${plural(list.length, 'drink')}, ${ml >= 1000 ? (ml / 1000).toFixed(2).replace(/0+$/, '').replace(/\.$/, '') + ' L' : ml + ' ml'} in all, ${when}.`; }
   else if (kind === 'temp') sum = `${plural(list.length, 'reading')} ${when}.`;
   else { const sched = activeScheduled(day).filter((m) => !m.hospital); const need = sched.reduce((t, m) => t + (m.perDay || 1), 0); const done = sched.reduce((t, m) => t + Math.min(m.perDay || 1, countMedOnDay(m.id, day)), 0); sum = `${plural(list.length, 'dose')} logged ${when}` + (need ? `, ${done} of the ${need} scheduled.` : '.'); }
+  if (kind === 'sleep' || kind === 'weight') sum = plural(list.length, kind === 'sleep' ? 'entry' : 'reading') + ' ' + when + '.';
   const body = h('div', { class: 'tile-list' },
     h('p', { class: 'hint', text: list.length ? sum : k.none + ' ' + when + '.' }),
+    kind === 'meds' ? stillToTakeBox(day, list.length > 0) : null,
     list.length ? h('ul', { class: 'timeline' }, ...list.map((e) => renderEntry(e))) : '',
     state.readOnly || state.viewer ? '' : h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => { closeSheet({ force: true }); k.open(); } }, k.add),
     h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => closeSheet({ force: true }) }, 'Close'));
   openSheet(k.title + ' ' + when, body);
 }
-[['tile-temp', 'temp'], ['tile-drink', 'drink'], ['tile-meds', 'meds']].forEach(([id, kind]) => { const b = $(id); if (b) b.addEventListener('click', () => openTileList(kind)); });
+[['tile-temp', 'temp'], ['tile-drink', 'drink'], ['tile-meds', 'meds'], ['tile-sleep', 'sleep'], ['tile-weight', 'weight']].forEach(([id, kind]) => { const b = $(id); if (b) b.addEventListener('click', () => openTileList(kind)); });
+/* v472: resting heart rate opens its card on Trends; steps open Exercise */
+{ const b = $('tile-rhr'); if (b) b.addEventListener('click', () => { showTab('vitals'); setReportsSide('trends'); setTimeout(() => { const c = $('rhr-card'); if (c) c.scrollIntoView({ block: 'start', behavior: 'smooth' }); }, 400); }); }
+{ const b = $('tile-steps'); if (b) b.addEventListener('click', () => showTab('exercise')); }
 
 /* Quick add */
 document.querySelectorAll('.qa').forEach((b) => b.addEventListener('click', () => (b.dataset.add === 'medicine' ? openDoseSheet() : openAdd(b.dataset.add))));
@@ -4097,6 +4190,9 @@ const WHATS_NEW = [
   /* tag (v411, Mark): new, improved or fixed, shown as a label and grouped in that order; the newest batch is also the
      release notes for TestFlight and Google Play (tools/release_notes.mjs) */
   { id: '2026-11-18', items: [
+    { tag: 'new', text: 'Choose the three figures at the top of Today: medicines, drinks, temperature, resting heart rate, steps, sleep or weight. In More, Settings, Your Today screen.' },
+    { tag: 'new', text: 'Resting heart rate on Trends: a reading a day from Apple Health or Health Connect, with this week\'s and last week\'s averages, and a button to ask the team about it.' },
+    { tag: 'improved', text: 'Tap Meds taken on Today to see what is still to take, each with Log it.' },
     { tag: 'fixed', text: 'A session marked Not given is no longer asked about in the check-ins, or counted as treatment on the reports and day sheets.' }
   ] },
   { id: '2026-11-17', items: [
@@ -6670,7 +6766,7 @@ function openSettingsGroup(name, returnTab) {
   showTab('settings');
   setBrand(SETTINGS_GROUP_TITLES[name] || 'Settings');
   if (name === 'reports') syncWeekSetting();
-  if (name === 'tiles') renderTilesCard();
+  if (name === 'tiles') { renderTilesCard(); renderGlanceCard(); }
   if (name === 'tracks') renderTracksCard();
   if (name === 'circle') syncHouseholdCard();
   if (name === 'records') syncRecordsCard();
@@ -16294,6 +16390,8 @@ async function renderVitals() {
     options: lineOptions(Object.assign(yAxisBase(T), { beginAtZero: false, ticks: Object.assign(yAxisBase(T).ticks, { callback: (v) => v + ' bpm' }) }), { title: pointTitle, label: (item) => Math.round(item.raw.y) + ' bpm' }, false, hPoints.length)
   });
 
+  renderRestingCard(days, dayLabel, T, reduced);
+
   const bpEntries = vitalsEntries.filter((e) => e.systolic && e.diastolic);
   const sysPoints = bpEntries.map((e) => ({ x: entryDate(e).getTime(), y: Number(e.systolic) }));
   const diaPoints = bpEntries.map((e) => ({ x: entryDate(e).getTime(), y: Number(e.diastolic) }));
@@ -16431,6 +16529,45 @@ function barChart(T, labels, data, o) {
 const CHART_DRAW_MS = 2000, CHART_START_DELAY = 250;
 const chartPlayed = new Set(), chartPending = {};
 let chartWatcher = null;
+/* Resting heart rate on Trends (v472, Mark: his resting rate fell 8 bpm in a week, worth a question between appointments).
+   One reading a day from Apple Health or Health Connect, a line over the range, and the last two weeks' averages as facts.
+   Never coloured, flagged or judged. Shown even before any reading, saying where they come from. */
+function restingAvg(fromDay, toDay) {
+  const vals = [];
+  for (let d = fromDay; d <= toDay; d = addDays(d, 1)) { const v = Number(((state.exercise || {})[d] || {}).restingHr); if (v > 0) vals.push(v); }
+  return vals.length ? { avg: Math.round(vals.reduce((a, b) => a + b, 0) / vals.length), n: vals.length } : null;
+}
+function restingFacts() {
+  const today = todayStr();
+  const wk = restingAvg(addDays(today, -6), today), prev = restingAvg(addDays(today, -13), addDays(today, -7));
+  if (!wk && !prev) return '';
+  const part = (label, a) => (a ? `${label} ${a.avg} bpm (${plural(a.n, 'reading')})` : `${label}: no readings`);
+  return part("This week's average", wk) + '. ' + part("The week before", prev) + '.';
+}
+function renderRestingCard(days, dayLabel, T, reduced) {
+  const src = IS_ANDROID_APP ? 'Health Connect' : IS_IOS_APP ? 'Apple Health' : 'Apple Health or Health Connect';
+  const vals = days.map((d) => { const v = Number(((state.exercise || {})[d] || {}).restingHr); return v > 0 ? v : null; });
+  const any = vals.some((v) => v != null);
+  $('rhr-source').textContent = 'One reading a day, from ' + src + '.';
+  $('rhr-wrap').hidden = !any;
+  const facts = restingFacts();
+  $('rhr-facts').textContent = any || facts ? facts : 'No readings yet. Once ' + src + ' is connected (More, then ' + (IS_IOS_APP ? 'Apple Health' : IS_ANDROID_APP ? 'Health Connect' : 'the phone app') + '), a reading a day comes in by itself, from a watch or the phone.';
+  $('rhr-ask').hidden = Boolean(state.readOnly || state.viewer) || !facts;
+  if (!any) { if (state.charts.rhr) { state.charts.rhr.destroy(); delete state.charts.rhr; } return; }
+  const shown = vals.filter((v) => v != null);
+  makeChart('rhr', {
+    type: 'line',
+    data: { labels: days.map(dayLabel), datasets: [Object.assign(lineSeries(T, T.teal, vals, { label: 'Resting heart rate' }), { spanGaps: true })] },
+    options: { responsive: true, maintainAspectRatio: false, layout: { padding: { top: 8, right: 10 } }, animation: reduced ? false : undefined,
+      scales: { x: xAxisBase(T), y: Object.assign(yAxisBase(T), { suggestedMin: Math.min(...shown) - 5, suggestedMax: Math.max(...shown) + 5, ticks: Object.assign(yAxisBase(T).ticks, { callback: (v) => v + ' bpm' }) }) },
+      plugins: { legend: { display: false }, tooltip: Object.assign(tooltipStyle(T), { callbacks: { label: (i) => i.raw + ' bpm' } }) } }
+  });
+}
+$('rhr-ask').addEventListener('click', () => {
+  openAdd('question');
+  const box = document.querySelector('#sheet textarea');
+  if (box && !box.value) { box.value = 'My resting heart rate: ' + restingFacts().replace(/\.$/, '').replace(/^T/, 't').replace('. The week', '; the week') + '. '; box.focus(); }
+});
 function makeChart(key, cfg) {
   if (state.charts[key]) { state.charts[key].destroy(); delete state.charts[key]; }
   const canvas = $('chart-' + key);

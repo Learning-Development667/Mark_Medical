@@ -19,7 +19,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=471">
+  <link rel="stylesheet" href="styles.css?v=472">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -283,6 +283,27 @@
               <span class="tile-value" id="tile-meds-value">0 of 0</span>
               <span class="tile-sub" id="tile-meds-sub"></span>
             </button>
+            <!-- v472: more tiles to choose from (Settings, Your Today screen, At a glance) -->
+            <button class="tile tile-tap" type="button" id="tile-rhr" hidden>
+              <span class="tile-label">Resting HR</span>
+              <span class="tile-value" id="tile-rhr-value">--</span>
+              <span class="tile-sub" id="tile-rhr-sub"></span>
+            </button>
+            <button class="tile tile-tap" type="button" id="tile-steps" hidden>
+              <span class="tile-label">Steps</span>
+              <span class="tile-value" id="tile-steps-value">--</span>
+              <span class="tile-sub" id="tile-steps-sub"></span>
+            </button>
+            <button class="tile tile-tap" type="button" id="tile-sleep" hidden>
+              <span class="tile-label">Sleep</span>
+              <span class="tile-value" id="tile-sleep-value">--</span>
+              <span class="tile-sub" id="tile-sleep-sub"></span>
+            </button>
+            <button class="tile tile-tap" type="button" id="tile-weight" hidden>
+              <span class="tile-label">Weight</span>
+              <span class="tile-value" id="tile-weight-value">--</span>
+              <span class="tile-sub" id="tile-weight-sub"></span>
+            </button>
           </div>
         </div>
 
@@ -479,6 +500,14 @@
         <div class="card chart-card">
           <h2 class="section-title">Heart rate</h2>
           <div class="chart-wrap"><canvas id="chart-heart"></canvas></div>
+        </div>
+        <div class="card chart-card" id="rhr-card">
+          <h2 class="section-title">Resting heart rate</h2>
+          <p class="hint" id="rhr-source"></p>
+          <div class="chart-wrap" id="rhr-wrap"><canvas id="chart-rhr"></canvas></div>
+          <p class="rhr-facts" id="rhr-facts"></p>
+          <p class="legend-note">Readings as given. Not medical advice.</p>
+          <button class="btn-plain add-use" type="button" id="rhr-ask">+ Ask the team about this</button>
         </div>
         <div class="card chart-card">
           <h2 class="section-title">Blood pressure</h2>
@@ -1019,6 +1048,10 @@
 
         <div class="settings-group-view" data-group="tiles" hidden>
           <div id="settings-tiles" class="card settings-group">
+            <h3 class="settings-sub">At a glance</h3>
+            <p class="hint">Choose up to three figures for the top of Today, on this phone only.</p>
+            <div id="settings-glance-list" class="tile-ticks"></div>
+            <h3 class="settings-sub">Quick add</h3>
             <p class="hint">Tick the tiles you use. The rest are hidden from Today, on this phone only. Anything already logged stays on the timeline and the reports.</p>
             <div id="settings-tiles-list" class="tile-ticks"></div>
           </div>
@@ -1365,6 +1398,6 @@
   </div>
 
   <script src="config.js?v=405"></script>
-  <script type="module" src="scripts.js?v=471"></script>
+  <script type="module" src="scripts.js?v=472"></script>
 </body>
 </html>

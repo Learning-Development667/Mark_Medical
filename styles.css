@@ -2763,3 +2763,15 @@ html.text-huge .medrow, html.text-huge .med-head { gap: 8px; }
 /* v469: a session the hospital did not give stays on the calendar, plain with a dashed edge */
 .cal-cell.is-chemo.is-notgiven { background: var(--surface); color: var(--text-secondary); box-shadow: none; outline: 2px dashed var(--text-muted); outline-offset: -3px; font-weight: 600; }
 .key-notgiven { background: var(--surface); border: 2px dashed var(--text-muted); }
+
+/* v472: At a glance in Settings, Still to take in the medicines list, resting heart rate on Trends */
+.settings-sub { font-size: 17px; font-weight: 700; margin: var(--s-3) 0 var(--s-1); }
+.glance-note { color: var(--text-secondary); font-size: 15px; }
+.still-box { margin: var(--s-2) 0 var(--s-1); }
+.still-row { display: flex; align-items: center; gap: var(--s-2); border: 1px solid var(--line); border-radius: var(--r-sm); padding: var(--s-2) var(--s-3); margin-top: var(--s-2); background: var(--surface); }
+.still-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.still-name { font-weight: 700; overflow-wrap: anywhere; }
+.still-sub { font-size: 15px; color: var(--text-secondary); }
+.still-row .btn-small { flex: none; min-height: 44px; }
+.rhr-facts { font-weight: 600; margin: var(--s-2) 0 0; }
+.rhr-facts:empty { display: none; }
