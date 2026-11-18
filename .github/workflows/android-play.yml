@@ -9,6 +9,11 @@ name: Android app for Google Play
 
 on:
   workflow_dispatch:
+    inputs:
+      hold_for_review:
+        description: 'Upload but do not send for review (when Play Console has a rejection or a declaration to change; then press Send changes for review there)'
+        type: boolean
+        default: false
 
 # contents: write only for the first run's commit of the encrypted upload key; the token is not kept in the checkout (v432)
 permissions:
@@ -96,10 +101,12 @@ jobs:
           track: internal
           status: completed
           whatsNewDirectory: ${{ runner.temp }}/notes/whatsnew
+          changesNotSentForReview: ${{ inputs.hold_for_review }}
       # (v457, Mark: open testing always the newest version) the same build onto open testing too; Google reviews it there and
       # does not email when it is approved, so check Publishing overview. A failure here does not undo the internal upload.
       - name: Put the same build on open testing
         if: env.HAS_PLAY_KEY == 'true'
         env:
           PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          HOLD_FOR_REVIEW: ${{ inputs.hold_for_review }}
         run: node tools/play_promote.mjs

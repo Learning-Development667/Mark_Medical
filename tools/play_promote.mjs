@@ -36,9 +36,11 @@ try {
   if (Number(code) <= current) { console.log(`Open testing already has build ${current}; nothing to do`); }
   else {
     await call('PUT', `/edits/${edit.id}/tracks/beta`, { track: 'beta', releases: [{ name: rel.name || code, versionCodes: [code], status: 'completed', releaseNotes: rel.releaseNotes || [] }] });
-    await call('POST', `/edits/${edit.id}:commit`);
+    /* (v472) held: committed but not sent for review, for when Play Console has a rejection open or a declaration to change;
+       Mark then presses Send changes for review in Publishing overview */
+    await call('POST', `/edits/${edit.id}:commit` + (process.env.HOLD_FOR_REVIEW === 'true' ? '?changesNotSentForReview=true' : ''));
     committed = true;
-    console.log(`Open testing: build ${code} sent for Google's review (was build ${current || 'none'})`);
+    console.log(`Open testing: build ${code} ${process.env.HOLD_FOR_REVIEW === 'true' ? 'saved, waiting for Send changes for review in Play Console' : "sent for Google's review"} (was build ${current || 'none'})`);
   }
 } finally {
   if (!committed) await call('DELETE', `/edits/${edit.id}`).catch(() => {});
