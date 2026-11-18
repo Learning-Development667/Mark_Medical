@@ -16,7 +16,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '473';
+const APP_VERSION = '474';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -4255,7 +4255,7 @@ const WHATS_NEW = [
      release notes for TestFlight and Google Play (tools/release_notes.mjs) */
   { id: '2026-11-18', items: [
     { tag: 'new', text: 'Due now: when a medicine reminder goes off, Today shows which medicine it was for, with Log it. Tapping the reminder opens it, even with private notifications.' },
-    { tag: 'new', text: 'Choose the three figures at the top of Today: medicines, drinks, temperature, resting heart rate, steps, sleep or weight. In More, Settings, Your Today screen.' },
+    { tag: 'new', text: 'Choose the three figures at the top of Today: medicines, drinks, temperature, resting heart rate, steps, sleep or weight. Tap Choose tiles above the quick-add tiles on Today.' },
     { tag: 'new', text: 'Resting heart rate on Trends: a reading a day from Apple Health or Health Connect, with this week\'s and last week\'s averages, and a button to ask the team about it.' },
     { tag: 'improved', text: 'Tap Meds taken on Today to see what is still to take, each with Log it.' },
     { tag: 'fixed', text: 'A session marked Not given is no longer asked about in the check-ins, or counted as treatment on the reports and day sheets.' }

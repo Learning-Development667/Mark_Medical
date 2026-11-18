@@ -6,6 +6,9 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v474: What's new wording (18 November 2026)
+The At a glance item pointed at "More, Settings, Your Today screen"; the page is called Choose tiles and opens from the link above the quick-add tiles on Today (and More, Settings, Choose tiles). The v472 notes' "Your Today screen" means that page.
+
 ### v473: Due now, what a reminder was for (18 November 2026)
 Mark: with private notifications ("A medicine is due") he opened Daybook and could not tell which medicine it was. Mock-up approved the same day.
 - `#due-now` at the top of Today, drawn by `renderDueNow()` (called from `renderTiles()`, every minute while open, and when the app comes back to the front): `dueNow()` lists each scheduled medicine (not given in hospital) with a time in the last `DUE_WINDOW_MIN` (120) minutes whose dose for that time is not logged, with the day's dose (a reducing course's step), Log it and In 15 minutes (`remindIn15()`, the one-off reminder; only where this phone has reminders on). Today only, never for read-only or viewers; never says missed.
