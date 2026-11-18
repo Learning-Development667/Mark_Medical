@@ -6,6 +6,12 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v473: Due now, what a reminder was for (18 November 2026)
+Mark: with private notifications ("A medicine is due") he opened Daybook and could not tell which medicine it was. Mock-up approved the same day.
+- `#due-now` at the top of Today, drawn by `renderDueNow()` (called from `renderTiles()`, every minute while open, and when the app comes back to the front): `dueNow()` lists each scheduled medicine (not given in hospital) with a time in the last `DUE_WINDOW_MIN` (120) minutes whose dose for that time is not logged, with the day's dose (a reducing course's step), Log it and In 15 minutes (`remindIn15()`, the one-off reminder; only where this phone has reminders on). Today only, never for read-only or viewers; never says missed.
+- Tapping a medicine or one-off reminder now opens Today (the bridge's `appUrl('today')`), and the phone apps keep the tap until sign-in (`pendingNotifTab`, `openFromNotification()`), which they lost before when Daybook was closed. Arriving that way scrolls to the card (`focusDueNow()`).
+- The preview redraws the tiles after a medicine is saved.
+
 ### v472: At a glance, Still to take, and resting heart rate on Trends (18 November 2026)
 Google rejected build 30 for open testing (Health Connect minimum scope): the reviewer could not find resting heart rate in use. Mark explained why he wanted it (his resting rate fell 8 bpm in a week: worth a question between appointments, never an alarm) and approved the mock-up the same day.
 - **At a glance**: the three tiles at the top of Today are chosen from seven (`GLANCE`: meds, drink, temp, rhr, steps, sleep, weight), up to three, kept on the phone (`daybook.today.glance`, default temp, drink, meds), in More, Settings, Your Today screen (`#settings-glance-list`, `renderGlanceCard()`). New tiles `#tile-rhr` (latest within 7 days, `restingOn()`), `#tile-steps`, `#tile-sleep`, `#tile-weight`, drawn by `renderGlanceExtras()`; never coloured. Resting heart rate opens its Trends card, steps open Exercise, sleep and weight open their day lists.

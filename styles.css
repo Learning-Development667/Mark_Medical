@@ -2775,3 +2775,15 @@ html.text-huge .medrow, html.text-huge .med-head { gap: 8px; }
 .still-row .btn-small { flex: none; min-height: 44px; }
 .rhr-facts { font-weight: 600; margin: var(--s-2) 0 0; }
 .rhr-facts:empty { display: none; }
+
+/* v473: Due now at the top of Today, what a reminder was for */
+.due-now { background: var(--surface); border: 2px solid var(--warm); border-radius: var(--r-md, 16px); padding: var(--s-3); margin: 0 0 var(--s-3); }
+.due-now.is-arrived { box-shadow: 0 0 0 4px var(--teal-light); }
+.due-kick { margin: 0 0 var(--s-1); font-size: 15px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-primary); }
+.due-row + .due-row { border-top: 1px solid var(--line); margin-top: var(--s-3); padding-top: var(--s-3); }
+.due-name { margin: 0; font-family: 'Fraunces', serif; font-weight: 600; font-size: 21px; overflow-wrap: anywhere; }
+.due-sub { margin: 2px 0 0; color: var(--text-secondary); font-size: 16px; }
+.due-sub:empty { display: none; }
+.due-btns { display: flex; flex-wrap: wrap; gap: var(--s-2); margin-top: var(--s-2); }
+.due-btns .btn { flex: 1 1 130px; min-height: 48px; }
+@media (prefers-reduced-motion: reduce) { .due-now.is-arrived { box-shadow: none; } }

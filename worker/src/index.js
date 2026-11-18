@@ -742,7 +742,7 @@ async function runHouseholdReminders(env, fs, hid, entry, nowIn) {
       const key = `${medId}|${t}`;
       const takenSince = taken.some((x) => x >= t - LOGGED_BEFORE_MIN);
       if (!sentSet.has(key) && now.minutes >= t && now.minutes < t + REMINDER_WINDOW_MIN && !takenSince) {
-        await send(key, { title: 'Daybook', body: `${name} ${dose}`.trim() + ' is due' + bf, tag: key, url: appUrl('meds') }, 'A medicine is due');
+        await send(key, { title: 'Daybook', body: `${name} ${dose}`.trim() + ' is due' + bf, tag: key, url: appUrl('today') }, 'A medicine is due'); // v473: Today shows it under Due now
       }
       const nudgeKey = key + '|nudge';
       if (!sentSet.has(nudgeKey) && now.minutes >= t + NUDGE_AFTER_MIN && now.minutes < t + NUDGE_AFTER_MIN + REMINDER_WINDOW_MIN && !takenSince) {
@@ -770,7 +770,7 @@ async function runHouseholdReminders(env, fs, hid, entry, nowIn) {
     for (const r of oneOffs) {
       if (f(r.fields, 'sent') === true) { if (new Date(f(r.fields, 'at')).getTime() < Date.now() - 86400000) await fs.remove(hp(hid, 'reminders/' + r.id)); continue; }
       if (new Date(f(r.fields, 'at')).getTime() > Date.now()) { oneOffsPending = true; continue; }
-      await send('oneoff|' + r.id, { title: 'Daybook', body: `Reminder: ${f(r.fields, 'medName') || 'medicine'} ${f(r.fields, 'dose') || ''}`.trim(), tag: 'oneoff|' + r.id, url: appUrl('meds') }, 'Reminder: a medicine to take');
+      await send('oneoff|' + r.id, { title: 'Daybook', body: `Reminder: ${f(r.fields, 'medName') || 'medicine'} ${f(r.fields, 'dose') || ''}`.trim(), tag: 'oneoff|' + r.id, url: appUrl('today') }, 'Reminder: a medicine to take');
       await fs.merge(hp(hid, 'reminders/' + r.id), { sent: { booleanValue: true } });
     }
   }

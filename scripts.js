@@ -16,7 +16,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '472';
+const APP_VERSION = '473';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -1404,8 +1404,9 @@ async function enterApp(user) {
     setReadOnlyMode(state.readOnly);
     if (!state.viewer) showTab('today'); // always a known landing tab, even right after a viewer session on the same device
     const wanted = new URLSearchParams(location.search).get('tab');
-    if (wanted && PAGE_TITLES[wanted] && !state.viewer) { showTab(wanted); history.replaceState(null, '', location.pathname + location.hash); }
+    if (wanted && PAGE_TITLES[wanted] && !state.viewer) { showTab(wanted); history.replaceState(null, '', location.pathname + location.hash); if (wanted === 'today') setTimeout(() => focusDueNow(), 1500); }
     await startData();
+    if (pendingNotifTab) setTimeout(openFromNotification, 600);
     setTimeout(checkConsent, 1200); // (v448) the agreement to keep health information
     syncReminders();
     setTimeout(() => syncHealth(false), 4000); // Apple Health in the iPhone app (v403)
@@ -3826,6 +3827,68 @@ function ensureFoodIndexForToday() {
   loadFoodTable().then((idx) => { if (idx) renderToday(); });
 }
 
+/* Due now (v473, Mark: "I open the app and don't know what the notification was for", with private reminders that never name
+   the medicine on a locked screen). At the top of Today: each scheduled medicine whose time has come in the last two hours
+   and whose dose for that time is not logged, with Log it and In 15 minutes. Gone once logged, or two hours on. A tap on a
+   reminder opens Today here, even from closed. Facts only: never "missed", never coloured red. */
+const DUE_WINDOW_MIN = 120;
+let pendingNotifTab = null;
+function dueNow(now = new Date()) {
+  const day = todayStr(), mins = now.getHours() * 60 + now.getMinutes(), out = [];
+  activeScheduled(day).filter((m) => !m.hospital).forEach((m) => {
+    const times = (Array.isArray(m.takenAt) && m.takenAt.length ? m.takenAt : Array.isArray(m.times) ? m.times : []).slice().sort();
+    const got = countMedOnDay(m.id, day);
+    let due = null;
+    times.forEach((t, i) => {
+      const [hh, mm] = String(t).split(':').map(Number);
+      const at = hh * 60 + mm;
+      if (!(at <= mins && mins - at <= DUE_WINDOW_MIN)) return;
+      if (got < i + 1) due = t; // the dose for this time is not logged yet
+    });
+    if (due) out.push({ m, at: due });
+  });
+  return out.sort((a, b) => a.at.localeCompare(b.at) || String(a.m.name).localeCompare(String(b.m.name)));
+}
+async function remindIn15(m) {
+  if (state.demo) { toast('Reminders are not sent from the preview'); return; }
+  const at = new Date(Date.now() + 15 * 60 * 1000);
+  try {
+    await setDoc(doc(hcol('reminders')), { at: Timestamp.fromDate(at), medId: m.id, medName: m.name, dose: m.dose || '', sent: false, addedBy: state.name, createdAt: serverTimestamp() });
+    touchReminderPlan('oneoff');
+    toast('Reminder set for ' + fmtTime(at));
+  } catch (e) { console.error(e); toast('Could not set the reminder'); }
+}
+function renderDueNow() {
+  const box = $('due-now');
+  if (!box) return;
+  const list = state.readOnly || state.viewer || state.selectedDay !== todayStr() ? [] : dueNow();
+  box.hidden = !list.length;
+  if (!list.length) { box.replaceChildren(); return; }
+  box.replaceChildren(
+    h('p', { class: 'due-kick', text: list.length === 1 ? 'Due now, from the ' + list[0].at + ' reminder' : 'Due now' }),
+    ...list.map(({ m, at }) => h('div', { class: 'due-row' },
+      h('p', { class: 'due-name', text: m.name }),
+      h('p', { class: 'due-sub', text: [list.length > 1 ? at : '', (taperOn(m, todayStr()) || {}).dose || m.dose, medBeforeFood(m) ? 'before food' : ''].filter(Boolean).join(' \u00b7 ') }),
+      h('div', { class: 'due-btns' },
+        h('button', { class: 'btn btn-primary', type: 'button', 'aria-label': 'Log ' + m.name + ' now', onclick: async () => { await logMed(m); renderDueNow(); } }, 'Log it'),
+        state.pushEnabled ? h('button', { class: 'btn btn-secondary', type: 'button', 'aria-label': 'Remind me about ' + m.name + ' in 15 minutes', onclick: () => remindIn15(m) }, 'In 15 minutes') : null))));
+}
+/* every minute while Today is open, so a dose comes up at its time and goes two hours on */
+setInterval(() => { if (!document.hidden && state.household && $('due-now')) renderDueNow(); }, 60000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden && state.household) renderDueNow(); });
+function focusDueNow() {
+  const box = $('due-now');
+  if (!box || box.hidden) return;
+  box.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  box.classList.add('is-arrived');
+  setTimeout(() => box.classList.remove('is-arrived'), 2400);
+}
+function openFromNotification() {
+  const tab = pendingNotifTab; pendingNotifTab = null;
+  if (!tab || state.viewer) return;
+  try { showTab(PAGE_TITLES[tab] ? tab : 'today'); } catch (e) { return; }
+  if (tab === 'today') { renderDueNow(); setTimeout(focusDueNow, 300); }
+}
 function renderToday() {
   ensureFoodIndexForToday();
   applyTodayTiles();
@@ -4026,6 +4089,7 @@ function renderTiles() {
   tileM.classList.toggle('is-green', need > 0 && done >= need);
   $('tile-meds-sub').textContent = need > 0 && done >= need ? 'all done' : 'doses taken';
   renderGlanceExtras();
+  renderDueNow(); // v473: with the tiles, so a medicine change or a logged dose redraws it
 }
 
 /* At a glance (v472, Mark): the three tiles at the top of Today are chosen from seven, on this phone (daybook.today.glance).
@@ -4190,6 +4254,7 @@ const WHATS_NEW = [
   /* tag (v411, Mark): new, improved or fixed, shown as a label and grouped in that order; the newest batch is also the
      release notes for TestFlight and Google Play (tools/release_notes.mjs) */
   { id: '2026-11-18', items: [
+    { tag: 'new', text: 'Due now: when a medicine reminder goes off, Today shows which medicine it was for, with Log it. Tapping the reminder opens it, even with private notifications.' },
     { tag: 'new', text: 'Choose the three figures at the top of Today: medicines, drinks, temperature, resting heart rate, steps, sleep or weight. In More, Settings, Your Today screen.' },
     { tag: 'new', text: 'Resting heart rate on Trends: a reading a day from Apple Health or Health Connect, with this week\'s and last week\'s averages, and a button to ask the team about it.' },
     { tag: 'improved', text: 'Tap Meds taken on Today to see what is still to take, each with Log it.' },
@@ -15165,7 +15230,8 @@ $('settings-reminders').addEventListener('change', (ev) => setReminders(ev.targe
   plugin.addListener('notificationActionPerformed', ({ notification }) => {
     const url = notification && notification.data && notification.data.url;
     const m = url && /[?&]tab=([a-z]+)/.exec(url);
-    if (m && typeof showTab === 'function') { try { showTab(m[1]); } catch (e) { /* not signed in yet */ } }
+    /* v473: a tap that opens Daybook from closed arrives before sign-in, so the tab waits for it (openFromNotification) */
+    if (m) { pendingNotifTab = m[1]; if (state.household) openFromNotification(); }
   }).catch(() => {});
 })();
 
@@ -15906,7 +15972,7 @@ function openEditMed(m, prefill) {
       if (state.demo) {
         if (isNew) state.medicines.push({ id: fakeId('med'), ...data });
         else Object.assign(state.medicines.find((x) => x.id === m.id) || {}, data);
-        renderMeds();
+        renderMeds(); renderTiles();
         toast(isNew ? 'Medicine added' : 'Medicine updated');
         return;
       }
