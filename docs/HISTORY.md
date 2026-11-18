@@ -6,6 +6,9 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v471: a session not given is never looked back on as treatment (18 November 2026)
+Mark: his chemo on Tuesday was marked not given, but Wednesday's morning check-in still asked "Since chemo on Tuesday (day 1 after it), any side effects?". New `givenSessionDays()` (sessionDays without `notGiven`) now feeds `sessionBefore()` (the check-in side-effect questions, the day sheet's How it went box) and `afterTreatmentLog()` (the three days after treatment on the reports). `latestTreatmentKey()`, `repeatInfo()`'s last and next, and Share my medicines' hospital treatment last and next skip it too. Cycle numbering, Add sessions and My week's treatment day still use the plan. What's new batch `2026-11-18`; built the same morning at Mark's request.
+
 ### v470: What's new gains the Not given line (17 November 2026)
 The second phone build of the day, at Mark's request, so he can use Not given and reducing courses in the app straight away.
 

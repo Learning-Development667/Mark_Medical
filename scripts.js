@@ -16,7 +16,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '470';
+const APP_VERSION = '471';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -4096,6 +4096,9 @@ $('feedback-row').addEventListener('click', () => openFeedbackSheet());
 const WHATS_NEW = [
   /* tag (v411, Mark): new, improved or fixed, shown as a label and grouped in that order; the newest batch is also the
      release notes for TestFlight and Google Play (tools/release_notes.mjs) */
+  { id: '2026-11-18', items: [
+    { tag: 'fixed', text: 'A session marked Not given is no longer asked about in the check-ins, or counted as treatment on the reports and day sheets.' }
+  ] },
   { id: '2026-11-17', items: [
     { tag: 'new', text: 'Reducing courses: for a dose that changes, like a steroid course, choose The dose changes and add each step. The card and reminders say the day\'s dose, and the course ends by itself.' },
     { tag: 'new', text: 'Not given: when the hospital does not do a treatment session, mark it on the calendar day with the reason. It stays on the calendar, is not counted, and medicines for treatment days stand down.' },
@@ -9441,7 +9444,7 @@ function carerLog(entries, from, to) {
    was answered at all, so a report without check-ins is unchanged. */
 function afterTreatmentLog(entries, from, to) {
   const cis = entries.filter((e) => isPatientCheckin(e) && e.sidefx && e.sidefx.session);
-  const sessions = sessionDays().filter((d) => d <= to && addDays(d, FX_DAYS) >= from && (fxSessionsOn() || cis.some((c) => c.sidefx.session === d)));
+  const sessions = givenSessionDays().filter((d) => d <= to && addDays(d, FX_DAYS) >= from && (fxSessionsOn() || cis.some((c) => c.sidefx.session === d)));
   /* v334, Mark: anything logged on the Symptom tile in the three days after a session goes in the same table, on its
      own row marked as not from the check-ins, so the reader sees it beside the side effects without the app saying
      what caused it; a table, side effects down the side and the days across, reads more clearly than lines */
@@ -11182,7 +11185,7 @@ const FX_DAYS = 3;
 function fxSessionsOn() { return packOn('cancer') || packOn('ibd'); }
 function sessionBefore(day) {
   if (!fxSessionsOn()) return null;
-  const s = sessionDays().filter((d) => d < day && dayGap(d, day) <= FX_DAYS);
+  const s = givenSessionDays().filter((d) => d < day && dayGap(d, day) <= FX_DAYS);
   if (!s.length) return null;
   const d = s[s.length - 1];
   return { day: d, type: treatmentOf(state.days[d]), n: dayGap(d, day) };
@@ -14095,7 +14098,7 @@ async function buildMedList() {
   if (prn.length) sections.push({ title: 'When needed', head: ['Medicine', 'Dose', 'How often at most', 'For'], rows: prn.map(row) });
   /* treatment given in hospital: the calendar's sessions, by kind and name, with the last and the next */
   const hosp = new Map();
-  chemoDays().forEach((d) => {
+  chemoDays().filter((d) => !state.days[d].notGiven).forEach((d) => {
     const info = state.days[d], label = capFirst(sessionLabel(info));
     const g = hosp.get(label) || { name: label, last: '', next: '' };
     if (d <= today && d >= since && (!g.last || d > g.last)) g.last = d;
@@ -17558,7 +17561,7 @@ function sessionNamePh() { return packOn('ibd') ? 'e.g. adalimumab, infliximab' 
 function sessionLabel(info) { const t = treatmentOf(info); const n = info && info.treatName ? String(info.treatName).trim() : ''; return (n ? n + ' ' : '') + t.label.toLowerCase(); }
 /* The repeating treatment (an injection or infusion) around today: the last one and the next one */
 function repeatInfo(today = todayStr()) {
-  const days = chemoDays().filter((k) => isRepeat(treatmentOf(state.days[k])));
+  const days = chemoDays().filter((k) => isRepeat(treatmentOf(state.days[k])) && !state.days[k].notGiven);
   if (!days.length) return null;
   const last = days.filter((k) => k <= today).pop() || null;
   const next = days.find((k) => k > today) || null;
@@ -17577,6 +17580,10 @@ function chemoDays() { return Object.keys(state.days).filter((k) => state.days[k
    chemo session started a cycle, so weekly chemo never reached day 8. ---- */
 const NEW_CYCLE_GAP = 8;
 function sessionDays() { return chemoDays().filter((k) => treatmentOf(state.days[k]).cycle !== 'never'); }
+/* v471 (Mark: a session marked not given was still asked about in the morning check-in): anything that looks back at
+   treatment that happened (side-effect questions, the three days after treatment, the latest treatment) skips a session
+   the hospital did not give. Cycle numbering keeps the plan (sessionDays). */
+function givenSessionDays() { return sessionDays().filter((k) => !state.days[k].notGiven); }
 function dayGap(a, b) { return Math.round((parseDay(b) - parseDay(a)) / 864e5); }
 /* What the app would guess for a session on day k, given the other sessions (k need not be saved yet) */
 function guessCycleStart(k, list) {
@@ -17631,7 +17638,7 @@ function cycleWords(c) { return 'Cycle ' + c.index + (c.session ? ', session ' +
 /* The Treatment tab's side effects card (v173): a button that opens the Symptom sheet already saying "Chemo" (or the
    kind of the latest session), and the latest side effects of treatment and medicines from the recent entries. */
 function latestTreatmentKey() {
-  const days = Object.keys(state.days || {}).filter((d) => state.days[d] && state.days[d].chemo && d <= todayStr()).sort();
+  const days = Object.keys(state.days || {}).filter((d) => state.days[d] && state.days[d].chemo && !state.days[d].notGiven && d <= todayStr()).sort();
   const last = days.length ? state.days[days[days.length - 1]] : null;
   const t = treatmentOf(last);
   if (t.key !== 'other') return t.key;
