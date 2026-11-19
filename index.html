@@ -19,7 +19,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=476">
+  <link rel="stylesheet" href="styles.css?v=477">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -129,11 +129,24 @@
       <p class="strapline">Your companion between appointments.</p>
       <p id="signup-intro" class="muted">Your own Daybook, for you and the people you invite.</p>
       <form id="signup-form" autocomplete="on">
+        <!-- v477: who you are, first; no Beta code -->
+        <div id="signup-who" class="signup-who" role="group" aria-labelledby="signup-who-q">
+          <h2 class="fieldlabel signup-who-q" id="signup-who-q">Are you the patient or a carer?</h2>
+          <button class="preset signup-who-btn" type="button" data-who="patient" aria-pressed="false"><b>I'm the patient</b><span>Set up your own Daybook and invite the people you choose.</span></button>
+          <button class="preset signup-who-btn" type="button" data-who="carer" aria-pressed="false"><b>I'm a carer</b><span>Join the person you look after, with the code they sent you.</span></button>
+        </div>
+        <div id="signup-rest" hidden>
+        <label class="field" id="signup-code-field">
+          <span id="signup-code-label">The code your patient sent you</span>
+          <input id="signup-code" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="600">
+        </label>
+        <p class="hint" id="signup-carer-hint" hidden>No code yet? Ask them to invite you from Daybook: More, Your care circle, Invite someone.</p>
+        <button id="signup-setup" class="btn btn-link btn-block" type="button" hidden>Setting it up for someone who cannot do it themselves?</button>
         <label class="field">
           <span>Your first name</span>
           <input id="signup-name" type="text" autocomplete="given-name" maxlength="40" required>
         </label>
-        <p class="fieldlabel">Who is Daybook for?</p>
+        <p class="fieldlabel" id="signup-relation-label">Who is Daybook for?</p>
         <div class="chips" id="signup-relation" role="group" aria-label="Who is Daybook for?"></div>
         <label class="field" id="signup-for-field" hidden>
           <span>Their first name (the circle is theirs)</span>
@@ -159,13 +172,10 @@
           <span>Who told you about Daybook? (optional)</span>
           <input id="signup-heard" type="text" autocomplete="off" maxlength="80">
         </label>
-        <label class="field" id="signup-code-field">
-          <span>Invite code (only if someone in a circle sent you one; no Beta code needed then)</span>
-          <input id="signup-code" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="600">
-        </label>
         <p class="hint">Your entries are stored in Google's data centre in London and seen only by the people you invite, apart from anything you choose to send to an AI service. Not medical advice. By creating an account you agree to the <button class="btn-inline" type="button" data-page="terms">terms of use</button> and have read the <button class="btn-inline" type="button" data-page="privacy">privacy policy</button>.</p>
         <p id="signup-error" class="error" role="alert" hidden></p>
         <button id="signup-submit" class="btn btn-primary btn-block" type="submit">Create my account</button>
+        </div>
       </form>
       <button id="signup-cancel" class="btn btn-link btn-block" type="button">I already have a sign-in</button>
     </div>
@@ -1400,6 +1410,6 @@
   </div>
 
   <script src="config.js?v=405"></script>
-  <script type="module" src="scripts.js?v=476"></script>
+  <script type="module" src="scripts.js?v=477"></script>
 </body>
 </html>

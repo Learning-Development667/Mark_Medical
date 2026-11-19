@@ -1647,6 +1647,8 @@ async function handleCreateHousehold(request, env) {
     beta = await betaCodeRecord(fs, betaCode);
     if (!beta) { await fs.merge('users/' + who.uid, { betaDay: strVal(londonNow().day), betaTries: intVal(tries + 1) }); return json({ error: 'beta', message: BETA_CODE_MESSAGE }, 400); }
   }
+  /* v477: codes no longer required, but one given (an old link, the website's box) is still recorded, so Mark sees who brought them */
+  if (!env.BETA_CODES_REQUIRED && betaCode) beta = await betaCodeRecord(fs, betaCode).catch(() => null);
   const heardFrom = clean(body.heardFrom, 80);
   const day = londonNow().day;
   const g = await fs.get('bridge/global');

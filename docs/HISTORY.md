@@ -6,6 +6,11 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v477: no Beta code; sign-up asks patient or carer first (19 November 2026)
+Mark: Android testers on open testing could download Daybook but not start without a code. **`BETA_CODES_REQUIRED` is now empty** in `worker/wrangler.toml`, so the bridge's `/household` lets anyone set up their own circle (the daily cap `HOUSEHOLDS_A_DAY` stays); a code that is given (an old link, `?beta=`) is still recorded on the circle and counted. This works at once for every app already installed: the app never checked the code itself. `/beta-info` answers valid for any code while codes are off.
+- **Sign-up** (`#signup`): the first question, `#signup-who` (`data-who` patient | carer), then `#signup-rest`. The patient gets name, email, password, the consent box and "who told you"; a carer gets **The code your patient sent you** (`#signup-code`, the invite, required, checked with `missing()`) and joins through `joinCircle()`, with a hint to ask the patient to invite them, and **Setting it up for someone who cannot do it themselves?** (`#signup-setup`, `signupWho = 'setup'`) for the carer-led circle with `carerConsent()`, as before. An invite link skips the question (`drawSignupWho()`). The Beta code box is never shown (`signup-beta-field`, `nohousehold-beta-field` hidden; a code from a link still rides along). `relationChips()` gains `set()`.
+- The question is an `h2` so the consent box's `h3` keeps the heading order.
+
 ### v476: review D3 and D5 (19 November 2026)
 Mark agreed both as recommended and asked for them in the night's release.
 - **D3**: `prnStatus()` no longer gives a green "Can be taken now" (it judged one medicine on its own, so paracetamol stayed green after co-codamol). Its neutral line is facts: "Last 10:00 · 2 in 24 hours" or "None in the last 24 hours" (`takenIn24h()`); the amber "Next from" and red "Maximum reached" stay, as they are the person's own limits from the label. `SHARED_INGREDIENTS` and `ingredientsOf()` match paracetamol, codeine, dihydrocodeine, ibuprofen, aspirin and naproxen by name; `sharedIngredientLine()` adds "Paracetamol is also in Co-codamol 30/500, last 10:00." on a when-needed card and in the dose sheet when the other was taken in the last 24 hours. Never says whether to take it.

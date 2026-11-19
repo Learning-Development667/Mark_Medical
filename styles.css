@@ -2793,3 +2793,11 @@ html.text-huge .medrow, html.text-huge .med-head { gap: 8px; }
 /* v475: an iPhone zooms the page when a box with text under 16px is tapped, and does not zoom back (Mark, in the Food sheet) */
 @media (pointer: coarse) { input, textarea, select { font-size: max(16px, 1em); } }
 .med-line .med-shared, .pickrow-sub.med-shared { flex-basis: 100%; color: var(--text-primary); font-size: 15px; }
+
+/* v477: the sign-up's first question, patient or carer */
+.signup-who { display: grid; gap: var(--s-2); margin-bottom: var(--s-3); }
+.signup-who-btn { display: flex; flex-direction: column; align-items: flex-start; text-align: left; gap: 2px; padding: var(--s-3); border-radius: var(--r-md); min-height: 64px; white-space: normal; }
+.signup-who-btn b { font-size: 18px; }
+.signup-who-btn span { font-size: 15px; color: var(--text-secondary); font-weight: 400; }
+.signup-who-btn.is-active span { color: inherit; }
+.signup-who-q { font-family: inherit; font-size: 17px; margin: 0; }

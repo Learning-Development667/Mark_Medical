@@ -16,7 +16,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '476';
+const APP_VERSION = '477';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -1054,6 +1054,7 @@ const relationChips = (holder, prefix) => {
   const get = () => ({ relation: value, forName: value === 'carer' ? forIn.value.trim() : '', consent: value === 'carer' ? theirs.value() : mine.value() });
   /* hidden when joining with an invite code: then the invite says who they are */
   get.showBoxes = (on) => { mine.el.hidden = !on || value !== 'patient'; theirs.el.hidden = !on || value !== 'carer'; };
+  get.set = (v) => { value = v === 'carer' ? 'carer' : 'patient'; draw(); }; // v477: the first question sets it
   get.check = () => {
     if (value === 'patient') { if (!mine.box.checked) { missing(mine.box.closest('label'), 'Tick to agree'); return false; } return true; }
     if (!forIn.value.trim()) { missing(forIn, 'Their first name, please'); return false; }
@@ -1102,19 +1103,44 @@ function passwordProblem(pw, email) {
   if (COMMON_PASSWORDS.some((w) => bare === w || (bare.length <= w.length + 2 && bare.startsWith(w)))) return 'That password is one people try first. Three random words work well.';
   return '';
 }
+/* v477 (Mark: "Android testers can't just click a link, download and start testing"): no Beta code any more. The first
+   question is who you are. The patient makes an account and their circle; a carer types the code the patient sent them
+   (their invite) and joins; a carer setting a circle up for someone who cannot do it themselves has a link of their own.
+   An invite link skips the question and joins, as before. */
+let signupWho = '';
+function drawSignupWho() {
+  const invite = !!state.pendingInvite;
+  const who = invite ? 'invite' : signupWho;
+  $('signup-who').hidden = invite;
+  $('signup-who').querySelectorAll('[data-who]').forEach((b) => { const on = b.dataset.who === signupWho; b.classList.toggle('is-active', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+  $('signup-rest').hidden = !who;
+  const carerJoin = who === 'carer', setup = who === 'setup';
+  $('signup-code-field').hidden = !(carerJoin || invite);
+  $('signup-code-label').textContent = invite ? 'Invite code' : 'The code your patient sent you';
+  $('signup-relation-label').hidden = true; $('signup-relation').hidden = true;
+  $('signup-for-field').hidden = !setup;
+  if (who === 'patient' || setup) signupRelation.set(setup ? 'carer' : 'patient');
+  signupRelation.showBoxes(who === 'patient' || setup);
+  $('signup-setup').hidden = who !== 'carer';
+  $('signup-carer-hint').hidden = who !== 'carer';
+  $('signup-heard-field').hidden = !APP_STAGE || !(who === 'patient' || setup);
+  $('signup-intro').hidden = !who; // the strapline already says it before the choice
+  $('signup-intro').textContent = invite ? 'Create a sign-in to join the care circle you were invited to.' : who === 'carer' ? 'Join the care circle of the person you look after.' : setup ? 'Set up a care circle for someone who cannot do it themselves.' : who === 'patient' ? 'Your own Daybook, for you and the people you choose: your care circle.' : 'Your companion between appointments.';
+}
 function showSignup() {
   $('signin').hidden = true; $('nohousehold').hidden = true;
   $('signup').hidden = false;
   $('signup-error').hidden = true;
   $('signup-code').value = state.pendingInvite || '';
-  signupRelation.showBoxes(!state.pendingInvite);
-  $('signup-intro').textContent = state.pendingInvite ? 'Create a sign-in to join the care circle you were invited to.' : 'Your own Daybook, for you and the people you choose: your care circle.';
-  /* The Beta code and "who told you" (v152): only while the app is in Beta, and not when joining a circle with an invite */
+  drawSignupWho();
+  /* a Beta code from an old link is still kept, quietly, so Mark can see who brought someone; it is never asked for */
   if (state.pendingBeta && !$('signup-beta').value) $('signup-beta').value = state.pendingBeta;
-  $('signup-beta-field').hidden = !APP_STAGE || !!state.pendingInvite;
-  $('signup-heard-field').hidden = !APP_STAGE || !!state.pendingInvite;
-  $('signup-name').focus();
+  $('signup-beta-field').hidden = true;
+  const first = state.pendingInvite ? $('signup-name') : $('signup-who').querySelector('[data-who]');
+  if (first) first.focus();
 }
+$('signup-who').querySelectorAll('[data-who]').forEach((b) => b.addEventListener('click', () => { signupWho = b.dataset.who; drawSignupWho(); $(signupWho === 'carer' ? 'signup-code' : 'signup-name').focus(); }));
+$('signup-setup').addEventListener('click', () => { signupWho = 'setup'; drawSignupWho(); $('signup-name').focus(); });
 const betaPayload = (beta, heard) => (APP_STAGE ? { betaCode: $(beta).value.trim(), heardFrom: $(heard).value.trim() } : {});
 $('signup-button').addEventListener('click', showSignup);
 /* v466 (overnight review D4): people paste the whole invite link, or the whole message, into the invite box. Take the code
@@ -1128,7 +1154,7 @@ function inviteCodeFrom(raw) {
   const runs = t.match(/[A-Za-z0-9_-]{12,}/g) || [];
   return runs.sort((a, b) => b.length - a.length)[0] || t;
 }
-$('signup-code').addEventListener('input', () => signupRelation.showBoxes(!$('signup-code').value.trim()));
+// v477: the boxes follow the first question, not the code box
 $('nohousehold-code').addEventListener('input', () => nohouseholdRelation.showBoxes(!$('nohousehold-code').value.trim()));
 $('signup-cancel').addEventListener('click', () => { $('signup').hidden = true; $('signin').hidden = false; });
 $('signup-form').addEventListener('submit', async (ev) => {
@@ -1136,8 +1162,11 @@ $('signup-form').addEventListener('submit', async (ev) => {
   const btn = $('signup-submit'), err = $('signup-error');
   err.hidden = true; btn.disabled = true; btn.textContent = 'Creating';
   const name = $('signup-name').value.trim(), code = inviteCodeFrom($('signup-code').value);
+  const joining = !!state.pendingInvite || signupWho === 'carer';
+  if (!state.pendingInvite && !signupWho) { missing($('signup-who'), 'Are you the patient or a carer?'); btn.disabled = false; btn.textContent = 'Create my account'; return; }
+  if (joining && !code) { missing($('signup-code'), 'Type the code the patient sent you'); btn.disabled = false; btn.textContent = 'Create my account'; return; }
   /* (v448) the consent boxes are checked before any sign-in is made */
-  if (!code && circleSetupError(null, signupRelation)) { btn.disabled = false; btn.textContent = 'Create my account'; return; }
+  if (!joining && circleSetupError(null, signupRelation)) { btn.disabled = false; btn.textContent = 'Create my account'; return; }
   const pwProblem = passwordProblem($('signup-password').value, $('signup-email').value);
   if (pwProblem) { missing($('signup-password'), pwProblem, CHECK); btn.disabled = false; btn.textContent = 'Create my account'; return; }
   try {
@@ -1146,14 +1175,14 @@ $('signup-form').addEventListener('submit', async (ev) => {
     const cred = await createUserWithEmailAndPassword(auth, $('signup-email').value.trim(), $('signup-password').value);
     /* the sign-in exists now; the household is made by the bridge, and a failure there lands on the no-household screen, not in limbo */
     const who = signupRelation();
-    if (code) await joinCircle(code, name);
+    if (joining) await joinCircle(code, name);
     else await bridgeCall('/household', { name, ...who, ...betaPayload('signup-beta', 'signup-heard') });
     state.pendingInvite = null; state.pendingBeta = null;
-    state.setupPending = code ? 'phone' : 'full';
+    state.setupPending = joining ? 'phone' : 'full';
     $('signup').hidden = true;
     $('signup-password').value = '';
     await enterApp(cred.user);
-    toast(code ? 'You are in. Welcome to Daybook.' : 'Your Daybook is ready.');
+    toast(joining ? 'You are in. Welcome to Daybook.' : 'Your Daybook is ready.');
   } catch (e) {
     console.error(e);
     if (auth.currentUser && !(e && e.code && String(e.code).startsWith('auth/'))) { $('signup').hidden = true; showNoHousehold(auth.currentUser, e.message); }
@@ -1176,7 +1205,7 @@ function showNoHousehold(user, message) {
   $('nohousehold-code').value = state.pendingInvite || $('signup-code').value || '';
   if (!$('nohousehold-beta').value) $('nohousehold-beta').value = $('signup-beta').value || state.pendingBeta || '';
   if (!$('nohousehold-heard').value) $('nohousehold-heard').value = $('signup-heard').value || '';
-  $('nohousehold-beta-field').hidden = !APP_STAGE; $('nohousehold-heard-field').hidden = !APP_STAGE;
+  $('nohousehold-beta-field').hidden = true; $('nohousehold-heard-field').hidden = !APP_STAGE; // v477: no Beta code
   const err = $('nohousehold-error');
   if (message) { err.textContent = message; err.hidden = false; } else err.hidden = true;
   if (!BRIDGE) { err.textContent = 'Daybook cannot set up a care circle at the moment. Ask the person who runs it.'; err.hidden = false; }
@@ -4258,6 +4287,7 @@ const WHATS_NEW = [
   /* tag (v411, Mark): new, improved or fixed, shown as a label and grouped in that order; the newest batch is also the
      release notes for TestFlight and Google Play (tools/release_notes.mjs) */
   { id: '2026-11-19', items: [
+    { tag: 'improved', text: 'Signing up is simpler: say whether you are the patient or a carer. Patients start straight away with no Beta code, and carers join with the code their patient sends them.' },
     { tag: 'improved', text: 'When needed medicines show when they were last taken and how many in the last 24 hours, and say when another medicine on your list has the same ingredient, such as paracetamol.' },
     { tag: 'fixed', text: 'A carer\'s Invite button on the waiting card now invites the patient as the patient, so they are asked to agree when they join.' },
     { tag: 'fixed', text: 'In the Food sheet, the close button now always shows Save it or Don\'t save, and tapping a box no longer zooms the iPhone screen in.' }

@@ -24,7 +24,9 @@ workers_dev = true
 # Household admin workflow). Delete the line when the app is on the stores and sign-up opens.
 [vars]
 DEMO_PROJECT_ID = "daybook-demo-34eae"
-BETA_CODES_REQUIRED = "yes"
+# Off since v477 (Mark, 19 November 2026: Android testers must be able to download and start): a patient sets up without a code;
+# a code that is given is still recorded on the circle. Put it back to "yes" to require codes again.
+BETA_CODES_REQUIRED = ""
 # SEND_FROM: the address the reports are emailed from; replies go to the sender's own address, never here.
 SEND_FROM = "reporting@mymedicaldaybook.co.uk"
 
