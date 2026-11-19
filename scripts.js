@@ -16,7 +16,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '477';
+const APP_VERSION = '478';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -1123,7 +1123,7 @@ function drawSignupWho() {
   signupRelation.showBoxes(who === 'patient' || setup);
   $('signup-setup').hidden = who !== 'carer';
   $('signup-carer-hint').hidden = who !== 'carer';
-  $('signup-heard-field').hidden = !APP_STAGE || !(who === 'patient' || setup);
+  $('signup-heard-field').hidden = true; // v478 (Mark): "who told you" confused people; not asked any more
   $('signup-intro').hidden = !who; // the strapline already says it before the choice
   $('signup-intro').textContent = invite ? 'Create a sign-in to join the care circle you were invited to.' : who === 'carer' ? 'Join the care circle of the person you look after.' : setup ? 'Set up a care circle for someone who cannot do it themselves.' : who === 'patient' ? 'Your own Daybook, for you and the people you choose: your care circle.' : 'Your companion between appointments.';
 }
@@ -1205,7 +1205,7 @@ function showNoHousehold(user, message) {
   $('nohousehold-code').value = state.pendingInvite || $('signup-code').value || '';
   if (!$('nohousehold-beta').value) $('nohousehold-beta').value = $('signup-beta').value || state.pendingBeta || '';
   if (!$('nohousehold-heard').value) $('nohousehold-heard').value = $('signup-heard').value || '';
-  $('nohousehold-beta-field').hidden = true; $('nohousehold-heard-field').hidden = !APP_STAGE; // v477: no Beta code
+  $('nohousehold-beta-field').hidden = true; $('nohousehold-heard-field').hidden = true; // v477, v478: no Beta code, no "who told you"
   const err = $('nohousehold-error');
   if (message) { err.textContent = message; err.hidden = false; } else err.hidden = true;
   if (!BRIDGE) { err.textContent = 'Daybook cannot set up a care circle at the moment. Ask the person who runs it.'; err.hidden = false; }

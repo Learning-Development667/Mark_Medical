@@ -6,6 +6,9 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v478: no "Who told you about Daybook?" (19 November 2026)
+Mark: confusing on the sign-up. `signup-heard-field` and `nohousehold-heard-field` are never shown; the bridge still takes `heardFrom` if an older app sends it.
+
 ### v477: no Beta code; sign-up asks patient or carer first (19 November 2026)
 Mark: Android testers on open testing could download Daybook but not start without a code. **`BETA_CODES_REQUIRED` is now empty** in `worker/wrangler.toml`, so the bridge's `/household` lets anyone set up their own circle (the daily cap `HOUSEHOLDS_A_DAY` stays); a code that is given (an old link, `?beta=`) is still recorded on the circle and counted. This works at once for every app already installed: the app never checked the code itself. `/beta-info` answers valid for any code while codes are off.
 - **Sign-up** (`#signup`): the first question, `#signup-who` (`data-who` patient | carer), then `#signup-rest`. The patient gets name, email, password, the consent box and "who told you"; a carer gets **The code your patient sent you** (`#signup-code`, the invite, required, checked with `missing()`) and joins through `joinCircle()`, with a hint to ask the patient to invite them, and **Setting it up for someone who cannot do it themselves?** (`#signup-setup`, `signupWho = 'setup'`) for the carer-led circle with `carerConsent()`, as before. An invite link skips the question (`drawSignupWho()`). The Beta code box is never shown (`signup-beta-field`, `nohousehold-beta-field` hidden; a code from a link still rides along). `relationChips()` gains `set()`.
