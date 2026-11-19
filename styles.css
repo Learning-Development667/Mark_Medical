@@ -2787,3 +2787,8 @@ html.text-huge .medrow, html.text-huge .med-head { gap: 8px; }
 .due-btns { display: flex; flex-wrap: wrap; gap: var(--s-2); margin-top: var(--s-2); }
 .due-btns .btn { flex: 1 1 130px; min-height: 48px; }
 @media (prefers-reduced-motion: reduce) { .due-now.is-arrived { box-shadow: none; } }
+
+/* v475: the Food sheet's "not saved yet" question pinned to the foot of the sheet, so the X always shows it */
+.food-unsaved { position: sticky; bottom: 0; z-index: 3; box-shadow: 0 -8px 24px rgba(15, 27, 36, 0.18); margin-top: var(--s-3); }
+/* v475: an iPhone zooms the page when a box with text under 16px is tapped, and does not zoom back (Mark, in the Food sheet) */
+@media (pointer: coarse) { input, textarea, select { font-size: max(16px, 1em); } }

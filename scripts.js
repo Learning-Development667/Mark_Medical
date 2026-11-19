@@ -16,7 +16,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '474';
+const APP_VERSION = '475';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -4253,6 +4253,9 @@ $('feedback-row').addEventListener('click', () => openFeedbackSheet());
 const WHATS_NEW = [
   /* tag (v411, Mark): new, improved or fixed, shown as a label and grouped in that order; the newest batch is also the
      release notes for TestFlight and Google Play (tools/release_notes.mjs) */
+  { id: '2026-11-19', items: [
+    { tag: 'fixed', text: 'In the Food sheet, the close button now always shows Save it or Don\'t save, and tapping a box no longer zooms the iPhone screen in.' }
+  ] },
   { id: '2026-11-18', items: [
     { tag: 'new', text: 'Due now: when a medicine reminder goes off, Today shows which medicine it was for, with Log it. Tapping the reminder opens it, even with private notifications.' },
     { tag: 'new', text: 'Choose the three figures at the top of Today: medicines, drinks, temperature, resting heart rate, steps, sleep or weight. Tap Choose tiles above the quick-add tiles on Today.' },
@@ -5691,8 +5694,14 @@ function openAdd(type, editEntry, preset) {
           h('button', { class: 'btn btn-primary', type: 'button', onclick: () => { unsaved.hidden = true; saveBtn.click(); } }, onDetails ? 'Save it' : 'Carry on'),
           h('button', { class: 'btn btn-secondary', type: 'button', onclick: () => closeSheet({ force: true }) }, "Don't save"))
       );
+      /* v475 (Mark: the X "did nothing" while scrolled down: this question was up by the food, out of sight) it is pinned to
+         the foot of the sheet, in view wherever the sheet is scrolled, and Save it gets the focus */
+      const body = $('sheet-body');
+      if (body && unsaved.parentElement !== body) body.append(unsaved);
       unsaved.hidden = false;
-      unsaved.scrollIntoView({ block: 'nearest' });
+      unsaved.scrollIntoView({ block: 'end' });
+      const first = unsaved.querySelector('button');
+      if (first) first.focus({ preventScroll: true });
       return false;
     };
 

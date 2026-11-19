@@ -6,6 +6,9 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v475: the Food sheet's close, and no zoom on tapping a box (19 November 2026)
+Mark: after Add on breakfast, the X "did nothing" and the screen had zoomed in; only closing the app got him out. The X did ask (the sheet guard's "not saved yet" with Save it and Don't save), but the question sat by the food near the top, out of sight while scrolled down. It is now moved to the foot of the sheet body, `position: sticky; bottom: 0` (`.food-unsaved`), scrolled into view, with Save it focused. And on touch screens every input, textarea and select is at least 16px (`@media (pointer: coarse)`), so an iPhone never zooms the page when a box is tapped. Built straight away (his own use). Not reproduced: his breakfast showed "type fortified" and "fortified" as foods not in the table.
+
 ### v474: What's new wording (18 November 2026)
 The At a glance item pointed at "More, Settings, Your Today screen"; the page is called Choose tiles and opens from the link above the quick-add tiles on Today (and More, Settings, Choose tiles). The v472 notes' "Your Today screen" means that page.
 
