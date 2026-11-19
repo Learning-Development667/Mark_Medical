@@ -16,7 +16,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '475';
+const APP_VERSION = '476';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -2845,7 +2845,7 @@ async function checkConsent() {
         if (!cc.check()) return;
         try {
           const r = await bridgeCall('/consent', cc.value()); closeSheet({ force: true }); state.consent = { status: r.status, forName: patientName };
-          if (r.status === 'waiting') holdForConsent(true, 'Waiting for ' + patientName + ' to agree', 'Nothing can be recorded until ' + patientName + ' joins and agrees. Invite them under More, Care circle, as the patient.', 'Invite ' + patientName, () => openInviteSheet());
+          if (r.status === 'waiting') holdForConsent(true, 'Waiting for ' + patientName + ' to agree', 'Nothing can be recorded until ' + patientName + ' joins and agrees. Invite them under More, Care circle, as the patient.', 'Invite ' + patientName, () => openInviteSheet({ patient: true, name: patientName }));
           else { holdForConsent(false); toast('Saved. Mark 1 Apps will check the authority.'); }
         } catch (e) { toast(e.message); }
       } }, 'Save');
@@ -2860,7 +2860,7 @@ async function checkConsent() {
   const words = runs && !hasPatient
     ? 'Nothing can be recorded until ' + patientName + ' joins and agrees. Invite them under More, Care circle, as the patient.'
     : 'Nothing can be recorded until ' + patientName + ' agrees to Daybook keeping their health information.';
-  holdForConsent(true, 'Waiting for ' + patientName + ' to agree', words, runs && !hasPatient ? 'Invite ' + patientName : '', runs && !hasPatient ? () => openInviteSheet() : null);
+  holdForConsent(true, 'Waiting for ' + patientName + ' to agree', words, runs && !hasPatient ? 'Invite ' + patientName : '', runs && !hasPatient ? () => openInviteSheet({ patient: true, name: patientName }) : null);
 }
 function consentWordsFor(c) {
   if (!c || !c.status) return 'Not recorded yet.';
@@ -3012,9 +3012,12 @@ function openDeleteSheet(whole) {
   openSheet(whole ? 'Delete this care circle' : 'Leave and delete my sign-in', body);
 }
 /* Invite someone: name, access, who they are; the bridge makes a one-use link to share */
-function openInviteSheet() {
-  const name = h('input', { type: 'text', placeholder: 'e.g. Sam', maxlength: '40' });
-  let role = 'family', relation = '';
+/* opts.patient (v476, review D5): from the waiting card, the invite is for the patient, named and fixed, so they are asked to
+   agree when they join; a family invite never asked and left the circle locked */
+function openInviteSheet(opts = {}) {
+  const forPatient = Boolean(opts && opts.patient);
+  const name = h('input', { type: 'text', placeholder: 'e.g. Sam', maxlength: '40', value: forPatient && opts.name ? opts.name : '' });
+  let role = 'family', relation = forPatient ? 'patient' : '';
   const roleRow = h('div', { class: 'chips', role: 'group', 'aria-label': 'What they can do' });
   const relRow = h('div', { class: 'chips', role: 'group', 'aria-label': 'Who they are' });
   const chip = (label, on, onclick) => h('button', { class: 'preset' + (on ? ' is-active' : ''), type: 'button', 'aria-pressed': on ? 'true' : 'false', onclick }, label);
@@ -3041,13 +3044,14 @@ function openInviteSheet() {
   } }, 'Make the invite link');
   const body = h('div', null,
     field('Their first name', name),
-    h('p', { class: 'hint', text: 'What they can do' }), roleRow, roleHint,
-    h('p', { class: 'hint', text: 'Who they are' }), relRow,
+    forPatient ? h('p', { class: 'hint', text: 'As the patient. When they join, they are asked to agree to keeping their health information, and then the circle opens.' }) : null,
+    forPatient ? null : h('p', { class: 'hint', text: 'What they can do' }), forPatient ? null : roleRow, forPatient ? null : roleHint,
+    forPatient ? null : h('p', { class: 'hint', text: 'Who they are' }), forPatient ? null : relRow,
     makeBtn, result,
     h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: closeSheet }, 'Done'));
-  openSheet('Invite someone', body);
+  openSheet(forPatient ? 'Invite ' + (opts.name || 'the patient') : 'Invite someone', body);
 }
-$('settings-invite').addEventListener('click', openInviteSheet);
+$('settings-invite').addEventListener('click', () => openInviteSheet());
 
 /* Apple Health card (since v75): the bridge address and this household's inbox key, read from
    households/{id}/private/health (family only, written by the household workflows), so the
@@ -4254,6 +4258,8 @@ const WHATS_NEW = [
   /* tag (v411, Mark): new, improved or fixed, shown as a label and grouped in that order; the newest batch is also the
      release notes for TestFlight and Google Play (tools/release_notes.mjs) */
   { id: '2026-11-19', items: [
+    { tag: 'improved', text: 'When needed medicines show when they were last taken and how many in the last 24 hours, and say when another medicine on your list has the same ingredient, such as paracetamol.' },
+    { tag: 'fixed', text: 'A carer\'s Invite button on the waiting card now invites the patient as the patient, so they are asked to agree when they join.' },
     { tag: 'fixed', text: 'In the Food sheet, the close button now always shows Save it or Don\'t save, and tapping a box no longer zooms the iPhone screen in.' }
   ] },
   { id: '2026-11-18', items: [
@@ -4504,7 +4510,8 @@ function openDoseSheet() {
   const row = (m, status) => {
     const pill = status ? h('span', { class: 'pill pill-' + status.level, text: status.text }) : null;
     return h('button', { class: 'pickrow doserow', type: 'button', onclick: async () => { closeSheet(); await logMed(m); } },
-      h('span', { class: 'pickrow-main' }, h('span', { class: 'pickrow-title', text: m.name }), h('span', { class: 'pickrow-sub', text: medDoseLabel(m) + (m.purpose ? ' · ' + m.purpose : '') })),
+      h('span', { class: 'pickrow-main' }, h('span', { class: 'pickrow-title', text: m.name }), h('span', { class: 'pickrow-sub', text: medDoseLabel(m) + (m.purpose ? ' · ' + m.purpose : '') }),
+        m.kind === 'prn' && sharedIngredientLine(m) ? h('span', { class: 'pickrow-sub med-shared', text: sharedIngredientLine(m) }) : null),
       pill);
   };
   const prn = activePrn().filter((m) => !hospitalHidden(m));
@@ -14365,7 +14372,41 @@ function prnStatus(m) {
       return { level: 'amber', text: 'Next from ' + fmtTime(next) + (dayStr(next) === todayStr() ? '' : dayStr(next) === addDays(todayStr(), 1) ? ' tomorrow' : ' on ' + fmtDayShort(dayStr(next))), block: true };
     }
   }
-  return { level: 'green', text: isCarerUser() ? 'Can be given now' : 'Can be taken now', block: false };
+  /* v476 (review D3): no green "Can be taken now" verdict, which judged one medicine on its own (paracetamol stayed green after
+     co-codamol). Facts instead: when it was last taken and how many in the last 24 hours. The amber and red above stay:
+     they are the person's own limits, typed in from the label. */
+  const n24 = takenIn24h(m.id);
+  if (!last) return { level: 'teal', text: 'None in the last 24 hours', block: false }; // the live window is 7 days, so never "none yet"
+  return { level: 'teal', text: n24 ? 'Last ' + fmtTime(entryDate(last)) + (dayStr(entryDate(last)) === today ? '' : ' ' + fmtDayShort(dayStr(entryDate(last)))) + ' \u00b7 ' + n24 + ' in 24 hours' : 'None in the last 24 hours', block: false };
+}
+function takenIn24h(medId) {
+  const from = Date.now() - 24 * 36e5;
+  return (state.recentEntries || []).filter((e) => e.type === 'med' && e.medId === medId && entryDate(e).getTime() >= from).length;
+}
+/* Shared ingredients (v476, review D3): when another medicine on the list holds the same pain relief ingredient and was taken
+   in the last 24 hours, the card says so, as a fact. Matched by name; never says whether to take it. */
+const SHARED_INGREDIENTS = [
+  ['paracetamol', /paracetamol|co-?codamol|co-?dydramol|tramacet|solpadeine|panadol|calpol|lemsip|beechams|anadin extra|syndol|migraleve/i],
+  ['codeine', /co-?codamol|\bcodeine|solpadeine|nurofen plus|migraleve|syndol/i],
+  ['dihydrocodeine', /co-?dydramol|dihydrocodeine|\bdf ?118/i],
+  ['ibuprofen', /ibuprofen|nurofen|brufen|calprofen|fenbid/i],
+  ['aspirin', /aspirin|anadin(?! paracetamol| ibuprofen| joint)|disprin/i],
+  ['naproxen', /naproxen|naprosyn/i]
+];
+function ingredientsOf(m) { const nm = String((m && m.name) || ''); return SHARED_INGREDIENTS.filter(([, re]) => re.test(nm)).map(([k]) => k); }
+function sharedIngredientLine(m) {
+  const mine = ingredientsOf(m);
+  if (!mine.length) return '';
+  const from = Date.now() - 24 * 36e5;
+  const bits = [];
+  (state.medicines || []).filter((o) => o.id !== m.id).forEach((o) => {
+    const both = ingredientsOf(o).filter((k) => mine.includes(k));
+    if (!both.length) return;
+    const last = lastMedEntry(o.id);
+    if (!last || entryDate(last).getTime() < from) return;
+    bits.push(capFirst(both.join(' and ')) + ' is also in ' + o.name + ', last ' + fmtTime(entryDate(last)));
+  });
+  return bits.join('. ') + (bits.length ? '.' : '');
 }
 
 /* The Meds card, compact (v215). Mark: "the meds page is quite busy now and a lot of scrolling... just the name of
@@ -14428,7 +14469,7 @@ function medCard(m, day, section) {
     if (count >= perDay) { card.classList.add('is-complete'); line.append(h('span', { class: 'pill pill-green', text: isToday ? 'Done for today' : 'All doses given' })); }
     else if (!isToday && !count) line.append(h('span', { class: 'med-muted', text: 'Not logged this day' }));
   } else {
-    if (isToday) { const st = prnStatus(m); line.append(h('span', { class: 'pill pill-' + st.level, text: st.text })); }
+    if (isToday) { const st = prnStatus(m); line.append(h('span', { class: 'pill pill-' + st.level, text: st.text })); const sh = sharedIngredientLine(m); if (sh) line.append(h('span', { class: 'med-shared', text: sh })); }
     if (m.maxPerDay) line.append(h('span', { text: `${count} of ${m.maxPerDay}` + (isToday ? ' today' : '') }));
     else if (count) line.append(h('span', { text: `${count} ` + (isToday ? 'today' : 'this day') }));
     else if (!isToday) line.append(h('span', { class: 'med-muted', text: 'Not logged this day' }));

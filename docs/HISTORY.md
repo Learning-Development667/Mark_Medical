@@ -6,6 +6,11 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v476: review D3 and D5 (19 November 2026)
+Mark agreed both as recommended and asked for them in the night's release.
+- **D3**: `prnStatus()` no longer gives a green "Can be taken now" (it judged one medicine on its own, so paracetamol stayed green after co-codamol). Its neutral line is facts: "Last 10:00 · 2 in 24 hours" or "None in the last 24 hours" (`takenIn24h()`); the amber "Next from" and red "Maximum reached" stay, as they are the person's own limits from the label. `SHARED_INGREDIENTS` and `ingredientsOf()` match paracetamol, codeine, dihydrocodeine, ibuprofen, aspirin and naproxen by name; `sharedIngredientLine()` adds "Paracetamol is also in Co-codamol 30/500, last 10:00." on a when-needed card and in the dose sheet when the other was taken in the last 24 hours. Never says whether to take it.
+- **D5**: the waiting card's "Invite {patient}" opens `openInviteSheet({ patient: true, name })`: named, as the patient, with the role and relation chips hidden, so the patient is asked to agree when they join. Settings' Invite someone is unchanged.
+
 ### v475: the Food sheet's close, and no zoom on tapping a box (19 November 2026)
 Mark: after Add on breakfast, the X "did nothing" and the screen had zoomed in; only closing the app got him out. The X did ask (the sheet guard's "not saved yet" with Save it and Don't save), but the question sat by the food near the top, out of sight while scrolled down. It is now moved to the foot of the sheet body, `position: sticky; bottom: 0` (`.food-unsaved`), scrolled into view, with Save it focused. And on touch screens every input, textarea and select is at least 16px (`@media (pointer: coarse)`), so an iPhone never zooms the page when a box is tapped. Built straight away (his own use). Not reproduced: his breakfast showed "type fortified" and "fortified" as foods not in the table.
 
