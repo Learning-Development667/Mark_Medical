@@ -6,6 +6,9 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v479: a medicine can be both scheduled around treatment and when needed (20 November 2026)
+Mark: paracetamol is when needed, and also scheduled after treatment. A regular medicine with Only around treatment days gains **Also when needed on the other days** (`#med-prn-other`, saved as `prnOtherDays`, with the When needed gap and daily limit kept, shown under it). `prnOnOtherDays()`, `isPrnNow(m, day)`: in its treatment window it is under Scheduled with its times, dots and reminders, as before; outside it, `activePrn(day)` lists it under When needed with `prnStatus()` (last taken, 24 hours, its own limits), and `waitingForTreatment()` leaves it out. `medCard()`, `logMed()` (the gap and limit check), `medFrequency()` and the dose sheet follow `isPrnNow`. The bridge's reminders are unchanged (treatment window only). Reports still treat it as a regular medicine. Built straight away (Mark's own use).
+
 ### v478: no "Who told you about Daybook?" (19 November 2026)
 Mark: confusing on the sign-up. `signup-heard-field` and `nohousehold-heard-field` are never shown; the bridge still takes `heardFrom` if an older app sends it.
 

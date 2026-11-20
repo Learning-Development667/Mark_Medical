@@ -16,7 +16,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '478';
+const APP_VERSION = '479';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -4286,6 +4286,9 @@ $('feedback-row').addEventListener('click', () => openFeedbackSheet());
 const WHATS_NEW = [
   /* tag (v411, Mark): new, improved or fixed, shown as a label and grouped in that order; the newest batch is also the
      release notes for TestFlight and Google Play (tools/release_notes.mjs) */
+  { id: '2026-11-20', items: [
+    { tag: 'new', text: 'A medicine can be both: on a schedule around treatment days, and when needed on the other days. In Edit medicine, under Only around treatment days, tick Also when needed on the other days.' }
+  ] },
   { id: '2026-11-19', items: [
     { tag: 'improved', text: 'Signing up is simpler: say whether you are the patient or a carer. Patients start straight away with no Beta code, and carers join with the code their patient sends them.' },
     { tag: 'improved', text: 'When needed medicines show when they were last taken and how many in the last 24 hours, and say when another medicine on your list has the same ingredient, such as paracetamol.' },
@@ -4541,7 +4544,7 @@ function openDoseSheet() {
     const pill = status ? h('span', { class: 'pill pill-' + status.level, text: status.text }) : null;
     return h('button', { class: 'pickrow doserow', type: 'button', onclick: async () => { closeSheet(); await logMed(m); } },
       h('span', { class: 'pickrow-main' }, h('span', { class: 'pickrow-title', text: m.name }), h('span', { class: 'pickrow-sub', text: medDoseLabel(m) + (m.purpose ? ' · ' + m.purpose : '') }),
-        m.kind === 'prn' && sharedIngredientLine(m) ? h('span', { class: 'pickrow-sub med-shared', text: sharedIngredientLine(m) }) : null),
+        isPrnNow(m, today) && sharedIngredientLine(m) ? h('span', { class: 'pickrow-sub med-shared', text: sharedIngredientLine(m) }) : null),
       pill);
   };
   const prn = activePrn().filter((m) => !hospitalHidden(m));
@@ -12872,7 +12875,7 @@ function intervalWaitCard(m, day) {
       h('button', { class: 'btn btn-secondary', type: 'button', 'aria-label': 'Edit ' + m.name, onclick: () => openEditMed(m) }, 'Edit')));
 }
 function waitingForTreatment(day) {
-  return state.medicines.filter((m) => m.active !== false && onTreatmentDays(m) && !inTreatmentWindow(m, day) && (!m.courseEnd || m.courseEnd >= day) && !notStarted(m, day));
+  return state.medicines.filter((m) => m.active !== false && onTreatmentDays(m) && !prnOnOtherDays(m) && !inTreatmentWindow(m, day) && (!m.courseEnd || m.courseEnd >= day) && !notStarted(m, day));
 }
 function treatWindowWords(m) {
   const n = treatAfterOf(m), on = m.treatOnDay !== false;
@@ -12919,8 +12922,13 @@ function medWhenText(m) {
   const t = (m.takenAt && m.takenAt.length ? m.takenAt : m.times || []).slice().sort();
   return t.length ? 'Taken at ' + joinAnd(t) : '';
 }
-function activePrn() {
-  return state.medicines.filter((m) => m.active !== false && m.kind === 'prn');
+/* Both (v479, Mark: "paracetamol is as and when needed and also scheduled after treatment"): a regular medicine that follows the
+   Treatment calendar can also be taken when needed on the other days (prnOtherDays). In its treatment window it is under
+   Scheduled, with its times and reminders; on the other days it is under When needed, with its own gap and daily limit. */
+function prnOnOtherDays(m) { return !!(m && m.prnOtherDays === true && onTreatmentDays(m)); }
+function isPrnNow(m, day = state.selectedDay || todayStr()) { return m.kind === 'prn' || (prnOnOtherDays(m) && !inTreatmentWindow(m, day)); }
+function activePrn(day = state.selectedDay || todayStr()) {
+  return state.medicines.filter((m) => m.active !== false && (m.kind === 'prn' || (prnOnOtherDays(m) && !inTreatmentWindow(m, day))));
 }
 /* The order of the medicines (v216). Every list (the Meds tab's Scheduled and When needed, the Medicine
    tile's Log a dose, Manage medicines) shows medicines/{id}.order ascending: the field has been there since
@@ -13081,7 +13089,7 @@ function finishedCourses(day) {
 }
 function medFrequency(m) {
   if (m.hospital) return 'Given by the hospital';
-  if (m.kind === 'prn') {
+  if (isPrnNow(m)) {
     const bits = [];
     if (m.minGapHours) bits.push('at least ' + m.minGapHours + (m.minGapHours === 1 ? ' hour' : ' hours') + ' apart');
     if (m.maxPerDay) bits.push('at most ' + m.maxPerDay + ' a day');
@@ -14490,9 +14498,10 @@ function medCard(m, day, section) {
   /* the one status line on the compact card */
   const line = h('div', { class: 'med-line' });
   const perDay = m.perDay || 1;
-  if (onTreatmentDays(m)) line.append(h('span', { class: 'pill pill-treat med-treatpill', text: treatDayPill(day) }));
+  const prnNow = isPrnNow(m, day); // v479: a both-ways medicine is when needed outside its treatment window
+  if (onTreatmentDays(m) && !prnNow) line.append(h('span', { class: 'pill pill-treat med-treatpill', text: treatDayPill(day) }));
   if (m.hospital) line.append(h('span', { text: count ? `${count} given ` + (isToday ? 'today' : 'this day') : (isToday ? 'Nothing given today' : 'Not given this day') }));
-  else if (m.kind === 'scheduled') {
+  else if (m.kind === 'scheduled' && !prnNow) {
     line.append(h('span', { text: `${Math.min(count, perDay)} of ${perDay}` + (isToday ? ' today' : '') }));
     const tp = taperOn(m, day); // a reducing course says the day's dose on the folded card (v468)
     if (tp) line.append(h('span', { class: 'med-taper-line', text: 'Day ' + tp.dayNo + ' of ' + tp.total + ': ' + (tp.dose || fmtDoseCount(tp.n)) }));
@@ -14534,11 +14543,11 @@ function medCard(m, day, section) {
       taperBlock(m, day),
       recentDoseChange(m) && !why ? h('div', { class: 'med-was', text: doseChangeText(recentDoseChange(m)) }) : null,
       m.how ? h('div', { class: 'med-how', text: m.how }) : null,
-      m.kind === 'scheduled' && !m.hospital && medWhenText(m) ? h('div', { class: 'med-how med-when', text: medWhenText(m) }) : null,
+      m.kind === 'scheduled' && !m.hospital && medWhenText(m) ? h('div', { class: 'med-how med-when', text: medWhenText(m) + (prnOnOtherDays(m) ? ' When needed on other days.' : '') }) : null,
       medBeforeFood(m) ? h('div', { class: 'med-how med-before', text: BEFORE_FOOD_WORDS }) : null),
     m.purpose ? h('span', { class: 'med-purpose', text: usesWords(medUses(m)) }) : null));
   const status = h('div', { class: 'med-status' });
-  if (!m.hospital && m.kind === 'scheduled') {
+  if (!m.hospital && m.kind === 'scheduled' && !prnNow) {
     const dots = h('div', { class: 'dots' });
     for (let i = 0; i < perDay; i++) dots.append(h('span', { class: 'dot' + (i < count ? ' is-done' : '') }));
     status.append(dots);
@@ -14747,7 +14756,7 @@ async function logMed(m, at, note, doseText, forUse) {
   let waterGiven = null;
   if (!doseText && takenInWater(m)) { const r = await askWaterDose(m); if (!r) return; doseText = r.dose; waterGiven = r.ml; }
   else if (!doseText && asksEachTime(m)) { doseText = await askCountNow(m); if (!doseText) return; }
-  if (m.kind === 'prn' && !at) {
+  if (isPrnNow(m, todayStr()) && !at) {
     const s = prnStatus(m);
     if (s.block) {
       const ok = await confirmSheet(m.name, s.text + '. Log it anyway?', 'Log anyway', s.level === 'red');
@@ -15746,9 +15755,14 @@ function openEditMed(m, prefill) {
   const courseBits = h('div', null, h('div', { class: 'field-row' }, field('Course starts', courseStart), field('Course ends', courseEnd)), clearDates,
     h('p', { class: 'hint', text: 'Both dates are optional. A course starting later is listed under Starting soon on the Meds tab, and is not counted or reminded about until its first day.' }));
   const courseNote = h('p', { class: 'hint', text: 'No course dates: it follows the Treatment calendar, so it is due whenever a session is marked there and never shows as finished.' });
+  /* v479: and when needed on the other days (paracetamol after treatment, and for a headache any day) */
+  const prnOther = h('input', { type: 'checkbox', id: 'med-prn-other' });
+  prnOther.checked = m.prnOtherDays === true;
   const treatMore = h('div', { class: 'med-treat-more' },
     h('label', { class: 'check' }, treatOn, h('span', { text: 'On the session day itself' })),
-    h('p', { class: 'fieldlabel', text: 'And for how many days after?' }), afterChips, treatLine);
+    h('p', { class: 'fieldlabel', text: 'And for how many days after?' }), afterChips, treatLine,
+    h('label', { class: 'check' }, prnOther, h('span', { text: 'Also when needed on the other days' })),
+    h('p', { class: 'hint', text: 'On those days it shows under When needed, with the gap and daily limit set further down, and is never counted as missed.' }));
   const treatBox = h('div', { class: 'med-treatdays' },
     h('label', { class: 'check' }, treatDays, h('span', { text: 'Only around treatment days' })),
     h('p', { class: 'hint', text: (packOn('cancer') ? 'For chemo given on the day, or something like paracetamol for the three days after.' : 'For a medicine given on a treatment day, or something like paracetamol for the days after.') + ' On those days it shows under Scheduled with its times and reminders; the rest of the time it waits, folded away, and is never counted as missed.' }),
@@ -15939,7 +15953,7 @@ function openEditMed(m, prefill) {
   whenBlock.addEventListener('change', () => drawTaper());
   whenBlock.addEventListener('click', () => setTimeout(drawTaper, 0));
   const sync = () => {
-    schedFields.hidden = kind.value !== 'scheduled'; prnFields.hidden = kind.value !== 'prn';
+    schedFields.hidden = kind.value !== 'scheduled'; prnFields.hidden = !(kind.value === 'prn' || (kind.value === 'scheduled' && treatDays.checked && prnOther.checked));
     hospFields.hidden = !hospital.checked;
     treatBox.hidden = kind.value !== 'scheduled';
     whenBlock.hidden = kind.value !== 'scheduled' || hospital.checked;
@@ -15948,6 +15962,7 @@ function openEditMed(m, prefill) {
   };
   kindChips.addEventListener('click', () => setTimeout(sync, 0));
   hospital.addEventListener('change', sync);
+  prnOther.addEventListener('change', sync); treatDays.addEventListener('change', sync); // v479: the gap and limit for the other days
   sync();
 
   const body = h('div', null,
@@ -16035,7 +16050,11 @@ function openEditMed(m, prefill) {
         data.courseStart = taper ? taperStart.value : treatDays.checked ? null : courseStart.value || null;
         data.steps = taper ? steps : null;
         data.steroid = steroid.checked;
-        data.minGapHours = null; data.maxPerDay = null;
+        /* v479: a both-ways medicine keeps its when-needed gap and daily limit for the days outside its treatment window */
+        const both = treatDays.checked && prnOther.checked && !hospital.checked;
+        data.prnOtherDays = both;
+        data.minGapHours = both ? parseFloat(minGap.value) || null : null;
+        data.maxPerDay = both ? parseInt(maxPerDay.value, 10) || null : null;
         data.times = hospital.checked || !remind.checked ? [] : times.slice();
         data.withMeals = hospital.checked ? false : withMeals.checked;
         data.beforeFood = hospital.checked ? false : beforeFood.checked;
@@ -16044,7 +16063,7 @@ function openEditMed(m, prefill) {
         data.everyDays = null; data.everyFrom = null;
         data.minGapHours = parseFloat(minGap.value) || null;
         data.maxPerDay = parseInt(maxPerDay.value, 10) || null;
-        data.perDay = null; data.courseEnd = null; data.courseStart = null; data.steroid = false; data.steps = null;
+        data.perDay = null; data.courseEnd = null; data.courseStart = null; data.steroid = false; data.steps = null; data.prnOtherDays = false;
         data.times = []; data.takenAt = []; data.withMeals = hospital.checked ? false : withMeals.checked;
         data.beforeFood = hospital.checked ? false : beforeFood.checked;
       }
