@@ -6,6 +6,9 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v480: the reports count a both-ways medicine's other-day doses as when needed (20 November 2026)
+Mark asked for the gap left in v479. `hasPrnSide(m)` and `doseIsPrn(m, e)` judge each dose: outside the medicine's treatment window it was when needed. Notes for the team's when-needed doses (`twoPageMeds`), the when-needed summary line (over the range, not today's list), the Pain report's top-ups (`prnPainDoses`, `prnDoses`, the timing by quarter of the day, now from those doses only), its relief table (kind "Regular and when needed", the daily maximum, the `prn` pill in `report.js`), the Medicine history's last 14 days, and `medFrequency()` ("on the session day and 3 days after; when needed on other days, at least 4 hours apart, at most 4 a day") all follow it. Reports built in the cancer and general previews with no errors.
+
 ### v479: a medicine can be both scheduled around treatment and when needed (20 November 2026)
 Mark: paracetamol is when needed, and also scheduled after treatment. A regular medicine with Only around treatment days gains **Also when needed on the other days** (`#med-prn-other`, saved as `prnOtherDays`, with the When needed gap and daily limit kept, shown under it). `prnOnOtherDays()`, `isPrnNow(m, day)`: in its treatment window it is under Scheduled with its times, dots and reminders, as before; outside it, `activePrn(day)` lists it under When needed with `prnStatus()` (last taken, 24 hours, its own limits), and `waitingForTreatment()` leaves it out. `medCard()`, `logMed()` (the gap and limit check), `medFrequency()` and the dose sheet follow `isPrnNow`. The bridge's reminders are unchanged (treatment window only). Reports still treat it as a regular medicine. Built straight away (Mark's own use).
 

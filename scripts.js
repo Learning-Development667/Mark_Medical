@@ -16,7 +16,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '479';
+const APP_VERSION = '480';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -4287,7 +4287,7 @@ const WHATS_NEW = [
   /* tag (v411, Mark): new, improved or fixed, shown as a label and grouped in that order; the newest batch is also the
      release notes for TestFlight and Google Play (tools/release_notes.mjs) */
   { id: '2026-11-20', items: [
-    { tag: 'new', text: 'A medicine can be both: on a schedule around treatment days, and when needed on the other days. In Edit medicine, under Only around treatment days, tick Also when needed on the other days.' }
+    { tag: 'new', text: 'A medicine can be both: on a schedule around treatment days, and when needed on the other days. In Edit medicine, under Only around treatment days, tick Also when needed on the other days. The reports count the other days\' doses as when needed.' }
   ] },
   { id: '2026-11-19', items: [
     { tag: 'improved', text: 'Signing up is simpler: say whether you are the patient or a carer. Patients start straight away with no Beta code, and carers join with the code their patient sends them.' },
@@ -9377,9 +9377,9 @@ function twoPageTiles(entries, from, to, f) {
 /* When-needed medicines and anything given in hospital, names normalised and case variants merged */
 function twoPageMeds(entries, from, to) {
   const nDays = daysBetween(from, to) + 1;
-  const prnIds = new Map(state.medicines.filter((m) => m.kind === 'prn').map((m) => [m.id, m]));
+  const prnIds = new Map(state.medicines.filter(hasPrnSide).map((m) => [m.id, m]));
   const byName = new Map();
-  entries.filter((e) => e.type === 'med' && prnIds.has(e.medId) && !e.hospital).forEach((e) => {
+  entries.filter((e) => e.type === 'med' && prnIds.has(e.medId) && !e.hospital && doseIsPrn(prnIds.get(e.medId), e)).forEach((e) => {
     const name = medListName(prnIds.get(e.medId).name || e.medName);
     const key = name.toLowerCase();
     if (!byName.has(key)) byName.set(key, { name, days: new Set(), perDay: {}, max: prnIds.get(e.medId).maxPerDay });
@@ -10866,9 +10866,9 @@ function summaryRows(entries, from, to) {
 
   const prn = [], prnShort = [];
   let hitAny = false;
-  activePrn().forEach((m) => {
+  state.medicines.filter((m) => m.active !== false && hasPrnSide(m)).forEach((m) => {
     const perDay = {};
-    entries.filter((e) => e.type === 'med' && e.medId === m.id).forEach((e) => { perDay[e.day] = (perDay[e.day] || 0) + 1; });
+    entries.filter((e) => e.type === 'med' && e.medId === m.id && doseIsPrn(m, e)).forEach((e) => { perDay[e.day] = (perDay[e.day] || 0) + 1; });
     const days = Object.keys(perDay);
     if (!days.length) return;
     const most = Math.max(...days.map((d) => perDay[d]));
@@ -11253,7 +11253,7 @@ function prnPainDosesOn(day) {
     if (e.type !== 'med' || e.day !== day || seen.has(e.id)) return false;
     seen.add(e.id);
     const m = state.medicines.find((x) => x.id === e.medId);
-    return !!m && m.kind === 'prn' && isPainMed(m) && doseForPain(e);
+    return !!m && doseIsPrn(m, e) && isPainMed(m) && doseForPain(e);
   });
 }
 function prnPainNames(day) {
@@ -12927,6 +12927,9 @@ function medWhenText(m) {
    Scheduled, with its times and reminders; on the other days it is under When needed, with its own gap and daily limit. */
 function prnOnOtherDays(m) { return !!(m && m.prnOtherDays === true && onTreatmentDays(m)); }
 function isPrnNow(m, day = state.selectedDay || todayStr()) { return m.kind === 'prn' || (prnOnOtherDays(m) && !inTreatmentWindow(m, day)); }
+/* v480: the reports ask of each dose, not of the medicine: a both-ways medicine's dose outside its treatment window was when needed */
+function hasPrnSide(m) { return !!m && (m.kind === 'prn' || prnOnOtherDays(m)); }
+function doseIsPrn(m, e) { return !!m && (m.kind === 'prn' || (prnOnOtherDays(m) && !inTreatmentWindow(m, e.day))); }
 function activePrn(day = state.selectedDay || todayStr()) {
   return state.medicines.filter((m) => m.active !== false && (m.kind === 'prn' || (prnOnOtherDays(m) && !inTreatmentWindow(m, day))));
 }
@@ -13089,12 +13092,10 @@ function finishedCourses(day) {
 }
 function medFrequency(m) {
   if (m.hospital) return 'Given by the hospital';
-  if (isPrnNow(m)) {
-    const bits = [];
-    if (m.minGapHours) bits.push('at least ' + m.minGapHours + (m.minGapHours === 1 ? ' hour' : ' hours') + ' apart');
-    if (m.maxPerDay) bits.push('at most ' + m.maxPerDay + ' a day');
-    return 'When needed' + (bits.length ? ', ' + bits.join(', ') : '');
-  }
+  const prnBits = () => { const bits = []; if (m.minGapHours) bits.push('at least ' + m.minGapHours + (m.minGapHours === 1 ? ' hour' : ' hours') + ' apart'); if (m.maxPerDay) bits.push('at most ' + m.maxPerDay + ' a day'); return bits.length ? ', ' + bits.join(', ') : ''; };
+  if (m.kind === 'prn') return 'When needed' + prnBits();
+  /* v480: a both-ways medicine says both */
+  if (prnOnOtherDays(m)) { const n2 = m.perDay || 1; return treatWindowWords(m) + (n2 > 1 ? ', ' + (n2 === 2 ? 'twice' : n2 + ' times') + ' a day' : '') + '; when needed on other days' + prnBits(); }
   const n = m.perDay || 1;
   const ev = everyDaysOf(m);
   if (ev) return everyWords(ev) + (n > 1 ? ', ' + (n === 2 ? 'twice' : n + ' times') + ' that day' : '');
@@ -13622,7 +13623,7 @@ $('pain-brief').addEventListener('click', () => {
 });
 $('pain-brief-undo').addEventListener('click', () => { state.painAI = null; renderPainReport(); });
 function painAiText(P, n) {
-  const meds = state.medicines.filter(isPainMed).map((m) => `${m.name} ${m.dose || ''}, ${m.kind === 'prn' ? 'when needed' + (m.maxPerDay ? ', at most ' + m.maxPerDay + ' a day' : '') : 'regular, ' + (m.how || medFrequency(m) || '')}${medUses(m).length ? ', for ' + usesWords(medUses(m)) : ''}`.replace(/\s+,/g, ','));
+  const meds = state.medicines.filter(isPainMed).map((m) => `${m.name} ${m.dose || ''}, ${m.kind === 'prn' ? 'when needed' + (m.maxPerDay ? ', at most ' + m.maxPerDay + ' a day' : '') : prnOnOtherDays(m) ? medFrequency(m) : 'regular, ' + (m.how || medFrequency(m) || '')}${medUses(m).length ? ', for ' + usesWords(medUses(m)) : ''}`.replace(/\s+,/g, ','));
   const lines = [`Patient: ${P.patient}. Period: ${n.from} to ${n.to}. Pain relief medicines on the list: ${meds.join('; ') || 'none'}.`, '', 'Day by day (scores out of 10):'];
   P.daysFull.forEach((d) => {
     if (d.now.length === 0 && d.worst == null && !d.dosesN && d.sleep == null && !d.notes.length) return;
@@ -13711,7 +13712,8 @@ function buildPainReport(n) {
   const painMeds = state.medicines.filter(isPainMed);
   const painIds = new Set(painMeds.map((m) => m.id));
   const doses = entries.filter((e) => e.type === 'med' && e.medId && painIds.has(e.medId) && doseForPain(e));
-  const prnIds = new Set(painMeds.filter((m) => m.kind === 'prn').map((m) => m.id));
+  const prnIds = new Set(painMeds.filter(hasPrnSide).map((m) => m.id));
+  const painById = new Map(painMeds.map((m) => [m.id, m]));
   const hospitalDays = new Set(entries.filter((e) => e.type === 'med' && e.hospital).map((e) => e.day));
   const daysFull = days.map((d) => {
     const m = ci.find((e) => e.day === d && e.slot === 'morning'), ev = ci.find((e) => e.day === d && e.slot === 'evening');
@@ -13749,15 +13751,15 @@ function buildPainReport(n) {
     const dayList = Object.keys(perDay);
     const most = dayList.length ? Math.max(...dayList.map((d) => perDay[d])) : 0;
     const last = mine.slice().sort((a, b) => entryDate(b) - entryDate(a))[0];
-    const hitMax = m.kind === 'prn' && m.maxPerDay && most >= m.maxPerDay;
+    const hitMax = hasPrnSide(m) && m.maxPerDay && most >= m.maxPerDay;
     const dual = isDualUse(m), said = mine.filter((e) => e.forUse).length, other = allMed.filter((e) => e.medId === m.id && !doseForPain(e)).length;
     const uses = dual ? (said && said < mine.length ? `${said} said for pain, ${mine.length - said} not said` : said ? 'all said for pain' : 'what each was for not said') + (other ? `; ${other} ${other === 1 ? "dose" : "doses"} marked as ${(medUses(m).filter((u) => !PAIN_PURPOSE_RE.test(u)).map((u) => u.toLowerCase()).join(' or ') || 'something else')}` : '') : '';
     const line = !mine.length ? 'None logged in this period.' : `${plural(mine.length, 'dose')} on ${plural(dayList.length, 'day')} of ${days.length}` + (most > 1 ? `, up to ${most} a day${hitMax ? ' (the maximum)' : m.maxPerDay ? ` (at most ${m.maxPerDay})` : ''}` : '') + `. Last ${rDay(last.day)}, ${fmtTime(entryDate(last))}.` + (uses ? ' ' + uses[0].toUpperCase() + uses.slice(1) + '.' : '');
-    return { id: m.id, name: m.name, dose: m.dose || '', how: m.how || medFrequency(m) || '', uses: usesWords(medUses(m)), kind: m.kind === 'prn' ? 'When needed' : 'Regular', n: mine.length, days: dayList.length, most, maxPerDay: m.maxPerDay || null, hitMax, last: last ? rDay(last.day) + ', ' + fmtTime(entryDate(last)) : '', line, usesNote: uses, active: m.active !== false };
+    return { id: m.id, name: m.name, dose: m.dose || '', how: m.how || medFrequency(m) || '', uses: usesWords(medUses(m)), kind: m.kind === 'prn' ? 'When needed' : prnOnOtherDays(m) ? 'Regular and when needed' : 'Regular', n: mine.length, days: dayList.length, most, maxPerDay: m.maxPerDay || null, hitMax, last: last ? rDay(last.day) + ', ' + fmtTime(entryDate(last)) : '', line, usesNote: uses, active: m.active !== false };
   }).filter((r) => r.n || r.active).sort((a, b) => (a.kind === b.kind ? b.n - a.n : a.kind === 'When needed' ? -1 : 1));
-  const prnDoses = doses.filter((e) => prnIds.has(e.medId));
+  const prnDoses = doses.filter((e) => prnIds.has(e.medId) && doseIsPrn(painById.get(e.medId), e));
   const prnDays = new Set(prnDoses.map((e) => e.day)).size;
-  const reliefNote = relief.filter((r) => r.n && r.kind === 'When needed').map((r) => `${r.name.split(/\s+/)[0]} on ${plural(r.days, 'day')}`).slice(0, 3).join(', ');
+  const reliefNote = relief.filter((r) => r.n && r.kind !== 'Regular').map((r) => `${r.name.split(/\s+/)[0]} on ${plural(r.days, 'day')}`).slice(0, 3).join(', ');
   /* "Pain right now" is the check-in's question, not something anyone enters as such (Mark, 22 October 2026): the tile is the average of every score.
      Readings that go up and down are averages coloured by the average (v275); counts stay counts (v276, Mark). */
   const sleepAvg = nights.length ? avg(nights.map((d) => d.sleep)) : null;
@@ -13779,13 +13781,17 @@ function buildPainReport(n) {
   const QUARTERS = [['night', '00:00 to 06:00'], ['morning', '06:00 to 12:00'], ['afternoon', '12:00 to 18:00'], ['evening', '18:00 to midnight']];
   const hourly = Array(24).fill(0);
   prnDoses.forEach((e) => { hourly[entryDate(e).getHours()] += 1; });
-  const timing = relief.filter((r) => r.kind === 'When needed' && r.n).map((r) => {
+  const timing = relief.filter((r) => r.kind !== 'Regular' && r.n).map((r) => {
     const q = [0, 0, 0, 0];
-    prnDoses.filter((e) => e.medId === r.id).forEach((e) => { q[Math.floor(entryDate(e).getHours() / 6)] += 1; });
+    /* v480: only the doses taken as when needed (a both-ways medicine's scheduled doses are not top-ups) */
+    const mineP = prnDoses.filter((e) => e.medId === r.id);
+    if (!mineP.length) return null;
+    r = { ...r, n: mineP.length, days: new Set(mineP.map((e) => e.day)).size };
+    mineP.forEach((e) => { q[Math.floor(entryDate(e).getHours() / 6)] += 1; });
     const top = q.indexOf(Math.max(...q));
     const rest = [1, 2, 3, 0].filter((i) => i !== top && q[i]).map((i) => QUARTERS[i][0] + ' ' + q[i]).join(', ');
     return { name: r.name.split(/\s+/)[0], n: r.n, q, text: `${r.name.split(/\s+/)[0]}: ${plural(r.n, 'dose')} over the ${days.length} days, on ${plural(r.days, 'day')}` + (r.n > 1 ? `, ${q[top] === r.n ? 'all' : q[top]} in the ${QUARTERS[top][0]} (${QUARTERS[top][1]})` + (q[top] === r.n ? '.' : `. The rest: ${rest}.`) : `, in the ${QUARTERS[top][0]}.`) };
-  });
+  }).filter(Boolean);
   /* Nights broken by pain (v264), from the morning check-in's night questions and the sleep entries (v260) */
   const nightByDay = new Map();
   entries.filter((e) => e.type === 'checkin' && e.slot === 'morning' && e.night && e.day >= from && e.day <= to).forEach((e) => nightByDay.set(e.day, e.night));
@@ -13848,7 +13854,7 @@ function buildPainReport(n) {
       const parts = [mornings.length ? 'mornings ' + avg(mornings) : '', evenings.length ? 'evenings ' + avg(evenings) : '', worsts.length ? 'worst of the day ' + avg(worsts) : ''].filter(Boolean);
       if (parts.length) points.push(`At the check-ins: ${parts.join(', ')}.` + (readingsAll.length ? ` ${plural(readingsAll.length, 'score')} between check-ins averaged ${avg(readingsAll)}.` : ''));
     } else points.push('No pain scores were logged in this period. The check-ins ask morning and evening.');
-    if (painMeds.length) points.push(doses.length ? (prnDoses.length ? `When-needed relief on ${plural(prnDays, 'day')} of ${days.length}: ${relief.filter((r) => r.n && r.kind === 'When needed').map((r) => r.name.split(/\s+/)[0] + ' ' + plural(r.days, 'day') + (r.most > 1 ? ' (up to ' + r.most + ' a day)' : '')).join(', ')}.` : `${plural(doses.length, 'dose')} of regular pain relief.`) + (relief.some((r) => r.hitMax) ? ' The daily maximum was reached.' : '') : 'No pain relief logged in this period.');
+    if (painMeds.length) points.push(doses.length ? (prnDoses.length ? `When-needed relief on ${plural(prnDays, 'day')} of ${days.length}: ${relief.filter((r) => r.n && r.kind !== 'Regular').map((r) => r.name.split(/\s+/)[0] + ' ' + plural(r.days, 'day') + (r.most > 1 ? ' (up to ' + r.most + ' a day)' : '')).join(', ')}.` : `${plural(doses.length, 'dose')} of regular pain relief.`) + (relief.some((r) => r.hitMax) ? ' The daily maximum was reached.' : '') : 'No pain relief logged in this period.');
     { /* v361: what the evening check-in said about daily life and the relief */
       const ev = ci.filter((e) => e.slot === 'evening' && e.day >= from && e.day <= to);
       const ps = ev.filter((e) => e.painStop != null), psBad = ps.filter((e) => Number(e.painStop) >= 2);
@@ -14207,7 +14213,7 @@ function buildMedsReport(doses, sideFx = []) {
       const win = st.ds.filter((e) => e.day >= from && e.day < today);
       const nDays = Math.round((parseDay(today) - parseDay(from)) / 864e5);
       const span = 'Last ' + (nDays === 14 ? '14 days' : plural(nDays, 'day'));
-      if (nDays > 0 && m.kind === 'prn') {
+      if (nDays > 0 && hasPrnSide(m)) {
         const wd = new Set(win.map((e) => e.day)).size;
         r.last14 = `${span}: ${plural(win.length, 'dose')} on ${plural(wd, 'day')}`;
         r.bar = wd / nDays;
