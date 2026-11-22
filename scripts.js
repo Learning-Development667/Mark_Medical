@@ -16,7 +16,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '480';
+const APP_VERSION = '481';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -3282,10 +3282,17 @@ async function syncHealth(manual) {
   try {
     /* A phone connected before a kind was added (v418: resting heart rate) is asked once for the new ones; iOS shows only
        what it has not been asked about before */
+    /* v481 (Mark's new iPhone): a phone set up from a backup carries Daybook's saved "connected" note but not Apple
+       Health's permission, which belongs to each phone, so the phone was never asked and gave back nothing. On iPhone
+       Daybook now asks once each time it runs and on every Bring in now; iOS shows the sheet only for kinds this phone
+       has not been asked about, so a phone already set up sees nothing. Android keeps the saved list (Health Connect
+       says itself what was refused). */
     const want = HEALTH_READ.join(',');
-    if (lsGet('daybook.health.kinds') !== want) {
+    const askIos = !IS_ANDROID_APP && (manual || !syncHealth.asked);
+    if (askIos || lsGet('daybook.health.kinds') !== want) {
       await healthPlugin().requestAuthorization({ read: HEALTH_READ, write: [] }).catch((e) => console.warn(e));
       lsSet('daybook.health.kinds', want);
+      syncHealth.asked = true;
     }
     const days = last ? Math.min(30, Math.max(7, Math.ceil((Date.now() - last) / 864e5) + 2)) : 30;
     const payload = await healthPayload(days);

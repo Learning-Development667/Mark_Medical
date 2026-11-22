@@ -6,6 +6,9 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v481: a new iPhone is asked for Apple Health (22 November 2026)
+Mark's new iPhone (set up from his old one) brought in no sleep, and tapping Apple Health never asked to connect: the restore copied Daybook's saved `daybook.health.on` and `daybook.health.kinds`, but Apple Health's permission belongs to each phone, so `syncHealth()` never called `requestAuthorization` and HealthKit answered every read with nothing (iOS never says a read was refused). On iPhone `syncHealth()` now asks once each time Daybook runs (`syncHealth.asked`) and on every Bring in now; iOS shows the sheet only for kinds the phone has not been asked about, so a phone already set up sees nothing new. Android unchanged (the saved list; Health Connect reports refusals itself). Not testable here (no HealthKit in Chromium): checked on Mark's iPhone. Built and released the same turn (Mark's own use).
+
 ### v480: the reports count a both-ways medicine's other-day doses as when needed (20 November 2026)
 Mark asked for the gap left in v479. `hasPrnSide(m)` and `doseIsPrn(m, e)` judge each dose: outside the medicine's treatment window it was when needed. Notes for the team's when-needed doses (`twoPageMeds`), the when-needed summary line (over the range, not today's list), the Pain report's top-ups (`prnPainDoses`, `prnDoses`, the timing by quarter of the day, now from those doses only), its relief table (kind "Regular and when needed", the daily maximum, the `prn` pill in `report.js`), the Medicine history's last 14 days, and `medFrequency()` ("on the session day and 3 days after; when needed on other days, at least 4 hours apart, at most 4 a day") all follow it. Reports built in the cancer and general previews with no errors.
 
