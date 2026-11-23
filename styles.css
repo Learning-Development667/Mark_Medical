@@ -2801,3 +2801,7 @@ html.text-huge .medrow, html.text-huge .med-head { gap: 8px; }
 .signup-who-btn span { font-size: 15px; color: var(--text-secondary); font-weight: 400; }
 .signup-who-btn.is-active span { color: inherit; }
 .signup-who-q { font-family: inherit; font-size: 17px; margin: 0; }
+
+/* v483: your own tiles on Today (a tracked thing as a tile), and the evening step's "logged today" line */
+.qa-own .qa-own-now { display: block; margin-top: 2px; font-size: 13px; font-weight: 600; line-height: 1.2; color: var(--text-secondary); overflow-wrap: anywhere; }
+.own-tiled { margin: 0; }

@@ -16,7 +16,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '482';
+const APP_VERSION = '483';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -2410,6 +2410,64 @@ function hiddenTiles() { try { const v = JSON.parse(localStorage.getItem(TILES_K
 function applyTodayTiles() {
   const off = hiddenTiles();
   document.querySelectorAll('#view-today .qa[data-add]').forEach((b) => b.classList.toggle('is-off', off.has(b.dataset.add)));
+  renderOwnTiles();
+}
+/* Your own tiles (v483, Mark: "tiles specific to what we want to track like fatigue"): any thing the circle tracks can be a
+   Today tile, chosen on this phone (as the other tiles are), up to six. A press logs it there and then, as often as needed,
+   by whoever holds the phone, as an entry of type 'track' with its time. Nothing knows what the thing is. */
+const OWN_TILES_KEY = 'daybook.today.tracks', OWN_TILES_MAX = 6;
+function ownTileIds() { try { const v = JSON.parse(localStorage.getItem(OWN_TILES_KEY) || '[]'); return Array.isArray(v) ? v : []; } catch (e) { return []; } }
+const TRACK_ICON = { score: 'trend', yesno: 'check', number: 'list' };
+function trackTodayText(t, day) {
+  const es = (state.dayEntries || []).filter((e) => e.type === 'track' && e.trackId === t.id && e.day === day);
+  if (!es.length) return '';
+  const last = es[es.length - 1];
+  if (t.kind === 'number' && t.combine !== 'avg') return ownValText({ kind: t.kind, unit: t.unit, v: trackDayValue(t.kind, t.combine, es.map((e) => e.v)) }) + ' today';
+  return ownValText({ kind: t.kind, unit: t.unit, v: last.v }) + ' at ' + fmtTime(entryDate(last));
+}
+function renderOwnTiles() {
+  const box = document.querySelector('#view-today .quickadd');
+  if (!box) return;
+  box.querySelectorAll('.qa-own').forEach((b) => b.remove());
+  if (state.viewer || state.readOnly) return;
+  const ids = ownTileIds();
+  ownTracks().filter((t) => ids.includes(t.id)).slice(0, OWN_TILES_MAX).forEach((t) => {
+    const now = trackTodayText(t, state.selectedDay);
+    box.append(h('button', { class: 'qa qa-own', type: 'button', dataset: { track: t.id }, 'aria-label': t.name + (now ? ', ' + now : ''), onclick: () => openTrackLog(t) },
+      icon(TRACK_ICON[t.kind] || 'check', 'qa-icon'), t.name, now ? h('span', { class: 'qa-own-now', text: now }) : null));
+  });
+}
+function openTrackLog(t) {
+  const cur = { v: null };
+  const q = h('p', { class: 'wiz-q', id: 'track-q', text: t.kind === 'score' ? t.name + ' right now, 0 to 10' : t.kind === 'yesno' ? t.name + ' today?' : t.name + (t.unit ? ', in ' + t.unit : '') });
+  let answer;
+  if (t.kind === 'number') {
+    answer = h('input', { class: 'input own-num', type: 'text', inputmode: 'decimal', autocomplete: 'off', 'aria-labelledby': 'track-q' });
+  } else {
+    const opts = t.kind === 'score' ? Array.from({ length: 11 }, (_, i) => [i, String(i)]) : [[true, 'Yes'], [false, 'No']];
+    answer = h('div', { class: 'chips taps-chips' + (opts.length > 4 ? ' own-score' : ''), role: 'group', 'aria-labelledby': 'track-q' });
+    const draw = () => [...answer.children].forEach((b, j) => { const on = cur.v === opts[j][0]; b.classList.toggle('is-active', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+    opts.forEach(([v, w]) => answer.append(h('button', { class: 'preset', type: 'button', onclick: () => { cur.v = cur.v === v ? null : v; markMissing(answer, false); draw(); } }, w)));
+    draw();
+  }
+  const time = h('input', { type: 'time', value: fmtTime(new Date()), required: true });
+  const note = h('textarea', { rows: '2', placeholder: 'Optional' });
+  const save = h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: async () => {
+    let v = cur.v;
+    if (t.kind === 'number') {
+      const r = readNum(answer);
+      if (r.empty) { missing(answer, 'Type a number'); return; }
+      if (r.value == null) { missing(answer, 'Check the number', CHECK); return; }
+      v = r.value;
+    } else if (v == null) { missing(answer, 'Choose an answer'); return; }
+    save.disabled = true;
+    const id = await addEntry({ type: 'track', trackId: t.id, name: t.name, kind: t.kind, unit: t.unit || '', combine: t.combine || 'add', v, note: note.value.trim(), at: atFromInputs(state.selectedDay, time.value) });
+    save.disabled = false;
+    if (id) { closeSheet({ force: true }); toast(t.name + ' saved'); renderToday(); }
+  } }, 'Save');
+  openSheet(t.name, h('div', null, q, answer, field('Time', time), field('Note', note),
+    h('p', { class: 'hint', text: 'Saved with the time. Log it as often as you like; the evening check-in shows it as already logged.' }),
+    save, h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: () => closeSheet({ force: true }) }, 'Cancel')));
 }
 function renderTilesCard() {
   const list = $('settings-tiles-list');
@@ -2428,6 +2486,25 @@ function renderTilesCard() {
     } });
     return h('label', { class: 'check settings-toggle' }, box, h('span', { text: name }));
   }));
+  /* v483: the things the circle tracks, each can be a tile of its own on this phone */
+  let own = $('settings-owntiles');
+  if (!own) { own = h('div', { id: 'settings-owntiles' }); list.after(own); }
+  const tracks = ownTracks();
+  if (!tracks.length) { own.replaceChildren(h('h3', { class: 'settings-sub', text: 'Your own things' }), h('p', { class: 'hint', text: 'Add something you track under Things I track, and it can have a tile of its own here.' })); return; }
+  const ids = ownTileIds();
+  own.replaceChildren(h('h3', { class: 'settings-sub', text: 'Your own things' }),
+    h('p', { class: 'hint', text: 'Tick any you want as a tile, to log it the moment it happens, up to ' + OWN_TILES_MAX + '. They are still asked in the evening if not logged that day.' }),
+    h('div', { class: 'tile-ticks' }, ...tracks.map((t) => h('label', { class: 'check settings-toggle' },
+      h('input', { type: 'checkbox', id: 'owntile-' + t.id, checked: ids.includes(t.id), onchange: (ev) => {
+        let now = ownTileIds().filter((x) => tracks.some((y) => y.id === x));
+        if (ev.target.checked) {
+          if (now.length >= OWN_TILES_MAX) { ev.target.checked = false; toast('Up to ' + OWN_TILES_MAX + ' of your own tiles'); return; }
+          now.push(t.id);
+        } else now = now.filter((x) => x !== t.id);
+        try { localStorage.setItem(OWN_TILES_KEY, JSON.stringify(now)); } catch (e) {}
+        applyTodayTiles();
+        toast(t.name + (ev.target.checked ? ' shown on Today' : ' hidden from Today'));
+      } }), h('span', { text: t.name })))));
 }
 /* Things I track (v360): the list in Settings, and a sheet to add, change or remove one */
 function renderTracksCard() {
@@ -2449,28 +2526,37 @@ function openTrackSheet(t) {
   kinds.setAttribute('role', 'group'); kinds.setAttribute('aria-label', 'How is it answered?');
   const unit = h('input', { class: 'input', type: 'text', maxlength: '20', autocomplete: 'off', placeholder: 'e.g. cups, hours', value: t && t.unit ? t.unit : '' });
   const unitField = field('Counted in (optional)', unit);
+  /* v483: a number logged on its tile several times a day adds up (cups, puffs) or is a reading each time (minutes) */
+  const combineIn = h('input', { type: 'hidden', value: t && t.combine === 'avg' ? 'avg' : 'add' });
+  const combine = presets([{ value: 'add', label: 'Each one adds up' }, { value: 'avg', label: 'Each is its own reading' }], combineIn, combineIn.value);
+  combine.setAttribute('role', 'group'); combine.setAttribute('aria-label', 'Logged more than once a day');
+  const combineField = h('div', null, h('p', { class: 'fieldlabel', text: 'Logged more than once a day' }), combine, h('p', { class: 'hint hint-small', text: 'Adds up: the day shows the total, like cups. Its own reading: the day shows the average, like minutes of stiffness.' }));
+  const tileBox = h('input', { type: 'checkbox', checked: t ? ownTileIds().includes(t.id) : true });
+  const tileField = h('label', { class: 'check settings-toggle' }, tileBox, h('span', { text: 'Show it as a tile on Today, on this phone' }));
   const example = h('p', { class: 'hint' });
   const sync = () => {
-    unitField.hidden = kindIn.value !== 'number';
+    unitField.hidden = kindIn.value !== 'number'; combineField.hidden = kindIn.value !== 'number';
     const n = name.value.trim() || 'Caffeine';
-    example.textContent = 'Asked in the evening check-in each day, and shown on Notes for the team, for example: "' +
+    example.textContent = 'Logged on its tile or asked in the evening check-in, and shown on Notes for the team, for example: "' +
       (kindIn.value === 'yesno' ? n + ': yes on 4 of 7 days answered."' : kindIn.value === 'score' ? n + ': about 4.3/10, highest 7, 7 days answered."' : n + ': about 2.5' + (unit.value.trim() ? ' ' + unit.value.trim() : '') + ' on average, from 1 to 4, 7 days answered."');
   };
   kinds.addEventListener('click', () => setTimeout(sync, 0));
   name.addEventListener('input', sync); unit.addEventListener('input', sync);
   sync();
-  const save = async (next, msg) => { const ok = await saveProfilePatch({ tracks: next }, msg); if (ok !== false) { closeSheet({ force: true }); renderTracksCard(); } };
+  const save = async (next, msg) => { const ok = await saveProfilePatch({ tracks: next }, msg); if (ok !== false) { closeSheet({ force: true }); renderTracksCard(); renderTilesCard(); applyTodayTiles(); } };
   const body = h('div', null,
     field('What is it called?', name),
-    h('p', { class: 'fieldlabel', text: 'How is it answered?' }), kinds, unitField, example,
+    h('p', { class: 'fieldlabel', text: 'How is it answered?' }), kinds, unitField, combineField, example, tileField,
     h('button', { class: 'btn btn-primary btn-block', type: 'button', onclick: () => {
       const n = name.value.trim();
       if (!n) { missing(name, 'Give it a name'); return; }
       const others = ownTracks().filter((x) => !t || x.id !== t.id);
       if (others.some((x) => x.name.toLowerCase() === n.toLowerCase())) { missing(name, 'You track ' + n + ' already', CHECK); return; }
       const item = { id: t ? t.id : 't' + Date.now().toString(36), name: n, kind: kindIn.value, unit: kindIn.value === 'number' ? unit.value.trim() : '' };
+      if (kindIn.value === 'number') item.combine = combineIn.value;
+      { let tiles = ownTileIds().filter((x) => x !== item.id); if (tileBox.checked && tiles.length < OWN_TILES_MAX) tiles.push(item.id); try { localStorage.setItem(OWN_TILES_KEY, JSON.stringify(tiles)); } catch (e) {} }
       const next = t ? ownTracks().map((x) => (x.id === t.id ? item : x)) : [...ownTracks(), item];
-      save(next, isNew ? n + ' added. It is asked in the evening check-in.' : n + ' saved');
+      save(next, isNew ? n + ' added' + (tileBox.checked ? ', with a tile on Today.' : '. It is asked in the evening check-in.') : n + ' saved');
     } }, 'Save'),
     isNew ? null : h('button', { class: 'btn btn-secondary btn-block', type: 'button', onclick: async () => {
       closeSheet({ force: true });
@@ -3960,6 +4046,7 @@ function entryTitle(e) {
     case 'checkin': return [h('span', { text: checkinTitle(e.slot) })];
     case 'pain': return [h('span', { class: 'val', text: 'Pain ' + e.value + '/10' }), painBandWord(e.value) ? h('span', { text: ', ' + painBandWord(e.value).toLowerCase() }) : null];
     case 'mood': return [h('span', { class: 'val', text: 'Mood ' + e.value + '/10' })];
+    case 'track': return [h('span', { text: (e.name || 'Tracked') + ': ' }), h('span', { class: 'val', text: ownValText({ kind: e.kind, unit: e.unit, v: e.v }) })];
     case 'symptom': return [h('span', { class: 'val', text: symptomLevel(e) }), e.grade == null && painBandWord(e.value, '') ? h('span', { text: ', ' + painBandWord(e.value, '').toLowerCase() }) : null];
     case 'bowel': {
       if (e.none) return [h('span', { text: e.stoma ? 'No stoma output' : 'No bowel movement' })];
@@ -4011,6 +4098,7 @@ function entrySub(e) {
   if (e.type === 'checkin') { const s = checkinSummary(e); if (s) bits.push(s); }
   if (e.type === 'pain' && e.note) bits.push(e.note);
   if (e.type === 'mood') { bits.push('Logged between the check-ins'); if (e.note) bits.push(e.note); }
+  if (e.type === 'track') { bits.push('Something you track'); if (e.note) bits.push(e.note); }
   if (e.type === 'symptom') { const c = causeOf(e); bits.push(c ? 'Side effect of ' + c.name + (e.sessionDay ? ' on ' + fmtDayShort(e.sessionDay) : '') : 'Symptom'); if (e.fromCheckin) bits.push('From the ' + slotWord(e.fromCheckin).toLowerCase() + ' check-in'); if (e.note) bits.push(e.note); }
   if (e.type === 'bowel') { const ts = bowelTypes(e); if (ts.length > 1) bits.push(ts.map((t) => bristolName(t)).join(', ')); const f = bowelFlagWords(e); if (f) bits.push(f); if (e.note) bits.push(e.note); }
   if (e.type === 'question') bits.push((isDietitianQ(e) ? 'Question for the dietitian' : isWellbeingQ(e) ? 'Question for the therapist' : isPainQ(e) ? 'Question for the pain team' : packOn('ibd') && isGastroQ(e) ? 'Question for the gastro team' : 'Question for the team') + (e.answered ? ', answered' : '') + (isDietitianQ(e) || isWellbeingQ(e) || isPainQ(e) ? '' : ' · ' + teamLabel(teamOf(e))));
@@ -9322,7 +9410,8 @@ function twoPageCharts(entries, days) {
   const shown = charts.filter(hasData);
   ownTracks().filter((t) => t.kind === 'number' || t.kind === 'score').forEach((t) => {
     if (shown.length >= 8) return;
-    const d = days.map((day) => { const ci = entries.find((e) => isPatientCheckin(e) && e.slot === 'evening' && e.day === day && e.own && e.own[t.id] && e.own[t.id].v != null); return ci ? Number(ci.own[t.id].v) : null; });
+    const ser = trackSeries(entries, days[0], days[days.length - 1]).find((x) => x.id === t.id);
+    const d = days.map((day) => { const r = ser && ser.list.find((x) => x.day === day); return r ? Number(r.v) : null; });
     const v = vals(d);
     if (!v.length) return;
     const score = t.kind === 'score';
@@ -11311,7 +11400,7 @@ function fastTally(mornings) {
    own { [id]: { name, kind, unit, v } }, so an answer still reads right after the thing is renamed or removed. Facts only:
    never linked to anything else. */
 const TRACK_KINDS = [['yesno', 'Yes or no'], ['number', 'A number'], ['score', 'A score, 0 to 10']];
-const TRACKS_MAX = 8;
+const TRACKS_MAX = 12; // v483: 12 (the testers needed 10 or 11)
 function ownTracks() { const t = state.profile && state.profile.tracks; return Array.isArray(t) ? t.filter((x) => x && x.id && x.name) : []; }
 function trackKindWords(t) { const k = TRACK_KINDS.find(([v]) => v === t.kind); return (k ? k[1] : 'Yes or no') + (t.kind === 'number' && t.unit ? ', in ' + t.unit : ''); }
 function ownValText(a) {
@@ -11325,16 +11414,43 @@ function ownText(v) {
   const bits = Object.values(v).filter((a) => a && a.v != null).map((a) => a.name + ': ' + ownValText(a));
   return bits.length ? bits.join(' \u00b7 ') : 'Skipped';
 }
-/* each tracked thing over a period, from the patient's evening check-ins: one plain line each, never judged */
-function ownTally(entries, from, to) {
+/* v483 (your own tiles): a tracked thing's answers over a period, from its tile (entries of type 'track', several a day,
+   by anyone in the circle, each with its time) and from the patient's evening check-in. On a day with tile entries the
+   tiles are the day's answer and that evening's answer is not counted again. The day's figure: yes if any yes; a score
+   the average; a number the total, or the average where the track says each one is its own reading. */
+function trackDayValue(kind, combine, vals) {
+  if (!vals.length) return null;
+  if (kind === 'yesno') return vals.some(Boolean);
+  const nums = vals.map(Number).filter((x) => !isNaN(x));
+  if (!nums.length) return null;
+  const sum = nums.reduce((a, b) => a + b, 0);
+  if (kind === 'number' && combine !== 'avg') return Math.round(sum * 100) / 100;
+  return Math.round((sum / nums.length) * 10) / 10;
+}
+function trackSeries(entries, from, to) {
+  const inRange = (d) => (!from || d >= from) && (!to || d <= to);
+  const defs = new Map(ownTracks().map((t) => [t.id, t]));
   const byId = {};
-  entries.filter((e) => isPatientCheckin(e) && e.slot === 'evening' && e.own && (!from || e.day >= from) && (!to || e.day <= to)).forEach((e) => {
-    Object.entries(e.own).forEach(([id, a]) => { if (!a || a.v == null) return; (byId[id] = byId[id] || { name: a.name, kind: a.kind, unit: a.unit, list: [] }).list.push({ day: e.day, v: a.v }); });
+  const slot = (id, a) => (byId[id] = byId[id] || { id, name: (defs.get(id) || a).name, kind: (defs.get(id) || a).kind, unit: (defs.get(id) || a).unit || '', combine: (defs.get(id) || a).combine || 'add', tile: {}, evening: {}, rows: [] });
+  entries.filter((e) => e.type === 'track' && e.trackId && e.v != null && inRange(e.day)).forEach((e) => {
+    const t = slot(e.trackId, e); (t.tile[e.day] = t.tile[e.day] || []).push(e.v); t.rows.push({ e, day: e.day, v: e.v, src: 'tile' });
+  });
+  entries.filter((e) => isPatientCheckin(e) && e.slot === 'evening' && e.own && inRange(e.day)).forEach((e) => {
+    Object.entries(e.own).forEach(([id, a]) => { if (!a || a.v == null) return; const t = slot(id, a); if (!t.tile[e.day]) { t.evening[e.day] = a.v; t.rows.push({ e, day: e.day, v: a.v, src: 'evening' }); } });
   });
   const order = ownTracks().map((t) => t.id);
-  return Object.entries(byId).sort(([a], [b]) => (order.indexOf(a) + 1 || 99) - (order.indexOf(b) + 1 || 99)).map(([, t]) => {
+  return Object.values(byId).map((t) => {
+    const days = [...new Set([...Object.keys(t.tile), ...Object.keys(t.evening)])].sort();
+    t.list = days.map((day) => ({ day, v: t.tile[day] ? trackDayValue(t.kind, t.combine, t.tile[day]) : t.evening[day] })).filter((x) => x.v != null);
+    return t;
+  }).filter((t) => t.list.length).sort((a, b) => (order.indexOf(a.id) + 1 || 99) - (order.indexOf(b.id) + 1 || 99));
+}
+/* each tracked thing over a period, from its tile and the patient's evening check-ins: one plain line each, never judged */
+function ownTally(entries, from, to) {
+  return trackSeries(entries, from, to).map((t) => [t.id, t]).sort(([a], [b]) => (order.indexOf(a) + 1 || 99) - (order.indexOf(b) + 1 || 99)).map(([, t]) => {
     const n = t.list.length, days = plural(n, 'day') + ' answered';
-    if (t.kind === 'yesno') { const y = t.list.filter((x) => x.v).length; return { name: t.name, text: `${t.name}: yes on ${y} of ${days}.`, short: `${t.name}: yes on ${y} of ${plural(n, 'day')}` }; }
+    const yesDays = t.kind === 'yesno' ? t.list.filter((x) => x.v).map((x) => x.day) : [];
+    if (t.kind === 'yesno') { const y = yesDays.length; return { name: t.name, text: `${t.name}: yes on ${y} of ${days}${y && y <= 12 ? ' (' + listDays(yesDays) + ')' : ''}.`, short: `${t.name}: yes on ${y} of ${plural(n, 'day')}${y && y <= 12 ? ' (' + listDays(yesDays) + ')' : ''}` }; }
     const nums = t.list.map((x) => Number(x.v)), avg = nums.reduce((a, b) => a + b, 0) / n, lo = Math.min(...nums), hi = Math.max(...nums);
     if (t.kind === 'score') {
       const top = t.list.find((x) => Number(x.v) === hi);
@@ -11948,7 +12064,14 @@ function openCheckin(slot, initialDay) {
           draw();
           return chips;
         };
+        /* v483: a thing logged on its tile that day is shown as logged, not asked again (change it on the timeline) */
+        const tiled = (t) => [...(state.recentEntries || []), ...(state.dayEntries || [])].filter((e, i, a) => e.type === 'track' && e.trackId === t.id && e.day === day && a.findIndex((x) => x.id === e.id) === i);
         const rows = ownTracks().map((t) => {
+          const logged = tiled(t);
+          if (logged.length) {
+            const v = trackDayValue(t.kind, t.combine, logged.map((e) => e.v));
+            return h('div', { class: 'taps-row' }, h('p', { class: 'taps-label', text: t.name }), h('p', { class: 'hint own-tiled', text: 'Logged today on its tile: ' + ownValText({ kind: t.kind, unit: t.unit, v }) + (logged.length > 1 ? ' (' + plural(logged.length, 'time') + ')' : ' at ' + fmtTime(entryDate(logged[logged.length - 1]))) + '. Change it on the timeline.' }));
+          }
           if (t.kind === 'number') {
             const box = h('input', { class: 'input own-num', type: 'text', inputmode: 'decimal', autocomplete: 'off', 'aria-label': t.name + (t.unit ? ', in ' + t.unit : ''), value: cur[t.id] != null ? fmtQtyNumber(Number(cur[t.id])) : '', placeholder: 'Skip' });
             box.addEventListener('input', () => { const n = parseFloat(String(box.value).replace(',', '.')); cur[t.id] = box.value.trim() === '' || isNaN(n) ? null : n; });
@@ -11960,7 +12083,7 @@ function openCheckin(slot, initialDay) {
         wrap.append(h('p', { class: 'wiz-hint', text: 'The things you chose to track. Skip any you like; tap an answer again to clear it.' }), ...rows);
         getVal = () => {
           const out = {};
-          ownTracks().forEach((t) => { if (cur[t.id] != null) out[t.id] = { name: t.name, kind: t.kind, unit: t.unit || '', v: cur[t.id] }; });
+          ownTracks().forEach((t) => { if (cur[t.id] != null && !tiled(t).length) out[t.id] = { name: t.name, kind: t.kind, unit: t.unit || '', v: cur[t.id] }; });
           return Object.keys(out).length ? out : null;
         };
       } else if (q.kind === 'taps') {
@@ -16221,16 +16344,11 @@ function buildOwnCards(entries, from) {
     cards.push({ key: 'own-energy-today', kind: 'score', name: 'Energy today', sub: 'The evening check-in, 1 wiped out to 10 plenty', perDay, rows: energy, cell: (r) => [r.v + '/10', h('small', { text: 'Evening check-in' })] });
   }
   /* the tracked things: one evening answer a day */
-  const byId = {};
-  inRange.filter((e) => isPatientCheckin(e) && e.slot === 'evening' && e.own).forEach((e) => {
-    Object.entries(e.own).forEach(([id, a]) => { if (!a || a.v == null) return; (byId[id] = byId[id] || { id, name: a.name, kind: a.kind, unit: a.unit, rows: [] }).rows.push({ e, day: e.day, v: a.v }); });
-  });
-  const order = ownTracks().map((t) => t.id);
-  Object.values(byId).sort((a, b) => (order.indexOf(a.id) + 1 || 99) - (order.indexOf(b.id) + 1 || 99)).forEach((t) => {
+  trackSeries(inRange, from).forEach((t) => {
     const key = ownKeyOf('own-', t.id);
-    const perDay = days.map((d) => { const r = t.rows.find((x) => x.day === d); return r ? r.v : null; });
-    const sub = t.kind === 'yesno' ? 'Yes or no, each evening' : t.kind === 'score' ? 'A score, 0 to 10, each evening' : 'Each evening' + (t.unit ? ', in ' + t.unit : '');
-    cards.push({ key, kind: t.kind, name: t.name, unit: t.unit, sub, perDay, rows: t.rows, cell: (r) => [ownValText({ kind: t.kind, unit: t.unit, v: r.v }), h('small', { text: 'Evening check-in' })] });
+    const perDay = days.map((d) => { const r = t.list.find((x) => x.day === d); return r ? r.v : null; });
+    const sub = t.kind === 'yesno' ? 'Yes or no, the day\'s answer' : t.kind === 'score' ? 'A score, 0 to 10, the day\'s average' : (t.combine === 'avg' ? 'The day\'s average' : 'The day\'s total') + (t.unit ? ', in ' + t.unit : '');
+    cards.push({ key, kind: t.kind, name: t.name, unit: t.unit, sub, perDay, rows: t.rows, cell: (r) => [ownValText({ kind: t.kind, unit: t.unit, v: r.v }), h('small', { text: [r.src === 'tile' ? 'Its tile' + (r.e.addedBy && r.e.addedBy !== state.name ? ', by ' + r.e.addedBy : '') : 'Evening check-in', r.e.type === 'track' ? r.e.note : ''].filter(Boolean).join(' \u00b7 ') })] });
   });
   /* the symptoms, by name as logged: the Symptom tile and the check-ins' side effects alike */
   const byName = {};

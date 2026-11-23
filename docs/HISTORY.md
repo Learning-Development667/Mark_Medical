@@ -6,6 +6,19 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v483: your own tiles (23 November 2026)
+Mark approved the mock-up ("I like the look of the new tiles for tracking things more bespoke to an individual"), phase 1 of the Something else testers' report.
+- **A tracked thing as a Today tile:** Choose tiles has "Your own things" under Quick add, a tick per thing the circle tracks, up to six (`OWN_TILES_KEY` `daybook.today.tracks`, on this phone, like the other tiles); Add something to track has "Show it as a tile on Today, on this phone", ticked for a new one. `renderOwnTiles()` (from `applyTodayTiles()`) adds `.qa-own` buttons after the nine, icon by kind (trend, check, list), with today's figure under the name ("6/10 at 14:10", "3 today").
+- **Logging:** `openTrackLog(t)`: the 0 to 10 chips, Yes and No, or a text box with the number keypad read by `readNum()` (Check this on words), the time, an optional note; saved as an entry `{ type: 'track', trackId, name, kind, unit, combine, v, note }`, any number a day, by whoever holds the phone (carers too, their name on the entry). The timeline reads "Fatigue: 6/10", "Something you track".
+- **A number logged more than once a day:** a new choice on the track, "Each one adds up" (the day's total, cups) or "Each is its own reading" (the average, minutes of stiffness), `combine` 'add' | 'avg'.
+- **One answer a day for Trends and reports:** `trackSeries()` merges tile entries and the patient's evening `own` answers; on a day with tile entries the tiles are the day (yes if any yes, a score's average, a number's total or average) and that evening's answer is not counted again. `ownTally()` (Notes for the team, the two-page strip), the Trends own cards (`buildOwnCards()`, the table saying "Its tile" or "Evening check-in", and who logged it) and the two-page own charts all read it, so data saved before is unchanged.
+- **Dates of yes days:** "Period: yes on 5 of 27 days answered (19 Sep, 20 Sep, ...)" when 12 or fewer (the endometriosis tester).
+- **The evening check-in:** a thing logged on its tile that day shows "Logged today on its tile: 3 hours at 20:30. Change it on the timeline." instead of the question, and is not saved again.
+- **12 tracked things** instead of 8 (`TRACKS_MAX`). The Things I track hint names the tiles.
+- Not yet: a size cap in `firestore.rules` for track entries (the entries rules already cover them), the Guide (no topic shows Choose tiles' new part), phases 2 and 3 of the report.
+Tested in the scratchpad's `h/v483.cjs` and `v483c.cjs` (adding Fatigue as a score and Cups of tea as a number through the real sheets, the tile tick on, the adds-up choice shown for numbers only, both tiles on Today, Check this on "lots", 6/10 and 2 + 1 cups logged, the tiles reading "6/10 at 20:47" and "3 today", three timeline lines, the Trends cards "the day's average" 6.0 and "the day's total" 3, Choose tiles' own ticks, the evening line for a tile-logged number, axe clean on the whole page, 390 light and 320 dark, no page errors from the app). Not tried on an iPhone.
+
+
 ### v482: four faults the Something else testers found (23 November 2026)
 Seven testers (endometriosis, ME/CFS, migraine, rheumatoid arthritis and lupus, heart failure and COPD, type 1 diabetes and bipolar, and a product architect) used the general preview; their report is the Claude Doc "Something else: tracking your own things". Mark agreed the recommended answers; these four faults went first, before the own-tiles mock-up.
 - **Flares and steroids on the printed Notes for the team:** the screen's summary had "Marked as a flare day" and "Steroid course" (v382) but the two-page report's strip did not. `flareSteroidLines(from, to)` now feeds both the summary and a new `R.flares` strip box, "Flares and steroids." (`report.js`). Crohn's keeps its own report.
