@@ -6,6 +6,9 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v484: What's new for your own tiles (23 November 2026)
+Mark's "Ok build it" after reading the words: New, your own tiles; Fixed, flare days and steroid courses on Notes for the team (batch 2026-11-23, also the TestFlight and Google Play notes, written to `testflight.txt` and `whatsnew/` by `tools/release_notes.mjs`). The iPhone and Android builds started the same turn.
+
 ### v483: your own tiles (23 November 2026)
 Mark approved the mock-up ("I like the look of the new tiles for tracking things more bespoke to an individual"), phase 1 of the Something else testers' report.
 - **A tracked thing as a Today tile:** Choose tiles has "Your own things" under Quick add, a tick per thing the circle tracks, up to six (`OWN_TILES_KEY` `daybook.today.tracks`, on this phone, like the other tiles); Add something to track has "Show it as a tile on Today, on this phone", ticked for a new one. `renderOwnTiles()` (from `applyTodayTiles()`) adds `.qa-own` buttons after the nine, icon by kind (trend, check, list), with today's figure under the name ("6/10 at 14:10", "3 today").

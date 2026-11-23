@@ -1,13 +1,9 @@
 Thank you for testing Daybook. In this version:
 
 New
-- An Add button on each meal in the Food sheet.
-
-Improved
-- Health Connect on Android brings in steps, sleep, weight and more.
+- Your own tiles. Anything you track, like fatigue or a period, can have its own tile on Today, so you can log it the moment it happens. Turn them on in Choose tiles.
 
 Fixed
-- Drinks made from a powder, like Huel, are now counted by the powder, not the ml.
-- A bedtime like 11:00 that makes an 18-hour night now asks "did you mean 23:00?".
+- Flare days and steroid courses now print on Notes for the team.
 
 You are welcome to use Daybook for real. It is still in Beta, so keep your own copy of anything vital. Anything confusing or broken, tell us through Provide feedback under More, Help and what's new.

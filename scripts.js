@@ -16,7 +16,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '483';
+const APP_VERSION = '484';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -4381,6 +4381,10 @@ $('feedback-row').addEventListener('click', () => openFeedbackSheet());
 const WHATS_NEW = [
   /* tag (v411, Mark): new, improved or fixed, shown as a label and grouped in that order; the newest batch is also the
      release notes for TestFlight and Google Play (tools/release_notes.mjs) */
+  { id: '2026-11-23', items: [
+    { tag: 'new', text: 'Your own tiles. Anything you track, like fatigue or a period, can have its own tile on Today, so you can log it the moment it happens. Turn them on in Choose tiles.' },
+    { tag: 'fixed', text: 'Flare days and steroid courses now print on Notes for the team.' }
+  ] },
   { id: '2026-11-20', items: [
     { tag: 'new', text: 'A medicine can be both: on a schedule around treatment days, and when needed on the other days. In Edit medicine, under Only around treatment days, tick Also when needed on the other days. The reports count the other days\' doses as when needed.' }
   ] },
