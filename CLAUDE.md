@@ -29,6 +29,7 @@ My Medical Daybook: a private health tracker shared by a care circle (a patient 
 - **A reading and a person's words are two separate lines on every report, never one sentence** (v332).
 - **Nothing on a report is cut short**: text is never shortened or ended with an ellipsis; what does not fit moves to another page (v236). Exception: the Pain report's key points by design (v263), with every note kept on the screen. Do not squeeze charts to save a page (Mark: three pages is fine).
 - **Counts stay counts; readings that go up and down are averages coloured by the average** (v274 to v276). Ask before turning one kind of tile into another.
+- **A score is always a sliding scale, never a row of number buttons** (Mark, 23 November 2026: buttons "look cheap"): `sliderBlock()`, with `min: 0` for a 0 to 10 score that has no bands. Word answers (Yes, No, a few words) stay as buttons.
 - **Pain, symptoms and sickness are 0 to 10** with the NHS bands (none 0, mild 1 to 3, moderate 4 to 6, severe 7 to 10); flagged amber from 4, red from 7 (sickness's report limit is 6). Skipped is `null`, never 0.
 - **Never name the Bristol Stool Chart** or copy its wording or pictures (copyright Norgine); the seven types are in our own words (`BRISTOL`; identifiers keep the name).
 - **Anything that stops a save marks the field itself in red with "Missing information"** (or "Check this"), never only a message at the top (`missing()`, `markMissing()`).

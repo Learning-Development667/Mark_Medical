@@ -16,7 +16,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '484';
+const APP_VERSION = '485';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -2440,9 +2440,13 @@ function renderOwnTiles() {
 function openTrackLog(t) {
   const cur = { v: null };
   const q = h('p', { class: 'wiz-q', id: 'track-q', text: t.kind === 'score' ? t.name + ' right now, 0 to 10' : t.kind === 'yesno' ? t.name + ' today?' : t.name + (t.unit ? ', in ' + t.unit : '') });
-  let answer;
+  let answer, slider = null;
   if (t.kind === 'number') {
     answer = h('input', { class: 'input own-num', type: 'text', inputmode: 'decimal', autocomplete: 'off', 'aria-labelledby': 'track-q' });
+  } else if (t.kind === 'score') {
+    /* v485 (Mark: "always sliding scale", never a row of number buttons) */
+    slider = sliderBlock({ q: t.name + ' right now, 0 to 10', low: '0', high: '10', min: 0 }, null, () => { cur.v = slider.value(); markMissing(answer, false); });
+    answer = h('div', { class: 'own-slider' }, ...slider.nodes);
   } else {
     const opts = t.kind === 'score' ? Array.from({ length: 11 }, (_, i) => [i, String(i)]) : [[true, 'Yes'], [false, 'No']];
     answer = h('div', { class: 'chips taps-chips' + (opts.length > 4 ? ' own-score' : ''), role: 'group', 'aria-labelledby': 'track-q' });
@@ -11843,7 +11847,7 @@ $('checkin-morning').addEventListener('click', () => openCheckin('morning', stat
 $('checkin-evening').addEventListener('click', () => openCheckin('evening', checkinRowDay('evening')));
 
 function sliderBlock(q, current, onChange) {
-  const lo = q.nrs ? 0 : 1;
+  const lo = q.min != null ? q.min : q.nrs ? 0 : 1; // v485: a tracked score runs 0 to 10 with no bands (q.min)
   const num = h('div', { class: 'wiz-num' + (current == null ? ' is-unset' : ''), text: current == null ? 'Slide to answer' : String(current) });
   const range = h('input', { type: 'range', class: 'slider' + (q.kind === 'pain' ? ' is-pain' : ''), min: String(lo), max: '10', step: '1', value: String(current == null ? 5 : current), 'aria-label': q.q });
   let touched = current != null;
@@ -12081,10 +12085,11 @@ function openCheckin(slot, initialDay) {
             box.addEventListener('input', () => { const n = parseFloat(String(box.value).replace(',', '.')); cur[t.id] = box.value.trim() === '' || isNaN(n) ? null : n; });
             return h('div', { class: 'taps-row' }, h('p', { class: 'taps-label', text: t.name }), h('div', { class: 'own-numrow' }, box, t.unit ? h('span', { class: 'unit', text: t.unit }) : null));
           }
-          if (t.kind === 'score') return h('div', { class: 'taps-row' }, h('p', { class: 'taps-label', text: t.name + ', 0 to 10' }), chipRow(t.name, Array.from({ length: 11 }, (_, i) => [i, String(i)]), t.id));
+          /* v485 (Mark: "always sliding scale", never a row of number buttons) */
+          if (t.kind === 'score') { const sb = sliderBlock({ q: t.name + ', 0 to 10', low: '0', high: '10', min: 0 }, cur[t.id] != null ? cur[t.id] : null, () => { cur[t.id] = sb.value(); }); return h('div', { class: 'taps-row own-slider' }, h('p', { class: 'taps-label', text: t.name + ', 0 to 10' }), ...sb.nodes); }
           return h('div', { class: 'taps-row' }, h('p', { class: 'taps-label', text: t.name + '?' }), chipRow(t.name, [[true, 'Yes'], [false, 'No']], t.id));
         });
-        wrap.append(h('p', { class: 'wiz-hint', text: 'The things you chose to track. Skip any you like; tap an answer again to clear it.' }), ...rows);
+        wrap.append(h('p', { class: 'wiz-hint', text: 'The things you chose to track. Skip any you like: a slider left untouched is skipped, and a Yes or No tapped again is cleared.' }), ...rows);
         getVal = () => {
           const out = {};
           ownTracks().forEach((t) => { if (cur[t.id] != null && !tiled(t).length) out[t.id] = { name: t.name, kind: t.kind, unit: t.unit || '', v: cur[t.id] }; });

@@ -6,6 +6,9 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v485: tracked scores are sliders (23 November 2026)
+Mark, on the own-tile mock-up: "Don't build scales 1-10 like buttons... Always sliding scale. That looks cheap with the buttons." The own tile's sheet and the evening check-in's Your own things now use `sliderBlock()` for a score (0 to 10, `min: 0`, no bands, "Slide to answer" until moved, an untouched slider skipped); Yes and No stay as buttons. A standing rule in CLAUDE.md. The v484 builds, started minutes before, were cancelled and started again on v485.
+
 ### v484: What's new for your own tiles (23 November 2026)
 Mark's "Ok build it" after reading the words: New, your own tiles; Fixed, flare days and steroid courses on Notes for the team (batch 2026-11-23, also the TestFlight and Google Play notes, written to `testflight.txt` and `whatsnew/` by `tools/release_notes.mjs`). The iPhone and Android builds started the same turn.
 
