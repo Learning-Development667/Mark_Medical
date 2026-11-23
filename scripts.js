@@ -16,7 +16,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '481';
+const APP_VERSION = '482';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -6000,12 +6000,19 @@ function openAdd(type, editEntry, preset) {
     /* v260: simple first (when to bed, when up, how it felt), the tracker's own figures tucked under a details row.
        Hours and minutes pairs, read straight off the Apple Health sleep screen */
     const hm = (label) => {
-      const hh = h('input', { type: 'number', inputmode: 'numeric', min: '0', max: '24', placeholder: '0' });
-      const mm = h('input', { type: 'number', inputmode: 'numeric', min: '0', max: '59', placeholder: '0' });
+      /* v482 (the diabetes tester; the rule on number boxes): text boxes with the number keypad, read by readNum(), no
+         number in the placeholder; a box that cannot be read stops the save and is marked Check this */
+      const hh = h('input', { type: 'text', inputmode: 'numeric', autocomplete: 'off' });
+      const mm = h('input', { type: 'text', inputmode: 'numeric', autocomplete: 'off' });
       const row = h('div', null, h('span', { class: 'fieldlabel', text: label }), h('div', { class: 'field-row' }, field('Hours', hh), field('Minutes', mm)));
-      const minutes = () => (hh.value === '' && mm.value === '') ? null : (parseInt(hh.value, 10) || 0) * 60 + (parseInt(mm.value, 10) || 0);
+      const unreadable = () => {
+        let bad = null;
+        [[hh, 24], [mm, 59]].forEach(([el, max]) => { const r = readNum(el); const off = !r.empty && (r.value == null || r.value > max || r.value % 1 !== 0); markMissing(el, off, 'Check this'); if (off && !bad) bad = el; });
+        return bad;
+      };
+      const minutes = () => { const a = readNum(hh), b = readNum(mm); return (a.empty && b.empty) ? null : (a.value || 0) * 60 + (b.value || 0); };
       const set = (mins) => { const m = Math.max(0, Math.round(Number(mins) || 0)); hh.value = String(Math.floor(m / 60)); mm.value = String(m % 60); };
-      return { row, minutes, set };
+      return { row, minutes, set, unreadable };
     };
     const asleep = hm('Time asleep');
     const stages = { awake: hm('Awake'), rem: hm('REM'), core: hm('Core'), deep: hm('Deep') };
@@ -6036,6 +6043,8 @@ function openAdd(type, editEntry, preset) {
     const holdTimes = () => { sleepWarn.hidden = false; sleepWarn.textContent = 'Not saved yet: fill in the times marked in red, hours and minutes (00 counts), then Save.'; toast('Missing information. Not saved yet'); block.check(true); return { hold: true }; };
     getData = () => {
       sleepWarn.hidden = true;
+      const badBox = [asleep, ...Object.values(stages)].map((x) => x.unreadable()).find(Boolean);
+      if (badBox) { details.open = true; badBox.focus(); toast('Check this. Not saved yet'); return { hold: true }; }
       const n = block.value();
       /* the watch did not record the whole night (v279): the person's own times are the night */
       if (tracked && n && n.watchShort) {
@@ -9811,6 +9820,7 @@ function buildTwoPage(n) {
     subtitle: `A patient summary for the nursing and medical team.${conditionWords() ? ' ' + conditionWords().replace(/^./, (c) => c.toUpperCase()).replace(/\.?$/, '.') : ''} ${word} to ${t.getDate()} ${MON_LONG[t.getMonth()]} ${t.getFullYear()}.`,
     patient, period, prepared: rDay(today) + ' ' + parseDay(today).getFullYear(),
     latest, tiles, meds, hospital, steady, sideFx: twoPageSideFx(entries, new Set(fxLog ? fxLog.used : [])), results: twoPageResults(entries), own: (() => { const t = ownTally(entries, from, to); return t.length ? t.map((x) => x.short).join('. ') + '.' : null; })(),
+    flares: (() => { const l = flareSteroidLines(from, to); return l.length ? l.map((x) => x.short).join('. ') + '.' : null; })(),
     questions: qs, more: 0, older: report.older.length, olderFrom: rDay(from), extraQ: [], weeksPage3: false, lines: 3,
     charts, days: labels, weeks, carer: moodWordsToTeam() ? carerWeekLog(entries, from, to) : null, carerTail: false, carerPage1: false,
     fx: fxLog, fxTail: false,
@@ -10431,6 +10441,17 @@ const LEVEL_RANK = { red: 0, amber: 1, teal: 2, green: 3 };
    sickness 6, appetite and energy 3 and under, short nights under 5 h,
    weight down 2 kg (red at 4), days under 1 L, days with nothing eaten,
    low-mood days, when-needed medicine use). */
+/* v482 (the arthritis tester: the screen had them, the printed Notes did not): flare days and steroid courses for the
+   packs other than Crohn's (which has its own report), facts only, shared by the screen's summary and the two-page report */
+function flareSteroidLines(from, to) {
+  if (packOn('ibd')) return [];
+  const out = [];
+  const fds = Object.keys(state.days || {}).filter((d) => d >= from && d <= to && state.days[d].flare).sort();
+  if (fds.length) out.push({ topic: 'Flares', text: `Marked as a flare day on ${plural(fds.length, 'day')} (${listDays(fds)}).`, short: `Flare days: ${fds.length} (${listDays(fds)})` });
+  const ster = steroidCourses().filter((m) => m.courseStart <= to && (!m.courseEnd || m.courseEnd >= from));
+  if (ster.length) out.push({ topic: 'Steroids', text: 'Steroid course: ' + ster.map((m) => m.name + ' from ' + fmtDayShort(m.courseStart) + (m.courseEnd ? ' to ' + fmtDayShort(m.courseEnd) + (m.courseEnd > todayStr() ? ' (planned)' : '') : '')).join('; ') + '.', short: 'Steroid course: ' + ster.map((m) => m.name + ' from ' + fmtDayShort(m.courseStart) + (m.courseEnd ? ' to ' + fmtDayShort(m.courseEnd) : '')).join('; ') });
+  return out;
+}
 function summaryRows(entries, from, to) {
   const rows = [];
   const fine = [];
@@ -10694,7 +10715,8 @@ function summaryRows(entries, from, to) {
   if (symptoms.length) {
     const byWhat = {};
     symptoms.forEach((e) => { const k = String(e.what || 'Symptom'); (byWhat[k] = byWhat[k] || []).push(e); });
-    const items = Object.keys(byWhat).map((k) => { const w = maxBy(byWhat[k], (e) => Number(e.value)); return { what: k, worst: Number(w.value), day: w.day, n: byWhat[k].length, days: new Set(byWhat[k].map((e) => e.day)).size, causes: [...new Set(byWhat[k].map((e) => e.causeName).filter(Boolean))] }; }).sort((a, b) => b.worst - a.worst);
+    /* v482 (the migraine tester): a 0, logged to say it has gone, is not a day or a reading of the symptom */
+    const items = Object.keys(byWhat).map((k) => { const w = maxBy(byWhat[k], (e) => Number(e.value)); const had = byWhat[k].filter((e) => Number(e.value) > 0); return { what: k, worst: Number(w.value), day: w.day, n: had.length, days: new Set(had.map((e) => e.day)).size, causes: [...new Set(byWhat[k].map((e) => e.causeName).filter(Boolean))] }; }).sort((a, b) => b.worst - a.worst);
     const worst = items[0];
     if (worst.worst >= 4) {
       /* v363: every symptom logged is named (a mild one is not lost behind a worse one); the worst score sets the colour */
@@ -10855,12 +10877,7 @@ function summaryRows(entries, from, to) {
   }
 
   /* v382 (review item 22): flare days and steroid courses for the other packs, facts only (Crohn's has its own report) */
-  if (!packOn('ibd')) {
-    const fds = Object.keys(state.days || {}).filter((d) => d >= from && d <= to && state.days[d].flare).sort();
-    if (fds.length) push('teal', 'Flares', `Marked as a flare day on ${plural(fds.length, 'day')} (${listDays(fds)}).`, null, `Flare days: ${fds.length}`);
-    const ster = steroidCourses().filter((m) => m.courseStart <= to && (!m.courseEnd || m.courseEnd >= from));
-    if (ster.length) push('teal', 'Steroids', 'Steroid course: ' + ster.map((m) => m.name + ' from ' + fmtDayShort(m.courseStart) + (m.courseEnd ? ' to ' + fmtDayShort(m.courseEnd) + (m.courseEnd > todayStr() ? ' (planned)' : '') : '')).join('; ') + '.', null, 'On a steroid course');
-  }
+  flareSteroidLines(from, to).forEach((l) => push('teal', l.topic, l.text, null, l.short));
   if (once.length === 1) rows.push({ level: 'amber', topic: once[0].topic, text: once[0].text, short: once[0].short });
   /* v377 (review item 13): the same words twice (sickness 6/10 from the evening slider and from the Symptom tile) print once */
   else if (once.length > 1) { const t = 'One-offs worth a mention: ' + [...new Set(once.map((o) => o.brief))].join('; ') + '.'; rows.push({ level: 'amber', topic: 'One-offs', text: t, short: 'One-offs: ' + joinAnd([...new Set(once.map((o) => o.brief.replace(/ \(.*?\)/g, '').replace(/ (on|before) \d+ \w+$/, '')))]) }); }
@@ -16196,6 +16213,13 @@ function buildOwnCards(entries, from) {
   for (let i = 0; i < state.trendRange; i++) days.push(addDays(from, i));
   const inRange = entries.filter((e) => e.day >= from);
   const cards = [];
+  /* v482 (the ME/CFS and bipolar testers: asked every evening, flagged on the report, never charted): the evening check-in's
+     Energy today, the patient's own answer, 1 wiped out to 10 plenty, as a score card, no level judged */
+  const energy = inRange.filter((e) => isPatientCheckin(e) && e.slot === 'evening' && e.energy != null && Number(e.energy) > 0).map((e) => ({ e, day: e.day, v: Number(e.energy) }));
+  if (energy.length) {
+    const perDay = days.map((d) => { const r = energy.find((x) => x.day === d); return r ? r.v : null; });
+    cards.push({ key: 'own-energy-today', kind: 'score', name: 'Energy today', sub: 'The evening check-in, 1 wiped out to 10 plenty', perDay, rows: energy, cell: (r) => [r.v + '/10', h('small', { text: 'Evening check-in' })] });
+  }
   /* the tracked things: one evening answer a day */
   const byId = {};
   inRange.filter((e) => isPatientCheckin(e) && e.slot === 'evening' && e.own).forEach((e) => {

@@ -6,6 +6,14 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v482: four faults the Something else testers found (23 November 2026)
+Seven testers (endometriosis, ME/CFS, migraine, rheumatoid arthritis and lupus, heart failure and COPD, type 1 diabetes and bipolar, and a product architect) used the general preview; their report is the Claude Doc "Something else: tracking your own things". Mark agreed the recommended answers; these four faults went first, before the own-tiles mock-up.
+- **Flares and steroids on the printed Notes for the team:** the screen's summary had "Marked as a flare day" and "Steroid course" (v382) but the two-page report's strip did not. `flareSteroidLines(from, to)` now feeds both the summary and a new `R.flares` strip box, "Flares and steroids." (`report.js`). Crohn's keeps its own report.
+- **A 0 is not a symptom day:** ending a migraine by logging 0 counted as another day ("16 days" became 17). The summary's per-symptom days and readings now count only scores above 0.
+- **Sleep tracker boxes:** hours and minutes were `type="number"` with a "0" placeholder, against the rule; now text boxes with the number keypad read by `readNum()`, no placeholder, and a box that cannot be read (or over 24 hours, over 59 minutes) stops the save marked Check this, opening the tracker details.
+- **Energy today on Trends:** the evening check-in's Energy (1 to 10, the patient's own answer, carers left out) gets a score card, "No level is judged".
+Tested in the scratchpad's `h/v482.cjs` and `v482b.cjs` (the Energy card first among the own cards, the four sleep boxes text with no placeholder and Check this on "abc", the printed strip "Flares and steroids. Flare days: 2 (19 Nov, 20 Nov)." in the general preview, no page errors). Not tried on an iPhone.
+
 ### v481: a new iPhone is asked for Apple Health (22 November 2026)
 Mark's new iPhone (set up from his old one) brought in no sleep, and tapping Apple Health never asked to connect: the restore copied Daybook's saved `daybook.health.on` and `daybook.health.kinds`, but Apple Health's permission belongs to each phone, so `syncHealth()` never called `requestAuthorization` and HealthKit answered every read with nothing (iOS never says a read was refused). On iPhone `syncHealth()` now asks once each time Daybook runs (`syncHealth.asked`) and on every Bring in now; iOS shows the sheet only for kinds the phone has not been asked about, so a phone already set up sees nothing new. Android unchanged (the saved list; Health Connect reports refusals itself). Not testable here (no HealthKit in Chromium): checked on Mark's iPhone. Built and released the same turn (Mark's own use).
 
