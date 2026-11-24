@@ -16,7 +16,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '485';
+const APP_VERSION = '486';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -2479,7 +2479,7 @@ function renderTilesCard() {
   const off = hiddenTiles();
   const tiles = [...document.querySelectorAll('#view-today .qa[data-add]')];
   list.replaceChildren(...tiles.map((b) => {
-    const key = b.dataset.add, name = b.textContent.trim();
+    const key = b.dataset.add, name = [...b.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join('').trim() || b.textContent.trim(); // v486: the tile's own word, not its count badge ("Bowels2")
     const box = h('input', { type: 'checkbox', id: 'tiletick-' + key, checked: !off.has(key), onchange: (ev) => {
       const now = hiddenTiles();
       if (ev.target.checked) now.delete(key); else now.add(key);
@@ -7041,7 +7041,7 @@ function renderMoreRows() {
   const tracks = ownTracks();
   const line = $('today-tracks'), change = $('today-tracks-change');
   const locked = Boolean(state.readOnly || state.viewer);
-  line.textContent = tracks.length ? 'Things I track: ' + tracks.map((t) => t.name).join(', ') : locked ? '' : 'Track something of your own in the evening check-in';
+  line.textContent = tracks.length ? 'Things I track: ' + tracks.map((t) => t.name).join(', ') : locked ? '' : 'Track something of your own, like fatigue, with a tile of its own';
   change.hidden = locked; change.textContent = tracks.length ? 'Change' : 'Add';
   /* Reports: the details in a line */
   const mw = moodWordsToTeam();

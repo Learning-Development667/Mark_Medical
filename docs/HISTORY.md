@@ -6,6 +6,12 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v486: a Guide topic for own tiles, and the tile names in Choose tiles (23 November 2026)
+- Mark: own tiles are "a big feature and an important one, giving the patient and the carer more control", so the Guide has a topic of its own: `begin('owntrack', 'Track your own things', ...)` in `tools/guide_shots.js`, seven steps (Add under the tiles, the sheet with its combine choice and the tile tick, the new tile on Today, the slider, the tile after logging, Choose tiles' Your own things, the chart in Trends), second in `ORDER`. A week of made-up Fatigue entries is seeded before the Trends step, and that step runs with reduced motion so the chart is drawn before the picture is taken (it draws as it comes into view otherwise, and the frame came out empty). The tour's Today step now points at Add under the tiles.
+- Today's hint reads "Track something of your own, like fatigue, with a tile of its own" (was "in the evening check-in").
+- Choose tiles listed "Bowels2" (then "Bowels, 2 times today"): `renderTilesCard` read the tile's whole text, count badge included. It now reads only the tile's own words (its text nodes).
+- Guide retaken: 17 topics, 99 frames, 6.15 MB; copied to the website. The run still prints "no ring for #notes-questions .btn-secondary" on the questions step, which this version did not change.
+
 ### v485: tracked scores are sliders (23 November 2026)
 Mark, on the own-tile mock-up: "Don't build scales 1-10 like buttons... Always sliding scale. That looks cheap with the buttons." The own tile's sheet and the evening check-in's Your own things now use `sliderBlock()` for a score (0 to 10, `min: 0`, no bands, "Slide to answer" until moved, an untouched slider skipped); Yes and No stay as buttons. A standing rule in CLAUDE.md. The v484 builds, started minutes before, were cancelled and started again on v485.
 

@@ -290,6 +290,7 @@ const QUALITY = 0.8;
   await tab('today');
   await shot('This is Daybook. Six tabs along the bottom. This tour takes a minute, and you can skip it any time.', '#tabs');
   await shot('Today is where most things happen. The morning and evening check-ins, the tiles for a reading, a drink, food or a note, and the day\'s timeline underneath.', '.quickadd');
+  await shot('Track anything of your own, like fatigue or a period, with a tile of its own: tap Add under the tiles. The Guide shows how.', '#today-tracks-change');
   await tab('meds');
   await shot('Meds lists every medicine. Tap Log now when a dose is taken. Reminders can come to this phone.', '#meds-scheduled .med-toggle');
   await tab('chemo');
@@ -368,8 +369,38 @@ const QUALITY = 0.8;
   await tab('vitals'); await page.click('#rep-ibd'); await page.waitForSelector('#view-ibd:not([hidden])'); await settle(1500);
   await shot('The Crohn\'s and colitis report: bowels against your usual, blood, urgency, flares, treatment and results, with your questions for the gastro team.', '#ibd-send');
 
+
+  /* your own tiles (v483 to v485, Mark: "a big feature and an important one, giving the patient and the carer more control") */
+  begin('owntrack', 'Track your own things', 'Anything that matters to you, like fatigue or a period, with a tile of its own on Today.', 'Daybook tracks what you choose. Each thing can have its own tile, logged the moment it happens, and goes on Trends and Notes for the team.');
+  await tab('today'); if (await page.$('#sheet:not([hidden])')) await closeSheet();
+  await shot('Under the tiles on Today, tap Add to track something of your own.', '#today-tracks-change');
+  await page.click('#today-tracks-change'); await settle(800);
+  await page.click('#settings-track-add'); await page.waitForSelector('#sheet:not([hidden])'); await settle();
+  await page.fill('#sheet-body input[type="text"]', 'Fatigue');
+  await page.click('#sheet-body .preset:has-text("score")'); await settle(300);
+  await shot('Give it a name and choose how it is answered: yes or no, a number, or a score from 0 to 10. Leave Show it as a tile ticked.', page.locator('#sheet-body label.check').first());
+  await page.click('#sheet-body .btn-primary:has-text("Save")'); await settle(800);
+  await tab('today');
+  await shot('It now has its own tile on Today, beside the others. Tap it whenever you want to log it, as often as you like.', '.qa-own');
+  await page.click('.qa-own'); await page.waitForSelector('#sheet:not([hidden])'); await settle();
+  await slider('#sheet-body input[type="range"]', 6);
+  await shot('Slide to the number. The time is filled in for you, and a note is there if you want one. Then Save.', '#sheet-body .btn-primary');
+  await page.click('#sheet-body .btn-primary'); await settle(800);
+  await shot('The tile shows the latest. The evening check-in counts it as done, so you are not asked again.', '.qa-own');
+  await page.click('#today-tiles'); await settle(800);
+  await shot('Choose tiles turns any of your own things into a tile, or back again, on this phone. A carer chooses their own tiles on theirs.', '#settings-owntiles');
+  /* a week of Fatigue for the Trends picture, as if logged on its tile on the days before (made-up, the preview only) */
+  await page.evaluate(() => { const st = window.daybookPreview.state; const tr = (st.profile.tracks || []).find((x) => x.name === 'Fatigue'); if (!tr) return; const vals = [4, 5, 7, 6, 5, 4]; vals.forEach((v, i) => { const d = new Date(); d.setDate(d.getDate() - (6 - i)); d.setHours(15, 0, 0, 0); const day = d.toISOString().slice(0, 10); st.recentEntries.push({ id: 'gtrack' + i, type: 'track', trackId: tr.id, name: tr.name, kind: 'score', unit: '', combine: 'add', v, note: '', day, at: { toDate: () => d, seconds: Math.floor(d / 1000) }, addedBy: st.name }); }); });
+  await page.emulateMedia({ reducedMotion: 'reduce' }); // charts draw at once rather than as they come into view
+  await tab('vitals'); await page.click('#reports-show-trends'); await settle(1800);
+  const ownCard = page.locator('.chart-own:has(h2:has-text("Fatigue"))').first();
+  await ownCard.scrollIntoViewIfNeeded().catch(() => {}); await page.mouse.wheel(0, 40); await settle(600); await page.mouse.wheel(0, -40); await settle(2500); // the chart draws as it comes into view
+  await shot('Trends charts it day by day, and Notes for the team lists it for the team: facts only, never judged.');
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.click('#reports-show-reports').catch(() => {}); await tab('today');
+
   /* the order on More > Guide (the website plays the story first whatever the order) */
-  const ORDER = ['reading', 'checkin', 'meds', 'question', 'treatment', 'week', 'reports', 'morereports', 'ibd', 'contacts', 'carer', 'story'];
+  const ORDER = ['reading', 'owntrack', 'checkin', 'meds', 'question', 'treatment', 'week', 'reports', 'morereports', 'ibd', 'contacts', 'carer', 'story'];
   topics.sort((a, b) => ORDER.indexOf(a.key) - ORDER.indexOf(b.key));
 
   fs.writeFileSync(path.join(OUT, 'guide.json'), JSON.stringify({ made: new Date().toISOString().slice(0, 10), width: 390, height: 844, topics }, null, 1));

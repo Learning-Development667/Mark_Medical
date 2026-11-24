@@ -1,5 +1,5 @@
 {
- "made": "2026-11-05",
+ "made": "2026-11-24",
  "width": 390,
  "height": 844,
  "topics": [
@@ -27,6 +27,14 @@
     },
     {
      "file": "tour-3.webp",
+     "caption": "Track anything of your own, like fatigue or a period, with a tile of its own: tap Add under the tiles. The Guide shows how.",
+     "tap": {
+      "x": 0.592,
+      "y": 0.435
+     }
+    },
+    {
+     "file": "tour-4.webp",
      "caption": "Meds lists every medicine. Tap Log now when a dose is taken. Reminders can come to this phone.",
      "tap": {
       "x": 0.335,
@@ -34,7 +42,7 @@
      }
     },
     {
-     "file": "tour-4.webp",
+     "file": "tour-5.webp",
      "caption": "Treatment is the calendar: sessions, appointments and how the days after went.",
      "tap": {
       "x": 0.5,
@@ -46,11 +54,11 @@
      }
     },
     {
-     "file": "tour-5.webp",
+     "file": "tour-6.webp",
      "caption": "Exercise keeps steps and gentle exercises. Nothing here is expected of you."
     },
     {
-     "file": "tour-6.webp",
+     "file": "tour-7.webp",
      "caption": "Reports turns what is logged into a page or two for the team. Preview it, print it, or email it from here.",
      "tap": {
       "x": 0.5,
@@ -58,7 +66,7 @@
      }
     },
     {
-     "file": "tour-7.webp",
+     "file": "tour-8.webp",
      "caption": "More holds who to contact, your care circle and what Daybook is for.",
      "tap": {
       "x": 0.5,
@@ -66,7 +74,7 @@
      }
     },
     {
-     "file": "tour-8.webp",
+     "file": "tour-9.webp",
      "caption": "That is it. Log what you can, when you can. The Guide under More shows each job step by step."
     }
    ]
@@ -220,6 +228,66 @@
    ]
   },
   {
+   "key": "owntrack",
+   "title": "Track your own things",
+   "sub": "Anything that matters to you, like fatigue or a period, with a tile of its own on Today.",
+   "intro": "Daybook tracks what you choose. Each thing can have its own tile, logged the moment it happens, and goes on Trends and Notes for the team.",
+   "steps": [
+    {
+     "file": "owntrack-1.webp",
+     "caption": "Under the tiles on Today, tap Add to track something of your own.",
+     "tap": {
+      "x": 0.592,
+      "y": 0.434
+     }
+    },
+    {
+     "file": "owntrack-2.webp",
+     "caption": "Give it a name and choose how it is answered: yes or no, a number, or a score from 0 to 10. Leave Show it as a tile ticked.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.777
+     }
+    },
+    {
+     "file": "owntrack-3.webp",
+     "caption": "It now has its own tile on Today, beside the others. Tap it whenever you want to log it, as often as you like.",
+     "tap": {
+      "x": 0.187,
+      "y": 0.435
+     }
+    },
+    {
+     "file": "owntrack-4.webp",
+     "caption": "Slide to the number. The time is filled in for you, and a note is there if you want one. Then Save.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.967
+     }
+    },
+    {
+     "file": "owntrack-5.webp",
+     "caption": "The tile shows the latest. The evening check-in counts it as done, so you are not asked again.",
+     "tap": {
+      "x": 0.187,
+      "y": 0.443
+     }
+    },
+    {
+     "file": "owntrack-6.webp",
+     "caption": "Choose tiles turns any of your own things into a tile, or back again, on this phone. A carer chooses their own tiles on theirs.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.747
+     }
+    },
+    {
+     "file": "owntrack-7.webp",
+     "caption": "Trends charts it day by day, and Notes for the team lists it for the team: facts only, never judged."
+    }
+   ]
+  },
+  {
    "key": "checkin",
    "title": "The morning and evening check-ins",
    "sub": "A few minutes each: sleep, symptoms, pain and mood, one question a screen.",
@@ -254,7 +322,7 @@
      "caption": "A written answer has Tap to speak under it: tap, say it, tap again to stop. Skip is always there.",
      "tap": {
       "x": 0.697,
-      "y": 0.427
+      "y": 0.416
      }
     },
     {
@@ -327,10 +395,10 @@
     },
     {
      "file": "meds-5.webp",
-     "caption": "Add a medicine sits at the top. Under it, every medicine on the list, with what it is for and Edit. A finished course keeps its history under Medicine history.",
+     "caption": "Add a medicine sits at the top, then Sort by: scheduled first, your own order, A to Z or what it is for. Finished courses and stopped medicines always go to the bottom.",
      "tap": {
       "x": 0.164,
-      "y": 0.971
+      "y": 0.549
      }
     },
     {
@@ -346,7 +414,7 @@
      "caption": "A regular medicine then asks when you take it: tick Morning, Midday, Teatime or Night and set each time. One in the morning and one at night is Morning and Night. The same times are its reminders.",
      "tap": {
       "x": 0.126,
-      "y": 0.55
+      "y": 0.549
      }
     }
    ]
