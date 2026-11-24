@@ -2805,3 +2805,15 @@ html.text-huge .medrow, html.text-huge .med-head { gap: 8px; }
 /* v483: your own tiles on Today (a tracked thing as a tile), and the evening step's "logged today" line */
 .qa-own .qa-own-now { display: block; margin-top: 2px; font-size: 13px; font-weight: 600; line-height: 1.2; color: var(--text-secondary); overflow-wrap: anywhere; }
 .own-tiled { margin: 0; }
+
+/* v487: the Actioned button on each piece of feedback on Usage, and the actioned ones folded at the foot */
+.fbitem-act { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--s-2) var(--s-3); margin-top: var(--s-3); }
+.fbitem-act .btn-small { margin-top: 0; min-height: 44px; }
+.fbitem.is-done .fbitem-text, .fbitem.is-done .fbitem-who { color: var(--text-secondary); }
+.usage-fb-done { border-top: 1px solid var(--border-subtle); margin-top: var(--s-2); }
+.usage-fb-done > summary { list-style: none; cursor: pointer; min-height: 48px; display: flex; align-items: center; gap: var(--s-2); font-weight: 600; }
+.usage-fb-done > summary::-webkit-details-marker { display: none; }
+.usage-fb-done > summary::after { content: '\203A'; color: var(--text-muted); font-size: 24px; margin-left: auto; transition: transform var(--t-base) ease; }
+.usage-fb-done[open] > summary::after { transform: rotate(90deg); }
+.usage-fb-done .fbitem:first-of-type { border-top: 1px solid var(--border-subtle); }
+@media (prefers-reduced-motion: reduce) { .usage-fb-done > summary::after { transition: none; } }

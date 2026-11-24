@@ -2001,10 +2001,20 @@ async function handleUsage(request, env) {
       try { answers = f(F, 'answers') ? JSON.parse(f(F, 'answers')) : null; } catch (e) { answers = null; }
       const hid = f(F, 'household') || '';
       items.push({ id: r.id, at: f(F, 'at'), kind: f(F, 'kind') || 'note', name: f(F, 'name') || '', role: f(F, 'role') || '', text: f(F, 'text') || '', answers,
-        screen: f(F, 'screen') || '', version: f(F, 'version') || '', device: f(F, 'device') || '', image: !!F.image, own: hid === opHid,
+        screen: f(F, 'screen') || '', version: f(F, 'version') || '', device: f(F, 'device') || '', image: !!F.image, own: hid === opHid, actioned: f(F, 'actioned') || '',
         circle: hid ? (await sha256Hex(hid + ':' + (env.BRIDGE_KEY || ''))).slice(0, 8) : '' });
     }
     return json({ operator: true, feedback: items, total });
+  }
+  /* v487 (Mark: "an actioned button on the feedback in usage that closes them down"): the operator marks a piece of feedback
+     actioned (the time it was marked, on feedback/{id}) or reopens it (the field taken off). Nothing else on it changes. */
+  if (body.what === 'feedback-actioned') {
+    const id = String(body.id || '');
+    if (!/^[A-Za-z0-9_-]{1,40}$/.test(id)) return json({ error: 'bad-request', message: 'That feedback could not be found.' }, 400);
+    if (!(await fs.get('feedback/' + id))) return json({ error: 'not-found', message: 'That feedback could not be found.' }, 404);
+    if (body.actioned) { const at = nowTs(); await fs.merge('feedback/' + id, { actioned: at }); return json({ operator: true, id, actioned: at.timestampValue }); }
+    await fs.mergePaths('feedback/' + id, {}, ['actioned']);
+    return json({ operator: true, id, actioned: '' });
   }
   if (body.what === 'feedback-image') {
     const id = String(body.id || '');

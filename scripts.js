@@ -16,7 +16,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '486';
+const APP_VERSION = '487';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -7321,24 +7321,48 @@ function feedbackItem(it, isNew) {
   }
   const meta = [it.screen ? 'On ' + it.screen : '', it.version ? 'version ' + it.version : '', deviceWord(it.device)].filter(Boolean).join(' · ');
   if (meta) parts.push(h('p', { class: 'muted fbitem-meta', text: meta }));
-  return h('article', { class: 'fbitem' + (isNew ? ' is-new' : '') }, ...parts);
+  /* v487 (Mark: "an actioned button on the feedback in usage that closes them down"): Actioned folds it away into the
+     Actioned list at the foot, on every phone (kept on the feedback by the bridge); Reopen brings it back */
+  const done = Boolean(it.actioned);
+  parts.push(h('div', { class: 'fbitem-act' },
+    done ? h('span', { class: 'muted', text: 'Actioned ' + new Date(it.actioned).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) }) : null,
+    h('button', { class: 'btn ' + (done ? 'btn-secondary' : 'btn-primary') + ' btn-small', type: 'button', onclick: (ev) => withBusy(ev.currentTarget, done ? 'Reopening' : 'Saving', async () => {
+      try {
+        const r = await bridgeCall('/usage', { what: 'feedback-actioned', id: it.id, actioned: !done });
+        it.actioned = r.actioned || '';
+        usageFeedback.keepOpen = true;
+        renderUsageFeedback();
+        toast(done ? 'Reopened' : 'Marked as actioned');
+      } catch (e) { toast(e.message || 'Could not save that. Try again.'); }
+    }) }, done ? 'Reopen' : 'Mark actioned')));
+  return h('article', { class: 'fbitem' + (isNew ? ' is-new' : '') + (done ? ' is-done' : '') }, ...parts);
 }
 function renderUsageFeedback() {
   const box = $('usage-feedback');
   const d = usageFeedback;
   if (!d) return;
-  const isNew = (it) => !d.seen || (it.at && it.at > d.seen);
-  const fresh = d.items.filter(isNew).length;
+  const isNew = (it) => !it.actioned && (!d.seen || (it.at && it.at > d.seen));
+  const open = d.items.filter((it) => !it.actioned), done = d.items.filter((it) => it.actioned);
+  const fresh = open.filter(isNew).length;
   /* v459 (Mark: "I have to scroll down through all the feedback to get to the numbers"): the counts come first and the
      feedback sits under them, folded, its heading saying how many are new; each piece is also emailed to the company inbox */
-  box.replaceChildren(h('details', { class: 'card usage-card usage-fb' },
+  const doneBox = done.length ? h('details', { class: 'usage-fb-done' },
+    h('summary', null, h('span', { text: 'Actioned' }), h('span', { class: 'pill pill-green', text: String(done.length) })),
+    ...done.map((it) => feedbackItem(it, false))) : null;
+  if (doneBox && d.doneOpen) doneBox.open = true;
+  if (doneBox) doneBox.addEventListener('toggle', () => { d.doneOpen = doneBox.open; });
+  const card = h('details', { class: 'card usage-card usage-fb' },
     h('summary', null, h('span', { class: 'card-title', text: 'Feedback' }),
-      h('span', { class: 'pill ' + (fresh ? 'pill-green' : 'pill-teal'), text: fresh ? fresh + ' new' : String(d.total) })),
+      h('span', { class: 'pill ' + (fresh ? 'pill-green' : 'pill-teal'), text: fresh ? fresh + ' new' : open.length ? open.length + ' open' : 'All actioned' })),
     h('p', { class: 'hint', text: d.items.length
-      ? plural(d.total, 'piece') + ' of feedback in all' + (fresh ? ', ' + fresh + ' new since you last looked' : '') + '. Newest first. Each is also emailed to the company inbox with its picture.'
+      ? plural(d.total, 'piece') + ' of feedback in all' + (fresh ? ', ' + fresh + ' new since you last looked' : '') + (done.length ? ', ' + done.length + ' actioned' : '') + '. Newest first; Actioned folds one away at the foot. Each is also emailed to the company inbox with its picture.'
       : 'Nothing sent yet. What people send through Provide feedback shows here, newest first, and is emailed to the company inbox.' }),
-    ...d.items.map((it) => feedbackItem(it, isNew(it))),
-    d.total > d.items.length ? h('p', { class: 'muted', text: 'The newest ' + d.items.length + ' are shown.' }) : null));
+    ...open.map((it) => feedbackItem(it, isNew(it))),
+    d.items.length && !open.length ? h('p', { class: 'hint', text: 'Everything has been actioned.' }) : null,
+    doneBox,
+    d.total > d.items.length ? h('p', { class: 'muted', text: 'The newest ' + d.items.length + ' are shown.' }) : null);
+  if (d.keepOpen) card.open = true;
+  box.replaceChildren(card);
 }
 function usageTile(label, value, sub, tone) {
   return h('div', { class: 'tile' + (tone ? ' ' + tone : '') }, h('span', { class: 'tile-label', text: label }), h('span', { class: 'tile-value', text: String(value) }), h('span', { class: 'tile-sub', text: sub }));
