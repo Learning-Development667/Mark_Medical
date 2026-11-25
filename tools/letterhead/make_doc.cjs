@@ -55,7 +55,7 @@ const footer = new Footer({ children: [
 
 const none = { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' };
 const rule = { style: BorderStyle.SINGLE, size: 4, color: LINE };
-function table(rows) {
+function table(rows, whole) {
   const cells = rows.map(r => r.replace(/^\||\|$/g, '').split('|').map(c => c.trim()));
   const body = cells.filter((r, i) => i !== 1); // drop the --- row
   let head = true;
@@ -73,35 +73,58 @@ function table(rows) {
         borders: { top: rule, bottom: rule, left: none, right: none },
         shading: head && ri === 0 ? { type: ShadingType.CLEAR, fill: MIST, color: 'auto' } : undefined,
         margins: { top: 60, bottom: 60, left: 80, right: 80 },
-        children: [new Paragraph({ spacing: sp, children: runs(r[ci] || '', { size: 19, bold: (head && ri === 0) || (!head && ci === 0), color: (head && ri === 0) ? NAVY : INK }) })] })) })) });
+        children: [new Paragraph({ spacing: sp, keepNext: !!whole && ri < body.length - 1, children: runs(r[ci] || '', { size: 19, bold: (head && ri === 0) || (!head && ci === 0), color: (head && ri === 0) ? NAVY : INK }) })] })) })) });
 }
 
 const md = fs.readFileSync(inFile, 'utf8').replace(/\r/g, '').split('\n');
-const out = [];
 const gap = (after = 120) => new Paragraph({ spacing: { before: 0, after }, children: [] });
+/* A heading never sits at the foot of a page with a line or two under it (Mark, 25 November 2026: "when you have a title or
+   sub title that close to the bottom of a page you normally just start it on the next page"). Each heading is held, with
+   Word's keep-with-next, to the opening of its own section: the next HOLD blocks (an intro line, the first bullets), or up to
+   and including a picture and the paragraph under it, never past the next heading or a table. When those do not all fit, the heading starts the next
+   page. A table of TABLE_WHOLE rows or fewer is kept in one piece, so no row is left alone on a page. */
+const HOLD = 3, TABLE_WHOLE = 20;
+const items = []; // { kind: 'head' | 'pic' | 'text' | 'table' | 'gap', boldLine?, make(keep) }
 for (let i = 0; i < md.length; i++) {
   const l = md[i];
   if (!l.trim()) continue;
-  if (l.trim() === '<space>') { out.push(gap(480)); continue; } // room to sign or write by hand
-  if (l.startsWith('|')) { const t = []; while (i < md.length && md[i].startsWith('|')) t.push(md[i++]); i--; out.push(table(t), gap(160)); continue; }
+  if (l.trim() === '<space>') { items.push({ kind: 'gap', make: () => gap(480) }); continue; } // room to sign or write by hand
+  if (l.startsWith('|')) { const t = []; while (i < md.length && md[i].startsWith('|')) t.push(md[i++]); i--; items.push({ kind: 'table', make: () => table(t, t.length - 1 <= TABLE_WHOLE) }); items.push({ kind: 'gap', make: () => gap(160) }); continue; }
   let m;
   if ((m = l.match(/^!\[(.*)\]\((.+)\)\s*$/))) {
     const file = path.resolve(path.dirname(inFile), m[2]);
     const buf = fs.readFileSync(file);
     const w = buf.readUInt32BE(16), h = buf.readUInt32BE(20); // PNG size
     const want = Number((m[1].match(/\|(\d+)$/) || [])[1]) || 642; // ![caption|300](pic.png) sets the width
-    const dw = Math.min(642, want), dh = Math.round(h * dw / w);
-    out.push(new Paragraph({ spacing: { before: 60, after: 160 }, keepNext: false, children: [new ImageRun({ type: 'png', data: buf, transformation: { width: dw, height: dh }, altText: { title: m[1].replace(/\|\d+$/, ''), description: m[1].replace(/\|\d+$/, ''), name: 'picture' } })] }));
+    const dw = Math.min(642, want), dh = Math.round(h * dw / w), alt = m[1].replace(/\|\d+$/, '');
+    items.push({ kind: 'pic', make: (keep) => new Paragraph({ spacing: { before: 60, after: 160 }, keepNext: keep, children: [new ImageRun({ type: 'png', data: buf, transformation: { width: dw, height: dh }, altText: { title: alt, description: alt, name: 'picture' } })] }) });
     continue;
   }
-  if ((m = l.match(/^# (.+)/))) { out.push(new Paragraph({ spacing: { before: 0, after: 80 }, keepNext: true, children: runs(m[1], { size: 34, bold: true, color: NAVY }) })); continue; }
-  if ((m = l.match(/^## (.+)/))) { out.push(new Paragraph({ spacing: { before: 240, after: 100 }, keepNext: true, children: runs(m[1], { size: 27, bold: true, color: NAVY }) })); continue; }
-  if ((m = l.match(/^### (.+)/))) { out.push(new Paragraph({ spacing: { before: 160, after: 80 }, keepNext: true, children: runs(m[1], { size: 23, bold: true, color: TEAL }) })); continue; }
-  if ((m = l.match(/^- \[( |x)\] (.+)/))) { out.push(new Paragraph({ spacing: { before: 0, after: 80, line: 276 }, indent: { left: 900, hanging: 900 }, children: [new TextRun({ text: (m[1] === 'x' ? 'Done' : 'To do') + '\t', font: F, size: 22, color: NAVY, bold: true }), ...runs(m[2])], tabStops: [{ type: TabStopType.LEFT, position: 900 }] })); continue; }
-  if ((m = l.match(/^- (.+)/))) { out.push(new Paragraph({ numbering: { reference: 'dots', level: 0 }, spacing: { before: 0, after: 80, line: 276 }, children: runs(m[1]) })); continue; }
+  if ((m = l.match(/^# (.+)/))) { const t = m[1]; items.push({ kind: 'head', make: (keep) => new Paragraph({ spacing: { before: 0, after: 80 }, keepNext: keep, children: runs(t, { size: 34, bold: true, color: NAVY }) }) }); continue; }
+  if ((m = l.match(/^## (.+)/))) { const t = m[1]; items.push({ kind: 'head', make: (keep) => new Paragraph({ spacing: { before: 240, after: 100 }, keepNext: keep, children: runs(t, { size: 27, bold: true, color: NAVY }) }) }); continue; }
+  if ((m = l.match(/^### (.+)/))) { const t = m[1]; items.push({ kind: 'head', make: (keep) => new Paragraph({ spacing: { before: 160, after: 80 }, keepNext: keep, children: runs(t, { size: 23, bold: true, color: TEAL }) }) }); continue; }
+  if ((m = l.match(/^- \[( |x)\] (.+)/))) { const done = m[1] === 'x', t = m[2]; items.push({ kind: 'text', make: (keep) => new Paragraph({ keepNext: keep, spacing: { before: 0, after: 80, line: 276 }, indent: { left: 900, hanging: 900 }, children: [new TextRun({ text: (done ? 'Done' : 'To do') + '\t', font: F, size: 22, color: NAVY, bold: true }), ...runs(t)], tabStops: [{ type: TabStopType.LEFT, position: 900 }] }) }); continue; }
+  if ((m = l.match(/^- (.+)/))) { const t = m[1]; items.push({ kind: 'text', make: (keep) => new Paragraph({ keepNext: keep, numbering: { reference: 'dots', level: 0 }, spacing: { before: 0, after: 80, line: 276 }, children: runs(t) }) }); continue; }
   // a line that is all bold is a small heading: keep it with what follows
-  out.push(new Paragraph({ spacing: { before: 0, after: 160, line: 288 }, keepNext: /^\*\*[^*]+\*\*$/.test(l.trim()), children: runs(l) }));
+  items.push({ kind: 'text', boldLine: /^\*\*[^*]+\*\*$/.test(l.trim()), make: (keep) => new Paragraph({ spacing: { before: 0, after: 160, line: 288 }, keepNext: keep, children: runs(l) }) });
 }
+const keep = items.map((it, i) => it.kind === 'head' ? i < items.length - 1 : !!it.boldLine);
+for (let i = 0; i < items.length; i++) {
+  if (items[i].kind !== 'head' || (items[i + 1] && items[i + 1].kind === 'head')) continue; // the last of a run of headings opens the hold
+  const run = [];
+  for (let j = i + 1; j < items.length && run.length < HOLD; j++) {
+    const k = items[j].kind;
+    if (k === 'head' || k === 'table' || k === 'gap') break;
+    run.push(j);
+    if (k === 'pic') { if (items[j + 1] && items[j + 1].kind === 'text') run.push(j + 1); break; } // a picture and the words that explain it
+  }
+  run.forEach((j, n) => { keep[j] = n < run.length - 1; });
+  // an intro line that leads straight into a sub-heading stays with it (the sub-heading holds its own opening)
+  const last = run[run.length - 1];
+  const cutShort = run.length < HOLD && !run.some((j) => items[j].kind === 'pic');
+  if (cutShort && last !== undefined && items[last + 1] && items[last + 1].kind === 'head') keep[last] = true;
+}
+const out = items.map((it, i) => it.make(keep[i]));
 
 const doc = new Document({ creator: 'Mark 1 Apps Ltd', title: path.basename(outFile, '.docx'),
   styles: { default: { document: { run: { font: F, size: 22, color: INK } } } },
