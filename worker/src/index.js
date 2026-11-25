@@ -1120,7 +1120,7 @@ async function handleFeedback(request, env) {
   return json({ ok: true, id, pushed });
 }
 /* v459 (Mark: "add a function where I can send the feedback and screenshots direct to you"): a copy of each piece of feedback
-   to the company inbox (FEEDBACK_TO, a Worker var, else mark@mark1apps.co.uk), the picture attached, so it can be read and
+   to the company inbox (FEEDBACK_TO, a Worker var, else info@mark1apps.co.uk, the shared inbox everyone at Mark 1 Apps reads, since v488), the picture attached, so it can be read and
    acted on without scrolling the Usage page. The picture (up to 900 KB of base64) is spliced into the request body as a
    string, never re-stringified (the free plan's 10 ms of CPU, v246). Never stops the feedback being saved. */
 async function emailFeedback(env, fb, image) {
@@ -1131,7 +1131,7 @@ async function emailFeedback(env, fb, image) {
   if (fb.text) lines.push(fb.text, '');
   if (fb.answers) lines.push('First-day answers: ' + fb.answers, '');
   lines.push(image ? 'The picture they sent is attached.' : 'No picture was sent.', '', 'Also on the Usage page in the app (More, then Usage). Reference ' + fb.id + '.');
-  const head = JSON.stringify({ from: 'My Medical Daybook <' + (env.SEND_FROM || SEND_FROM) + '>', to: [env.FEEDBACK_TO || 'mark@mark1apps.co.uk'],
+  const head = JSON.stringify({ from: 'My Medical Daybook <' + (env.SEND_FROM || SEND_FROM) + '>', to: [env.FEEDBACK_TO || 'info@mark1apps.co.uk'],
     subject: 'Daybook feedback' + (fb.screen ? ': ' + fb.screen : ''), text: lines.join('\n') });
   const body = image ? head.slice(0, -1) + ',"attachments":[{"filename":"daybook-feedback.jpg","content":"' + image + '"}]}' : head;
   try {

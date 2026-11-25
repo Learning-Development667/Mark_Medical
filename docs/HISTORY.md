@@ -6,6 +6,9 @@ Every version's notes, as they stood in CLAUDE.md until 1 November 2026 (v372), 
 
 _Add a short section per version here._
 
+### v488: feedback emailed to info@ (25 November 2026)
+Mark: "everyone should see the feedback". The copy of each piece of feedback the bridge emails (v459, `emailFeedback()`) now goes to **info@mark1apps.co.uk**, the shared company inbox everyone at Mark 1 Apps reads, instead of mark@. `FEEDBACK_TO` (a Worker var, not set) still overrides it. Nothing in the app changed.
+
 ### v487: Mark actioned on the feedback in Usage (24 November 2026)
 Mark: "Can we have a actioned button on the feedback in usage that closes them down as well please". Each open piece of feedback on Usage now ends with **Mark actioned** (`feedbackItem()`, `.fbitem-act`); it moves into an **Actioned** fold at the foot of the Feedback card (`.usage-fb-done`, folded until opened, its count in a pill) with the date it was actioned and **Reopen**. The card stays open while you work through it (`usageFeedback.keepOpen`), as does the Actioned fold (`doneOpen`). The summary pill reads "N new", else "N open", else "All actioned"; "New" counts only open pieces. Kept on the feedback itself, so every phone agrees: the bridge's `/usage` takes `what: 'feedback-actioned'` { id, actioned } from the operator alone, writing `actioned` (a timestamp) on `feedback/{id}` or taking the field off (`mergePaths`), and the feedback list returns `actioned`. Nothing else on the feedback changes. Tested in the scratchpad's `t/fb_actioned.cjs` (a stand-in sign-in and bridge: the counts, Mark actioned, the toast, the card staying open, Reopen, 44px controls, no sideways scroll, axe, no page errors, 390 light and 320 dark). Not tried on an iPhone.
 
