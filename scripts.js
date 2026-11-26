@@ -16,7 +16,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '488';
+const APP_VERSION = '489';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -1755,7 +1755,7 @@ function buildDemoFixture() {
     e(-4, '08:05', 'Mark', { type: 'sleep', value: 275, note: 'Up twice with back pain', bedAt: '22:30', wokeAt: '08:05', awake: 90, rested: 'no', broken: 'lots', brokenWhy: ['pain', 'toilet'], brokenOther: '', awakeFor: '1to2' }),
     e(-3, '07:30', 'Mark', { type: 'sleep', value: 395, rested: 'yes', broken: 'no', brokenWhy: [], brokenOther: '', awakeFor: null }),
     e(-1, '07:50', 'Mark', { type: 'sleep', value: 440, rested: 'bit', broken: 'some', brokenWhy: ['toilet'], brokenOther: '', awakeFor: '30to60' }),
-    e(0, '07:55', 'Mark', { type: 'sleep', value: 428, deep: 70, rem: 53, core: 305, awake: 25, bedAt: '22:10', wokeAt: '07:05' }),
+    e(0, '07:55', 'Apple Health', { type: 'sleep', value: 428, deep: 70, rem: 53, core: 305, awake: 25, bedAt: '22:10', wokeAt: '07:05', source: 'apple-health-app', woke: 2, stages: 'w0-6 c6-40 d40-85 c85-130 r130-148 c148-190 d190-215 c215-262 w262-270 c270-300 r300-318 c318-380 w380-385 c385-430 r430-447 c447-529 w529-535' }),
     e(-9, '09:00', 'Mark', { type: 'vitals', heartRate: 76 }),
     e(-9, '07:30', 'Mark', { type: 'weight', value: 78.8 }),
     e(-17, '12:30', 'Shelley', { type: 'food', note: 'Cheese and crackers', detail: 'cheddar, water biscuits', amount: 'About half' }),
@@ -3328,6 +3328,21 @@ function sleepNights(samples, notBefore) {
   }
   return Object.values(best).map(({ total, n, mins }) => {
     const row = { sleepStart: haeStamp(new Date(n.a)), sleepEnd: haeStamp(new Date(n.b)), asleep: total / 60 };
+    /* v489 (Mark: the night as Apple Health shows it): the night's stages in order, as minutes from its start, joined
+       end to end where a stage carries on ("d40-85 c85-130 ..."), and how many times awake between the first and last sleep */
+    const LETTER = { awake: 'w', rem: 'r', deep: 'd', light: 'c', asleep: 'a' };
+    const runs = [];
+    for (const g of n.segs.slice().sort((x, y) => x.a - y.a)) {
+      const a = Math.max(0, Math.round((g.a - n.a) / 60000)), b = Math.round((g.b - n.a) / 60000);
+      if (b <= a) continue;
+      const last = runs[runs.length - 1];
+      if (last && last.st === g.st && a <= last.b + 1) last.b = Math.max(last.b, b); else runs.push({ st: g.st, a, b });
+    }
+    if (runs.length >= 2 && runs.length <= 400) {
+      row.stages = runs.map((r) => LETTER[r.st] + r.a + '-' + r.b).join(' ');
+      const sleeps = runs.map((r, i) => (r.st !== 'awake' ? i : -1)).filter((i) => i >= 0);
+      if (sleeps.length) row.woke = runs.filter((r, i) => r.st === 'awake' && i > sleeps[0] && i < sleeps[sleeps.length - 1]).length;
+    }
     if (mins.deep) row.deep = mins.deep / 60;
     if (mins.rem) row.rem = mins.rem / 60;
     if (mins.light) row.core = mins.light / 60;
@@ -4120,8 +4135,61 @@ function entrySub(e) {
 }
 
 function sleepStages(e) {
-  return [['awake', 'Awake'], ['rem', 'REM'], ['core', 'Core'], ['deep', 'Deep']]
+  return [['awake', 'Awake'], ['rem', 'REM'], ['core', stageWord(e)], ['deep', 'Deep']]
     .filter(([k]) => e[k]).map(([k, label]) => label + ' ' + fmtHm(e[k])).join(' · ');
+}
+/* v489 (Mark: "Core or Light"): the middle stage in the word the person's own health app uses: Apple calls it Core,
+   Google's Health Connect calls it Light. A night says which it came from; otherwise this phone decides. */
+function stageWord(e) { const src = e && (e.source || (e.addedBy === 'Health Connect' ? 'health-connect' : '')); return src === 'health-connect' || (!src && IS_ANDROID_APP) ? 'Light' : 'Core'; }
+/* v489 (Mark: "Currently I have to go into Apple Health to check my deep sleep"; mock-up agreed 26 November 2026): on a night
+   a watch or phone recorded, the night block shows what it saw: time asleep, in bed, the stages with their minutes as a bar,
+   the night as a timeline of stages and the times awake when the phone sent them (stages, woke: from v489's phone builds on),
+   and the last 7 nights' averages. Facts only: what the watch recorded, never judged, no "normal" amount of deep sleep. */
+const LN_STAGE = { d: 'deep', c: 'core', l: 'core', r: 'rem', w: 'awake', a: 'core' };
+function parseNightStages(str) {
+  if (typeof str !== 'string' || !str) return [];
+  return str.split(' ').map((p) => { const m = /^([wcdlra])(\d{1,4})-(\d{1,4})$/.exec(p); return m ? { st: LN_STAGE[m[1]], a: Number(m[2]), b: Number(m[3]) } : null; }).filter((g) => g && g.b > g.a);
+}
+function hmPlus(hm, mins) { const [hh, mm] = String(hm || '00:00').split(':').map(Number); const t = (((hh * 60 + mm + Math.round(mins)) % 1440) + 1440) % 1440; return String(Math.floor(t / 60)).padStart(2, '0') + ':' + String(t % 60).padStart(2, '0'); }
+function lastNightPanel(tracker, w, from, weekShown) {
+  const src = HEALTH_ADDED_BY.includes(tracker.addedBy) ? tracker.addedBy : healthSourceName(tracker.source);
+  const core = stageWord(tracker);
+  const stages = [['deep', 'Deep'], ['core', core], ['rem', 'REM'], ['awake', 'Awake']].filter(([k]) => Number(w[k]) > 0);
+  const asleep = Number(w.value) || 0;
+  const box = h('div', { class: 'last-night', role: 'group', 'aria-label': 'Last night' + (src ? ', from ' + src : '') },
+    h('p', { class: 'ln-from' }, icon('moon'), src ? 'Last night, from ' + src : 'Last night'),
+    asleep ? h('p', { class: 'ln-big' }, fmtHm(asleep), h('small', { text: 'asleep' })) : h('span'),
+    w.bedAt && w.wokeAt ? h('p', { class: 'ln-bed', text: 'In bed ' + w.bedAt + ' to ' + w.wokeAt }) : h('span'));
+  /* the night in stages, when the phone sent them */
+  const segs = parseNightStages(w.stages || tracker.stages);
+  if (segs.length >= 2 && !tracker.watchShort) {
+    const span = Math.max(...segs.map((g) => g.b));
+    const Y = { awake: 7, rem: 23, core: 39, deep: 55 }, X = (m) => 40 + (m / span) * 178;
+    const start = w.bedAt || '';
+    const svg = '<svg viewBox="0 0 222 82" role="img" aria-label="The night in stages' + (start && w.wokeAt ? ', ' + start + ' to ' + w.wokeAt : '') + '">' +
+      [['Awake', 'awake'], ['REM', 'rem'], [core, 'core'], ['Deep', 'deep']].map(([n, k]) => '<text x="0" y="' + (Y[k] + 3) + '">' + n + '</text><line class="ln-grid" x1="40" x2="218" y1="' + Y[k] + '" y2="' + Y[k] + '"/>').join('') +
+      segs.map((g) => '<rect class="ln-st-' + g.st + '" x="' + X(g.a).toFixed(1) + '" y="' + (Y[g.st] - 5) + '" width="' + Math.max(1.5, X(g.b) - X(g.a)).toFixed(1) + '" height="10" rx="2"/>').join('') +
+      (start ? '<text x="40" y="78">' + start + '</text><text x="129" y="78" text-anchor="middle">' + hmPlus(start, span / 2) + '</text><text x="218" y="78" text-anchor="end">' + hmPlus(start, span) + '</text>' : '') + '</svg>';
+    const hyp = h('div', { class: 'ln-hyp' }); hyp.innerHTML = svg; box.append(hyp);
+  }
+  const woke = Number(w.woke != null ? w.woke : tracker.woke);
+  if (isFinite(woke) && (w.woke != null || tracker.woke != null) && !tracker.watchShort) box.append(h('p', { class: 'ln-woke', text: (woke ? 'Awake ' + (woke === 1 ? 'once' : woke + ' times') + ' in the night' : 'Not awake in the night') + (Number(w.awake) > 0 ? ', ' + fmtHm(Number(w.awake)) + ' in all.' : '.') }));
+  if (stages.length) {
+    const tot = stages.reduce((t, [k]) => t + Number(w[k]), 0);
+    box.append(h('div', { class: 'ln-bar', 'aria-hidden': 'true' }, ...stages.map(([k]) => h('span', { class: 'ln-st-' + k, style: 'flex:' + (Number(w[k]) / tot).toFixed(4) }))),
+      h('ul', { class: 'ln-key' }, ...stages.map(([k, n]) => h('li', null, h('i', { class: 'ln-st-' + k }), n, h('b', { text: fmtHm(Number(w[k])) })))));
+  }
+  /* the last 7 nights to this one, as facts, counted as the Sleep tile counts them (left out where that card is already on show) */
+  const day = tracker.day;
+  if (day && !weekShown) {
+    const nights = [];
+    for (let i = 0; i < 7; i++) { const d = addDays(day, -i); const e = (state.recentEntries || []).find((x) => x.type === 'sleep' && x.day === d); if (e && Number(e.value) > 0) nights.push(e); }
+    if (nights.length >= 2) {
+      const deeps = nights.map((e) => Number(e.deep)).filter((v) => v > 0);
+      box.append(h('p', { class: 'ln-usual', text: 'Last 7 nights: ' + fmtHm(Math.round(ovAvg(nights.map((e) => Number(e.value))))) + ' asleep on average (' + nights.length + ' of 7 logged)' + (deeps.length >= 2 ? ', deep ' + fmtHm(Math.round(ovAvg(deeps))) : '') + '.' }));
+    }
+  }
+  return box;
 }
 
 function renderEntry(e) {
@@ -6121,7 +6189,7 @@ function openAdd(type, editEntry, preset) {
       note.value = existing.note || '';
     }
     /* a tracker night opens on its figures, editable; a simple night on the block, with its times */
-    const block = nightBlock(nightFrom(existing), { tracker: tracked ? existing : null, ibd: packOn('ibd') });
+    const block = nightBlock(nightFrom(existing), { tracker: tracked ? existing : null, ibd: packOn('ibd'), weekShown: !editEntry });
     const sleepWarn = h('p', { class: 'hint hint-warn', role: 'alert', hidden: true });
     const details = h('details', { class: 'sleep-tracker' }, h('summary', { text: 'Add details from a tracker' }),
       h('p', { class: 'hint', text: 'For a watch or health app. Leave it shut if you do not have one: the times above are enough.' }),
@@ -6601,9 +6669,8 @@ function nightBlock(init, opts = {}) {
   const times = h('div', { class: 'night-times' }, h('div', { class: 'field-row' }, field('Went to bed', bed), field('Woke up', woke)), total, pmFix);
   if (tracker) {
     const w = tracker.watchShort && tracker.watch ? tracker.watch : tracker;
-    const asleep = Number(w.value) > 0 ? fmtHm(Number(w.value)) + ' asleep' : '';
     const from = HEALTH_ADDED_BY.includes(tracker.addedBy) ? 'From ' + tracker.addedBy : 'From the night logged';
-    const line = h('p', { class: 'wiz-hint night-tracker' }, icon('check'), from + ': ' + [w.bedAt && w.wokeAt ? 'in bed ' + w.bedAt + ' to ' + w.wokeAt : '', asleep].filter(Boolean).join(', ') + '.');
+    const line = lastNightPanel(tracker, w, from, opts.weekShown);
     const shortBtn = h('button', { class: 'preset night-short', type: 'button', 'aria-pressed': 'false' }, "My watch didn't record the whole night");
     const shortHint = h('p', { class: 'wiz-hint', text: 'Battery died or taken off? Put in when you really went to bed and woke up. Your times replace the watch\'s.' });
     const syncShort = () => {
@@ -16281,7 +16348,7 @@ function openEditMed(m, prefill) {
 
 document.querySelectorAll('#view-vitals .seg[data-range]').forEach((b) => b.addEventListener('click', () => {
   state.trendRange = parseInt(b.dataset.range, 10);
-  document.querySelectorAll('#view-vitals .seg[data-range]').forEach((x) => x.classList.toggle('is-active', x === b));
+  b.closest('.segmented').querySelectorAll('.seg[data-range]').forEach((x) => x.classList.toggle('is-active', x === b)); // v489: also when the buttons are in a chart's sheet
   renderVitals();
 }));
 
@@ -16485,7 +16552,7 @@ function renderChartTables(entries, from) {
     weight: { rows: inRange.filter((e) => e.type === 'weight' && Number(e.value) > 0), head: 'Weight', cell: (e) => [weightPref() === 'stlb' ? fmtStLb(e.value) : fmtKg(e.value), sub([weightPref() === 'stlb' ? fmtKg(e.value) : '', Number(e.bmi) > 0 ? 'BMI ' + Number(e.bmi).toFixed(1) : '', e.note].filter(Boolean).join(' · '))] },
     sleep: { rows: inRange.filter((e) => e.type === 'sleep' || e.type === 'nap'), head: 'Asleep', timeHead: 'Bed to up',
       time: (e) => e.type === 'nap' ? fmtTime(entryDate(e)) + ' to ' + addMinutesHm(fmtTime(entryDate(e)), e.value) : e.bedAt && e.wokeAt ? e.bedAt + ' to ' + e.wokeAt : '--',
-      cell: (e) => { if (e.type === 'nap') return [fmtHm(Number(e.value) || 0), sub(['Nap', e.note].filter(Boolean).join(' · '))]; const st = ['deep', 'core', 'rem'].filter((k) => Number(e[k]) > 0).map((k) => (k === 'rem' ? 'REM' : k[0].toUpperCase() + k.slice(1)) + ' ' + fmtHm(Number(e[k]))); if (Number(e.awake) > 0) st.push('awake ' + fmtHm(Number(e.awake))); return [fmtHm(Number(e.value) || 0), sub(st.join(' · '))]; } },
+      cell: (e) => { if (e.type === 'nap') return [fmtHm(Number(e.value) || 0), sub(['Nap', e.note].filter(Boolean).join(' · '))]; const st = ['deep', 'core', 'rem'].filter((k) => Number(e[k]) > 0).map((k) => (k === 'rem' ? 'REM' : k === 'core' ? stageWord(e) : 'Deep') + ' ' + fmtHm(Number(e[k]))); if (Number(e.awake) > 0) st.push('awake ' + fmtHm(Number(e.awake))); return [fmtHm(Number(e.value) || 0), sub(st.join(' · '))]; } },
     drink: { rows: inRange.filter((e) => e.type === 'drink'), head: 'Amount', cell: (e) => [(Number(e.value) || 0) + ' ml', sub(e.note)], dayNote: (day) => 'Total ' + (drinkTotals[day] || 0) + ' ml' },
     bowel: { rows: inRange.filter((e) => e.type === 'bowel'), head: 'Bowels', cell: (e) => { if (e.none) return ['None']; if (e.stoma) return ['Stoma output', sub([stomaWord(e), bowelFlagWords(e), e.note].filter(Boolean).join(' · '))]; const ts = bowelTypes(e); return [(ts.length > 1 ? 'Types ' : 'Type ') + ts.join(', '), sub([ts.map((t) => bristolName(t)).join(', '), bowelFlagWords(e), e.note].filter(Boolean).join(' · '))]; } }
   };
@@ -16522,51 +16589,6 @@ function whenLabel(e) {
   return (e.day === todayStr() ? 'today' : fmtDayShort(e.day)) + ' ' + fmtTime(d);
 }
 
-function renderVitalsLatest(entries) {
-  const latest = (pred) => { for (let i = entries.length - 1; i >= 0; i--) if (pred(entries[i])) return entries[i]; return null; };
-  const t = latest((e) => e.type === 'temp');
-  const tile = $('vt-temp');
-  tile.classList.remove('is-red', 'is-amber', 'is-green');
-  if (t) {
-    countTo($('vt-temp-value'), Number(t.value), { decimals: 1, unit: '\u00B0C' });
-    $('vt-temp-sub').textContent = whenLabel(t);
-    tile.classList.add(tempClass(t.value) || 'is-green');
-  } else { clearCount($('vt-temp-value'), '--'); $('vt-temp-sub').textContent = 'none yet'; }
-
-  const hr = latest((e) => e.type === 'vitals' && e.heartRate);
-  if (hr) { countTo($('vt-heart-value'), Math.round(hr.heartRate), { unit: 'bpm' }); $('vt-heart-sub').textContent = whenLabel(hr); }
-  else { clearCount($('vt-heart-value'), '--'); $('vt-heart-sub').textContent = 'none yet'; }
-
-  const pn = latest((e) => (isPatientCheckin(e) && e.pain != null) || e.type === 'pain');
-  if (pn) {
-    countTo($('vt-pain-value'), Number(pn.type === 'pain' ? pn.value : pn.pain), { unit: '/10' });
-    $('vt-pain-sub').textContent = whenLabel(pn) + (pn.type === 'pain' ? ' reading' : ' check-in');
-  } else { clearCount($('vt-pain-value'), '--'); $('vt-pain-sub').textContent = 'none yet'; }
-
-  const md = latest((e) => isPatientCheckin(e) && e.mood != null);
-  if (md) { countTo($('vt-mood-value'), Number(md.mood), { unit: '/10' }); $('vt-mood-sub').textContent = whenLabel(md) + ' check-in'; }
-  else { clearCount($('vt-mood-value'), '--'); $('vt-mood-sub').textContent = 'none yet'; }
-
-  const bp = latest((e) => e.type === 'vitals' && e.systolic && e.diastolic);
-  if (bp) { $('vt-bp-value').textContent = Math.round(bp.systolic) + '/' + Math.round(bp.diastolic); $('vt-bp-sub').textContent = whenLabel(bp); }
-  else { $('vt-bp-value').textContent = '--'; $('vt-bp-sub').textContent = 'none yet'; }
-
-  const ox = latest((e) => e.type === 'vitals' && e.oxygen);
-  if (ox) { countTo($('vt-oxygen-value'), Math.round(ox.oxygen), { unit: '%' }); $('vt-oxygen-sub').textContent = whenLabel(ox); }
-  else { clearCount($('vt-oxygen-value'), '--'); $('vt-oxygen-sub').textContent = 'none yet'; }
-
-  const sl = latest((e) => e.type === 'sleep');
-  if (sl) { $('vt-sleep-value').textContent = fmtHm(sl.value); $('vt-sleep-sub').textContent = sl.day === todayStr() ? 'last night' : 'night before ' + fmtDayShort(sl.day); }
-  else { $('vt-sleep-value').textContent = '--'; $('vt-sleep-sub').textContent = 'none yet'; }
-
-  const w = latest((e) => e.type === 'weight');
-  if (w) {
-    countTo($('vt-weight-value'), Number(w.value), { decimals: 1, unit: 'kg' });
-    $('vt-weight-sub').textContent = whenLabel(w) + (Number(w.bmi) > 0 ? ', BMI ' + Number(w.bmi).toFixed(1) : '');
-  }
-  else { clearCount($('vt-weight-value'), '--'); $('vt-weight-sub').textContent = 'none yet'; }
-}
-
 function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
 
 /* Reports | Trends (v351): the Reports tab opens on the reports, with Trends (the latest readings and the
@@ -16600,9 +16622,14 @@ async function renderVitals() {
   const entries = await loadEntriesFrom(from);
   if (!entries) return;
   entries.sort((a, b) => entryDate(a) - entryDate(b));
-  renderVitalsLatest(entries);
+  /* v489: the overview always compares this week with last, whatever range the charts show */
+  const ovFrom = addDays(todayStr(), -13);
+  const ovEntries = from <= ovFrom ? entries.filter((e) => e.day >= ovFrom) : ((await loadEntriesFrom(ovFrom)) || []).slice().sort((a, b) => entryDate(a) - entryDate(b));
+  state.trendOverviewEntries = ovEntries;
+  renderTrendsOverview(ovEntries);
   renderChartTables(entries, from);
   const own = buildOwnCards(entries, from);
+  placeTrendDetail();
   /* Latest readings and the tables are shown above regardless; only the charts need the library. */
   try {
     await loadScript(CDN.chart);
@@ -16710,7 +16737,7 @@ async function renderVitals() {
     type: 'bar',
     data: { labels: days.map(dayLabel), datasets: [
       sleepStageSet('Deep', deepH, cssVar('--sleep-deep')),
-      sleepStageSet('Core', coreH, cssVar('--sleep-core')),
+      sleepStageSet(stageWord(sleepEntries.filter(Boolean).pop()), coreH, cssVar('--sleep-core')),
       sleepStageSet('REM', remH, cssVar('--sleep-rem')),
       sleepStageSet('Not broken down', otherH, T.muted),
       Object.assign(sleepStageSet('Naps', napH, T.warm), { backgroundColor: hexAlpha(T.warm, 0.45) })
@@ -16798,6 +16825,245 @@ async function renderVitals() {
     ] },
     options: lineOptions(tenScale(), { title: pointTitle, label: (item) => item.dataset.label + ': ' + item.raw.y + '/10' }, !!spotMood.length, ciMood.length)
   });
+  placeTrendDetail();
+}
+
+/* ---- The Trends overview (v489, Mark: "Currently it's just a long list a you doom scroll through it"; mock-up agreed
+   25 November 2026). Trends opens on small cards, one a chart: this week's figure (the last 7 days), last week's (the 7
+   before) and a line of the fortnight, worked out from the entries, so it works with no connection. Readings that go up and
+   down are averages; counts stay counts (drinks, bowel movements, steps are totals for the week). Facts only: never better or
+   worse, never coloured. A card opens its full chart (the card below, unchanged) in a sheet. A bar at the top jumps between
+   the groups. Choose your charts ticks which show and pins up to four first, on this phone only. Charts with nothing logged
+   in the two weeks fold into one line. ---- */
+const TREND_PINS_KEY = 'daybook.trends.pins', TREND_HIDE_KEY = 'daybook.trends.hidden', TREND_PIN_MAX = 4;
+const TREND_GROUPS = [['body', 'Body'], ['feel', 'How you feel'], ['sleep', 'Sleep and activity'], ['food', 'Food and drink'], ['own', 'Your own things']];
+const TREND_JUMP_WORD = { pinned: 'Pinned', body: 'Body', feel: 'How you feel', sleep: 'Sleep', food: 'Food', own: 'Your own' };
+function trendList(key) { try { const v = JSON.parse(localStorage.getItem(key) || '[]'); return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : []; } catch (e) { return []; } }
+function setTrendList(key, list) { try { localStorage.setItem(key, JSON.stringify(list)); } catch (e) { /* fine without: this session only */ } }
+const ovAvg = (a) => (a.length ? a.reduce((s, v) => s + v, 0) / a.length : null);
+const ovF1 = (v) => (v == null ? null : (Math.round(v * 10) / 10).toFixed(1));
+const ovF0 = (v) => (v == null ? null : String(Math.round(v)));
+const ovN = (v) => Number(v).toLocaleString('en-GB');
+/* the fortnight as a small line: 14 numbers or nulls, oldest first; a faint mark where this week starts */
+function ovSpark(series) {
+  const vals = series.filter((v) => v != null && isFinite(v));
+  if (!vals.length) return '';
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  if (hi === lo) { hi += 1; lo -= 1; }
+  const X = (i) => 2 + i * (96 / 13), Y = (v) => 27 - ((v - lo) / (hi - lo)) * 24;
+  const segs = []; let cur = [];
+  series.forEach((v, i) => { if (v == null || !isFinite(v)) { if (cur.length) segs.push(cur); cur = []; } else cur.push(X(i).toFixed(1) + ',' + Y(v).toFixed(1)); });
+  if (cur.length) segs.push(cur);
+  let li = -1; series.forEach((v, i) => { if (v != null && isFinite(v)) li = i; });
+  return '<svg class="ov-spark" viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true" focusable="false">' +
+    '<line x1="' + X(7).toFixed(1) + '" y1="2" x2="' + X(7).toFixed(1) + '" y2="29" class="ov-spark-mark"/>' +
+    segs.map((s) => (s.length > 1 ? '<polyline points="' + s.join(' ') + '" class="ov-spark-line"/>' : '')).join('') +
+    '<circle cx="' + X(li).toFixed(1) + '" cy="' + Y(series[li]).toFixed(1) + '" r="2.6" class="ov-spark-dot"/></svg>';
+}
+/* Every card the overview can show, from the fortnight's entries. Each: key (the chart it opens), group, name, val and unit
+   (this week), was (last week, in words), series (14 days), has (anything in the fortnight), and a few words for a screen reader. */
+function trendCards(entries) {
+  const today = todayStr(), L0 = addDays(today, -13), W0 = addDays(today, -6);
+  const days = []; for (let i = 0; i < 14; i++) days.push(addDays(L0, i));
+  const inW = (d) => d >= W0, inL = (d) => d < W0;
+  const perDay = (rows, how) => days.map((d) => { const vs = rows.filter((r) => r.day === d).map((r) => r.v); if (!vs.length) return null; return how === 'sum' ? vs.reduce((a, b) => a + b, 0) : how === 'max' ? Math.max(...vs) : ovAvg(vs); });
+  const cards = [];
+  const reading = (key, group, name, rows, unit, f) => {
+    const w = rows.filter((r) => inW(r.day)).map((r) => r.v), l = rows.filter((r) => inL(r.day)).map((r) => r.v);
+    cards.push({ key, group, name, has: rows.length > 0, val: f(ovAvg(w)), unit, was: 'Last week ' + (l.length ? f(ovAvg(l)) + (unit && unit.length < 4 ? ' ' + unit : '') : 'none'), series: perDay(rows), kind: 'average' });
+  };
+  const total = (key, group, name, rows, unit, wasUnit) => {
+    const sum = (a) => a.reduce((x, y) => x + y, 0);
+    const w = sum(rows.filter((r) => inW(r.day)).map((r) => r.v)), l = sum(rows.filter((r) => inL(r.day)).map((r) => r.v));
+    const series = days.map((d) => sum(rows.filter((r) => r.day === d).map((r) => r.v)));
+    cards.push({ key, group, name, has: rows.length > 0, val: ovN(w), unit, was: 'Last week ' + ovN(l) + (wasUnit ? ' ' + wasUnit : ''), series, kind: 'total' });
+  };
+  const ent = entries.filter((e) => e.day >= L0 && e.day <= today);
+  const vit = (f) => ent.filter((e) => e.type === 'vitals' && Number(e[f]) > 0).map((e) => ({ day: e.day, v: Number(e[f]) }));
+  /* Body */
+  reading('temp', 'body', 'Temperature', ent.filter((e) => e.type === 'temp' && Number(e.value) > 0).map((e) => ({ day: e.day, v: Number(e.value) })), '°C', ovF1);
+  reading('heart', 'body', 'Heart rate', vit('heartRate'), 'bpm', ovF0);
+  reading('rhr', 'body', 'Resting heart rate', days.map((d) => ({ day: d, v: Number(((state.exercise || {})[d] || {}).restingHr) })).filter((r) => r.v > 0), 'bpm', ovF0);
+  { const sy = vit('systolic'), di = ent.filter((e) => e.type === 'vitals' && Number(e.systolic) > 0 && Number(e.diastolic) > 0);
+    const bp = (rows) => (rows.length ? ovF0(ovAvg(rows.map((e) => Number(e.systolic)))) + '/' + ovF0(ovAvg(rows.map((e) => Number(e.diastolic)))) : null);
+    cards.push({ key: 'bp', group: 'body', name: 'Blood pressure', has: di.length > 0, val: bp(di.filter((e) => inW(e.day))), unit: '', was: 'Last week ' + (bp(di.filter((e) => inL(e.day))) || 'none'), series: perDay(sy), kind: 'average' }); }
+  reading('oxygen', 'body', 'Oxygen', vit('oxygen'), '%', ovF0);
+  const pf = vit('peakFlow'); if (pf.length) reading('peakflow', 'body', 'Peak flow', pf, 'L/min', ovF0);
+  { const ws = ent.filter((e) => e.type === 'weight' && Number(e.value) > 0).sort((a, b) => entryDate(a) - entryDate(b));
+    const w = ws.filter((e) => inW(e.day)), l = ws.filter((e) => inL(e.day)), st = weightPref() === 'stlb';
+    const show = (e) => (e ? (st ? fmtStLb(e.value) : ovF1(Number(e.value))) : null);
+    cards.push({ key: 'weight', group: 'body', name: 'Weight', has: ws.length > 0, val: show(w[w.length - 1]), unit: st ? '' : 'kg', was: 'A week before ' + (l.length ? show(l[l.length - 1]) + (st ? '' : ' kg') : 'none'), series: perDay(ws.map((e) => ({ day: e.day, v: Number(e.value) }))), kind: 'latest' }); }
+  /* How you feel: the check-ins' own scores, the patient's alone */
+  reading('pain', 'feel', 'Pain', ent.filter((e) => isPatientCheckin(e) && e.pain != null).map((e) => ({ day: e.day, v: Number(e.pain) })), 'out of 10', ovF1);
+  reading('mood', 'feel', 'Mood', ent.filter((e) => isPatientCheckin(e) && e.mood != null).map((e) => ({ day: e.day, v: Number(e.mood) })), 'out of 10', ovF1);
+  const energy = ent.filter((e) => isPatientCheckin(e) && e.slot === 'evening' && Number(e.energy) > 0).map((e) => ({ day: e.day, v: Number(e.energy) }));
+  if (energy.length) reading('own-energy-today', 'feel', 'Energy', energy, 'out of 10', ovF1);
+  { const byName = {};
+    ent.filter((e) => e.type === 'symptom' && e.value != null && e.what).forEach((e) => { const n = String(e.what).trim(), k = n.toLowerCase(); (byName[k] = byName[k] || { name: n, rows: [] }).rows.push({ day: e.day, v: Number(e.value) }); });
+    Object.values(byName).sort((a, b) => a.name.localeCompare(b.name)).forEach((t) => {
+      const w = t.rows.filter((r) => inW(r.day)), l = t.rows.filter((r) => inL(r.day));
+      const dw = new Set(w.map((r) => r.day)).size, dl = new Set(l.map((r) => r.day)).size;
+      cards.push({ key: ownKeyOf('sym-', t.name), group: 'feel', name: t.name, sym: true, has: true, val: w.length ? String(Math.max(...w.map((r) => r.v))) : null, unit: 'highest', was: plural(dw, 'day') + ' logged. Last week ' + (dl ? plural(dl, 'day') : 'none'), series: perDay(t.rows, 'max'), kind: 'highest' });
+    }); }
+  /* Sleep and activity */
+  { const sl = ent.filter((e) => e.type === 'sleep' && Number(e.value) > 0).map((e) => ({ day: e.day, v: Number(e.value) }));
+    const w = sl.filter((r) => inW(r.day)).map((r) => r.v), l = sl.filter((r) => inL(r.day)).map((r) => r.v);
+    cards.push({ key: 'sleep', group: 'sleep', name: 'Sleep', has: sl.length > 0, val: w.length ? fmtHm(Math.round(ovAvg(w))) : null, unit: 'a night', was: 'Last week ' + (l.length ? fmtHm(Math.round(ovAvg(l))) : 'none'), series: perDay(sl).map((v) => (v == null ? null : v / 60)), kind: 'average' }); }
+  { const steps = days.map((d) => ({ day: d, v: Number(((state.exercise || {})[d] || {}).steps) || 0 })).filter((r) => r.v > 0);
+    total('steps', 'sleep', 'Steps', steps, 'this week', ''); }
+  /* Food and drink: totals */
+  total('drink', 'food', 'Drinks', ent.filter((e) => e.type === 'drink' && Number(e.value) > 0).map((e) => ({ day: e.day, v: Number(e.value) })), 'ml this week', 'ml');
+  total('bowel', 'food', 'Bowel movements', ent.filter((e) => e.type === 'bowel' && !e.none).map((e) => ({ day: e.day, v: 1 })), 'this week', '');
+  /* Your own things: each tracked thing, its answers in the fortnight */
+  const series = trackSeries(ent, L0);
+  ownTracks().forEach((t) => {
+    const s = series.find((x) => x.id === t.id), rows = s ? s.list.map((r) => ({ day: r.day, v: r.v })) : [];
+    const key = ownKeyOf('own-', t.id);
+    if (t.kind === 'yesno') {
+      const w = rows.filter((r) => inW(r.day)), l = rows.filter((r) => inL(r.day));
+      cards.push({ key, group: 'own', name: t.name, has: rows.length > 0, val: w.length ? String(w.filter((r) => r.v).length) : null, unit: 'of ' + plural(w.length, 'day') + ', yes', was: 'Last week ' + (l.length ? l.filter((r) => r.v).length + ' of ' + l.length : 'none'), series: perDay(rows.map((r) => ({ day: r.day, v: r.v ? 1 : 0 }))), kind: 'count' });
+    } else if (t.kind === 'number' && t.combine !== 'avg') total(key, 'own', t.name, rows, (t.unit ? t.unit + ' ' : '') + 'this week', t.unit || '');
+    else reading(key, 'own', t.name, rows, t.kind === 'score' ? 'out of 10' : t.unit || '', ovF1);
+    cards[cards.length - 1].group = 'own';
+  });
+  return cards;
+}
+let trendOverviewCards = [], trendJumpTapped = null;
+function renderTrendsOverview(entries) {
+  const box = $('trends-overview');
+  if (!box) return;
+  const all = trendCards(entries);
+  trendOverviewCards = all;
+  const pins = trendList(TREND_PINS_KEY), hidden = new Set(trendList(TREND_HIDE_KEY));
+  const hiddenOf = (c) => hidden.has(c.key) || (c.sym && hidden.has('sym'));
+  const shown = all.filter((c) => !hiddenOf(c));
+  const pinned = pins.map((k) => shown.find((c) => c.key === k)).filter(Boolean);
+  const rest = shown.filter((c) => !pins.includes(c.key));
+  const empty = rest.filter((c) => !c.has);
+  const today = todayStr(), W0 = addDays(today, -6);
+  const card = (c) => {
+    const isPin = pins.includes(c.key);
+    const valText = c.val == null ? 'None' : c.val;
+    const b = h('button', { class: 'ov-card', type: 'button', dataset: { key: c.key }, 'aria-label': `${c.name}: ${c.val == null ? 'nothing logged this week' : valText + (c.unit ? ' ' + c.unit : '')}. ${c.was}.${isPin ? ' Pinned.' : ''} Opens the full chart.`, onclick: () => (c.key === 'steps' ? showTab('exercise') : openTrendDetail(c.key)) },
+      isPin ? icon('star', 'ov-pin') : icon('chevron', 'ov-chev'),
+      h('span', { class: 'ov-name', text: c.name }),
+      h('span', { class: 'ov-val' + (c.val == null ? ' is-none' : '') }, valText, c.val != null && c.unit ? h('small', { text: c.unit }) : null),
+      h('span', { class: 'ov-was', text: c.was }));
+    const sp = ovSpark(c.series);
+    if (sp) b.insertAdjacentHTML('beforeend', sp);
+    return b;
+  };
+  const groups = [];
+  if (pinned.length) groups.push(['pinned', 'Pinned', 'Your pinned charts, always first.', pinned]);
+  TREND_GROUPS.forEach(([id, title]) => { const cs = rest.filter((c) => c.group === id && c.has); if (cs.length) groups.push([id, title, id === 'body' ? 'Readings: the average this week, then last week.' : id === 'food' ? 'Totals this week, then last week.' : '', cs]); });
+  const jump = h('nav', { class: 'ov-jump', 'aria-label': 'Jump to a group' },
+    ...groups.map(([id], i) => h('button', { class: 'ov-jumpto' + (i === 0 ? ' is-on' : ''), type: 'button', dataset: { to: id }, 'aria-current': i === 0 ? 'true' : null, text: TREND_JUMP_WORD[id],
+      onclick: (ev) => { trendJumpTapped = { el: ev.currentTarget, at: Date.now() }; syncTrendJump(); const s = $('ov-' + id); if (s) window.scrollTo({ top: s.getBoundingClientRect().top + window.scrollY - trendJumpTop() - 56, behavior: reducedMotion() ? 'auto' : 'smooth' }); } })));
+  box.replaceChildren(
+    h('p', { class: 'hint ov-lead', text: `This week, ${fmtDayShort(W0)} to ${fmtDayShort(today)}, against the week before. Tap a chart for the detail.` }),
+    groups.length > 1 ? jump : h('span'),
+    ...groups.map(([id, title, sub, cs]) => h('section', { class: 'ov-group', id: 'ov-' + id, 'aria-labelledby': 'ov-h-' + id },
+      h('h2', { class: 'ov-title', id: 'ov-h-' + id, text: title }), sub ? h('p', { class: 'hint ov-sub', text: sub }) : h('span'),
+      h('div', { class: 'ov-grid' }, ...cs.map(card)))),
+    !groups.length ? h('p', { class: 'hint', text: 'Nothing logged in the last two weeks yet. Readings, check-ins and what you track appear here as cards.' }) : h('span'),
+    empty.length ? h('p', { class: 'ov-none' }, h('b', { text: 'Nothing logged in the last two weeks: ' }), ...empty.flatMap((c, i) => [i ? ', ' : '', h('button', { class: 'linkbtn', type: 'button', text: c.name, onclick: () => (c.key === 'steps' ? showTab('exercise') : openTrendDetail(c.key)) })]), '.') : h('span'),
+    h('button', { class: 'btn btn-secondary btn-block ov-choose', type: 'button', text: 'Choose your charts', onclick: openTrendChoose }));
+  jump.style.top = trendJumpTop() + 'px';
+  syncTrendJump();
+}
+function reducedMotion() { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
+function trendJumpTop() { const t = document.querySelector('.topbar'); return t ? Math.round(t.getBoundingClientRect().height) : 0; }
+function syncTrendJump() {
+  const jump = document.querySelector('#trends-overview .ov-jump');
+  if (!jump || !jump.offsetParent) return;
+  const top = trendJumpTop() + 120;
+  let cur = null;
+  jump.querySelectorAll('.ov-jumpto').forEach((b) => { const s = $('ov-' + b.dataset.to); if (s && s.getBoundingClientRect().top < top) cur = b; });
+  /* at the foot of the page the last group cannot reach the top, so it is the one underlined there */
+  if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4) cur = [...jump.querySelectorAll('.ov-jumpto')].pop() || cur;
+  if (trendJumpTapped && Date.now() - trendJumpTapped.at < 1200) cur = trendJumpTapped.el;
+  cur = cur || jump.querySelector('.ov-jumpto');
+  jump.querySelectorAll('.ov-jumpto').forEach((b) => { const on = b === cur; b.classList.toggle('is-on', on); if (on) b.setAttribute('aria-current', 'true'); else b.removeAttribute('aria-current'); });
+  if (cur && cur.scrollIntoView && (cur.offsetLeft < jump.scrollLeft || cur.offsetLeft + cur.offsetWidth > jump.scrollLeft + jump.clientWidth)) jump.scrollLeft = cur.offsetLeft - 16;
+}
+window.addEventListener('scroll', () => { if (!$('trends-body').hidden) syncTrendJump(); }, { passive: true });
+/* The full chart: the chart's own card, moved into the sheet and back again when it closes */
+function trendCardOf(key) {
+  if (key === 'rhr') return $('rhr-card');
+  const el = $('chart-' + key);
+  return el ? el.closest('.chart-card') : null;
+}
+function openTrendDetail(key) {
+  const c = trendOverviewCards.find((x) => x.key === key);
+  const card = trendCardOf(key);
+  if (!c || !card) { toast('That chart is not ready yet. Try again in a moment.'); return; }
+  const slot = h('div', { class: 'trend-detail-slot' });
+  const seg = document.querySelector('#trends-charts .segmented');
+  const segHome = document.createComment('range');
+  if (seg) seg.replaceWith(segHome);
+  const body = h('div', { class: 'trend-detail' },
+    h('p', { class: 'hint trend-detail-lead', text: (c.val == null ? 'Nothing logged this week' : 'This week ' + c.val + (c.unit ? ' ' + c.unit : '')) + '. ' + c.was + '.' }),
+    seg || h('span'), slot,
+    h('button', { class: 'btn btn-secondary btn-block', type: 'button', text: 'Back to all charts', onclick: () => closeSheet() }));
+  state.trendDetail = { key, slot, home: null, card: null, seg, segHome };
+  placeTrendDetail();
+  openSheet(c.name, body, () => {
+    const d = state.trendDetail; state.trendDetail = null;
+    if (d && d.card && d.home && d.home.parentNode) d.home.replaceWith(d.card); else if (d && d.card && /^(own|sym)-/.test(d.key)) d.card.remove();
+    if (d && d.seg && d.segHome.parentNode) d.segHome.replaceWith(d.seg);
+  });
+}
+/* put the chart's current card in the sheet (again after a re-draw, which may build the own cards afresh) */
+function placeTrendDetail() {
+  const d = state.trendDetail;
+  if (!d) return;
+  const card = trendCardOf(d.key);
+  if (!card || card === d.card) return;
+  if (d.card) { if (d.home && d.home.parentNode && !/^(own|sym)-/.test(d.key)) d.home.replaceWith(d.card); else d.card.remove(); }
+  d.home = document.createComment('chart');
+  card.replaceWith(d.home);
+  card.hidden = false;
+  d.slot.replaceChildren(card);
+  d.card = card;
+  const k = d.key === 'rhr' ? 'rhr' : d.key;
+  if (state.charts[k]) { try { state.charts[k].resize(); } catch (e) { /* drawn when it comes into view */ } }
+}
+/* Choose your charts: tick which show, pin up to four, on this phone */
+function openTrendChoose() {
+  const pins = trendList(TREND_PINS_KEY), hidden = new Set(trendList(TREND_HIDE_KEY));
+  const cards = trendOverviewCards.filter((c) => !c.sym);
+  const syms = trendOverviewCards.filter((c) => c.sym);
+  const rowsFor = (list) => list.map((c) => {
+    const id = 'trend-tick-' + c.key;
+    const tick = h('input', { type: 'checkbox', id, checked: !hidden.has(c.key), onchange: (ev) => { if (ev.target.checked) hidden.delete(c.key); else hidden.add(c.key); save(); row.classList.toggle('is-off', !ev.target.checked); } });
+    const pin = h('button', { class: 'ck-pin', type: 'button', 'aria-label': 'Pin ' + c.name + ' first', onclick: (ev) => {
+      ev.preventDefault();
+      const i = pins.indexOf(c.key);
+      if (i >= 0) pins.splice(i, 1);
+      else { if (pins.length >= TREND_PIN_MAX) { toast('Up to four can be pinned. Unpin one first.'); return; } pins.push(c.key); }
+      syncPin(); save();
+    } });
+    const syncPin = () => { const on = pins.includes(c.key); pin.classList.toggle('is-on', on); pin.setAttribute('aria-pressed', on ? 'true' : 'false'); pin.replaceChildren(icon(on ? 'star' : 'star-line'), on ? 'Pinned' : 'Pin'); };
+    syncPin();
+    const row = h('div', { class: 'ck-row' + (hidden.has(c.key) ? ' is-off' : '') }, h('label', { class: 'ck-label', for: id }, tick, h('span', { class: 'nm', text: c.name })), c.key === 'steps' ? h('span') : pin);
+    return row;
+  });
+  const save = () => { setTrendList(TREND_PINS_KEY, pins.slice(0, TREND_PIN_MAX)); setTrendList(TREND_HIDE_KEY, [...hidden]); renderTrendsOverview(state.trendOverviewEntries || []); };
+  const groups = TREND_GROUPS.map(([id, title]) => {
+    const list = cards.filter((c) => c.group === id);
+    const rows = rowsFor(list);
+    if (id === 'feel' && syms.length) {
+      const tid = 'trend-tick-sym';
+      const tick = h('input', { type: 'checkbox', id: tid, checked: !hidden.has('sym'), onchange: (ev) => { if (ev.target.checked) hidden.delete('sym'); else hidden.add('sym'); save(); row.classList.toggle('is-off', !ev.target.checked); } });
+      const row = h('div', { class: 'ck-row' + (hidden.has('sym') ? ' is-off' : '') }, h('label', { class: 'ck-label', for: tid }, tick, h('span', { class: 'nm', text: 'Symptoms you log (' + syms.map((c) => c.name).join(', ') + ')' })));
+      rows.push(row);
+    }
+    return rows.length ? h('div', { class: 'ck-group' }, h('h3', { class: 'ck-title', text: title }), h('div', { class: 'ck-list' }, ...rows)) : null;
+  }).filter(Boolean);
+  openSheet('Choose your charts', h('div', null,
+    h('p', { class: 'hint', text: 'Tick the charts you want on Trends. Pin up to four to keep them first. On this phone only.' }),
+    ...groups,
+    h('button', { class: 'btn btn-primary btn-block ck-done', type: 'button', text: 'Done', onclick: () => closeSheet() })));
 }
 
 /* ---- Chart styling shared by every chart: calm lines, gradient fills, subtle points, a lit last point ---- */

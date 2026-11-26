@@ -218,6 +218,9 @@ async function ingestHealth(fs, hid, body, sourceTag) {
         if (deep > 0) fields.deep = intVal(mins(deep));
         if (rem > 0) fields.rem = intVal(mins(rem));
         if (awake > 0) fields.awake = intVal(mins(awake));
+        /* v489: the night's stages in order ("d40-85 c85-130 ...", minutes from the start) and the times awake, from the phone apps */
+        if (typeof r.stages === 'string' && r.stages.length <= 4000 && /^[wcdra]\d{1,4}-\d{1,4}( [wcdra]\d{1,4}-\d{1,4}){1,399}$/.test(r.stages)) fields.stages = strVal(r.stages);
+        if (Number.isInteger(r.woke) && r.woke >= 0 && r.woke <= 200) fields.woke = intVal(r.woke);
         const bedAt = hhmm(start), wokeAt = hhmm(end);
         if (bedAt) fields.bedAt = strVal(bedAt);
         if (wokeAt) fields.wokeAt = strVal(wokeAt);
@@ -228,7 +231,7 @@ async function ingestHealth(fs, hid, body, sourceTag) {
            (v279): those stay as the night; a re-send only refreshes the watch's own figures, kept beside them as watch. */
         const short = existing && existing.fields && existing.fields.watchShort && existing.fields.watchShort.booleanValue === true;
         if (short) {
-          const keep = ['value', 'bedAt', 'wokeAt', 'awake', 'core', 'deep', 'rem'];
+          const keep = ['value', 'bedAt', 'wokeAt', 'awake', 'core', 'deep', 'rem', 'stages', 'woke'];
           const w = Object.fromEntries(keep.filter((k) => fields[k]).map((k) => [k, fields[k]]));
           await fs.merge(hp(hid, 'entries/' + day + '_sleep'), { watch: { mapValue: { fields: w } }, updatedAt: fields.updatedAt });
           result.sleep++;

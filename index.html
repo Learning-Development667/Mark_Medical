@@ -19,7 +19,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=488">
+  <link rel="stylesheet" href="styles.css?v=489">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -59,6 +59,8 @@
     <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2.5L5 13.5h6l-1 8 8-11h-6z"/></symbol>
     <symbol id="i-lab" viewBox="0 0 24 24"><path d="M8 3h8"/><path d="M10 3v7.2l-5.2 8.6A2 2 0 0 0 6.5 22h11a2 2 0 0 0 1.7-3.2L14 10.2V3"/><path d="M8 15.5h8"/></symbol>
     <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24"><path style="fill:currentColor" d="M12 3.2l2.6 5.5 6 .7-4.4 4.1 1.1 5.9L12 16.5l-5.3 2.9 1.1-5.9-4.4-4.1 6-.7z"/></symbol>
+    <symbol id="i-star-line" viewBox="0 0 24 24"><path d="M12 3.2l2.6 5.5 6 .7-4.4 4.1 1.1 5.9L12 16.5l-5.3 2.9 1.1-5.9-4.4-4.1 6-.7z"/></symbol>
     <symbol id="i-image" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="M20.5 15.5l-4.5-4.5-7 7"/></symbol><symbol id="i-camera" viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></symbol>
     <symbol id="i-barcode" viewBox="0 0 24 24"><path d="M4 6v12M7 6v12M11 6v12M14 6v12M17 6v12M20 6v12" /><path d="M3 4h2M3 20h2M19 4h2M19 20h2" /></symbol>
   </svg>
@@ -476,20 +478,10 @@
           </div>
         </div>
         <div id="trends-body" hidden>
-        <p class="hint trends-hint">Your latest readings, then a chart of each.</p>
-        <div class="status">
-          <div class="tiles tiles-2" id="vitals-latest">
-            <div class="tile" id="vt-temp"><span class="tile-label">Temperature</span><span class="tile-value" id="vt-temp-value">--</span><span class="tile-sub" id="vt-temp-sub"></span></div>
-            <div class="tile" id="vt-heart"><span class="tile-label">Heart rate</span><span class="tile-value" id="vt-heart-value">--</span><span class="tile-sub" id="vt-heart-sub"></span></div>
-            <div class="tile" id="vt-bp"><span class="tile-label">Blood pressure</span><span class="tile-value" id="vt-bp-value">--</span><span class="tile-sub" id="vt-bp-sub"></span></div>
-            <div class="tile" id="vt-oxygen"><span class="tile-label">Oxygen</span><span class="tile-value" id="vt-oxygen-value">--</span><span class="tile-sub" id="vt-oxygen-sub"></span></div>
-            <div class="tile" id="vt-pain"><span class="tile-label">Pain</span><span class="tile-value" id="vt-pain-value">--</span><span class="tile-sub" id="vt-pain-sub"></span></div>
-            <div class="tile" id="vt-mood"><span class="tile-label">Mood</span><span class="tile-value" id="vt-mood-value">--</span><span class="tile-sub" id="vt-mood-sub"></span></div>
-            <div class="tile" id="vt-sleep"><span class="tile-label">Sleep</span><span class="tile-value" id="vt-sleep-value">--</span><span class="tile-sub" id="vt-sleep-sub"></span></div>
-            <div class="tile" id="vt-weight"><span class="tile-label">Weight</span><span class="tile-value" id="vt-weight-value">--</span><span class="tile-sub" id="vt-weight-sub"></span></div>
-          </div>
-        </div>
-        <h2 class="section-title">Charts</h2>
+        <!-- v489 (Mark: "a long list a you doom scroll through"): Trends opens on the overview, a small card a chart, this week
+             against last; a card opens its full chart in a sheet. The charts themselves are built below as before, held out of sight. -->
+        <div id="trends-overview"></div>
+        <div id="trends-charts" hidden>
         <div class="segmented" role="group" aria-label="Range">
           <button class="seg is-active" type="button" data-range="7">1 week</button>
           <button class="seg" type="button" data-range="14">2 weeks</button>
@@ -553,6 +545,7 @@
         </div>
         <!-- Things I track and symptoms (v365): one card each, only once something is logged, drawn by renderOwnCharts() -->
         <div id="charts-own"></div>
+        </div>
         </div>
       </section>
 
@@ -1410,6 +1403,6 @@
   </div>
 
   <script src="config.js?v=405"></script>
-  <script type="module" src="scripts.js?v=488"></script>
+  <script type="module" src="scripts.js?v=489"></script>
 </body>
 </html>

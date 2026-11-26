@@ -74,7 +74,8 @@ const QUALITY = 0.8;
 
   /* 2. the check-ins */
   begin('checkin', 'The morning and evening check-ins', 'A few minutes each: sleep, symptoms, pain and mood, one question a screen.', 'The check-ins are what the reports are built from. A few minutes each, twice a day.');
-  /* the simple night (v260): no tracker night this morning, so the step asks for the times */
+  /* the simple night (v260): no tracker night this morning, so the step asks for the times (v489: last night from Apple Health is kept aside, for the topic's last step) */
+  await page.evaluate((today) => { window.__ahNight = window.daybookPreview.state.recentEntries.find((e) => e.day === today && e.type === 'sleep' && e.stages) || null; }, today);
   await page.evaluate((today) => { const st = window.daybookPreview.state; st.recentEntries = st.recentEntries.filter((e) => !(e.day === today && ((e.type === 'checkin' && (e.slot === 'morning' || e.slot === 'evening')) || e.type === 'sleep'))); st.dayEntries = st.recentEntries.filter((e) => e.day === st.selectedDay); }, today);
   await refresh();
   await shot('Twice a day, a morning check-in and an evening one. Tap the row when it says Due now.', '#checkin-morning');
@@ -103,6 +104,12 @@ const QUALITY = 0.8;
   await shot('The review: every answer, tap one to change it, then Save.', '#sheet-body .btn-primary');
   await page.click('#sheet-body .btn-primary'); await settle(700);
   await shot('Done. The check-in is a card on Today: tap it to open it, and Edit to change an answer later.', '#checkin-morning-card .cc-head');
+  /* v489: with Apple Health or Health Connect, last night is shown in full (the preview's night from Apple Health, put back) */
+  await page.evaluate((today) => { const st = window.daybookPreview.state; const n = window.__ahNight; if (!n) return; st.recentEntries = st.recentEntries.filter((e) => !(e.day === today && e.type === 'sleep')).concat([n]); st.dayEntries = st.recentEntries.filter((e) => e.day === st.selectedDay); }, today);
+  await refresh();
+  await page.click('.qa[data-add="sleep"]'); await page.waitForSelector('#sheet:not([hidden])'); await settle(700);
+  await shot('With Apple Health or Health Connect connected, last night is already there: time asleep, the night in stages, deep, core and REM, and the times awake. The Sleep tile and the morning check-in both show it.', '#sheet-body .last-night');
+  await closeSheet();
 
   /* 3. medicines */
   begin('meds', 'Medicines and reminders', 'Log a dose, see what is due, set reminder times.', 'Every dose is logged on the Meds tab: Log now, or Other time for a dose taken earlier.');
@@ -191,7 +198,11 @@ const QUALITY = 0.8;
   await shot('The Reports tab: Notes for the team first, then Pain, the Food diary, Mood and wellbeing, Documents and Results. Trends, at the top, switches to your readings.', '#reports-show-trends');
   await page.click('#reports-show-trends'); await settle(900);
   for (let i = 1; i <= 3; i++) { await page.clock.setFixedTime(new Date(Date.parse(CLOCK) + i * 4000)); await settle(250); }
-  await shot('Trends: the latest of each reading, then a chart of each over 1 week, 2 weeks or 30 days. Each chart can show as a table too.', '#reports-show-reports');
+  await shot('Trends: every chart as a small card, this week against the week before. The bar at the top jumps to Body, How you feel, Sleep or Food.', '#trends-overview .ov-card');
+  await page.click('#trends-overview .ov-card[data-key="pain"]'); await page.waitForSelector('#sheet:not([hidden])'); await settle(600);
+  for (let i = 4; i <= 6; i++) { await page.clock.setFixedTime(new Date(Date.parse(CLOCK) + i * 4000)); await settle(250); }
+  await shot('Tap a card for its full chart over 1 week, 2 weeks or 30 days, or as a table. Choose your charts, at the foot of Trends, hides any you do not use and pins up to four first.', '#sheet-body .segmented');
+  await closeSheet();
   await page.click('#reports-show-reports'); await settle(500);
   await page.click('#rep-notes'); await page.waitForSelector('#view-notes:not([hidden])'); await settle(1500);
   await shot('Choose the period, then Send to the team, Preview or Save as PDF. The summary and the notes are below.', '#notes-send');
@@ -393,9 +404,12 @@ const QUALITY = 0.8;
   await page.evaluate(() => { const st = window.daybookPreview.state; const tr = (st.profile.tracks || []).find((x) => x.name === 'Fatigue'); if (!tr) return; const vals = [4, 5, 7, 6, 5, 4]; vals.forEach((v, i) => { const d = new Date(); d.setDate(d.getDate() - (6 - i)); d.setHours(15, 0, 0, 0); const day = d.toISOString().slice(0, 10); st.recentEntries.push({ id: 'gtrack' + i, type: 'track', trackId: tr.id, name: tr.name, kind: 'score', unit: '', combine: 'add', v, note: '', day, at: { toDate: () => d, seconds: Math.floor(d / 1000) }, addedBy: st.name }); }); });
   await page.emulateMedia({ reducedMotion: 'reduce' }); // charts draw at once rather than as they come into view
   await tab('vitals'); await page.click('#reports-show-trends'); await settle(1800);
-  const ownCard = page.locator('.chart-own:has(h2:has-text("Fatigue"))').first();
-  await ownCard.scrollIntoViewIfNeeded().catch(() => {}); await page.mouse.wheel(0, 40); await settle(600); await page.mouse.wheel(0, -40); await settle(2500); // the chart draws as it comes into view
-  await shot('Trends charts it day by day, and Notes for the team lists it for the team: facts only, never judged.');
+  const ownCard = page.locator('#trends-overview .ov-card:has(.ov-name:text-is("Fatigue"))').first();
+  await ownCard.scrollIntoViewIfNeeded().catch(() => {}); await settle(500);
+  await shot('On Trends it is a card of its own, this week against the week before. Tap it for the chart.', ownCard);
+  await ownCard.click(); await page.waitForSelector('#sheet:not([hidden])'); await settle(2500); // the chart draws once it is on screen
+  await shot('Its chart, day by day. Notes for the team lists it for the team too: facts only, never judged.');
+  await closeSheet();
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await page.click('#reports-show-reports').catch(() => {}); await tab('today');
 

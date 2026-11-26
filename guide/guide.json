@@ -1,5 +1,5 @@
 {
- "made": "2026-11-24",
+ "made": "2026-11-26",
  "width": 390,
  "height": 844,
  "topics": [
@@ -283,7 +283,15 @@
     },
     {
      "file": "owntrack-7.webp",
-     "caption": "Trends charts it day by day, and Notes for the team lists it for the team: facts only, never judged."
+     "caption": "On Trends it is a card of its own, this week against the week before. Tap it for the chart.",
+     "tap": {
+      "x": 0.264,
+      "y": 0.608
+     }
+    },
+    {
+     "file": "owntrack-8.webp",
+     "caption": "Its chart, day by day. Notes for the team lists it for the team too: facts only, never judged."
     }
    ]
   },
@@ -355,6 +363,14 @@
      "tap": {
       "x": 0.5,
       "y": 0.318
+     }
+    },
+    {
+     "file": "checkin-9.webp",
+     "caption": "With Apple Health or Health Connect connected, last night is already there: time asleep, the night in stages, deep, core and REM, and the times awake. The Sleep tile and the morning check-in both show it.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.785
      }
     }
    ]
@@ -563,14 +579,22 @@
     },
     {
      "file": "reports-2.webp",
-     "caption": "Trends: the latest of each reading, then a chart of each over 1 week, 2 weeks or 30 days. Each chart can show as a table too.",
+     "caption": "Trends: every chart as a small card, this week against the week before. The bar at the top jumps to Body, How you feel, Sleep or Food.",
      "tap": {
-      "x": 0.263,
-      "y": 0.104
+      "x": 0.264,
+      "y": 0.485
      }
     },
     {
      "file": "reports-3.webp",
+     "caption": "Tap a card for its full chart over 1 week, 2 weeks or 30 days, or as a table. Choose your charts, at the foot of Trends, hides any you do not use and pins up to four first.",
+     "tap": {
+      "x": 0.5,
+      "y": 0.425
+     }
+    },
+    {
+     "file": "reports-4.webp",
      "caption": "Choose the period, then Send to the team, Preview or Save as PDF. The summary and the notes are below.",
      "tap": {
       "x": 0.5,
@@ -578,7 +602,7 @@
      }
     },
     {
-     "file": "reports-4.webp",
+     "file": "reports-5.webp",
      "caption": "Pick who it goes to. Contacts with an email address come from Who to contact on More.",
      "tap": {
       "x": 0.5,
@@ -586,11 +610,11 @@
      }
     },
     {
-     "file": "reports-5.webp",
+     "file": "reports-6.webp",
      "caption": "The subject and message are written for you and can be changed. The report is attached as a PDF, and a copy goes to your own inbox."
     },
     {
-     "file": "reports-6.webp",
+     "file": "reports-7.webp",
      "caption": "Preview shows the pages exactly as they print. Pinch, double tap, or use plus and minus to zoom in on the report alone. Print and Save as PDF are above.",
      "tap": {
       "x": 0.425,
