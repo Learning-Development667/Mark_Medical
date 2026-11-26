@@ -1,0 +1,35 @@
+# Sign-in settings (v491): check and tidy Firebase Authentication's settings, and switch the support@ sign-in off or on.
+# See tools/auth_settings.mjs. THIS REPOSITORY IS PUBLIC: the log prints the company's public addresses, dates, states and
+# counts only.
+name: Sign-in settings
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "What to do"
+        required: true
+        type: choice
+        default: check
+        options:
+          - check
+          - tidy
+          - disable-support
+          - enable-support
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Sign-in settings
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          ACTION: ${{ inputs.action }}
+        run: node tools/auth_settings.mjs
