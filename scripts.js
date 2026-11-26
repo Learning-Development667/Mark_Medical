@@ -16,7 +16,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '489';
+const APP_VERSION = '490';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -4453,6 +4453,13 @@ $('feedback-row').addEventListener('click', () => openFeedbackSheet());
 const WHATS_NEW = [
   /* tag (v411, Mark): new, improved or fixed, shown as a label and grouped in that order; the newest batch is also the
      release notes for TestFlight and Google Play (tools/release_notes.mjs) */
+  { id: '2026-11-26', items: [
+    { tag: 'new', text: 'Trends at a glance. Every chart is now a small card showing this week against last; tap one for the full chart. The bar at the top jumps between Body, How you feel, Sleep and Food.' },
+    { tag: 'new', text: 'Choose your charts, at the foot of Trends: hide the ones you don\'t use and pin up to four to the top.' },
+    { tag: 'new', text: 'Last night in full. With Apple Health or Health Connect, the morning check-in and the Sleep tile show your time asleep, your deep, core and REM sleep, and how many times you woke. From the nights after this update, they also show the night as a timeline.' },
+    { tag: 'improved', text: 'The Guide has a new topic, Track your own things, showing how to add a tile for anything you track.' },
+    { tag: 'fixed', text: 'Choose tiles no longer shows a count stuck to a tile\'s name, such as "Bowels2".' }
+  ] },
   { id: '2026-11-23', items: [
     { tag: 'new', text: 'Your own tiles. Anything you track, like fatigue or a period, can have its own tile on Today, so you can log it the moment it happens. Turn them on in Choose tiles.' },
     { tag: 'fixed', text: 'Flare days and steroid courses now print on Notes for the team.' }
