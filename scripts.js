@@ -7,7 +7,7 @@ if (window.top !== window.self) { try { window.top.location.href = location.href
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import {
   getAuth, setPersistence, browserLocalPersistence, inMemoryPersistence, signInWithEmailAndPassword,
-  onAuthStateChanged, signOut, createUserWithEmailAndPassword, sendPasswordResetEmail, sendEmailVerification, applyActionCode
+  onAuthStateChanged, signOut, createUserWithEmailAndPassword, sendPasswordResetEmail, sendEmailVerification, applyActionCode, verifyPasswordResetCode, confirmPasswordReset
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager, memoryLocalCache,
@@ -16,7 +16,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '490';
+const APP_VERSION = '491';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -1192,9 +1192,26 @@ $('signup-form').addEventListener('submit', async (ev) => {
 $('forgot-button').addEventListener('click', async () => {
   const email = $('signin-email').value.trim(), err = $('signin-error');
   if (!email) { err.textContent = 'Type your email address first, then tap Forgotten your password.'; err.hidden = false; $('signin-email').focus(); return; }
-  try { await sendPasswordResetEmail(auth, email); toast('If that address has a sign-in, a reset email is on its way.'); err.hidden = true; }
-  catch (e) { err.textContent = friendlyAuthError(e); err.hidden = false; }
+  const btn = $('forgot-button'); btn.disabled = true;
+  try { toast(await askForReset(email)); err.hidden = true; }
+  catch (e) { err.textContent = e && e.plain ? e.message : friendlyAuthError(e); err.hidden = false; }
+  finally { btn.disabled = false; }
 });
+/* (v491) Daybook sends the reset email itself, through the bridge: branded, at most a few a day for any address, and never for
+   the company's own addresses (Google Play's test robots press this button with the review sign-in after every upload, and
+   Google's own emails were filling the support inbox). Only when the bridge cannot be reached does Google send its own. */
+const RESET_SENT = 'If that address has a sign-in, a reset email is on its way. Check the junk folder too.';
+async function askForReset(email) {
+  if (BRIDGE) {
+    let r = null, data = null;
+    try { r = await fetch(BRIDGE.url.replace(/\/$/, '') + '/reset-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) }); data = await r.json().catch(() => null); }
+    catch (e) { r = null; }
+    if (r && r.ok) return RESET_SENT;
+    if (r && r.status === 400) { const e = new Error((data && data.message) || 'That email address does not look right.'); e.plain = true; throw e; }
+  }
+  await sendPasswordResetEmail(auth, email);
+  return RESET_SENT;
+}
 /* Signed in, in no household: make one, or join with a code */
 function showNoHousehold(user, message) {
   if (state.household && state.user && user && state.user.uid === user.uid) return; // (v295) a late check after the circle was made
@@ -1327,6 +1344,46 @@ document.addEventListener('click', (ev) => {
     const used = e && /expired|invalid-action-code/.test(e.code || '');
     toast(used ? 'That confirm link has expired or was already used. If reports still will not send, ask for a new link from Send to the team.' : 'Could not confirm the email just now (' + errText(e) + '). Try the link again in a minute.', { label: 'OK', onClick() {} });
   }
+})();
+/* ?reset=CODE (v491): the link in Daybook's reset email. Shows Choose a new password over everything, saves it with Firebase,
+   then signs in with it, so the person lands in their Daybook. A link that has expired or was used says so and goes to sign-in. */
+(async function readResetLink() {
+  const code = new URLSearchParams(location.search).get('reset');
+  if (!code) return;
+  const q = new URLSearchParams(location.search); q.delete('reset');
+  history.replaceState(null, '', location.pathname + (q.toString() ? '?' + q : '') + location.hash);
+  let email = '';
+  try { email = await verifyPasswordResetCode(mainAuth, code); }
+  catch (e) {
+    toast('That reset link has expired or was already used. Type your email on the sign-in screen and tap Forgotten your password for a new one.', { label: 'OK', onClick() {} });
+    return;
+  }
+  const screen = $('reset'), pw = $('reset-password'), err = $('reset-error'), btn = $('reset-button');
+  $('reset-for').textContent = 'For ' + email;
+  $('reset-email').value = email;
+  screen.hidden = false;
+  const close = () => { screen.hidden = true; pw.value = ''; };
+  $('reset-cancel').addEventListener('click', close);
+  pw.focus();
+  $('reset-form').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    err.hidden = true;
+    if (!pw.value) { missing(pw, 'Type a new password.'); return; }
+    if (pw.value.length < 10) { missing(pw, 'Make the password at least 10 characters.', CHECK); return; }
+    btn.disabled = true; btn.textContent = 'Saving...';
+    try {
+      await confirmPasswordReset(mainAuth, code, pw.value);
+      const typed = pw.value;
+      close();
+      toast('Password changed. Signing you in.');
+      try { await signInWithEmailAndPassword(mainAuth, email, typed); }
+      catch (e) { $('signin-email').value = email; toast('Password changed. Sign in with it now.', { label: 'OK', onClick() {} }); }
+    } catch (e) {
+      const used = e && /expired|invalid-action-code/.test(e.code || '');
+      err.textContent = used ? 'That reset link has expired or was already used. Go back to sign in and ask for a new one.' : friendlyAuthError(e).replace(/^Could not sign in\. /, 'Could not save it. ');
+      err.hidden = false;
+    } finally { btn.disabled = false; btn.textContent = 'Save my new password'; }
+  });
 })();
 /* ?ask=CODE (v467): someone asks to join this person's care circle; answered once they are signed in */
 (function readAskLink() {

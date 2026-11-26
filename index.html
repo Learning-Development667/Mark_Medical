@@ -19,7 +19,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=490">
+  <link rel="stylesheet" href="styles.css?v=491">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -120,6 +120,27 @@
         <p class="hint hint-small" id="demo-live-hint" hidden>The shared demo is a cancer example that everyone can see. Anything you add can be seen by other visitors and is wiped every night, so no real details please. The Daybook Assistant works there.</p>
       </div>
       <p class="legal-foot"><button class="btn-link legal-link" type="button" data-page="privacy">Privacy</button><button class="btn-link legal-link" type="button" data-page="terms">Terms</button><button class="btn-link legal-link" type="button" data-page="about">About</button></p>
+    </div>
+  </section>
+
+  <!-- v491: choose a new password, from the link in Daybook's own reset email (?reset=CODE) -->
+  <section id="reset" class="signin reset-screen" hidden>
+    <div class="signin-card">
+      <img class="signin-logo" src="icons/icon-192.png?i=2" alt="" width="72" height="72">
+      <h1 class="brand"><span class="brand-pre">My Medical</span>Daybook</h1>
+      <h2 class="reset-title">Choose a new password</h2>
+      <p id="reset-for" class="muted"></p>
+      <form id="reset-form" autocomplete="on" novalidate>
+        <input id="reset-email" type="email" autocomplete="username" tabindex="-1" aria-hidden="true" class="sr-only">
+        <label class="field">
+          <span>New password</span>
+          <input id="reset-password" type="password" autocomplete="new-password" minlength="10" required>
+        </label>
+        <p class="hint">At least 10 characters.</p>
+        <p id="reset-error" class="error" role="alert" hidden></p>
+        <button id="reset-button" class="btn btn-primary btn-block" type="submit">Save my new password</button>
+        <button id="reset-cancel" class="btn btn-link btn-block" type="button">Back to sign in</button>
+      </form>
     </div>
   </section>
 
@@ -1403,6 +1424,6 @@
   </div>
 
   <script src="config.js?v=405"></script>
-  <script type="module" src="scripts.js?v=490"></script>
+  <script type="module" src="scripts.js?v=491"></script>
 </body>
 </html>

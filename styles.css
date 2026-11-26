@@ -2886,3 +2886,7 @@ html.text-huge .medrow, html.text-huge .med-head { gap: 8px; }
 .ln-st-core { background: var(--sleep-core); fill: var(--sleep-core); }
 .ln-st-rem { background: var(--sleep-rem); fill: var(--sleep-rem); }
 .ln-st-awake { background: var(--text-muted); fill: var(--text-muted); }
+
+/* v491: Choose a new password (?reset=CODE) sits over everything until it is saved or closed */
+.reset-screen { position: fixed; inset: 0; z-index: 950; overflow-y: auto; }
+.reset-title { font-family: var(--font-head); font-weight: 600; font-size: 22px; margin: var(--s-3) 0 var(--s-1); text-align: center; }

@@ -32,6 +32,7 @@ export default {
       if (url.pathname === '/circle-delete' && request.method === 'POST') return withCors(request, await handleCircleDelete(request, env));
       if (url.pathname === '/account-delete' && request.method === 'POST') return withCors(request, await handleAccountDelete(request, env));
       if (url.pathname === '/verify-email' && request.method === 'POST') return withCors(request, await handleVerifyEmail(request, env));
+      if (url.pathname === '/reset-password' && request.method === 'POST') return withCors(request, await handleResetPassword(request, env));
       if (url.pathname === '/send-report' && request.method === 'POST') return withCors(request, await handleSendReport(request, env));
       if (url.pathname === '/invite' && request.method === 'POST') return withCors(request, await handleInvite(request, env));
       if (url.pathname === '/invite-info' && request.method === 'GET') return withCors(request, await handleInviteInfo(url, env));
@@ -1543,13 +1544,91 @@ async function handleVerifyEmail(request, env) {
   }
   return json({ ok: true, to: who.email });
 }
+/* POST /reset-password { email } (v491, Mark, 26 November 2026: hundreds of Google's "Reset your password for
+   care-log-3d05a" emails reached support@, from Google Play's test robots pressing Forgotten your password with the review
+   sign-in after every upload). Daybook sends the reset itself, branded, through Resend, like the confirm email: the link is made
+   by Identity Toolkit (accounts:sendOobCode with returnOobLink, so Google sends nothing) and points at the app as ?reset=CODE,
+   where the app asks for the new password. Nobody is signed in, so the answer is always the same quiet "if there is a sign-in"
+   (it never says whether an address has one), and it is held down: RESET_A_DAY per address, RESET_IP_A_DAY per internet
+   address, RESET_ALL_A_DAY across everyone (Resend's free plan is 100 a day), and never for the company's own addresses. */
+const RESET_A_DAY = 3;
+const RESET_IP_A_DAY = 10;
+const RESET_ALL_A_DAY = 40;
+const RESET_NEVER = ['support@mymedicaldaybook.co.uk', 'info@mark1apps.co.uk', 'reporting@mymedicaldaybook.co.uk'];
+const RESET_WORDS = 'Someone asked to reset the password for your Daybook sign-in. To choose a new password, open the link below. It works once, for an hour.';
+const RESET_IGNORE = 'If you did not ask for this, ignore this email: your password stays as it is and nobody can use this link but you.';
+async function countToday(request, name, limit) {
+  try {
+    const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+    const hash = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(name + ':' + ip)))].slice(0, 12).map((b) => b.toString(16).padStart(2, '0')).join('');
+    const key = new Request('https://ratelimit.daybook.invalid/' + name + '/' + new Date().toISOString().slice(0, 10) + '/' + hash);
+    const hit = await caches.default.match(key);
+    const n = hit ? Number(await hit.text()) || 0 : 0;
+    if (n >= limit) return false;
+    await caches.default.put(key, new Response(String(n + 1), { headers: { 'Cache-Control': 'max-age=86400' } }));
+    return true;
+  } catch (e) { return true; }
+}
+async function handleResetPassword(request, env) {
+  const quiet = json({ ok: true, message: 'If that address has a Daybook sign-in, a reset email is on its way. Check the junk folder too.' });
+  let body = {};
+  try { body = await request.json(); } catch (e) { body = {}; }
+  const email = String(body && body.email || '').trim().toLowerCase();
+  if (!/^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,24}$/.test(email)) return json({ error: 'email', message: 'Type your email address first, then tap Forgotten your password.' }, 400);
+  if (!env.RESEND_API_KEY) return json({ error: 'not-set-up', message: 'Daybook cannot send this email yet.' }, 503);
+  if (RESET_NEVER.includes(email)) return quiet;
+  if (!(await countToday(request, 'reset-ip', RESET_IP_A_DAY))) return quiet;
+  const fs = await firestore(env);
+  const day = londonNow().day;
+  const addrPath = 'bridge/reset-addr-' + (await sha256Hex(email)).slice(0, 24);
+  const addrDoc = await fs.get(addrPath);
+  const af = addrDoc && addrDoc.fields;
+  const addrCount = af && f(af, 'day') === day ? Number(f(af, 'count') || 0) : 0;
+  if (addrCount >= RESET_A_DAY) return quiet;
+  const g = await fs.get('bridge/global');
+  const gf = g && g.fields;
+  if (gf && f(gf, 'resetDay') === day && Number(f(gf, 'reset') || 0) >= RESET_ALL_A_DAY) return quiet;
+  if (addrCount) await fs.bump(addrPath, { count: 1 }, { updatedAt: nowTs() }); else await fs.set(addrPath, { day: strVal(day), count: intVal(1), updatedAt: nowTs() });
+  if (gf && f(gf, 'resetDay') === day) await fs.bump('bridge/global', { reset: 1 }); else await fs.merge('bridge/global', { resetDay: strVal(day), reset: intVal(1) });
+  const sa = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT || '{}');
+  let code = '';
+  try {
+    const token = await accessToken(sa, 'https://www.googleapis.com/auth/cloud-platform');
+    const r = await fetch('https://identitytoolkit.googleapis.com/v1/projects/' + encodeURIComponent(sa.project_id) + '/accounts:sendOobCode', {
+      method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestType: 'PASSWORD_RESET', email, returnOobLink: true }) });
+    const data = await r.json().catch(() => null);
+    if (!r.ok || !data || !data.oobLink) return quiet; // no sign-in for that address, or it is switched off: say nothing more
+    code = new URL(data.oobLink).searchParams.get('oobCode') || '';
+  } catch (e) {
+    console.error('reset-password: link', e && e.message);
+    return json({ error: 'link', message: 'Could not make the link just now. Try again in a minute.' }, 502);
+  }
+  if (!code) return quiet;
+  const link = APP_ORIGIN + '/?reset=' + encodeURIComponent(code);
+  const subject = 'Reset your Daybook password';
+  const text = 'Hello,\n\n' + RESET_WORDS + '\n\nChoose a new password:\n' + link + '\n\n' + RESET_IGNORE +
+    '\n\nMy Medical Daybook\nYour companion between appointments\nMark 1 Apps Ltd, registered in England and Wales, company number 17510025.';
+  try {
+    const r = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { Authorization: 'Bearer ' + env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: 'My Medical Daybook <' + (env.SEND_FROM || SEND_FROM) + '>', to: [email], subject, text,
+        html: verifyEmailHtml('', link, { title: subject, words: RESET_WORDS, button: 'Choose a new password', ignore: RESET_IGNORE }),
+        attachments: [{ filename: 'daybook.jpg', content: EMAIL_LOGO_JPG, content_type: 'image/jpeg', content_id: 'daybook-logo' }],
+        headers: { 'X-Entity-Ref-ID': randomCode().slice(0, 16) } }) });
+    if (!r.ok) { console.error('reset-password: refused', r.status); return json({ error: 'refused', message: 'The email service would not send it just now. Try again in a minute.' }, 502); }
+  } catch (e) {
+    return json({ error: 'unreachable', message: 'The email service could not be reached. Try again in a minute.' }, 502);
+  }
+  return quiet;
+}
 const VERIFY_WORDS = 'Please confirm this is your email address. Daybook sends your reports to your care team in your name, and their replies come back to this address, so we check it is really yours. You only need to do this once.';
 const VERIFY_IGNORE = 'If you did not ask for this, you can ignore this email. Nothing will be sent in your name.';
 /* The confirm email's HTML: the app icon from the app's own address, the name in a serif, one teal button and the link in words
    under it for a mail app that hides buttons. Tables and inline styles only, which is what email apps understand. */
-function verifyEmailHtml(name, link) {
+function verifyEmailHtml(name, link, o = {}) {
+  const words = o.words || VERIFY_WORDS, button = o.button || 'Confirm my email', ignore = o.ignore || VERIFY_IGNORE, title = o.title || 'Confirm your email';
   const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  return '<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Confirm your email</title></head>' +
+  return '<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + esc(title) + '</title></head>' +
     '<body style="margin:0;padding:0;background:#F6F4EF">' +
     '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F6F4EF"><tr><td align="center" style="padding:28px 14px">' +
     '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#FFFFFF;border-radius:16px;border:1px solid #D5DEE5">' +
@@ -1559,13 +1638,13 @@ function verifyEmailHtml(name, link) {
     '<tr><td align="center" style="padding:4px 28px 22px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#4B5B6B">Your companion between appointments</td></tr>' +
     '<tr><td style="padding:0 28px;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.55;color:#17263A">' +
     '<p style="margin:0 0 14px">' + (name ? 'Hello ' + esc(name) + ',' : 'Hello,') + '</p>' +
-    '<p style="margin:0 0 22px">' + esc(VERIFY_WORDS) + '</p></td></tr>' +
+    '<p style="margin:0 0 22px">' + esc(words) + '</p></td></tr>' +
     '<tr><td align="center" style="padding:0 28px 22px"><table role="presentation" cellpadding="0" cellspacing="0"><tr><td align="center" style="border-radius:12px;background:#1E7F86">' +
-    '<a href="' + esc(link) + '" style="display:inline-block;padding:15px 30px;font-family:Arial,Helvetica,sans-serif;font-size:17px;font-weight:bold;color:#FFFFFF;text-decoration:none;border-radius:12px">Confirm my email</a>' +
+    '<a href="' + esc(link) + '" style="display:inline-block;padding:15px 30px;font-family:Arial,Helvetica,sans-serif;font-size:17px;font-weight:bold;color:#FFFFFF;text-decoration:none;border-radius:12px">' + esc(button) + '</a>' +
     '</td></tr></table></td></tr>' +
     '<tr><td style="padding:0 28px 8px;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.5;color:#56667A">If the button does not work, copy this link into your browser:<br>' +
     '<a href="' + esc(link) + '" style="color:#18727A;word-break:break-all">' + esc(link) + '</a></td></tr>' +
-    '<tr><td style="padding:12px 28px 28px;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.5;color:#56667A">' + esc(VERIFY_IGNORE) + '</td></tr>' +
+    '<tr><td style="padding:12px 28px 28px;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.5;color:#56667A">' + esc(ignore) + '</td></tr>' +
     '</table>' +
     '<p style="margin:16px 0 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.5;color:#56667A">My Medical Daybook is made by Mark 1 Apps Ltd,<br>registered in England and Wales, company number 17510025.</p>' +
     '</td></tr></table></body></html>';

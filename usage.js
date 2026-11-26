@@ -93,7 +93,10 @@ $('u-create').addEventListener('click', async () => {
 $('u-forgot').addEventListener('click', async () => {
   const email = $('u-email').value.trim();
   if (!email) { msg('Put in your email first.'); return; }
-  try { await sendPasswordResetEmail(auth, email); } catch (e) { /* the same words either way */ }
+  /* (v491) Daybook's own reset email through the bridge; Google's only if the bridge cannot be reached */
+  let sent = false;
+  try { const r = await fetch(BRIDGE + '/reset-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) }); sent = r.ok || r.status === 400; } catch (e) { sent = false; }
+  if (!sent) { try { await sendPasswordResetEmail(auth, email); } catch (e) { /* the same words either way */ } }
   msg('If there is a sign-in for that email, a link to reset the password is on its way.');
 });
 $('u-verify').addEventListener('click', async () => {
