@@ -1,14 +1,6 @@
 Thank you for testing Daybook. In this version:
 
-New
-- Trends at a glance. Every chart is now a small card showing this week against last; tap one for the full chart. The bar at the top jumps between Body, How you feel, Sleep and Food.
-- Choose your charts, at the foot of Trends: hide the ones you don't use and pin up to four to the top.
-- Last night in full. With Apple Health or Health Connect, the morning check-in and the Sleep tile show your time asleep, your deep, core and REM sleep, and how many times you woke. From the nights after this update, they also show the night as a timeline.
-
-Improved
-- The Guide has a new topic, Track your own things, showing how to add a tile for anything you track.
-
 Fixed
-- Choose tiles no longer shows a count stuck to a tile's name, such as "Bowels2".
+- Forgotten your password now sends Daybook's own email. Its link opens a screen to choose a new password and signs you straight in.
 
 You are welcome to use Daybook for real. It is still in Beta, so keep your own copy of anything vital. Anything confusing or broken, tell us through Provide feedback under More, Help and what's new.

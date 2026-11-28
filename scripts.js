@@ -16,7 +16,7 @@ import {
   terminate, clearIndexedDbPersistence
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-const APP_VERSION = '491';
+const APP_VERSION = '492';
 /* The stage of the app (v132): 'Beta' until it is on the App Store and Google Play, then ''. Shown as a small pill on the
    opener and the four cover screens (never in the topbar, where it squeezed "Daybook: Treatment plan" off the end at 390px),
    after the version everywhere the version shows, and as one line on the App card and About
@@ -4510,6 +4510,9 @@ $('feedback-row').addEventListener('click', () => openFeedbackSheet());
 const WHATS_NEW = [
   /* tag (v411, Mark): new, improved or fixed, shown as a label and grouped in that order; the newest batch is also the
      release notes for TestFlight and Google Play (tools/release_notes.mjs) */
+  { id: '2026-11-28', items: [
+    { tag: 'fixed', text: 'Forgotten your password now sends Daybook\'s own email. Its link opens a screen to choose a new password and signs you straight in.' }
+  ] },
   { id: '2026-11-26', items: [
     { tag: 'new', text: 'Trends at a glance. Every chart is now a small card showing this week against last; tap one for the full chart. The bar at the top jumps between Body, How you feel, Sleep and Food.' },
     { tag: 'new', text: 'Choose your charts, at the foot of Trends: hide the ones you don\'t use and pin up to four to the top.' },

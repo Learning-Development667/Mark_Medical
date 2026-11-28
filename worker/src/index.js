@@ -1587,9 +1587,10 @@ async function handleResetPassword(request, env) {
   if (addrCount >= RESET_A_DAY) return quiet;
   const g = await fs.get('bridge/global');
   const gf = g && g.fields;
-  if (gf && f(gf, 'resetDay') === day && Number(f(gf, 'reset') || 0) >= RESET_ALL_A_DAY) return quiet;
+  /* (v492) the day's total counts only resets actually sent, so made-up addresses cannot use it up; when it is full the app is
+     told (429) and asks Google to send its own email instead, so a real person is never left with nothing */
+  if (gf && f(gf, 'resetDay') === day && Number(f(gf, 'reset') || 0) >= RESET_ALL_A_DAY) return json({ error: 'busy', message: 'Daybook has sent all the reset emails it can today.' }, 429);
   if (addrCount) await fs.bump(addrPath, { count: 1 }, { updatedAt: nowTs() }); else await fs.set(addrPath, { day: strVal(day), count: intVal(1), updatedAt: nowTs() });
-  if (gf && f(gf, 'resetDay') === day) await fs.bump('bridge/global', { reset: 1 }); else await fs.merge('bridge/global', { resetDay: strVal(day), reset: intVal(1) });
   const sa = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT || '{}');
   let code = '';
   try {
@@ -1605,6 +1606,7 @@ async function handleResetPassword(request, env) {
     return json({ error: 'link', message: 'Could not make the link just now. Try again in a minute.' }, 502);
   }
   if (!code) return quiet;
+  if (gf && f(gf, 'resetDay') === day) await fs.bump('bridge/global', { reset: 1 }); else await fs.merge('bridge/global', { resetDay: strVal(day), reset: intVal(1) });
   const link = APP_ORIGIN + '/?reset=' + encodeURIComponent(code);
   const subject = 'Reset your Daybook password';
   const text = 'Hello,\n\n' + RESET_WORDS + '\n\nChoose a new password:\n' + link + '\n\n' + RESET_IGNORE +
